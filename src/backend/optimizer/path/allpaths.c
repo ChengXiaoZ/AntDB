@@ -2084,19 +2084,17 @@ recurse_push_qual(Node *setOp, Query *topquery,
 static void
 print_relids(Relids relids)
 {
-	Relids		tmprelids;
 	int			x;
 	bool		first = true;
 
-	tmprelids = bms_copy(relids);
-	while ((x = bms_first_member(tmprelids)) >= 0)
+	x = -1;
+	while ((x = bms_next_member(relids, x)) >= 0)
 	{
 		if (!first)
 			printf(" ");
 		printf("%d", x);
 		first = false;
 	}
-	bms_free(tmprelids);
 }
 
 static void

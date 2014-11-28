@@ -5184,7 +5184,6 @@ setup_param_list(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 	 */
 	if (!bms_is_empty(expr->paramnos))
 	{
-		Bitmapset  *tmpset;
 		int			dno;
 
 		paramLI = (ParamListInfo)
@@ -5197,8 +5196,8 @@ setup_param_list(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 		paramLI->numParams = estate->ndatums;
 
 		/* Instantiate values for "safe" parameters of the expression */
-		tmpset = bms_copy(expr->paramnos);
-		while ((dno = bms_first_member(tmpset)) >= 0)
+		dno = -1;
+		while ((dno = bms_next_member(expr->paramnos, dno)) >= 0)
 		{
 			PLpgSQL_datum *datum = estate->datums[dno];
 
@@ -5213,7 +5212,6 @@ setup_param_list(PLpgSQL_execstate *estate, PLpgSQL_expr *expr)
 				prm->ptype = var->datatype->typoid;
 			}
 		}
-		bms_free(tmpset);
 
 		/*
 		 * Set up link to active expr where the hook functions can find it.
@@ -6435,4 +6433,4 @@ exec_dynquery_with_params(PLpgSQL_execstate *estate,
 	pfree(querystr);
 
 	return portal;
-}
+} 
