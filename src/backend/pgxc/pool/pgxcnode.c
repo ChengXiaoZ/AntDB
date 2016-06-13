@@ -907,7 +907,7 @@ cancel_query(void)
 			{
 				if (handle->state != DN_CONNECTION_STATE_IDLE)
 				{
-					co_cancel[dn_count++] = PGXCNodeGetNodeId(handle->nodeoid,
+					co_cancel[co_count++] = PGXCNodeGetNodeId(handle->nodeoid,
 															  PGXC_NODE_COORDINATOR);
 				}
 			}
