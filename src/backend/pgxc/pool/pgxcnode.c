@@ -510,7 +510,6 @@ retry:
  * Is there any data enqueued in the TCP input buffer waiting
  * to be read sent by the PGXC node connection
  */
-
 int
 pgxc_node_is_data_enqueued(PGXCNodeHandle *conn)
 {
@@ -1778,15 +1777,26 @@ pgxc_node_send_cmd_id(PGXCNodeHandle *handle, CommandId cid)
  * at the convenient time
  */
 void
-add_error_message(PGXCNodeHandle *handle, const char *message)
+add_error_message(PGXCNodeHandle *handle, const char *fmt, ...)
 {
+	va_list ap;
+	StringInfoData buf;
+
 	handle->transaction_status = 'E';
+	initStringInfo(&buf);
+	va_start(ap, fmt);
+	appendStringInfoVA(&buf, fmt, ap);
+
 	if (handle->error)
 	{
 		/* PGXCTODO append */
+	} else
+	{
+		handle->error = pstrdup(buf.data);
 	}
-	else
-		handle->error = pstrdup(message);
+
+	pfree(buf.data);
+	va_end(ap);
 }
 
 /*

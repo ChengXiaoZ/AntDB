@@ -192,7 +192,8 @@ extern void	pgxc_node_flush_read(PGXCNodeHandle *handle);
 
 extern char get_message(PGXCNodeHandle *conn, int *len, char **msg);
 
-extern void add_error_message(PGXCNodeHandle * handle, const char *message);
+extern void add_error_message(PGXCNodeHandle * handle, const char *fmt, ...)
+__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
 
 extern Datum pgxc_execute_on_nodes(int numnodes, Oid *nodelist, char *query);
 
