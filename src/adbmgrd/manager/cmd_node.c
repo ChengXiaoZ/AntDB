@@ -2756,8 +2756,8 @@ void mgr_get_gtm_host_port(StringInfo infosendmsg)
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 			,errmsg("can't find the gtm master information in the system table of gtm")));
 	}
-	mgr_append_pgconf_paras_str_quotastr("gtm_host", gtm_host, infosendmsg);
-	mgr_append_pgconf_paras_str_int("gtm_port", mgr_gtm->gtmport, infosendmsg);
+	mgr_append_pgconf_paras_str_quotastr("agtm_host", gtm_host, infosendmsg);
+	mgr_append_pgconf_paras_str_int("agtm_port", mgr_gtm->gtmport, infosendmsg);
 	pfree(gtm_host);
 }
 
@@ -2783,7 +2783,6 @@ void mgr_append_infostr_infostr(StringInfo infostr, StringInfo sourceinfostr)
 void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, char *nodename, StringInfo infosendparamsg)
 {
 	char *slavename = NULL;
-	int pooler_port = cndnport + 1;
 	if(nodetype == CNDN_TYPE_DATANODE_MASTER)
 		slavename = mgr_get_dnmaster_slavename(tupleOid, nodetype);
 	/*refresh postgresql.conf of this node*/
@@ -2801,7 +2800,6 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, cha
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", infosendparamsg);
 	}
 	mgr_append_pgconf_paras_str_int("port", cndnport, infosendparamsg);
-	mgr_append_pgconf_paras_str_int("pooler_port", pooler_port, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendparamsg);
