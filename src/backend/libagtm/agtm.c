@@ -10,6 +10,7 @@
 #include "libpq/libpq-int.h"
 #include "libpq/pqformat.h"
 #include "pgxc/pgxc.h"
+#include "storage/procarray.h"
 
 #include <unistd.h>
 
@@ -126,9 +127,9 @@ agtm_GetTimestamptz(void)
 GlobalSnapshot
 agtm_GetSnapShot(GlobalSnapshot snapshot)
 {
-	time_t			finish_time;
 	AGTM_Result 	*res;
 	PGconn			*conn = NULL;
+	AssertArg(snapshot && snapshot->xip && snapshot->subxip);
 
 	if(!IsUnderAGTM())
 		return NULL;
@@ -152,8 +153,7 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 			(errmsg("send message to PGconn error,message type : AGTM_MSG_SNAPSHOT_GET")));
 	}
 
-	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
-	if(pqWaitTimed(true, false, conn, finish_time) ||
+	if(pqWaitTimed(true, false, conn, -1) ||
 			pqReadData(conn) < 0)
 	{
 		return NULL;
@@ -170,30 +170,23 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 	snapshot->xmin = res->gr_resdata.snapshot->xmin;
 	snapshot->xmax = res->gr_resdata.snapshot->xmax;
 	snapshot->xcnt = res->gr_resdata.snapshot->xcnt;
-	snapshot->xip = (TransactionId*)malloc(sizeof(TransactionId) * snapshot->xcnt);
-	if(snapshot->xip == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("agtm_GetSnapShot malloc memory failed")));
-	}
+	if(snapshot->xcnt > GetMaxSnapshotXidCount())
+		ereport(ERROR, (errmsg("too many transaction")));
 
 	memcpy(snapshot->xip,res->gr_resdata.snapshot->xip,
 		sizeof(TransactionId) * snapshot->xcnt);
 
+	snapshot->suboverflowed = res->gr_resdata.snapshot->suboverflowed;
 	snapshot->subxcnt = res->gr_resdata.snapshot->subxcnt;
-	snapshot->subxip = (TransactionId*)malloc(sizeof(TransactionId) * snapshot->subxcnt);
-	if(snapshot->subxip == NULL)
+	if(snapshot->subxcnt > GetMaxSnapshotXidCount())
 	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("agtm_GetSnapShot malloc memory failed")));
+		snapshot->suboverflowed = true;
+		snapshot->subxcnt = GetMaxSnapshotXidCount();
 	}
 
 	memcpy(snapshot->subxip,res->gr_resdata.snapshot->subxip,
 		sizeof(TransactionId) * snapshot->subxcnt);
 
-	snapshot->suboverflowed = res->gr_resdata.snapshot->suboverflowed;
 	snapshot->takenDuringRecovery = res->gr_resdata.snapshot->takenDuringRecovery;
 	snapshot->copied = res->gr_resdata.snapshot->copied;
 	snapshot->curcid = res->gr_resdata.snapshot->curcid;

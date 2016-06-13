@@ -1394,16 +1394,11 @@ GetSnapshotData(Snapshot snapshot)
 	int			count = 0;
 	int			subcount = 0;
 	bool		suboverflowed = false;
+#ifdef ADB
+	bool		is_ander_agtm;
+#endif /* ADB */
 
 	Assert(snapshot != NULL);
-
-#ifdef ADB
-	/*
-	 * Obtain a global snapshot for a Postgres-XC session
-	 */
-	if (IsUnderAGTM())
-		return GetGlobalSnapshot((GlobalSnapshot) snapshot);
-#endif
 
 	/*
 	 * Allocating space for maxProcs xids is usually overkill; numProcs would
@@ -1436,6 +1431,23 @@ GetSnapshotData(Snapshot snapshot)
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 	}
+
+#ifdef ADB
+	/*
+	 * Obtain a global snapshot for a Postgres-XC session
+	 */
+	is_ander_agtm = IsUnderAGTM();
+	if (is_ander_agtm)
+	{
+		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
+		snap = GetGlobalSnapshot((GlobalSnapshot) snapshot);
+		/*Assert(snap == snapshot);*/
+
+		globalxmin = xmin = snapshot->xmin;
+		xmax = snapshot->xmax;
+	}else
+	{
+#endif /* ADB */
 
 	/*
 	 * It is sufficient to get shared lock on ProcArrayLock, even if we are
@@ -1591,12 +1603,20 @@ GetSnapshotData(Snapshot snapshot)
 	if (TransactionIdPrecedes(xmin, globalxmin))
 		globalxmin = xmin;
 
+#ifdef ADB
+	}
+#endif /* ADB */
+
 	/* Update global variables too */
 	RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
 	if (!TransactionIdIsNormal(RecentGlobalXmin))
 		RecentGlobalXmin = FirstNormalTransactionId;
 	RecentXmin = xmin;
 
+#ifdef ADB
+	if(!is_ander_agtm)
+	{
+#endif /* ADB */
 	snapshot->xmin = xmin;
 	snapshot->xmax = xmax;
 	snapshot->xcnt = count;
@@ -1611,6 +1631,9 @@ GetSnapshotData(Snapshot snapshot)
 	 */
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
+#ifdef ADB
+	}
+#endif /* ADB */
 	snapshot->copied = false;
 
 	return snapshot;
