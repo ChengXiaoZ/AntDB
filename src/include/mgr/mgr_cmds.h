@@ -59,6 +59,7 @@ extern Datum mgr_init_gtm_proxy(PG_FUNCTION_ARGS);
 extern Datum mgr_init_gtm_all(PG_FUNCTION_ARGS);
 extern void mgr_init_gtm_kind(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation rel, HeapTuple aimtuple);
 bool mgr_recv_msg(ManagerAgent *ma, GetAgentCmdRst *getAgentCmdRst);
+bool mgr_recv_msg_for_monitor(ManagerAgent *ma, GetAgentCmdRst *getAgentCmdRst);
 extern bool	mgr_check_host_in_use(Oid hostoid);
 
 /*coordinator datanode parse cmd*/
@@ -139,5 +140,9 @@ char *get_hostuser_from_hostoid(Oid hostOid);
 
 /* get msg from agent */
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
+
+/* monitor_hostpage.c */
+extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
+bool get_cpu_info(StringInfo hostinfostring);
 
 #endif /* MGR_CMDS_H */

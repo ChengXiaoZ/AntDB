@@ -5,6 +5,8 @@
  
 #include<unistd.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "agent.h"
 
 #include "agt_msg.h"
@@ -33,6 +35,11 @@ static void cmd_refresh_pghba_confinfo(HbaInfo *checkinfo, HbaInfo *info);
 static void cmd_node_refresh_pghba_paras(StringInfo msg);
 static void pg_ltoa(int32 value, char *a);
 static bool cmd_rename_recovery(StringInfo msg);
+static void cmd_monitor_gets_hostinfo(void);
+extern bool get_cpu_info(StringInfo hostinfostring);
+extern bool get_mem_info(StringInfo hostinfostring);
+extern bool get_disk_info(StringInfo hostinfostring);
+extern bool get_net_info(StringInfo hostinfostring);
 
 void do_agent_command(StringInfo buf)
 {
@@ -84,6 +91,9 @@ void do_agent_command(StringInfo buf)
 		break;
 	case AGT_CMD_CNDN_RENAME_RECOVERCONF:
 		cmd_rename_recovery(buf);
+		break;
+	case AGT_CMD_MONITOR_GETS_HOST_INFO:
+		cmd_monitor_gets_hostinfo();
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
@@ -715,4 +725,29 @@ static bool cmd_rename_recovery(StringInfo msg)
 	pfree(strinfoname.data);
 	pfree(strinfonewname.data);
 	return true;
+}
+
+/*
+ * this function can get host base infomation and other usage.
+ * for example:
+ * base information: host name, ip address,cpu type, run state
+ * cpu : cpu type cpu percent
+ * memory: total memory, usaged memory and memory percent.
+ * disk: disk total, disk available, disk I/O
+ * network: Network upload and download speed
+ */
+static void cmd_monitor_gets_hostinfo(void)
+{
+	StringInfoData hostinfostring;
+	initStringInfo(&hostinfostring);
+	
+	get_cpu_info(&hostinfostring);
+	get_mem_info(&hostinfostring);
+	get_disk_info(&hostinfostring);
+	get_net_info(&hostinfostring);
+	appendStringInfoCharMacro(&hostinfostring, '\0');
+	
+	agt_put_msg(AGT_MSG_RESULT, hostinfostring.data, hostinfostring.len);
+	agt_flush();
+	pfree(hostinfostring.data);
 }
