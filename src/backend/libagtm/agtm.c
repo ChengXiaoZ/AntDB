@@ -80,7 +80,8 @@ agtm_GetTimestamptz(void)
 	PGconn 			*conn = NULL;
 
 	if(!IsUnderAGTM())
-		return 0;
+		ereport(ERROR,
+			(errmsg("agtm_GetTimestamptz function must under AGTM")));
 
 	conn = get_AgtmConnect();
 
@@ -103,18 +104,19 @@ agtm_GetTimestamptz(void)
 
 	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
 	if (pqWaitTimed(true, false, conn, finish_time) ||
-			pqReadData(conn) < 0)
-	{
-		return 0;
-	}
+			pqReadData(conn) < 0)	
+		ereport(ERROR,
+			(errmsg("pqWaitTime or pqReadData error")));
+	
 
 	if ( NULL == (res = agtm_GetResult()) )
-	{
-		return 0;
-	}
+		ereport(ERROR,
+			(errmsg("agtm_GetResult error")));
+
 
 	if (res->gr_status != AGTM_RESULT_OK)
-		return 0;
+		ereport(ERROR,
+			(errmsg("agtm_GetResult result not ok")));
 
 	timestamp = res->gr_resdata.grd_timestamp;
 
@@ -132,7 +134,8 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 	AssertArg(snapshot && snapshot->xip && snapshot->subxip);
 
 	if(!IsUnderAGTM())
-		return NULL;
+		ereport(ERROR,
+			(errmsg("agtm_GetSnapShot function must under AGTM")));
 
 	conn = get_AgtmConnect();
 
@@ -154,18 +157,19 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 	}
 
 	if(pqWaitTimed(true, false, conn, -1) ||
-			pqReadData(conn) < 0)
-	{
-		return NULL;
-	}
+			pqReadData(conn) < 0)	
+		ereport(ERROR,
+			(errmsg("agtm_GetResult error")));
+	
 
 	if ( NULL == (res = agtm_GetResult()) )
-	{
-		return NULL;
-	}
+		ereport(ERROR,
+			(errmsg("agtm_GetResult error")));
+	
 
 	if (res->gr_status != AGTM_RESULT_OK)
-		return NULL;
+		ereport(ERROR,
+			(errmsg("agtm_GetResult result not ok")));
 
 	snapshot->xmin = res->gr_resdata.snapshot->xmin;
 	snapshot->xmax = res->gr_resdata.snapshot->xmax;
@@ -205,7 +209,8 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 	StringInfoData 	seq_key;
 	
 	if(!IsUnderAGTM())
-		return 0;
+		ereport(ERROR,
+			(errmsg("agtm_DealSequence function must under AGTM")));
 	
 	conn = get_AgtmConnect();
 
@@ -299,7 +304,8 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 	StringInfoData 	seq_key;
 	
 	if(!IsUnderAGTM())
-		return 0;
+		ereport(ERROR,
+			(errmsg("agtm_SetSeqValCalled function must under AGTM")));
 	
 	conn = get_AgtmConnect();
 
