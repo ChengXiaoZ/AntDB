@@ -31,6 +31,7 @@ typedef enum AGTM_MessageType
 	AGTM_MSG_SEQUENCE_GET_LAST,	/* Get the last sequence value of sequence */
 	AGTM_MSG_SEQUENCE_SET_VAL,		/* Set values for sequence */
 	AGTM_MSG_GET_STATUS,		/* Get status of a given transaction */
+	AGTM_MSG_XACT_LOCK_TABLE_WAIT, /* Wait for the specified transaction(s) to commit or abort */
 	/*
 	 * Must be at the end
 	 */

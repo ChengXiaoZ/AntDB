@@ -58,6 +58,11 @@ extern AGTM_Sequence agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nex
 									bool iscalled);
 
 /*
+ * locks
+ */
+extern void agtm_XactLockTableWait(TransactionId xid);
+
+/*
  * get timestamp from AGTM
  */
 extern Timestamp agtm_GetTimestamptz(void);

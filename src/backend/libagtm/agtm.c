@@ -1,6 +1,7 @@
 #include "postgres.h"
 
 #include "access/transam.h"
+#include "access/xact.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_msg.h"
 #include "agtm/agtm_utils.h"
@@ -15,6 +16,9 @@
 #include <unistd.h>
 
 static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type);
+static AGTM_Result* agtm_get_result(void);
+static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
+			__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
 
 TransactionId
 agtm_GetGlobalTransactionId(bool isSubXact)
@@ -370,3 +374,174 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 	return (res->gr_resdata.gsq_val);
 }
 
+void agtm_XactLockTableWait(TransactionId xid)
+{
+	AGTM_Result *result;
+	StringInfoData buf;
+
+	if(!IsUnderAGTM())
+		return;
+
+	initStringInfo(&buf);
+	for(;;)
+	{
+		Assert(TransactionIdIsValid(xid));
+		Assert(!TransactionIdEquals(xid, GetTopTransactionIdIfAny()));
+		pq_sendint(&buf, xid, sizeof(xid));
+	}
+	pq_sendint(&buf, InvalidTransactionId, sizeof(TransactionId));
+
+	agtm_send_message(AGTM_MSG_XACT_LOCK_TABLE_WAIT, "%p%d", buf.data, buf.len);
+	pfree(buf.data);
+
+	result = agtm_get_result();
+	if(result == NULL || result->gr_status != AGTM_RESULT_OK)
+	{
+		ereport(ERROR,
+			(errmsg("agtm_XactLockTableWait failed:%s", PQerrorMessage(get_AgtmConnect()))));
+	}
+}
+
+/*
+ * call pqPutMsgStart ... pqPutMsgEnd
+ * only support:
+ *   %d%d: first is value, second is length
+ *   %p%d: first is binary point, second is binary length
+ *   %s: string, include '\0'
+ *   %c: one char
+ *   space: skip it
+ */
+static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
+{
+	va_list args;
+	PGconn *conn;
+	void *p;
+	int len;
+	char c;
+	AssertArg(msg < AGTM_MSG_TYPE_COUNT && fmt);
+
+	/* get connection */
+	conn = get_AgtmConnect();
+
+	/* start message */
+	if(pqPutMsgStart('A', true, conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		ereport(ERROR, (errmsg("Start message for agtm failed:%s", PQerrorMessage(conn))));
+	}
+
+	va_start(args, fmt);
+	/* put AGTM message type */
+	if(pqPutInt(msg, 4, conn) < 0)
+		goto put_error_;
+
+	while(*fmt)
+	{
+		if(isspace(fmt[0]))
+		{
+			/* skip space */
+			++fmt;
+			continue;
+		}else if(fmt[0] != '%')
+		{
+			goto format_error_;
+		}
+		++fmt;
+
+		c = *fmt;
+		++fmt;
+
+		if(c == 's')
+		{
+			/* %s for string */
+			p = va_arg(args, char *);
+			len = strlen(p);
+			++len; /* include '\0' */
+			if(pqPutnchar(p, len, conn) < 0)
+				goto put_error_;
+		}else if(c == 'c')
+		{
+			/* %c for char */
+			c = (char)va_arg(args, int);
+			if(pqPutc(c, conn) < 0)
+				goto put_error_;
+		}else if(c == 'p')
+		{
+			/* %p for binary */
+			p = va_arg(args, void *);
+			/* and need other "%d" for value binary length */
+			if(fmt[0] != '%' || fmt[1] != 'd')
+				goto format_error_;
+			fmt += 2;
+			len = va_arg(args, int);
+			if(pqPutnchar(p, len, conn) < 0)
+				goto put_error_;
+		}else if(c == 'd')
+		{
+			/* %d for int */
+			int val = va_arg(args, int);
+			/* and need other "%d" for value binary length */
+			if(fmt[0] != '%' || fmt[1] != 'd')
+				goto format_error_;
+			fmt += 2;
+			len = va_arg(args, int);
+			if(pqPutInt(val, len, conn) < 0)
+				goto put_error_;
+		}else
+		{
+			goto format_error_;
+		}
+	}
+	va_end(args);
+
+	if(pqPutMsgEnd(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		ereport(ERROR, (errmsg("End message for agtm failed:%s", PQerrorMessage(conn))));
+	}
+	return;
+
+format_error_:
+	va_end(args);
+	pqHandleSendFailure(conn);
+	ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+		, errmsg("format message error for agtm_send_message")));
+	return;
+
+put_error_:
+	va_end(args);
+	pqHandleSendFailure(conn);
+	ereport(ERROR, (errmsg("put message to AGTM error:%s", PQerrorMessage(conn))));
+	return;
+}
+
+/*
+ * call pqFlush, pqWait, pqReadData and return agtm_GetResult
+ */
+static AGTM_Result* agtm_get_result(void)
+{
+	PGconn *conn;
+	AGTM_Result *result;
+	int res;
+
+	conn = get_AgtmConnect();
+
+	while((res=pqFlush(conn)) > 0)
+		; /* nothing todo */
+	if(res < 0)
+	{
+		pqHandleSendFailure(conn);
+		ereport(ERROR,
+			(errmsg("flush message to AGTM error:%s", PQerrorMessage(conn))));
+	}
+
+	if(pqWait(true, false, conn) != 0
+		|| pqReadData(conn) < 0
+		|| (result = agtm_GetResult()) == NULL)
+	{
+		ereport(ERROR,
+			(errmsg("flush message to AGTM error:%s", PQerrorMessage(conn))));
+	}
+
+	return result;
+}
