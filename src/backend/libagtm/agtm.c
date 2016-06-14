@@ -284,6 +284,9 @@ void agtm_XactLockTableWait(TransactionId xid)
 		Assert(TransactionIdIsValid(xid));
 		Assert(!TransactionIdEquals(xid, GetTopTransactionIdIfAny()));
 		pq_sendint(&buf, xid, sizeof(xid));
+		xid = SubTransGetParent(xid);
+		if(!TransactionIdIsValid(xid))
+			break;
 	}
 	pq_sendint(&buf, InvalidTransactionId, sizeof(TransactionId));
 
@@ -295,6 +298,22 @@ void agtm_XactLockTableWait(TransactionId xid)
 	{
 		ereport(ERROR,
 			(errmsg("agtm_XactLockTableWait failed:%s", PQerrorMessage(getAgtmConnection()))));
+	}
+}
+
+void agtm_LockTransactionId(TransactionId xid, char lock_type, bool is_lock)
+{
+	AGTM_Result *result;
+
+	if(!IsUnderAGTM())
+		return;
+
+	agtm_send_message(AGTM_MSG_LOCK_TRANSACTION, "%d%d %c %c", xid, (int)sizeof(xid), lock_type, is_lock);
+	result = agtm_get_result();
+	if(result == NULL || result->gr_status != AGTM_RESULT_OK)
+	{
+		ereport(ERROR,
+			(errmsg("agtm_LockTransactionId failed:%s", PQerrorMessage(getAgtmConnection()))));
 	}
 }
 

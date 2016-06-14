@@ -24,4 +24,8 @@ void ProcessGetTimestamp(StringInfo message);
 
 void ProcessGetSnapshot(StringInfo message);
 
+void ProcessXactLockTableWait(StringInfo message);
+
+void ProcessLockTransaction(StringInfo message);
+
 #endif

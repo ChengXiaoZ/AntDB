@@ -7,7 +7,11 @@
 #include "agtm/agtm_transaction.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
+#include "storage/lock.h"
+#include "storage/procarray.h"
 #include "utils/snapmgr.h"
+
+static void agtm_pq_send_complete(void);
 
 void ProcessGetGXIDCommand(StringInfo message)
 {
@@ -86,3 +90,55 @@ void ProcessGetSnapshot(StringInfo message)
 
 }
 
+void ProcessXactLockTableWait(StringInfo message)
+{
+	TransactionId xid;
+	LOCKTAG		tag;
+	for(;;)
+	{
+		xid = (TransactionId)pq_getmsgint(message, sizeof(TransactionId));
+		if(!TransactionIdIsValid(xid))
+			break;
+
+		SET_LOCKTAG_TRANSACTION(tag, xid);
+		(void) LockAcquire(&tag, ShareLock, false, false);
+
+		LockRelease(&tag, ShareLock, false);
+
+		if (!TransactionIdIsInProgress(xid))
+			break;
+	}
+	pq_getmsgend(message);
+
+	agtm_pq_send_complete();
+}
+
+void ProcessLockTransaction(StringInfo message)
+{
+	TransactionId xid;
+	LOCKTAG tag;
+	LOCKMODE mode;
+	bool is_lock;
+
+	xid = (TransactionId)pq_getmsgint(message, sizeof(TransactionId));
+	mode = (LOCKMODE)pq_getmsgbyte(message);
+	is_lock = (bool)pq_getmsgbyte(message);
+	pq_getmsgend(message);
+
+	SET_LOCKTAG_TRANSACTION(tag, xid);
+	if(is_lock)
+		LockAcquire(&tag, mode, false, false);
+	else
+		LockRelease(&tag, mode, false);
+
+	agtm_pq_send_complete();
+}
+
+static void agtm_pq_send_complete(void)
+{
+	StringInfoData buf;
+	pq_beginmessage(&buf, 'S');
+	pq_sendint(&buf, AGTM_COMPLETE_RESULT, 4);
+	pq_endmessage(&buf);
+	pq_flush();
+}

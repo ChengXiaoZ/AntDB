@@ -373,33 +373,40 @@ agtm_PqParseInput(AGTM_Conn *conn)
 		return NULL;
 	}
 
-	switch (id)
+	if(id == 'S')
 	{
-		case 'S':		/* command complete */
-			if (agtm_PqParseSuccess(conn->pg_Conn, result))
-				return NULL;
-			break;
-		case 'E':		/* error return */
-			result->gr_status = AGTM_RESULT_ERROR;
-			break;
-		default:
-			break;
-	}
+		if(agtm_PqParseSuccess(conn->pg_Conn, result) != 0)
+			return NULL;
+		/* Successfully consumed this message */
+		if (conn->pg_Conn->inCursor == conn->pg_Conn->inStart + 5 + msgLength)
+		{
+			/* Normal case: parsing agrees with specified length */
+			conn->pg_Conn->inStart = conn->pg_Conn->inCursor;
+		}
+		else
+		{
+			/* Trouble --- report it */
+			printfPQExpBuffer(&conn->pg_Conn->errorMessage,
+							  "message contents do not agree with length in message type \"%c\"\n",
+							  id);
+			/* trust the specified message length as what to skip */
+			conn->pg_Conn->inStart += 5 + msgLength;
+		}
+	}else
+	{
+		/* use default parsse */
+		PGresult *pgres;
+		ExecStatusType est;
 
-	/* Successfully consumed this message */
-	if (conn->pg_Conn->inCursor == conn->pg_Conn->inStart + 5 + msgLength)
-	{
-		/* Normal case: parsing agrees with specified length */
 		conn->pg_Conn->inStart = conn->pg_Conn->inCursor;
-	}
-	else
-	{
-		/* Trouble --- report it */
-		printfPQExpBuffer(&conn->pg_Conn->errorMessage,
-						  "message contents do not agree with length in message type \"%c\"\n",
-						  id);
-		/* trust the specified message length as what to skip */
-		conn->pg_Conn->inStart += 5 + msgLength;
+		pgres = PQgetResult(conn->pg_Conn);
+		est = PQresultStatus(pgres);
+		if(est == PGRES_FATAL_ERROR)
+		{
+			result->gr_status = AGTM_RESULT_ERROR;
+			printfPQExpBuffer(&conn->pg_Conn->errorMessage, "%s", PQresultErrorMessage(pgres));
+		}
+		PQclear(pgres);
 	}
 
 	return result;
@@ -496,6 +503,10 @@ agtm_PqParseSuccess(PGconn *conn, AGTM_Result *result)
 		case AGTM_SEQUENCE_SET_VAL_RESULT:
 			if(pqGetnchar((char *)&result->gr_resdata.gsq_val,sizeof(AGTM_Sequence),conn))
 				result->gr_status = AGTM_RESULT_ERROR;
+			break;
+
+		case AGTM_COMPLETE_RESULT:
+			/* no message result */
 			break;
 
 		default:

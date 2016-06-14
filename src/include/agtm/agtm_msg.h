@@ -30,9 +30,10 @@ typedef enum AGTM_MessageType
 	AGTM_MSG_SEQUENCE_GET_LAST,	/* Get the last sequence value of sequence */
 	AGTM_MSG_SEQUENCE_SET_VAL,		/* Set values for sequence */
 	AGTM_MSG_GET_STATUS,		/* Get status of a given transaction */
-	AGTM_MSG_XACT_LOCK_TABLE_WAIT /* Wait for the specified transaction(s) to commit or abort */
+	AGTM_MSG_XACT_LOCK_TABLE_WAIT, /* Wait for the specified transaction(s) to commit or abort */
+	AGTM_MSG_LOCK_TRANSACTION		/* lock or release TransactionID with locktype */
 } AGTM_MessageType;
-#define AGTM_MSG_TYPE_COUNT AGTM_MSG_XACT_LOCK_TABLE_WAIT
+#define AGTM_MSG_TYPE_COUNT (AGTM_MSG_LOCK_TRANSACTION+1)
 
 /*
  * Symbols in the following enum are usd in result_name_tab defined in agtm_utils.c.
@@ -49,8 +50,8 @@ typedef enum AGTM_ResultType
 	AGTM_MSG_SEQUENCE_GET_CUR_RESULT,
 	AGTM_SEQUENCE_GET_LAST_RESULT,
 	AGTM_SEQUENCE_SET_VAL_RESULT,
-	AGTM_GET_STATUS_RESULT
+	AGTM_COMPLETE_RESULT			/* for no message result */
 } AGTM_ResultType;
-#define AGTM_RESULT_TYPE_COUNT AGTM_GET_STATUS_RESULT
+#define AGTM_RESULT_TYPE_COUNT (AGTM_COMPLETE_RESULT+1)
 
 #endif

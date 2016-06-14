@@ -21,6 +21,7 @@ const char *gtm_util_message_name(AGTM_MessageType type)
 	CASE_TYPE_(AGTM_MSG_SEQUENCE_SET_VAL);
 	CASE_TYPE_(AGTM_MSG_GET_STATUS);
 	CASE_TYPE_(AGTM_MSG_XACT_LOCK_TABLE_WAIT);
+	CASE_TYPE_(AGTM_MSG_LOCK_TRANSACTION);
 	/* here no default, we need a compiler warning */
 	}
 	return "Unknown AGTM_MessageType";
@@ -39,7 +40,7 @@ const char *gtm_util_result_name(AGTM_ResultType type)
 	CASE_TYPE_(AGTM_MSG_SEQUENCE_GET_CUR_RESULT);
 	CASE_TYPE_(AGTM_SEQUENCE_GET_LAST_RESULT);
 	CASE_TYPE_(AGTM_SEQUENCE_SET_VAL_RESULT);
-	CASE_TYPE_(AGTM_GET_STATUS_RESULT);
+	CASE_TYPE_(AGTM_COMPLETE_RESULT);
 	/* here no default, we need a compiler warning */
 	}
 	return "Unknown AGTM_ResultType";

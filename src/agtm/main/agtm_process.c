@@ -69,6 +69,14 @@ ProcessAGtmCommand(StringInfo input_message)
 			PorcessLastSeqCommand(input_message);
 			break;
 
+		case AGTM_MSG_XACT_LOCK_TABLE_WAIT:
+			ProcessXactLockTableWait(input_message);
+			break;
+
+		case AGTM_MSG_LOCK_TRANSACTION:
+			ProcessLockTransaction(input_message);
+			break;
+
 		default:
 			ereport(FATAL,
 					(EPROTO,
