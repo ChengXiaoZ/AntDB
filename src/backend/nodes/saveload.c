@@ -540,7 +540,7 @@ BEGIN_NODE(Const)
 	}else
 	{
 		node->constisnull = false;
-		node->constvalue = load_datum(buf, node->constvalue);
+		node->constvalue = load_datum(buf, node->consttype);
 	}
 	NODE_SCALAR(bool,constbyval)
 	NODE_SCALAR(int,location)
