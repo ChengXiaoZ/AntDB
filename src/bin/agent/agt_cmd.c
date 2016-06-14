@@ -278,6 +278,7 @@ static void cmd_refresh_pghba_confinfo(HbaInfo *checkinfo, HbaInfo *info)
 				newinfo->type_len = 9;
 				break;
 			default:
+				strtype = "none";
 				newinfo->type_len = 0;
 				break;
 		}
