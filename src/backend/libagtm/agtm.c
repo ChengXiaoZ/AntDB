@@ -16,7 +16,6 @@
 
 #include <unistd.h>
 
-
 static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type);
 static AGTM_Result* agtm_get_result(AGTM_MessageType msg_type);
 static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
@@ -47,7 +46,9 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 	}
 	res = agtm_get_result(AGTM_MSG_GET_GXID);
 	if (res->gr_status != AGTM_RESULT_OK)
+	{
 		return InvalidGlobalTransactionId;
+	}
 
 	gxid = (GlobalTransactionId)res->gr_resdata.grd_gxid;
 
@@ -84,7 +85,8 @@ agtm_GetTimestamptz(void)
 	res = agtm_get_result(AGTM_MSG_GET_TIMESTAMP);
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
-			(errmsg("agtm_GetResult result not ok")));
+			(errmsg("agtm_GetResult result not ok, message type = AGTM_MSG_GET_TIMESTAMP, %s",
+			PQerrorMessage(conn))));
 
 	timestamp = res->gr_resdata.grd_timestamp;
 
@@ -120,7 +122,8 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 	res = agtm_get_result(AGTM_MSG_SNAPSHOT_GET);
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
-			(errmsg("agtm_GetResult result not ok")));
+			(errmsg("agtm_GetResult result not ok, message type = AGTM_MSG_SNAPSHOT_GET, %s",
+			PQerrorMessage(conn))));
 
 	snapshot->xmin = res->gr_resdata.snapshot->xmin;
 	snapshot->xmax = res->gr_resdata.snapshot->xmax;
@@ -157,11 +160,11 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 	AGTM_Result		*res;
 	PGconn			*conn = NULL;
 	StringInfoData 	seq_key;
-	
+
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_DealSequence function must under AGTM")));
-	
+
 	conn = getAgtmConnection();
 
 	if(seqname == NULL || seqname[0] == '\0')
@@ -181,14 +184,14 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("put message to PGconn error, %s, message type = (%s)",
+			(errmsg("put message to PGconn error, %s, message type = %s",
 			PQerrorMessage(conn), gtm_util_message_name(type))));
 	}
 	res = agtm_get_result(type);
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
-			(errmsg("result status is not ok ,message type = (%s)", gtm_util_message_name(type))));
-
+			(errmsg("result status is not ok, %s, message type = %s",
+			PQerrorMessage(conn), gtm_util_message_name(type))));
 	pfree(seq_key.data);
 	return (res->gr_resdata.gsq_val);
 	
@@ -231,14 +234,14 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_SetSeqValCalled function must under AGTM")));
-	
+
 	conn = getAgtmConnection();
 
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
 			(errmsg("message type = %s, parameter seqname is null",
 			"AGTM_MSG_SEQUENCE_SET_VAL")));
-	
+
 	initStringInfo(&seq_key);
 	appendStringInfoString(&seq_key,seqname);
 	Assert(seq_key.len > 0);
@@ -260,8 +263,8 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_SET_VAL);
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
-			(errmsg("result status not ok ,message type = %s",
-			"AGTM_MSG_SEQUENCE_SET_VAL")));
+			(errmsg("agtm_GetResult result not ok, message type = %s, %s",
+			"AGTM_MSG_SEQUENCE_SET_VAL", PQerrorMessage(conn))));
 
 	pfree(seq_key.data);
 	return (res->gr_resdata.gsq_val);

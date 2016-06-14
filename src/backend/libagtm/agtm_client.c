@@ -425,6 +425,8 @@ agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result)
 		pqGetnchar((char *)&(gsnapshot->xmax), sizeof(TransactionId), conn) ||	/* xmax */
 		pqGetInt((int*)&(gsnapshot->xcnt), sizeof(uint32),conn))				/* xcnt */
 	{
+		printfPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("get xmin/xmax/xcnt from connection buffer error"));
 		result->gr_status = AGTM_RESULT_ERROR;
 		return ;
 	}
@@ -435,12 +437,16 @@ agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result)
 						sizeof(TransactionId) * gsnapshot->xcnt);
 	if (pqGetnchar((char *)gsnapshot->xip, sizeof(TransactionId) * gsnapshot->xcnt, conn))
 	{
+		printfPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("get xip from connection buffer error"));
 		result->gr_status = AGTM_RESULT_ERROR;
 		return ;
 	}
 
 	if (pqGetInt((int*)&(gsnapshot->subxcnt), sizeof(uint32), conn))			/* subxcnt */
 	{
+		printfPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("get subxcnt from connection buffer error"));
 		result->gr_status = AGTM_RESULT_ERROR;
 		return ;
 	}
@@ -451,6 +457,8 @@ agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result)
 						sizeof(TransactionId) * gsnapshot->subxcnt);
 	if (pqGetnchar((char *)gsnapshot->subxip, sizeof(TransactionId) * gsnapshot->subxcnt, conn))
 	{
+		printfPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("get subxip from connection buffer error"));
 		result->gr_status = AGTM_RESULT_ERROR;
 		return ;
 	}
@@ -462,6 +470,8 @@ agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result)
 		pqGetnchar((char *)&(gsnapshot->active_count), sizeof(uint32), conn) ||			/* active_count */
 		pqGetnchar((char *)&(gsnapshot->regd_count), sizeof(uint32), conn)) 			/* regd_count */
 	{
+		printfPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("get suboverflowed/takenDuringRecovery/copied/curcid/active_count/regd_count from connection buffer error"));
 		result->gr_status = AGTM_RESULT_ERROR;
 		return ;
 	}
@@ -486,31 +496,47 @@ agtm_PqParseSuccess(PGconn *conn, AGTM_Result *result)
 		case AGTM_SNAPSHOT_GET_RESULT:
 			agtm_PqParseSnapshot(conn, result);
 			break;
-			
+
 		case AGTM_GET_GXID_RESULT:
 			if(pqGetnchar((char *)&result->gr_resdata.grd_gxid,sizeof (TransactionId), conn))
+			{
+				printfPQExpBuffer(&conn->errorMessage,
+					libpq_gettext("get gxid from connection buffer error"));
 				result->gr_status = AGTM_RESULT_ERROR;
+			}
 			break;
-			
+
 		case AGTM_GET_TIMESTAMP_RESULT:
 			if (pqGetnchar((char *)&result->gr_resdata.grd_timestamp,sizeof (Timestamp), conn))
+			{
+				printfPQExpBuffer(&conn->errorMessage,
+					libpq_gettext("get timestamp from connection buffer error"));
 				result->gr_status = AGTM_RESULT_ERROR;
+			}
 			break;
-			
+
 		case AGTM_SEQUENCE_GET_NEXT_RESULT:
 		case AGTM_MSG_SEQUENCE_GET_CUR_RESULT:
 		case AGTM_SEQUENCE_GET_LAST_RESULT:
 		case AGTM_SEQUENCE_SET_VAL_RESULT:
 			if(pqGetnchar((char *)&result->gr_resdata.gsq_val,sizeof(AGTM_Sequence),conn))
+			{
+				printfPQExpBuffer(&conn->errorMessage,
+					libpq_gettext("get seqval from connection buffer error"));
 				result->gr_status = AGTM_RESULT_ERROR;
+			}
 			break;
 
 		case AGTM_COMPLETE_RESULT:
 			/* no message result */
 			break;
 
-		default:
+		default:			
+			ereport(ERROR,
+				(errmsg("agtm result type is unknow,type : %d",
+				result->gr_type)));
 			break;
+
 	}
 
 	return (result->gr_status);
@@ -560,7 +586,7 @@ agtm_PqResetResultData(AGTM_Result* result)
 				(void)MemoryContextSwitchTo(oldctx);
 			}
 			break;
-			
+
 		case AGTM_SEQUENCE_GET_NEXT_RESULT:
 		case AGTM_MSG_SEQUENCE_GET_CUR_RESULT:
 		case AGTM_SEQUENCE_GET_LAST_RESULT:
@@ -568,8 +594,14 @@ agtm_PqResetResultData(AGTM_Result* result)
 			result->gr_resdata.gsq_val = 0;
 			break;
 
-		default:
+		case AGTM_COMPLETE_RESULT:
 			break;
+
+		default:		
+			ereport(ERROR,
+				(errmsg("agtm result type is unknow, type : %d",
+				result->gr_type)));
+			break;		
 	}
 	result->gr_type = AGTM_NONE_RESULT;
 	result->gr_msglen = 0;
