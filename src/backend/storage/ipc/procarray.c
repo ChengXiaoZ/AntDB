@@ -1395,7 +1395,7 @@ GetSnapshotData(Snapshot snapshot)
 	int			subcount = 0;
 	bool		suboverflowed = false;
 #ifdef ADB
-	bool		is_ander_agtm;
+	bool		is_under_agtm;
 #endif /* ADB */
 
 	Assert(snapshot != NULL);
@@ -1436,12 +1436,12 @@ GetSnapshotData(Snapshot snapshot)
 	/*
 	 * Obtain a global snapshot for a Postgres-XC session
 	 */
-	is_ander_agtm = IsUnderAGTM();
-	if (is_ander_agtm)
+	is_under_agtm = IsUnderAGTM();
+	if (is_under_agtm)
 	{
 		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
 		snap = GetGlobalSnapshot((GlobalSnapshot) snapshot);
-		/*Assert(snap == snapshot);*/
+		Assert(snap == snapshot);
 
 		globalxmin = xmin = snapshot->xmin;
 		xmax = snapshot->xmax;
@@ -1614,7 +1614,7 @@ GetSnapshotData(Snapshot snapshot)
 	RecentXmin = xmin;
 
 #ifdef ADB
-	if(!is_ander_agtm)
+	if(!is_under_agtm)
 	{
 #endif /* ADB */
 	snapshot->xmin = xmin;
@@ -1638,6 +1638,58 @@ GetSnapshotData(Snapshot snapshot)
 
 	return snapshot;
 }
+
+#ifdef ADB
+Snapshot
+GetSnapshotDataLatest(Snapshot snapshot)
+{
+	bool		is_under_agtm;
+	
+	Assert(snapshot != NULL && IsUnderAGTM());
+
+	/*
+	 * Allocating space for maxProcs xids is usually overkill; numProcs would
+	 * be sufficient.  But it seems better to do the malloc while not holding
+	 * the lock, so we can't look at numProcs.  Likewise, we allocate much
+	 * more subxip storage than is probably needed.
+	 *
+	 * This does open a possibility for avoiding repeated malloc/free: since
+	 * maxProcs does not change at runtime, we can simply reuse the previous
+	 * xip arrays if any.  (This relies on the fact that all callers pass
+	 * static SnapshotData structs.)
+	 */
+	if (snapshot->xip == NULL)
+	{
+		/*
+		 * First call for this snapshot. Snapshot is same size whether or not
+		 * we are in recovery, see later comments.
+		 */
+		snapshot->xip = (TransactionId *)
+			malloc(GetMaxSnapshotXidCount() * sizeof(TransactionId));
+		if (snapshot->xip == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+		Assert(snapshot->subxip == NULL);
+		snapshot->subxip = (TransactionId *)
+			malloc(GetMaxSnapshotSubxidCount() * sizeof(TransactionId));
+		if (snapshot->subxip == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+	}
+
+	is_under_agtm = IsUnderAGTM();
+	if (is_under_agtm)
+	{
+		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
+		snap = agtm_GetSnapShot((GlobalSnapshot) snapshot);
+		Assert(snap == snapshot);
+
+	}
+	return snapshot;
+}
+#endif
 
 /*
  * ProcArrayInstallImportedXmin -- install imported xmin into MyPgXact->xmin

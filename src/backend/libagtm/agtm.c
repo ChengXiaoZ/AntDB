@@ -108,7 +108,7 @@ agtm_GetTimestamptz(void)
 
 	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
 	if (pqWaitTimed(true, false, conn, finish_time) ||
-			pqReadData(conn) < 0)	
+			pqReadData(conn) < 0)
 		ereport(ERROR,
 			(errmsg("pqWaitTime or pqReadData error")));
 	
@@ -161,9 +161,9 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 	}
 
 	if(pqWaitTimed(true, false, conn, -1) ||
-			pqReadData(conn) < 0)	
+			pqReadData(conn) < 0)
 		ereport(ERROR,
-			(errmsg("agtm_GetResult error")));
+			(errmsg("pqWaitTime or pqReadData error")));
 	
 
 	if ( NULL == (res = agtm_GetResult()) )

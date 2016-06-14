@@ -232,8 +232,12 @@ GetLatestSnapshot(void)
 	/* If first call in transaction, go ahead and set the xact snapshot */
 	if (!FirstSnapshotSet)
 		return GetTransactionSnapshot();
-
+	
+#ifdef ADB
+	SecondarySnapshot = GetSnapshotDataLatest(&SecondarySnapshotData);
+#else
 	SecondarySnapshot = GetSnapshotData(&SecondarySnapshotData);
+#endif
 
 	return SecondarySnapshot;
 }

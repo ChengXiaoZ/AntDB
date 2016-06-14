@@ -48,6 +48,10 @@ extern int	GetMaxSnapshotSubxidCount(void);
 
 extern Snapshot GetSnapshotData(Snapshot snapshot);
 
+#ifdef ADB
+extern Snapshot GetSnapshotDataLatest(Snapshot snapshot);
+#endif
+
 extern bool ProcArrayInstallImportedXmin(TransactionId xmin,
 							 TransactionId sourcexid);
 
