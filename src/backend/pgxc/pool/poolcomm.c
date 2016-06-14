@@ -11,6 +11,8 @@
  *-------------------------------------------------------------------------
  */
 
+#include "postgres.h"
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
@@ -21,8 +23,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stddef.h>
-#include "c.h"
-#include "postgres.h"
+#include <netinet/in.h>
+
 #include "pgxc/poolcomm.h"
 #include "storage/ipc.h"
 #include "utils/elog.h"

@@ -1,6 +1,9 @@
 #include "agent.h"
 
 #include <unistd.h>
+#include <netinet/in.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #include "agt_msg.h"
 #include "mgr/mgr_msg_type.h"
