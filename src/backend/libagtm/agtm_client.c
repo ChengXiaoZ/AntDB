@@ -593,7 +593,8 @@ agtm_PqResetResultData(AGTM_Result* result)
 		case AGTM_SEQUENCE_SET_VAL_RESULT:		
 			result->gr_resdata.gsq_val = 0;
 			break;
-
+			
+		case AGTM_NONE_RESULT:
 		case AGTM_COMPLETE_RESULT:
 			break;
 
