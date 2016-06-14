@@ -1979,6 +1979,15 @@ retry_get_connection_:
 			}
 			slot->last_user_pid = agent->pid;
 		}
+		if(agent->agtm_port != slot->last_agtm_port)
+		{
+			if(send_agtm_listen_port(slot->conn, agent->agtm_port) == false)
+			{
+				destroy_slot(slot);
+				goto retry_get_connection_;
+			}
+			slot->last_agtm_port = agent->agtm_port;
+		}
 	}
 
 	return true;
