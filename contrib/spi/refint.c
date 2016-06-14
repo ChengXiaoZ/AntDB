@@ -358,13 +358,6 @@ check_foreign_key(PG_FUNCTION_ARGS)
 		/* internal error */
 		elog(ERROR, "%s: check_foreign_key: # of plans changed in meantime",
 			 trigger->tgname);
-#ifdef ADB
-	/*
-	 * fix: Array access (from variable 'argtypes') results in a null
-	 * pointer dereference
-	 */
-	AssertArg(argtypes);
-#endif
 
 	/* For each column in key ... */
 	for (i = 0; i < nkeys; i++)

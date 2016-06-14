@@ -4,6 +4,7 @@
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
 #include "access/transam.h"
+#include "access/xact.h"
 #include "commands/dbcommands.h"
 #include "libpq/libpq-int.h"
 #include "libpq/fe-protocol3.c"
@@ -31,7 +32,7 @@ static AGTM_Conn	*agtm_conn = NULL;
 	} while (0)
 
 static void agtm_Connect(void);
-static void agtm_ConnectByDBname (const char *databaseName);	
+static void agtm_ConnectByDBname(const char *databaseName);	
 static AGTM_Result* agtm_PqParseInput(AGTM_Conn *conn);
 static void agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result);
 static int agtm_PqParseSuccess(PGconn *conn, AGTM_Result *result);
@@ -139,7 +140,7 @@ int agtm_Init(void)
 	if (!IsUnderAGTM())
 		return 0;
 
-	port_str = PQparameterStatus(get_AgtmConnect(), AGTM_PORT);
+	port_str = PQparameterStatus(getAgtmConnection(), AGTM_PORT);
 	if (port_str == NULL)
 		ereport(ERROR,
 			(errmsg("Can not get AGTM listen port.")));
@@ -232,20 +233,17 @@ void agtm_Flush(void)
 }
 
 PGconn*
-get_AgtmConnect(void)
+getAgtmConnection(void)
 {
-	return get_AgtmConnectByDBname(NULL);
+	return getAgtmConnectionByDBname(NULL);
 }
 
 PGconn* 
-get_AgtmConnectByDBname(const char *dbname)
+getAgtmConnectionByDBname(const char *dbname)
 {
 	if (agtm_conn == NULL)
 	{
-		if (dbname == NULL)
-			agtm_Connect();
-		else
-			agtm_ConnectByDBname(dbname);
+		agtm_ConnectByDBname(dbname);
 		return agtm_conn->pg_Conn;
 	}
 
@@ -253,11 +251,17 @@ get_AgtmConnectByDBname(const char *dbname)
 		return agtm_conn->pg_Conn;
 
 	/*
-	 * Something error, must restart backend
-	 * and connect to AGTM.
+	 * Bad AGTM connection
 	 */
-	ereport(PANIC,
-		(errmsg("Invalid AGMT connection, restart session backend.")));
+	if (TopXactBeginAGTM())
+	{
+		elog(ERROR,
+			"Bad AGTM connection, status: %d", PQstatus(agtm_conn->pg_Conn));
+	} else
+	{
+		agtm_Close();
+		agtm_ConnectByDBname(dbname);
+	}
 
 	return agtm_conn->pg_Conn;
 }

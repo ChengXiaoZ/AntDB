@@ -31,7 +31,7 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 	if(!IsUnderAGTM())
 		return InvalidGlobalTransactionId;
 
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	/* send message*/
 	if (pqPutMsgStart('A',true,conn) < 0 ||
@@ -87,7 +87,7 @@ agtm_GetTimestamptz(void)
 		ereport(ERROR,
 			(errmsg("agtm_GetTimestamptz function must under AGTM")));
 
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	/* send message*/
 	if(pqPutMsgStart('A',true,conn) < 0 ||
@@ -141,7 +141,7 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 		ereport(ERROR,
 			(errmsg("agtm_GetSnapShot function must under AGTM")));
 
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	/* send message*/
 	if(pqPutMsgStart('A',true,conn) < 0 ||
@@ -216,7 +216,7 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 		ereport(ERROR,
 			(errmsg("agtm_DealSequence function must under AGTM")));
 	
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
@@ -311,7 +311,7 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 		ereport(ERROR,
 			(errmsg("agtm_SetSeqValCalled function must under AGTM")));
 	
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
@@ -398,7 +398,7 @@ void agtm_XactLockTableWait(TransactionId xid)
 	if(result == NULL || result->gr_status != AGTM_RESULT_OK)
 	{
 		ereport(ERROR,
-			(errmsg("agtm_XactLockTableWait failed:%s", PQerrorMessage(get_AgtmConnect()))));
+			(errmsg("agtm_XactLockTableWait failed:%s", PQerrorMessage(getAgtmConnection()))));
 	}
 }
 
@@ -421,7 +421,7 @@ static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 	AssertArg(msg < AGTM_MSG_TYPE_COUNT && fmt);
 
 	/* get connection */
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	/* start message */
 	if(pqPutMsgStart('A', true, conn) < 0)
@@ -524,7 +524,7 @@ static AGTM_Result* agtm_get_result(void)
 	AGTM_Result *result;
 	int res;
 
-	conn = get_AgtmConnect();
+	conn = getAgtmConnection();
 
 	while((res=pqFlush(conn)) > 0)
 		; /* nothing todo */

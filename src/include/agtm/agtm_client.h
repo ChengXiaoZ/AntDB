@@ -37,7 +37,7 @@ extern void agtm_Flush(void);
 extern int agtm_GetListenPort(void);
 extern void agtm_SetPort(int listen_port);
 
-extern PGconn* get_AgtmConnect(void);
-extern PGconn* get_AgtmConnectByDBname(const char *dbname);
+extern PGconn* getAgtmConnection(void);
+extern PGconn* getAgtmConnectionByDBname(const char *dbname);
 extern AGTM_Result* agtm_GetResult(void);
 #endif
