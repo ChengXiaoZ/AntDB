@@ -18,8 +18,8 @@
 
 #define BUFFER_SIZE 4096
 
-#define GTM_CTL_VERSION "gtm_ctl (ADB) " PGXC_VERSION "\n"
-#define INITGTM_VERSION "initgtm (Postgres-XC) " PGXC_VERSION "\n"
+#define GTM_CTL_VERSION "pg_ctl (PostgreSQL) " PG_VERSION "\n"
+#define INITGTM_VERSION "initagtm (PostgreSQL) " PG_VERSION "\n"
 #define INITDB_VERSION "initdb (PostgreSQL) " PG_VERSION "\n"
 #define PG_BASEBACKUP_VERSION "pg_basebackup (PostgreSQL) " PG_VERSION "\n"
 #define PG_CTL_VERSION "pg_ctl (PostgreSQL) " PG_VERSION "\n"
@@ -49,8 +49,7 @@ void do_agent_command(StringInfo buf)
 	switch(cmd_type)
 	{
 	case AGT_CMD_GTM_INIT:
-	case AGT_CMD_GTM_PROXY_INIT:
-		cmd_node_init(buf, "initgtm", INITGTM_VERSION);
+		cmd_node_init(buf, "initagtm", INITGTM_VERSION);
 		break;
 	case AGT_CMD_CNDN_CNDN_INIT:
 	 	cmd_node_init(buf, "initdb", INITDB_VERSION);
@@ -70,9 +69,7 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_GTM_STOP_MASTER:
 	case AGT_CMD_GTM_START_SLAVE:
 	case AGT_CMD_GTM_STOP_SLAVE:
-	case AGT_CMD_GTM_START_PROXY:
-	case AGT_CMD_GTM_STOP_PROXY:
-		cmd_node_init(buf, "gtm_ctl", GTM_CTL_VERSION);
+		cmd_node_init(buf, "agtm_ctl", GTM_CTL_VERSION);
 		break;
 	case AGT_CMD_PSQL_CMD:
 		cmd_node_init(buf, "psql", PSQL_VERSION);

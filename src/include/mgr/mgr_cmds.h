@@ -45,28 +45,18 @@ extern void mgr_drop_gtm(MGRDropGtm *node, ParamListInfo params, DestReceiver *d
 extern void mgr_alter_gtm(MGRAlterGtm *node, ParamListInfo params, DestReceiver *dest);
 extern Datum mgr_start_gtm(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm(PG_FUNCTION_ARGS);
-extern void mgr_runmode_gtm_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation gtmrel, HeapTuple aimtuple);
-extern Datum mgr_start_gtm_proxy(PG_FUNCTION_ARGS);
-extern Datum mgr_stop_gtm_proxy(PG_FUNCTION_ARGS);
-extern void mgr_mark_node_in_cluster(Relation rel);
+extern Datum mgr_init_gtm(PG_FUNCTION_ARGS);
+extern Datum mgr_init_gtm_all(PG_FUNCTION_ARGS);
+extern Datum mgr_runmode_gtm(const char gtmtype, const char cmdtype, PG_FUNCTION_ARGS, const char *shutdown_mode);
+extern void mgr_runmode_gtm_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation gtmrel, HeapTuple aimtuple, const char *shutdown_mode);
 
 /*parm commands, in cmd_parm.c*/
 extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceiver *dest);
-
-/*gtm cmd*/
-extern Datum mgr_init_gtm(PG_FUNCTION_ARGS);
-extern Datum mgr_init_gtm_proxy(PG_FUNCTION_ARGS);
-extern Datum mgr_init_gtm_all(PG_FUNCTION_ARGS);
-extern void mgr_init_gtm_kind(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation rel, HeapTuple aimtuple);
-bool mgr_recv_msg(ManagerAgent *ma, GetAgentCmdRst *getAgentCmdRst);
-bool mgr_recv_msg_for_monitor(ManagerAgent *ma, GetAgentCmdRst *getAgentCmdRst);
-extern bool	mgr_check_host_in_use(Oid hostoid);
 
 /*coordinator datanode parse cmd*/
 extern void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest);
-
 extern Datum mgr_init_all(PG_FUNCTION_ARGS);
 extern Datum mgr_init_cn_master(PG_FUNCTION_ARGS);
 extern void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *shutdown_mode);
@@ -132,7 +122,8 @@ extern HeapTuple mgr_get_tuple_node_from_name_type(Relation rel, char *nodename,
 extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);
 extern int pingNode(char *host, char *port);
-
+extern bool	mgr_check_host_in_use(Oid hostoid);
+extern void mgr_mark_node_in_cluster(Relation rel);
 /* get the host address */
 char *get_hostaddress_from_hostoid(Oid hostOid);
 char *get_hostname_from_hostoid(Oid hostOid);
@@ -140,7 +131,7 @@ char *get_hostuser_from_hostoid(Oid hostOid);
 
 /* get msg from agent */
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
-
+bool mgr_recv_msg_for_monitor(ManagerAgent *ma, GetAgentCmdRst *getAgentCmdRst);
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
 bool get_cpu_info(StringInfo hostinfostring);

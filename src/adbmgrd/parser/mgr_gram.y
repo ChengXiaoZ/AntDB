@@ -547,7 +547,7 @@ AddGtmStmt:
 	;
 
 AlterGtmStmt:
-        ALTER GTM Ident opt_general_options
+		ALTER GTM Ident opt_general_options
 		{
 			MGRAlterGtm *node = makeNode(MGRAlterGtm);
 			node->if_not_exists = false;
@@ -928,26 +928,11 @@ InitNodeStmt:
 	}
 	;
 StartNodeMasterStmt:
-		START GTM AConstList
+		START GTM MASTER
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm", $3));
-			$$ = (Node*)stmt;
-		}
-	|	START GTM_PROXY NodeConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_proxy", $3));
-			$$ = (Node*)stmt;
-		}
-	|	START GTM_PROXY ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_proxy", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm", NULL));
 			$$ = (Node*)stmt;
 		}
 	|	START COORDINATOR NodeConstList
@@ -1011,26 +996,28 @@ StartNodeMasterStmt:
 		}
 	;
 StopNodeMasterStmt:
-		STOP GTM AConstList
+		STOP GTM MASTER opt_stop_mode_s
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst("smart", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm", $3));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM_PROXY NodeConstList
+	|	STOP GTM MASTER opt_stop_mode_f
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst("fast", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_proxy", $3));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM_PROXY ALL
+	|	STOP GTM MASTER opt_stop_mode_i
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst("immediate", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_proxy", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm", args));
 			$$ = (Node*)stmt;
 		}
 	|	STOP COORDINATOR AConstList opt_stop_mode_s
@@ -1227,32 +1214,8 @@ InitGtmStmt:
 		INIT GTM MASTER 
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("master", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm", args));
-			$$ = (Node*)stmt;
-		}
-	|	INIT GTM SLAVE 
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("slave", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm", args));
-			$$ = (Node*)stmt;
-		}
-	|	INIT GTM_PROXY NodeConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_proxy", $3));
-			$$ = (Node*)stmt;
-		}
-	|	INIT GTM_PROXY ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_proxy", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm", NULL));
 			$$ = (Node*)stmt;
 		}
 	|	INIT GTM ALL

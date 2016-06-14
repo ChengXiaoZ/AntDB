@@ -37,6 +37,7 @@
 #define shutdown_f  "fast"
 #define shutdown_i  "immediate"
 #define takeplaparm_n  "none"
+#define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
 
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc get_common_command_tuple_desc_for_monitor(void);
@@ -718,8 +719,6 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		tupleOid;
 	StringInfoData buf;
 	StringInfoData infosendmsg,
-				infosendparamsg,
-				infosendrecoverymsg,
 				strinfocoordport;
 	ManagerAgent *ma;
 	bool initdone = false;
@@ -730,8 +729,6 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	Datum DatumStartDnMaster,
 		DatumStopDnMaster;
 
-	initStringInfo(&infosendparamsg);
-	initStringInfo(&infosendrecoverymsg);
 	initStringInfo(&(getAgentCmdRst->description));
 	getAgentCmdRst->ret = false;
 	initStringInfo(&infosendmsg);
@@ -794,7 +791,6 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
 	ma_sendbyte(&buf, cmdtype);
 	ma_sendstring(&buf,infosendmsg.data);
-	pfree(infosendmsg.data);
 	ma_endmessage(&buf, ma);
 	if (! ma_flush(ma, true))
 	{
@@ -819,14 +815,16 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		heap_inplace_update(noderel, aimtuple);
 		/*refresh postgresql.conf of this node*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, cndnnametmp, &infosendparamsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendparamsg, hostOid, getAgentCmdRst);
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, cndnnametmp, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh recovry.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_add_parameters_recoveryconf(cndnnametmp, masteroid, &infosendrecoverymsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPath, &infosendrecoverymsg, hostOid, getAgentCmdRst);
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_recoveryconf(cndnnametmp, masteroid, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
-
+	pfree(infosendmsg.data);
 }
 /*
 * get the datanode/coordinator name list
@@ -944,9 +942,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Datum datumPath;
 	Datum DatumStopDnMaster;
 	StringInfoData buf;
-	StringInfoData infosendmsg,
-				infosendparamsg,
-				infosendhbamsg;
+	StringInfoData infosendmsg;
 	ManagerAgent *ma;
 	bool isNull = false,
 		execok = false,
@@ -969,8 +965,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	HeapTuple tuple;
 	HeapTuple mastertuple;
 
-	initStringInfo(&infosendparamsg);
-	initStringInfo(&infosendhbamsg);
 	getAgentCmdRst->ret = false;
 	initStringInfo(&infosendmsg);
 	/*get column values from aimtuple*/	
@@ -1098,12 +1092,14 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		heap_inplace_update(noderel, aimtuple);
 		/*refresh postgresql.conf of this node*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, cndnname, &infosendparamsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendparamsg, hostOid, getAgentCmdRst);
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, cndnname, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_add_parameters_hbaconf(nodetype, &infosendhbamsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendhbamsg, hostOid, getAgentCmdRst);
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_hbaconf(nodetype, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
 	/*failover execute success*/
 	if(AGT_CMD_DN_FAILOVER == cmdtype && execok)
@@ -1963,9 +1959,6 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
         case GTM_TYPE_STANDBY:
                 datums[1] = NameGetDatum(pstrdup("gtm standby"));
                 break;
-        case GTM_TYPE_PROXY:
-                datums[1] = NameGetDatum(pstrdup("gtm proxy"));
-                break;
         case CNDN_TYPE_COORDINATOR_MASTER:
                 datums[1] = NameGetDatum(pstrdup("coordinator"));
                 break;
@@ -2801,6 +2794,7 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, cha
 	}
 	mgr_append_pgconf_paras_str_int("port", cndnport, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendparamsg);
+	mgr_append_pgconf_paras_str_int("max_prepared_transactions", MAX_PREPARED_TRANSACTIONS_DEFAULT, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendparamsg);
