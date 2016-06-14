@@ -771,6 +771,8 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	{
 		/*it need start datanode master*/
 		DatumStartDnMaster = DirectFunctionCall1(mgr_start_one_dn_master, CStringGetDatum(mastername));
+		if(DatumGetObjectId(DatumStartDnMaster) == InvalidOid)
+			elog(ERROR, "start datanode master \"%s\" fail", mastername);
 	}
 	cndnPath = TextDatumGetCString(datumPath);		
 	appendStringInfo(&infosendmsg, " -p %u", masterport);
@@ -807,6 +809,8 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	{
 		/*it need start datanode master*/
 		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(mastername));
+		if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
+			elog(ERROR, "stop datanode master \"%s\" fail", mastername);
 	}
 	/*update node system table's column to set initial is true*/
 	if (initdone)
