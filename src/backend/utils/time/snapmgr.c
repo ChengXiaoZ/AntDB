@@ -233,12 +233,8 @@ GetLatestSnapshot(void)
 	if (!FirstSnapshotSet)
 		return GetTransactionSnapshot();
 	
-#ifdef ADB
-	SecondarySnapshot = GetSnapshotDataLatest(&SecondarySnapshotData);
-#else
 	SecondarySnapshot = GetSnapshotData(&SecondarySnapshotData);
-#endif
-
+	
 	return SecondarySnapshot;
 }
 

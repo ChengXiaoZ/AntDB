@@ -15,15 +15,16 @@
 
 #include <unistd.h>
 
-static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type);
-static AGTM_Result* agtm_get_result(void);
+#define CASE_TYPE(t) (#t)
+
+static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type, char* msg);
+static AGTM_Result* agtm_get_result(char* msg);
 static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 			__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
 
 TransactionId
 agtm_GetGlobalTransactionId(bool isSubXact)
 {
-	time_t				finish_time;
 	AGTM_Result 		*res;
 	GlobalTransactionId gxid;
 	PGconn				*conn = NULL;
@@ -41,28 +42,10 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("put message to PGconn error,message type : AGTM_MSG_GET_GXID")));
+			(errmsg("put message to PGconn error, %s, message type = AGTM_MSG_GET_GXID",
+			PQerrorMessage(conn))));
 	}
-
-	if(pqFlush(conn))
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR, 
-			(errmsg("send message to PGconn error,message type : AGTM_MSG_GET_GXID")));
-	}
-
-	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
-	if (pqWaitTimed(true, false, conn, finish_time) ||
-			pqReadData(conn) < 0)
-	{
-		return InvalidGlobalTransactionId;
-	}
-
-	if ( NULL == (res = agtm_GetResult()) )
-	{
-		return InvalidGlobalTransactionId;
-	}
-
+	res = agtm_get_result(CASE_TYPE(AGTM_MSG_GET_GXID));
 	if (res->gr_status != AGTM_RESULT_OK)
 		return InvalidGlobalTransactionId;
 
@@ -78,7 +61,6 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 Timestamp
 agtm_GetTimestamptz(void)
 {
-	time_t			finish_time;
 	AGTM_Result		*res;
 	Timestamp		timestamp;
 	PGconn 			*conn = NULL;
@@ -96,28 +78,10 @@ agtm_GetTimestamptz(void)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("put message to PGconn error,message type : AGTM_MSG_GET_TIMESTAMP")));
+			(errmsg("put message to PGconn error, %s, message type = AGTM_MSG_GET_TIMESTAMP",
+			PQerrorMessage(conn))));
 	}
-
-	if(pqFlush(conn))
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("send message to PGconn error,message type : AGTM_MSG_GET_TIMESTAMP")));
-	}
-
-	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
-	if (pqWaitTimed(true, false, conn, finish_time) ||
-			pqReadData(conn) < 0)
-		ereport(ERROR,
-			(errmsg("pqWaitTime or pqReadData error")));
-	
-
-	if ( NULL == (res = agtm_GetResult()) )
-		ereport(ERROR,
-			(errmsg("agtm_GetResult error")));
-
-
+	res = agtm_get_result(CASE_TYPE(AGTM_MSG_GET_TIMESTAMP));
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
 			(errmsg("agtm_GetResult result not ok")));
@@ -150,27 +114,10 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("put message to PGconn error,message type : AGTM_MSG_SNAPSHOT_GET")));
+			(errmsg("put message to PGconn error, %s, message type = AGTM_MSG_SNAPSHOT_GET",
+			PQerrorMessage(conn))));
 	}
-
-	if(pqFlush(conn))
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR, 
-			(errmsg("send message to PGconn error,message type : AGTM_MSG_SNAPSHOT_GET")));
-	}
-
-	if(pqWaitTimed(true, false, conn, -1) ||
-			pqReadData(conn) < 0)
-		ereport(ERROR,
-			(errmsg("pqWaitTime or pqReadData error")));
-	
-
-	if ( NULL == (res = agtm_GetResult()) )
-		ereport(ERROR,
-			(errmsg("agtm_GetResult error")));
-	
-
+	res = agtm_get_result(CASE_TYPE(AGTM_MSG_SNAPSHOT_GET));
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
 			(errmsg("agtm_GetResult result not ok")));
@@ -205,9 +152,8 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 }
 
 static AGTM_Sequence 
-agtm_DealSequence(const char *seqname, AGTM_MessageType type)
+agtm_DealSequence(const char *seqname, AGTM_MessageType type, char* msg)
 {
-	time_t			finish_time;
 	AGTM_Result		*res;
 	PGconn			*conn = NULL;
 	StringInfoData 	seq_key;
@@ -220,8 +166,7 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
-			(errmsg("message type = (%d), parameter seqname is null",
-			(int)type)));
+			(errmsg("message type = (%s), parameter seqname is null", msg)));
 
 	initStringInfo(&seq_key);
 	appendStringInfoString(&seq_key,seqname);
@@ -236,36 +181,13 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("put message to PGconn error,message type = (%d)",
-			(int)type)));
+			(errmsg("put message to PGconn error, %s, message type = (%s)",
+			PQerrorMessage(conn), msg)));
 	}
-	
-	if(pqFlush(conn))
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("send message to PGconn error,message type = (%d)",
-			(int)type)));
-	}
-	
-	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
-	if(pqWaitTimed(true, false, conn, finish_time) ||
-		pqReadData(conn) < 0)
-			ereport(ERROR,
-				(errmsg("wait agtm return result timeout or read message from PGconn error"),
-				 errhint("message type = (%d)",
-				 (int)type)));
-	
-	
-	if ( NULL == (res = agtm_GetResult()) )
-		ereport(ERROR,
-			(errmsg("parse message from AGTM_Result error,message type = (%d)",
-			(int)type)));
-	
+	res = agtm_get_result(msg);
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
-			(errmsg("result status is not ok ,message type = (%d)",
-			(int)type)));
+			(errmsg("result status is not ok ,message type = (%s)", msg)));
 
 	pfree(seq_key.data);
 	return (res->gr_resdata.gsq_val);
@@ -275,19 +197,22 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type)
 AGTM_Sequence 
 agtm_GetSeqNextVal(const char *seqname)
 {
-	return (agtm_DealSequence(seqname,AGTM_MSG_SEQUENCE_GET_NEXT));	
+	return (agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_NEXT,
+		CASE_TYPE(AGTM_MSG_SEQUENCE_GET_NEXT)));	
 }
 
 AGTM_Sequence 
 agtm_GetSeqCurrVal(const char *seqname)
 {
-	return (agtm_DealSequence(seqname,AGTM_MSG_SEQUENCE_GET_CUR));
+	return (agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_CUR,
+		CASE_TYPE(AGTM_MSG_SEQUENCE_GET_CUR)));
 }
 
 AGTM_Sequence
 agtm_GetSeqLastVal(const char *seqname)
 {
-	return (agtm_DealSequence(seqname,AGTM_MSG_SEQUENCE_GET_LAST));
+	return (agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_LAST,
+		CASE_TYPE(AGTM_MSG_SEQUENCE_GET_LAST)));
 }
 
 
@@ -302,7 +227,6 @@ AGTM_Sequence
 
 agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 {
-	time_t			finish_time;
 	AGTM_Result 	*res;
 	PGconn 			*conn = NULL;
 	StringInfoData 	seq_key;
@@ -315,9 +239,8 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
-			(errmsg("message type = %s (%d), parameter seqname is null",
-			"AGTM_MSG_SEQUENCE_SET_VAL",
-			(int)AGTM_MSG_SEQUENCE_SET_VAL)));
+			(errmsg("message type = %s, parameter seqname is null",
+			"AGTM_MSG_SEQUENCE_SET_VAL")));
 	
 	initStringInfo(&seq_key);
 	appendStringInfoString(&seq_key,seqname);
@@ -334,41 +257,14 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("put message to PGconn error,message type = %s (%d)",
-			"AGTM_MSG_SEQUENCE_SET_VAL",
-			(int)AGTM_MSG_SEQUENCE_SET_VAL)));
+			(errmsg("put message to PGconn error, %s, message type = %s",
+			PQerrorMessage(conn), "AGTM_MSG_SEQUENCE_SET_VAL")));
 	}
-	
-	if(pqFlush(conn))
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("send message to PGconn error,message type = %s (%d)",
-			"AGTM_MSG_SEQUENCE_SET_VAL",
-			(int)AGTM_MSG_SEQUENCE_SET_VAL)));
-	}
-	
-	finish_time = time(NULL) + CLIENT_AGTM_TIMEOUT;
-	if(pqWaitTimed(true, false, conn, finish_time) ||
-		pqReadData(conn) < 0)
-			ereport(ERROR,
-				(errmsg("wait agtm return result timeout or read message from PGconn error"),
-				 errhint("message type = %s (%d)",
-				 "AGTM_MSG_SEQUENCE_SET_VAL",
-				 (int)AGTM_MSG_SEQUENCE_SET_VAL)));
-	
-	
-	if ( NULL == (res = agtm_GetResult()) )
-		ereport(ERROR,
-			(errmsg("parse message from AGTM_Result error,message type = %s (%d)",
-			"AGTM_MSG_SEQUENCE_SET_VAL",
-			(int)AGTM_MSG_SEQUENCE_SET_VAL)));
-	
+	res = agtm_get_result(CASE_TYPE(AGTM_MSG_SEQUENCE_SET_VAL));
 	if (res->gr_status != AGTM_RESULT_OK)
 		ereport(ERROR,
-			(errmsg("result status is not ok ,message type = %s (%d)",
-			"AGTM_MSG_SEQUENCE_SET_VAL",
-			(int)AGTM_MSG_SEQUENCE_SET_VAL)));
+			(errmsg("result status not ok ,message type = %s",
+			"AGTM_MSG_SEQUENCE_SET_VAL")));
 
 	pfree(seq_key.data);
 	return (res->gr_resdata.gsq_val);
@@ -394,7 +290,7 @@ void agtm_XactLockTableWait(TransactionId xid)
 	agtm_send_message(AGTM_MSG_XACT_LOCK_TABLE_WAIT, "%p%d", buf.data, buf.len);
 	pfree(buf.data);
 
-	result = agtm_get_result();
+	result = agtm_get_result(CASE_TYPE(AGTM_MSG_XACT_LOCK_TABLE_WAIT));
 	if(result == NULL || result->gr_status != AGTM_RESULT_OK)
 	{
 		ereport(ERROR,
@@ -518,7 +414,7 @@ put_error_:
 /*
  * call pqFlush, pqWait, pqReadData and return agtm_GetResult
  */
-static AGTM_Result* agtm_get_result(void)
+static AGTM_Result* agtm_get_result(char* msg)
 {
 	PGconn *conn;
 	AGTM_Result *result;
@@ -532,7 +428,8 @@ static AGTM_Result* agtm_get_result(void)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR,
-			(errmsg("flush message to AGTM error:%s", PQerrorMessage(conn))));
+			(errmsg("flush message to AGTM error:%s, message type:%s",
+			PQerrorMessage(conn), msg)));
 	}
 
 	if(pqWait(true, false, conn) != 0
@@ -540,7 +437,8 @@ static AGTM_Result* agtm_get_result(void)
 		|| (result = agtm_GetResult()) == NULL)
 	{
 		ereport(ERROR,
-			(errmsg("flush message to AGTM error:%s", PQerrorMessage(conn))));
+			(errmsg("flush message to AGTM error:%s, message type:%s",
+			PQerrorMessage(conn), msg)));
 	}
 
 	return result;
