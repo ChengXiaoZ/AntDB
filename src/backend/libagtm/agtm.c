@@ -146,7 +146,7 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 		sizeof(TransactionId) * snapshot->subxcnt);
 
 	snapshot->takenDuringRecovery = res->gr_resdata.snapshot->takenDuringRecovery;
-	snapshot->copied = res->gr_resdata.snapshot->copied;
+	/*snapshot->copied = res->gr_resdata.snapshot->copied;*/
 	snapshot->curcid = res->gr_resdata.snapshot->curcid;
 	snapshot->active_count = res->gr_resdata.snapshot->active_count;
 	snapshot->regd_count = res->gr_resdata.snapshot->regd_count;

@@ -465,7 +465,7 @@ agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result)
 
 	if (pqGetnchar((char *)&(gsnapshot->suboverflowed), sizeof(bool), conn) ||			/* suboverflowed */
 		pqGetnchar((char *)&(gsnapshot->takenDuringRecovery), sizeof(bool), conn) ||	/* takenDuringRecovery */
-		pqGetnchar((char *)&(gsnapshot->copied), sizeof(bool), conn) ||					/* copied */
+		/*pqGetnchar((char *)&(gsnapshot->copied), sizeof(bool), conn) ||*/					/* copied */
 		pqGetnchar((char *)&(gsnapshot->curcid), sizeof(uint32), conn) ||				/* curcid */
 		pqGetnchar((char *)&(gsnapshot->active_count), sizeof(uint32), conn) ||			/* active_count */
 		pqGetnchar((char *)&(gsnapshot->regd_count), sizeof(uint32), conn)) 			/* regd_count */

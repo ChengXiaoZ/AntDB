@@ -80,7 +80,7 @@ void ProcessGetSnapshot(StringInfo message)
 
 	pq_sendbytes(&buf, (char *)&snapshot->suboverflowed, sizeof(snapshot->suboverflowed));
 	pq_sendbytes(&buf, (char *)&snapshot->takenDuringRecovery, sizeof(snapshot->takenDuringRecovery));
-	pq_sendbytes(&buf, (char *)&snapshot->copied, sizeof(snapshot->copied));
+	/*pq_sendbytes(&buf, (char *)&snapshot->copied, sizeof(snapshot->copied));*/
 	pq_sendbytes(&buf, (char *)&snapshot->curcid, sizeof(snapshot->curcid));
 	pq_sendbytes(&buf, (char *)&snapshot->active_count, sizeof(snapshot->active_count));
 	pq_sendbytes(&buf, (char *)&snapshot->regd_count, sizeof(snapshot->regd_count));
