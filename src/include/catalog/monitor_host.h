@@ -15,7 +15,7 @@ CATALOG(monitor_host,4921)
 	Oid 			host_oid;				/* host name */
 	inet			mh_ip_addr;				/* host ip address */
 	int16 			mh_run_state;			/* host run state */
-	timestamp 	mh_begin_run_time;		/* host begin run time */
+	Timestamp 	mh_begin_run_time;		/* host begin run time */
 	
 #ifdef CATALOG_VARLEN
 	text			mh_platform_type;		/* host plateform type */

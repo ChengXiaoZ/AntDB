@@ -13,7 +13,7 @@
 CATALOG(monitor_cpu,4922)
 {
 	Oid 		host_oid;			/* host oid */
-	timestamp	mc_timestamptz;		/* monitor cpu timestamp */
+	Timestamp	mc_timestamp;		/* monitor cpu timestamp */
 	float4		mc_cpu_usage;		/* monitor cpu usage */
 } FormData_monitor_cpu;
 

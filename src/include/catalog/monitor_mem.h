@@ -13,7 +13,7 @@
 CATALOG(monitor_mem,4923)
 {
 	Oid 		host_oid;			/* host oid */
-	timestamp	mm_timestamp;		/* monitor memory timestamp */
+	Timestamp	mm_timestamp;		/* monitor memory timestamp */
 	int64		mm_total;			/* monitor memory total */
 	int64		mm_used;			/* monitor memory used */
 } FormData_monitor_mem;

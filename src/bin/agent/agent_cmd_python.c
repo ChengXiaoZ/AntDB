@@ -59,11 +59,11 @@ bool get_cpu_info(StringInfo hostinfostring)
 	get_parent_directory(my_exec_path);
 	strcpy(pghome, my_exec_path);
 	strcat(pghome, "/share/postgresql/");
-	
+
 	Py_Initialize();
 	if (!Py_IsInitialized())
 		return false;
-	
+
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
@@ -73,25 +73,25 @@ bool get_cpu_info(StringInfo hostinfostring)
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
 		elog(FATAL, "can't insert path %s to sysPath.", pghome);
-	
+
     pModule = PyImport_ImportModule("host_info");
-	if ( !pModule )
+	if (!pModule)
 	{
 		elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
 		return false;
 	}
 	
 	pDict = PyModule_GetDict(pModule);
-	if ( !pDict )
+	if (!pDict)
 		return false;
-	
+
 	pFunc = PyDict_GetItemString(pDict, "get_cpu_info");
-	if ( !pFunc || !PyCallable_Check(pFunc) )
+	if (!pFunc || !PyCallable_Check(pFunc))
 	{
 		elog(FATAL, "can't find function get_cpu_info in file host_info.py.");
 		return false;
 	}
-	
+
 	pRetValue = PyObject_CallObject(pFunc, NULL);
 	PyArg_ParseTuple(pRetValue, "sf", &time_Stamp,&cpu_Usage);
 	monitor_append_str(hostinfostring, time_Stamp);
@@ -101,7 +101,7 @@ bool get_cpu_info(StringInfo hostinfostring)
 	Py_DECREF(pRetValue);
 	Py_DECREF(pFunc);
 	Py_Finalize();
-	
+
 	return true;
 }
 
@@ -121,7 +121,6 @@ bool get_mem_info(StringInfo hostinfostring)
 	int64 mem_Total, mem_Used;
 	int result;
 
-
 	char my_exec_path[MAXPGPATH];
 	char pghome[MAXPGPATH];
 	memset(pghome, 0, MAXPGPATH);
@@ -131,11 +130,11 @@ bool get_mem_info(StringInfo hostinfostring)
 	get_parent_directory(my_exec_path);
 	strcpy(pghome, my_exec_path);
 	strcat(pghome, "/share/postgresql/");
-	
+
 	Py_Initialize();
 	if (!Py_IsInitialized())
 		return false;
-	
+
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
@@ -145,25 +144,25 @@ bool get_mem_info(StringInfo hostinfostring)
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
 		elog(FATAL, "can't insert path %s to sysPath.", pghome);
-	
+
     pModule = PyImport_ImportModule("host_info");
-	if ( !pModule )
+	if (!pModule)
 	{
 		elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
 		return false;
 	}
-	
+
 	pDict = PyModule_GetDict(pModule);
-	if ( !pDict )
+	if (!pDict)
 		return false;
-	
+
 	pFunc = PyDict_GetItemString(pDict, "get_mem_info");
-	if ( !pFunc || !PyCallable_Check(pFunc) )
+	if (!pFunc || !PyCallable_Check(pFunc))
 	{
 		elog(FATAL, "can't find function get_mem_info in file host_info.py.");
 		return false;
 	}
-	
+
 	pRetValue = PyObject_CallObject(pFunc, NULL);
 	PyArg_ParseTuple(pRetValue, "sllf", &time_Stamp,&mem_Total,&mem_Used,&mem_Usage);
 	monitor_append_str(hostinfostring, time_Stamp);
@@ -175,7 +174,7 @@ bool get_mem_info(StringInfo hostinfostring)
 	Py_DECREF(pRetValue);
 	Py_DECREF(pFunc);
 	Py_Finalize();
-	
+
 	return true;
 }
 
@@ -208,11 +207,11 @@ bool get_disk_info(StringInfo hostinfostring)
 	get_parent_directory(my_exec_path);
 	strcpy(pghome, my_exec_path);
 	strcat(pghome, "/share/postgresql/");
-	
+
 	Py_Initialize();
 	if (!Py_IsInitialized())
 		return false;
-	
+
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
@@ -222,30 +221,30 @@ bool get_disk_info(StringInfo hostinfostring)
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
 		elog(FATAL, "can't insert path %s to sysPath.", pghome);
-	
+
     pModule = PyImport_ImportModule("host_info");
-	if ( !pModule )
+	if (!pModule)
 	{
 		elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
 		return false;
 	}
-	
+
 	pDict = PyModule_GetDict(pModule);
-	if ( !pDict )
+	if (!pDict)
 		return false;
-	
+
 	pFunc = PyDict_GetItemString(pDict, "get_disk_info");
-	if ( !pFunc || !PyCallable_Check(pFunc) )
+	if (!pFunc || !PyCallable_Check(pFunc))
 	{
 		elog(FATAL, "can't find function get_disk_info in file host_info.py.");
 		return false;
 	}
-	
+
 	pRetValue = PyObject_CallObject(pFunc, NULL);
 	PyArg_ParseTuple(pRetValue, "sllllll", &time_Stamp, &disk_Read_Bytes, &disk_Read_Time,
 										   &disk_Write_Bytes, &disk_Write_Time,
 										   &disk_Total, &disk_Used);
-	
+
 	monitor_append_str(hostinfostring, time_Stamp);
 	monitor_append_int64(hostinfostring, disk_Read_Bytes);
 	monitor_append_int64(hostinfostring, disk_Read_Time);
@@ -258,7 +257,7 @@ bool get_disk_info(StringInfo hostinfostring)
 	Py_DECREF(pRetValue);
 	Py_DECREF(pFunc);
 	Py_Finalize();
-	
+
 	return true;
 }
 
@@ -285,11 +284,11 @@ bool get_net_info(StringInfo hostinfostring)
 	get_parent_directory(my_exec_path);
 	strcpy(pghome, my_exec_path);
 	strcat(pghome, "/share/postgresql/");
-	
+
 	Py_Initialize();
 	if (!Py_IsInitialized())
 		return false;
-	
+
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
@@ -299,25 +298,25 @@ bool get_net_info(StringInfo hostinfostring)
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
 		elog(FATAL, "can't insert path %s to sysPath.", pghome);
-	
+
     pModule = PyImport_ImportModule("host_info");
-	if ( !pModule )
+	if (!pModule)
 	{
 		elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
 		return false;
 	}
-	
+
 	pDict = PyModule_GetDict(pModule);
 	if ( !pDict )
 		return false;
-	
+
 	pFunc = PyDict_GetItemString(pDict, "get_net_info");
-	if ( !pFunc || !PyCallable_Check(pFunc) )
+	if (!pFunc || !PyCallable_Check(pFunc))
 	{
 		elog(FATAL, "can't find function get_net_info in file host_info.py.");
 		return false;
 	}
-	
+
 	pRetValue = PyObject_CallObject(pFunc, NULL);
 	PyArg_ParseTuple(pRetValue, "sll", &time_Stamp,&sent_Speed,&recv_Speed);
 	monitor_append_str(hostinfostring, time_Stamp);
@@ -328,7 +327,7 @@ bool get_net_info(StringInfo hostinfostring)
 	Py_DECREF(pRetValue);
 	Py_DECREF(pFunc);
 	Py_Finalize();
-	
+
 	return true;
 }
 
@@ -336,17 +335,17 @@ static void monitor_append_str(StringInfo hostinfostring, char *str)
 {
 	Assert(str != NULL && &(hostinfostring->data) != NULL);
 	appendStringInfoString(hostinfostring, str);
-	appendStringInfoCharMacro(hostinfostring, '_');
+	appendStringInfoCharMacro(hostinfostring, '\0');
 }
 
 static void monitor_append_int64(StringInfo hostinfostring, int64 i)
 {
 	appendStringInfo(hostinfostring, INT64_FORMAT, i);
-	appendStringInfoCharMacro(hostinfostring, '_');
+	appendStringInfoCharMacro(hostinfostring, '\0');
 }
 
 static void monitor_append_float(StringInfo hostinfostring, float f)
 {
 	appendStringInfo(hostinfostring, "%0.2f", f);
-	appendStringInfoCharMacro(hostinfostring, '_');
+	appendStringInfoCharMacro(hostinfostring, '\0');
 }

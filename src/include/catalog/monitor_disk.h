@@ -13,7 +13,7 @@
 CATALOG(monitor_disk,4925)
 {
 	Oid 		host_oid;			/* host oid */
-	timestamp	md_timestamp;		/* monitor disk timestamp */
+	Timestamp	md_timestamp;		/* monitor disk timestamp */
 	int64		md_total;			/* monitor disk total size */
 	int64		md_available;		/* monitor disk available size */
 	int64		md_io_read_bytes;	/* monitor disk i/o read bytes */

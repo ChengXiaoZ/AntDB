@@ -13,7 +13,7 @@
 CATALOG(monitor_net,4924)
 {
 	Oid 		host_oid;			/* host oid */
-	timestamp	mn_timestamp;		/* monitor network timestamp */
+	Timestamp	mn_timestamp;		/* monitor network timestamp */
 	int64		mn_sent;			/* monitor network sent speed */
 	int64		mn_recv;			/* monitor network recv speed */
 } FormData_monitor_net;
