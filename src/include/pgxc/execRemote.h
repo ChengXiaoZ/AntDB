@@ -175,9 +175,9 @@ extern void ExecRemoteQueryReScan(RemoteQueryState *node, ExprContext *exprCtxt)
 extern void SetDataRowForExtParams(ParamListInfo params, RemoteQueryState *rq_state);
 
 extern void ExecCloseRemoteStatement(const char *stmt_name, List *nodelist);
-extern void PreCommit_Remote(const char *prepareGID, bool missing_ok);
-extern void PrePrepare_Remote(const char *prepareGID);
-extern bool	PreAbort_Remote(const char *prepareGID, bool missing_ok);
+extern void PreCommit_Remote(const char *gid, bool missing_ok);
+extern void PrePrepare_Remote(const char *gid);
+extern bool	PreAbort_Remote(const char *gid, bool missing_ok);
 extern void AtEOXact_Remote(void);
 extern bool IsTwoPhaseCommitRequired(bool localWrite);
 

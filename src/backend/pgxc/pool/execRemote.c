@@ -1028,7 +1028,7 @@ BufferConnection(PGXCNodeHandle *conn)
 			break;
 		combiner->current_conn++;
 	}
-	Assert(combiner->current_conn < combiner->conn_count);
+	Assert(combiner->current_conn <= combiner->conn_count);
 
 	/*
 	 * Buffer data rows until Datanode return number of rows specified by the
@@ -4517,7 +4517,7 @@ AtEOXact_Remote(void)
  *     charge.
  */
 void
-PreCommit_Remote(const char *prepareGID, bool missing_ok)
+PreCommit_Remote(const char *gid, bool missing_ok)
 {
 	/*
 	 * make sure PreCommit_Remote will be done by coordinator
@@ -4527,7 +4527,7 @@ PreCommit_Remote(const char *prepareGID, bool missing_ok)
 
 	if (remoteXactState.status != RXACT_PREPARED &&
 		!remoteXactState.preparedLocalNode)
-		PrePrepare_Remote(prepareGID);
+		PrePrepare_Remote(gid);
 
 	/*
 	 * OK, everything went fine. At least one remote node is in PREPARED state
@@ -4537,7 +4537,15 @@ PreCommit_Remote(const char *prepareGID, bool missing_ok)
 	 * command. So grab one from the GTM and track it. It will be closed along
 	 * with the main transaction at the end.
 	 */
-	pgxc_node_remote_commit(prepareGID, missing_ok);
+	PG_TRY();
+	{
+		pgxc_node_remote_commit(gid, missing_ok);
+	} PG_CATCH();
+	{
+		clear_RemoteXactState();
+		ForgetTransactionNodes();
+		PG_RE_THROW();
+	} PG_END_TRY();
 
 	Assert(remoteXactState.status == RXACT_COMMITTED ||
 		   remoteXactState.status == RXACT_NONE);
@@ -4569,7 +4577,7 @@ PreCommit_Remote(const char *prepareGID, bool missing_ok)
  * its reported as "in-progress" on all the nodes until resolved
  */
 bool
-PreAbort_Remote(const char *prepareGID, bool missing_ok)
+PreAbort_Remote(const char *gid, bool missing_ok)
 {
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
@@ -4587,7 +4595,15 @@ PreAbort_Remote(const char *prepareGID, bool missing_ok)
 	if (remoteXactState.status == RXACT_NONE)
 		init_RemoteXactState(false);
 
-	pgxc_node_remote_abort(prepareGID, missing_ok);
+	PG_TRY();
+	{
+		pgxc_node_remote_abort(gid, missing_ok);
+	} PG_CATCH();
+	{
+		clear_RemoteXactState();
+		ForgetTransactionNodes();
+		PG_RE_THROW();
+	} PG_END_TRY();
 
 	clear_RemoteXactState();
 
@@ -4604,7 +4620,7 @@ PreAbort_Remote(const char *prepareGID, bool missing_ok)
 }
 
 void
-PrePrepare_Remote(const char *prepareGID)
+PrePrepare_Remote(const char *gid)
 {
 	/*
 	 * make sure PrePrepare_Remote will be done by coordinator
@@ -4619,7 +4635,7 @@ PrePrepare_Remote(const char *prepareGID)
 	 * local node. Any errors will be reported via ereport and the transaction
 	 * will be aborted accordingly.
 	 */
-	pgxc_node_remote_prepare(prepareGID);
+	pgxc_node_remote_prepare(gid);
 
 	ForgetTransactionNodes();
 

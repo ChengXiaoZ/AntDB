@@ -255,6 +255,10 @@ getAgtmConnectionByDBname(const char *dbname)
 	 */
 	if (TopXactBeginAGTM())
 	{
+		/* Invalid AGTM connection, close and never try again. */
+		agtm_Close();
+		SetTopXactBeginAGTM(false);
+
 		elog(ERROR,
 			"Bad AGTM connection, status: %d", PQstatus(agtm_conn->pg_Conn));
 	} else

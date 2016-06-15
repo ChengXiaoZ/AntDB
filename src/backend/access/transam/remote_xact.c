@@ -198,6 +198,8 @@ RecordRemoteXactSuccess(uint8 info, xl_remote_xact *xlrec)
 
 	Assert(IS_PGXC_COORDINATOR && !IsConnFromCoord());
 
+	START_CRIT_SECTION();
+
 	rdata[0].data = (char *) xlrec;
 	rdata[0].len = MinSizeOfRemoteXact;
 	rdata[0].buffer = InvalidBuffer;
@@ -209,6 +211,8 @@ RecordRemoteXactSuccess(uint8 info, xl_remote_xact *xlrec)
 	XLogFlush(recptr);
 
 	XactLastRecEnd = 0;
+
+	END_CRIT_SECTION();
 }
 
 static void
@@ -263,14 +267,16 @@ RecordRemoteXactInternal(uint8 info,
 
 		XactLastRecEnd = 0;
 
+		END_CRIT_SECTION();
+
 		switch (info)
 		{
 			case XLOG_RXACT_PREPARE:
 				{
-					START_FATAL_SECTION();
+					START_CRIT_SECTION();
 					PrePrepare_Remote(gid);
 					agtm_PrepareTransaction(gid);
-					END_FATAL_SECTION();
+					END_CRIT_SECTION();
 					RecordRemoteXactSuccess(XLOG_RXACT_PREPARE_SUCCESS,
 											&xlrec);
 				}
@@ -278,10 +284,8 @@ RecordRemoteXactInternal(uint8 info,
 			case XLOG_RXACT_COMMIT:
 			case XLOG_RXACT_COMMIT_PREPARED:
 				{
-					START_FATAL_SECTION();
 					PreCommit_Remote(gid, missing_ok);
 					agtm_CommitTransaction(gid, missing_ok);
-					END_FATAL_SECTION();
 
 					if (info == XLOG_RXACT_COMMIT_PREPARED)
 					{
@@ -293,10 +297,8 @@ RecordRemoteXactInternal(uint8 info,
 			case XLOG_RXACT_ABORT:
 			case XLOG_RXACT_ABORT_PREPARED:
 				{
-					START_FATAL_SECTION();
 					PreAbort_Remote(gid, missing_ok);
 					agtm_AbortTransaction(gid, missing_ok);
-					END_FATAL_SECTION();
 
 					if (info == XLOG_RXACT_ABORT_PREPARED)
 					{
@@ -313,8 +315,6 @@ RecordRemoteXactInternal(uint8 info,
 				break;
 		}
 
-		END_CRIT_SECTION();
-
 		/*
 		 * Wait for synchronous replication, if required.
 		 *
@@ -327,21 +327,17 @@ RecordRemoteXactInternal(uint8 info,
 		switch (info)
 		{
 			case XLOG_RXACT_PREPARE:
-				START_FATAL_SECTION();
+				START_CRIT_SECTION();
 				agtm_PrepareTransaction(gid);
-				END_FATAL_SECTION();
+				END_CRIT_SECTION();
 				break;
 			case XLOG_RXACT_COMMIT:
 			case XLOG_RXACT_COMMIT_PREPARED:
-				START_FATAL_SECTION();
-				agtm_CommitTransaction(gid, true);
-				END_FATAL_SECTION();
+				agtm_CommitTransaction(gid, missing_ok);
 				break;
 			case XLOG_RXACT_ABORT:
 			case XLOG_RXACT_ABORT_PREPARED:
-				START_FATAL_SECTION();
-				agtm_AbortTransaction(gid, true);
-				END_FATAL_SECTION();
+				agtm_AbortTransaction(gid, missing_ok);
 				break;
 			case XLOG_RXACT_PREPARE_SUCCESS:
 			case XLOG_RXACT_COMMIT_PREPARED_SUCCESS:
