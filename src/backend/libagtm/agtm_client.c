@@ -91,8 +91,8 @@ agtm_ConnectByDBname(const char *databaseName)
 		if (PQstatus((PGconn*)pg_conn) != CONNECTION_OK)
 		{
 			ereport(ERROR,
-				(errmsg("Fail to connect to AGTM(return bad state: %d).",
-					PQstatus((PGconn*)pg_conn)),
+				(errmsg("Fail to connect to AGTM %s",
+					PQerrorMessage((PGconn*)pg_conn)),
 				 errhint("AGTM info(host=%s port=%d dbname=%s user=%s)",
 					AGtmHost, AGtmPort, dbname, userName)));
 		}
