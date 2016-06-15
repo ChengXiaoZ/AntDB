@@ -68,6 +68,7 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	HeapTuple tuple;
 	HeapTuple mastertuple;
 	HeapTuple newtuple;
+	HeapTuple checktuple;
 	ListCell *lc;
 	DefElem *def;
 	char *str;
@@ -121,8 +122,10 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
 	namestrcpy(&name, node->name);
 	/* check exists */
-	if(SearchSysCacheExists2(NODENODENAMETYPE, NameGetDatum(&name), CharGetDatum(nodetype)))
+	checktuple = mgr_get_tuple_node_from_name_type(rel, NameStr(name), nodetype);
+	if (HeapTupleIsValid(checktuple))
 	{
+		heap_freetuple(checktuple);
 		if(node->if_not_exists)
 		{
 			heap_close(rel, RowExclusiveLock);
@@ -268,9 +271,8 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest)
 {
 	Relation rel;
-	HeapTuple tuple,
-		oldtuple,
-		new_tuple;
+	HeapTuple oldtuple;
+	HeapTuple	new_tuple;
 	ListCell *lc;
 	DefElem *def;
 	char *str;
@@ -311,7 +313,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
 		Assert(node->mastername);
 		namestrcpy(&mastername, node->mastername);
-		nodestring = "datanode master";
+		nodestring = "datanode slave";
 	}
 	
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
@@ -399,20 +401,6 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
 	}
-	if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype)
-		datum[Anum_mgr_node_nodemasternameOid-1] = UInt32GetDatum(0);
-	else
-	{
-		tuple = mgr_get_tuple_node_from_name_type(rel, NameStr(mastername), nodetype);
-		if(!HeapTupleIsValid(tuple))
-		{
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, errmsg("node \"%s\" not exists", NameStr(mastername))));
-		}
-		datum[Anum_mgr_node_nodemasternameOid-1] = ObjectIdGetDatum(HeapTupleGetOid(tuple));
-		heap_freetuple(tuple);
-		got[Anum_mgr_node_nodemasternameOid-1] = true;
-	}
 	new_tuple = heap_modify_tuple(oldtuple, cndn_dsc, datum,isnull, got);
 	simple_heap_update(rel, &oldtuple->t_self, new_tuple);
 	CatalogUpdateIndexes(rel, new_tuple);
@@ -452,7 +440,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	else if((!node->is_coordinator) && (!node->is_master))
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
-		nodestring = "datanode master";
+		nodestring = "datanode slave";
 	}
 
 	context = AllocSetContextCreate(CurrentMemoryContext
@@ -1147,6 +1135,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 			elog(ERROR, "stop datanode master \"%s\" fail", dnmastername);
 		/*3.delete old master record in node systbl*/
 		simple_heap_delete(noderel, &mastertuple->t_self);
+		CatalogUpdateIndexes(noderel, mastertuple);
 		ReleaseSysCache(mastertuple);
 		/*4.change slave type to master type*/
 		mgr_node->nodeinited = true;

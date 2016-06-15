@@ -930,17 +930,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		32
 	}
-	,{NodeRelationId,		/* NODENAME */
-		NodeNodeNameTypeIndexId,
-		2,
-		{
-			Anum_mgr_node_nodename,
-			Anum_mgr_node_nodetype,
-			0,
-			0
-		},
-		32
-	}
 	,{NodeRelationId,		/* NODENAMEOID */
 		NodeOidIndexId,
 		1,
