@@ -99,7 +99,7 @@ typedef struct RemoteQueryState
 	int			copy_in_count;			/* count of received CopyIn messages */
 	int			copy_out_count;			/* count of received CopyOut messages */
 	char		errorCode[5];			/* error code to send back to client */
-	char	   *errorMessage;			/* error message to send back to client */
+	StringInfoData errorMessage;			/* error message to send back to client */
 	char	   *errorDetail;			/* error detail to send back to client */
 	bool		query_Done;				/* query has been sent down to Datanodes */
 	RemoteDataRowData currentRow;		/* next data ro to be wrapped into a tuple */

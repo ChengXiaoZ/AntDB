@@ -1859,6 +1859,9 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 			for (i = 0; i < NumDataNodes; i++)
 			{
 				node_handle = &dn_handles[i];
+#ifdef ADB
+				node_handle->error = NULL;
+#endif
 				result->datanode_handles[i] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
 					dn_allocate = lappend_int(dn_allocate, i);
@@ -1893,6 +1896,9 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 				}
 
 				node_handle = &dn_handles[node];
+#ifdef ADB
+				node_handle->error = NULL;
+#endif
 				result->datanode_handles[i++] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
 					dn_allocate = lappend_int(dn_allocate, node);
@@ -1925,6 +1931,9 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 			for (i = 0; i < NumCoords; i++)
 			{
 				node_handle = &co_handles[i];
+#ifdef ADB
+				node_handle->error = NULL;
+#endif
 				result->coord_handles[i] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
 					co_allocate = lappend_int(co_allocate, i);
@@ -1959,7 +1968,9 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 				}
 
 				node_handle = &co_handles[node];
-
+#ifdef ADB
+				node_handle->error = NULL;
+#endif
 				result->coord_handles[i++] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
 					co_allocate = lappend_int(co_allocate, node);

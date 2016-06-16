@@ -260,7 +260,7 @@ CreateResponseCombiner(int node_count, CombineType combine_type)
 	combiner->description_count = 0;
 	combiner->copy_in_count = 0;
 	combiner->copy_out_count = 0;
-	combiner->errorMessage = NULL;
+	initStringInfo(&(combiner->errorMessage));
 	combiner->errorDetail = NULL;
 	combiner->query_Done = false;
 	combiner->currentRow.msg = NULL;
@@ -714,7 +714,7 @@ HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, Oid nodeoi
 	 * If we got an error already ignore incoming data rows from other nodes
 	 * Still we want to continue reading until get CommandComplete
 	 */
-	if (combiner->errorMessage)
+	if (combiner->errorMessage.len > 0)
 		return;
 
 	/*
@@ -731,7 +731,7 @@ HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, Oid nodeoi
  * Handle ErrorResponse ('E') message from a Datanode connection
  */
 static void
-HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
+HandleError(Oid from, RemoteQueryState *combiner, char *msg_body, size_t len)
 {
 	/* parse error message */
 	char *code = NULL;
@@ -784,9 +784,9 @@ HandleError(RemoteQueryState *combiner, char *msg_body, size_t len)
 	 * ReadyForQuery is received, so we just store the error message.
 	 * If multiple connections return errors only first one is reported.
 	 */
-	if (!combiner->errorMessage)
+	if (combiner->errorMessage.len == 0)
 	{
-		combiner->errorMessage = pstrdup(message);
+		appendStringInfo(&(combiner->errorMessage), "[From node %u]%s", from, message);
 		/* Error Code is exactly 5 significant bytes */
 		if (code)
 			memcpy(combiner->errorCode, code, 5);
@@ -909,7 +909,7 @@ static bool
 validate_combiner(RemoteQueryState *combiner)
 {
 	/* There was error message while combining */
-	if (combiner->errorMessage)
+	if (combiner->errorMessage.len > 0)
 		return false;
 
 	/* Check if state is defined */
@@ -963,8 +963,7 @@ CloseCombiner(RemoteQueryState *combiner)
 			if (combiner->remoteCopyType != REMOTE_COPY_TUPLESTORE)
 				FreeTupleDesc(combiner->tuple_desc);
 		}
-		if (combiner->errorMessage)
-			pfree(combiner->errorMessage);
+		pfree(combiner->errorMessage.data);
 		if (combiner->errorDetail)
 			pfree(combiner->errorDetail);
 		if (combiner->cursor_connections)
@@ -1434,8 +1433,8 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 				HandleCopyDataRow(combiner, msg, msg_len);
 				break;
 			case 'E':			/* ErrorResponse */
-				HandleError(combiner, msg, msg_len);
-				add_error_message(conn, "%s", combiner->errorMessage);
+				HandleError(conn->nodeoid, combiner, msg, msg_len);
+				add_error_message(conn, "%s", combiner->errorMessage.data);
 				/*
 				 * Do not return with an error, we still need to consume Z,
 				 * ready-for-query
@@ -4860,17 +4859,17 @@ pgxc_node_report_error(RemoteQueryState *combiner)
 	/* If no combiner, nothing to do */
 	if (!combiner)
 		return;
-	if (combiner->errorMessage)
+	if (combiner->errorMessage.len > 0)
 	{
 		char *code = combiner->errorCode;
 		if (combiner->errorDetail != NULL)
 			ereport(ERROR,
 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
-					errmsg("%s", combiner->errorMessage), errdetail("%s", combiner->errorDetail) ));
+					errmsg("%s", combiner->errorMessage.data), errdetail("%s", combiner->errorDetail) ));
 		else
 			ereport(ERROR,
 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
-					errmsg("%s", combiner->errorMessage)));
+					errmsg("%s", combiner->errorMessage.data)));
 	}
 }
 
