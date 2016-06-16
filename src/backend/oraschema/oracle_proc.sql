@@ -214,6 +214,13 @@ CREATE OR REPLACE FUNCTION oracle.trunc(pg_catalog.date, text default 'DDD')
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
+CREATE OR REPLACE FUNCTION oracle.trunc(oracle.date, text default 'DDD')
+    RETURNS oracle.date
+    AS 'ora_timestamptz_trunc'
+    LANGUAGE INTERNAL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
 CREATE OR REPLACE FUNCTION oracle.trunc(timestamptz, text default 'DDD')
     RETURNS oracle.date
     AS $$select oracle.ora_timestamptz_trunc($1, $2)::oracle.date;$$
