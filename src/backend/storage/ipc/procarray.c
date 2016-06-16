@@ -2775,14 +2775,10 @@ UnsetGlobalSnapshot(void)
 static GlobalSnapshot
 GetGlobalSnapshot(GlobalSnapshot snapshot)
 {
-	if (global_snapshot == InvalidGlobalSnapshot)
+	if (global_snapshot == InvalidGlobalSnapshot ||
+		global_snapshot != snapshot)
 	{
 		global_snapshot = agtm_GetSnapShot(snapshot);
-		return global_snapshot;
-	}
-	else if (global_snapshot != snapshot)
-	{
-		return agtm_GetSnapShot(snapshot);
 	}
 
 	return global_snapshot;

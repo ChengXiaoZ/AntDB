@@ -184,7 +184,14 @@ GetTransactionSnapshot(void)
 	}
 
 #ifdef AGTM
-	return CurrentSnapshot;
+	if (IsTransactionState())
+	{
+		return CurrentSnapshot;
+	} else
+	{
+		CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
+		return CurrentSnapshot;
+	}
 #endif
 
 	if (IsolationUsesXactSnapshot())
@@ -758,6 +765,10 @@ AtEOXact_Snapshot(bool isCommit)
 
 	CurrentSnapshot = NULL;
 	SecondarySnapshot = NULL;
+
+#ifdef ADB
+	UnsetGlobalSnapshot();
+#endif
 
 	FirstSnapshotSet = false;
 
