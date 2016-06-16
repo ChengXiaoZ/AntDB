@@ -621,6 +621,9 @@ compute_hash(Oid type, Datum value, char locator)
 			return tmp32;
 		case TIMEOID:
 			return DirectFunctionCall1(time_hash, value);
+#ifdef ADB
+		case ORADATEOID:
+#endif
 		case TIMESTAMPOID:
 			return DirectFunctionCall1(timestamp_hash, value);
 		case TIMESTAMPTZOID:

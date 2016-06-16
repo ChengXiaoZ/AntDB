@@ -353,6 +353,7 @@ IsTypeDistributable(Oid col_type)
 	|| col_type == TIMETZOID
 	|| col_type == NUMERICOID
 #ifdef ADB
+	|| col_type == ORADATEOID
 	|| col_type == VARCHAR2OID
 	|| col_type == NVARCHAR2OID
 #endif

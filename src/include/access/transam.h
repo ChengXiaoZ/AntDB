@@ -31,7 +31,11 @@
 #define InvalidTransactionId		((TransactionId) 0)
 #define BootstrapTransactionId		((TransactionId) 1)
 #define FrozenTransactionId			((TransactionId) 2)
+#ifdef AGTM
+#define FirstNormalTransactionId	((TransactionId) 1000)
+#else
 #define FirstNormalTransactionId	((TransactionId) 3)
+#endif
 #define MaxTransactionId			((TransactionId) 0xFFFFFFFF)
 
 /* ----------------
