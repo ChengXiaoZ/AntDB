@@ -6,6 +6,12 @@
 #include "catalog/buildbki.h"
 #else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#include "catalog/genbki.h"
+#include "nodes/params.h"
+#include "nodes/parsenodes.h"
+#include "utils/portal.h"
+#include "utils/timestamp.h"
+#define timestamptz int
 #endif /* BUILD_BKI */
 
 #define MonitorHostRelationId 4921
@@ -15,13 +21,17 @@ CATALOG(monitor_host,4921)
 	Oid 			host_oid;				/* host name */
 	inet			mh_ip_addr;				/* host ip address */
 	int16 			mh_run_state;			/* host run state */
-	Timestamp 	mh_begin_run_time;		/* host begin run time */
+	timestamptz 	mh_begin_run_time;		/* host begin run time */
 	
 #ifdef CATALOG_VARLEN
 	text			mh_platform_type;		/* host plateform type */
 	text			mh_cpu_type;			/* host cpu type */
 #endif /* CATALOG_VARLEN */
 } FormData_monitor_host;
+
+#ifndef BUILD_BKI
+#undef timestamptz
+#endif
 
 /* ----------------
  *		Form_mgr_host corresponds to a pointer to a tuple with

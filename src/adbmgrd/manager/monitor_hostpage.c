@@ -242,7 +242,7 @@ static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu)
 	bool isnull[Natts_monitor_cpu];
 
 	datum[Anum_monitor_cpu_host_oid - 1] = ObjectIdGetDatum(host_oid);
-	datum[Anum_monitor_cpu_mc_timestamp - 1] = DirectFunctionCall3(timestamp_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	datum[Anum_monitor_cpu_mc_timestamptz - 1] = DirectFunctionCall3(timestamp_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
 	datum[Anum_monitor_cpu_mc_usage - 1] = Float4GetDatum(monitor_cpu->cpu_usage);
 
 	memset(isnull, 0, sizeof(isnull));

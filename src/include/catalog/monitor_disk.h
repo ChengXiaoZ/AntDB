@@ -6,6 +6,11 @@
 #include "catalog/buildbki.h"
 #else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#include "nodes/params.h"
+#include "nodes/parsenodes.h"
+#include "utils/portal.h"
+#include "utils/timestamp.h"
+#define timestamptz int
 #endif /* BUILD_BKI */
 
 #define MonitorDiskRelationId 4925
@@ -13,7 +18,7 @@
 CATALOG(monitor_disk,4925)
 {
 	Oid 		host_oid;			/* host oid */
-	Timestamp	md_timestamp;		/* monitor disk timestamp */
+	timestamptz	md_timestamptz;		/* monitor disk timestamp */
 	int64		md_total;			/* monitor disk total size */
 	int64		md_available;		/* monitor disk available size */
 	int64		md_io_read_bytes;	/* monitor disk i/o read bytes */
@@ -39,7 +44,7 @@ typedef FormData_monitor_disk *Form_monitor_disk;
  */
 #define Natts_monitor_disk							7
 #define Anum_monitor_disk_host_oid					1
-#define Anum_monitor_disk_md_timestamp			2
+#define Anum_monitor_disk_md_timestamptz			2
 #define Anum_monitor_disk_md_available				3
 #define Anum_monitor_disk_md_io_read_bytes			4
 #define Anum_monitor_disk_md_io_reat_time			5
