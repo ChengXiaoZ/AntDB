@@ -5,7 +5,8 @@ import psutil
 import time
 import sys
 
-ISOTIMEFORMAT = '%Y%m%d%H%M%S'
+# set timeformat. (e.g. 2016-06-16 16:49:51 HKT)
+ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'
 
 def get_cpu_info():
 	time_stamp = time.strftime(ISOTIMEFORMAT, time.localtime())

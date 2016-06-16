@@ -122,7 +122,9 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     HeapTuple tup_result;
     Form_mgr_host mgr_host;
 	StringInfoData buf;
-	GetAgentCmdRst getAgentCmdRst;
+	//GetAgentCmdRst getAgentCmdRst;
+	bool ret;
+	StringInfoData agentRstStr;
 	ManagerAgent *ma;
 	bool execok = false;
 	// char *ptmp;
@@ -133,7 +135,8 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 	Monitor_Mem monitor_mem;
 	Monitor_Net monitor_net;
 	Monitor_Disk monitor_disk;
-
+	
+	initStringInfo(&agentRstStr);
 	init_Monitor_Host(&monitor_host);
 	init_Monitor_Cpu(&monitor_cpu);
 	init_Monitor_Mem(&monitor_mem);
@@ -183,8 +186,9 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 	if (!ma_isconnected(ma))
 	{
 		/* report error message */
-		getAgentCmdRst.ret = false;
-		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		
+		ret = false;
+		appendStringInfoString(&agentRstStr, ma_last_error_msg(ma));
 	}
 
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -192,31 +196,33 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 	ma_endmessage(&buf, ma);
 	if (!ma_flush(ma, true))
 	{
-		getAgentCmdRst.ret = false;
-		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ret = false;
+		appendStringInfoString(&agentRstStr, ma_last_error_msg(ma));
 		ma_close(ma);
 		heap_endscan(info->rel_scan);
 		heap_close(info->rel_host, RowExclusiveLock);
 	}
 
 	/*check the receive msg*/
-	execok = mgr_recv_msg_for_monitor(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	execok = mgr_recv_msg_for_monitor(ma, &ret, &agentRstStr);
+	Assert(execok == ret);
 
+	agentRstStr.cursor = 0;
 	tup_result = build_common_command_tuple(
 		&(mgr_host->hostname)
-		, getAgentCmdRst.ret
-		, getAgentCmdRst.description.data);
+		, ret
+		, agentRstStr.data);
+	
 
 	//while ((ptmp = &getAgentCmdRst.description.data[getAgentCmdRst.description.cursor]) != '\0' && (getAgentCmdRst.description.cursor < getAgentCmdRst.description.len))
 	//{
 	/* cpu timestamp */
-	appendStringInfoString(&monitor_cpu.cpu_timestamp, &getAgentCmdRst.description.data[getAgentCmdRst.description.cursor]);
-	getAgentCmdRst.description.cursor = getAgentCmdRst.description.cursor + monitor_cpu.cpu_timestamp.len + 1;
+	appendStringInfoString(&monitor_cpu.cpu_timestamp, &agentRstStr.data[agentRstStr.cursor]);
+	agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
 
 	/* cpu usage */
-	monitor_cpu.cpu_usage = atof(&getAgentCmdRst.description.data[getAgentCmdRst.description.cursor]);
-	getAgentCmdRst.description.cursor = getAgentCmdRst.description.cursor + strlen(&getAgentCmdRst.description.data[getAgentCmdRst.description.cursor]) + 1;
+	monitor_cpu.cpu_usage = atof(&agentRstStr.data[agentRstStr.cursor]);
+	agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 	//}
 
 	
@@ -227,7 +233,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 	pfree_Monitor_Mem(&monitor_mem);
 	pfree_Monitor_Net(&monitor_net);
 	pfree_Monitor_Disk(&monitor_disk);
-	pfree(getAgentCmdRst.description.data);
+	pfree(agentRstStr.data);
 
 	ma_close(ma);
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -242,7 +248,7 @@ static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu)
 	bool isnull[Natts_monitor_cpu];
 
 	datum[Anum_monitor_cpu_host_oid - 1] = ObjectIdGetDatum(host_oid);
-	datum[Anum_monitor_cpu_mc_timestamptz - 1] = DirectFunctionCall3(timestamp_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	datum[Anum_monitor_cpu_mc_timestamptz - 1] = DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
 	datum[Anum_monitor_cpu_mc_usage - 1] = Float4GetDatum(monitor_cpu->cpu_usage);
 
 	memset(isnull, 0, sizeof(isnull));

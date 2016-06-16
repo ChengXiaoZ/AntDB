@@ -131,7 +131,7 @@ char *get_hostuser_from_hostoid(Oid hostOid);
 
 /* get msg from agent */
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
-bool mgr_recv_msg_for_monitor(ManagerAgent *ma, GetAgentCmdRst *getAgentCmdRst);
+bool mgr_recv_msg_for_monitor(ManagerAgent	*ma, bool *ret, StringInfo agentRstStr);
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
 bool get_cpu_info(StringInfo hostinfostring);

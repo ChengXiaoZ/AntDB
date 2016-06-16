@@ -67,7 +67,7 @@ bool get_cpu_info(StringInfo hostinfostring)
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
-	PyRun_SimpleString("ISOTIMEFORMAT = '%Y%m%d%H%M%S'");
+	PyRun_SimpleString("ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'");
 
 	sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
@@ -138,7 +138,7 @@ bool get_mem_info(StringInfo hostinfostring)
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
-	PyRun_SimpleString("ISOTIMEFORMAT = '%Y%m%d%H%M%S'");
+	PyRun_SimpleString("ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'");
 
 	sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
@@ -215,7 +215,7 @@ bool get_disk_info(StringInfo hostinfostring)
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
-	PyRun_SimpleString("ISOTIMEFORMAT = '%Y%m%d%H%M%S'");
+	PyRun_SimpleString("ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'");
 
 	sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
@@ -292,7 +292,7 @@ bool get_net_info(StringInfo hostinfostring)
 	PyRun_SimpleString("import sys");
 	PyRun_SimpleString("import psutil");
 	PyRun_SimpleString("import time");
-	PyRun_SimpleString("ISOTIMEFORMAT = '%Y%m%d%H%M%S'");
+	PyRun_SimpleString("ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'");
 
 	sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
