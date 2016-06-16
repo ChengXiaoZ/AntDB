@@ -349,6 +349,25 @@ RecordRemoteXactInternal(uint8 info,
 	}
 }
 
+static xl_remote_xact *
+CopyXLRemoteXact(xl_remote_xact *from)
+{
+	xl_remote_xact  *to = NULL;
+
+	if (from)
+	{
+		int i = 0;
+		int nnodes = from->nnodes;
+
+		to = (xl_remote_xact *)palloc0(MinSizeOfRemoteXact + nnodes * sizeof(Oid));
+		memcpy(to, from, MinSizeOfRemoteXact);
+		for (i = 0; i < nnodes; i++)
+			to->nodeIds[i] = from->nodeIds[i];
+	}
+
+	return to;
+}
+
 /*
  * Keep xl_remote_xact in proper list and sort asc by xid
  */
@@ -385,7 +404,7 @@ PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
 	/* empty list */
 	if (*result == NIL)
 	{
-		*result = lappend(NIL, (void *) xlrec);
+		*result = lappend(NIL, (void *) CopyXLRemoteXact(xlrec));
 		return ;
 	}
 
@@ -395,7 +414,7 @@ PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
 	/* if new xid is bigger, then append it */
 	if (TransactionIdFollowsOrEquals(xlrec->xid, last_xlrec->xid))
 	{
-		*result = lappend(*result, (void *) xlrec);
+		*result = lappend(*result, (void *) CopyXLRemoteXact(xlrec));
 	}
 	/* now new xid is smaller than the last one */
 	else
@@ -415,10 +434,10 @@ PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
 
 			/* keep it append prev_lc */
 			if (prev_lc)
-				(void) lappend_cell(*result, prev_lc, (void *) xlrec);
+				(void) lappend_cell(*result, prev_lc, (void *) CopyXLRemoteXact(xlrec));
 			/* keep it prepend the list */
 			else
-				*result = lcons((void *) xlrec, *result);
+				*result = lcons((void *) CopyXLRemoteXact(xlrec), *result);
 
 			break;
 		}
@@ -470,6 +489,7 @@ PopXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
 			Assert(slen1 == slen2);
 			Assert(strncmp(gid, rxact->gid, slen1) == 0);
 			*result = list_delete_ptr(*result, (void *) rxact);
+			pfree(rxact);
 			break;
 		}
 	}
@@ -623,9 +643,9 @@ ReplayRemoteXact(void)
 			lc3 = lnext(lc3);
 	}
 
-	list_free(prepared_rxact);
-	list_free(commit_prepared_rxact);
-	list_free(abort_prepared_rxact);
+	list_free_deep(prepared_rxact);
+	list_free_deep(commit_prepared_rxact);
+	list_free_deep(abort_prepared_rxact);
 
 	prepared_rxact = NIL;
 	commit_prepared_rxact = NIL;
