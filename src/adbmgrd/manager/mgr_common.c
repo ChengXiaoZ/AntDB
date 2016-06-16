@@ -202,46 +202,42 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
 /*
 * get host info from agent for [ADB monitor]
 */
-bool mgr_recv_msg_for_monitor(ManagerAgent	*ma, bool *ret, StringInfo agentRstStr)
+bool mgr_recv_msg_for_monitor(ManagerAgent *ma, bool *ret, StringInfo agentRstStr)
 {
-	char			msg_type;
-	//StringInfoData recvbuf;
+	char msg_type;
 	bool initdone = false;
-	//initStringInfo(&recvbuf);
-	for(;;)
+	
+	for (;;)
 	{
-		//resetStringInfo(&recvbuf);
 		msg_type = ma_get_message(ma, agentRstStr);
-		if(msg_type == AGT_MSG_IDLE)
+		if (msg_type == AGT_MSG_IDLE)
 		{
 			/* message end */
 			break;
-		}else if(msg_type == '\0')
+		}else if (msg_type == '\0')
 		{
 			/* has an error */
 			break;
-		}else if(msg_type == AGT_MSG_ERROR)
+		}else if (msg_type == AGT_MSG_ERROR)
 		{
 			/* error message */
 			*ret = false;
 			appendStringInfoString(agentRstStr, ma_get_err_info(agentRstStr, AGT_MSG_RESULT));
 			ereport(DEBUG1, (errmsg("%s", ma_get_err_info(agentRstStr, AGT_MSG_RESULT))));
 			break;
-		}else if(msg_type == AGT_MSG_NOTICE)
+		}else if (msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
 			break;
 		}
-		else if(msg_type == AGT_MSG_RESULT)
+		else if (msg_type == AGT_MSG_RESULT)
 		{
 			*ret = true;
-			// appendStringInfoString(&(getAgentCmdRst->description), recvbuf.data);
 			ereport(DEBUG1, (errmsg("%s", agentRstStr->data)));
 			initdone = true;
 			break;
 		}
 	}
-	//pfree(recvbuf.data);
 	return initdone;
 }
 

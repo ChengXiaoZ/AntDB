@@ -12,10 +12,7 @@
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/pg_type.h"
 #include "utils/timestamp.h"
-//#include "pgtypes_timestamp.h"
-// #include <pgtypes_timestamp.h>
 #include "utils/inet.h"
-
 #include "catalog/monitor_host.h"
 #include "catalog/monitor_cpu.h"
 #include "catalog/monitor_mem.h"
@@ -40,6 +37,8 @@
 #include "funcapi.h"
 #include "fmgr.h"
 #include "utils/lsyscache.h"
+
+#define atoui(x)  ((unsigned int) strtoul((x), NULL, 10))
 
 typedef struct InitHostInfo
 {
@@ -72,6 +71,7 @@ typedef struct Monitor_Mem
 	StringInfoData  mem_timestamp;
 	int64			mem_total;
 	int64			mem_used;
+	float			mem_usage;
 }Monitor_Mem;
 
 /* for table: monitor_net */
@@ -107,6 +107,7 @@ static void pfree_Monitor_Net(Monitor_Net *Monitor_net);
 static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk);
 
 static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu);
+static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
 
 /*
  *	get the host info(host base info, cpu, disk, mem, net)
@@ -122,12 +123,11 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     HeapTuple tup_result;
     Form_mgr_host mgr_host;
 	StringInfoData buf;
-	//GetAgentCmdRst getAgentCmdRst;
 	bool ret;
 	StringInfoData agentRstStr;
 	ManagerAgent *ma;
 	bool execok = false;
-	// char *ptmp;
+	//char *ptmp;
 	Oid host_oid;
 	
 	Monitor_Host monitor_host;
@@ -186,7 +186,6 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 	if (!ma_isconnected(ma))
 	{
 		/* report error message */
-		
 		ret = false;
 		appendStringInfoString(&agentRstStr, ma_last_error_msg(ma));
 	}
@@ -214,20 +213,36 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 		, agentRstStr.data);
 	
 
-	//while ((ptmp = &getAgentCmdRst.description.data[getAgentCmdRst.description.cursor]) != '\0' && (getAgentCmdRst.description.cursor < getAgentCmdRst.description.len))
+	//while ((ptmp = &agentRstStr.data[agentRstStr.cursor]) != '\0' && (agentRstStr.cursor < agentRstStr.len))
 	//{
-	/* cpu timestamp */
-	appendStringInfoString(&monitor_cpu.cpu_timestamp, &agentRstStr.data[agentRstStr.cursor]);
-	agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
+		/* cpu timestamp with timezone */
+		appendStringInfoString(&monitor_cpu.cpu_timestamp, &agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
 
-	/* cpu usage */
-	monitor_cpu.cpu_usage = atof(&agentRstStr.data[agentRstStr.cursor]);
-	agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+		/* cpu usage */
+		monitor_cpu.cpu_usage = atof(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* memory timestamp with timezone */
+		appendStringInfoString(&monitor_mem.mem_timestamp, &agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
+
+		/* memory total size (in bytes)*/
+		monitor_mem.mem_total = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* memory used size (in bytes) */
+		monitor_mem.mem_used = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* memory usage */
+		monitor_mem.mem_usage = atof(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 	//}
 
-	
 	insert_into_monotor_cpu(host_oid, &monitor_cpu);
-
+	insert_into_monotor_mem(host_oid, &monitor_mem);
+	
 	pfree_Monitor_Host(&monitor_host);
 	pfree_Monitor_Cpu(&monitor_cpu);
 	pfree_Monitor_Mem(&monitor_mem);
@@ -248,19 +263,42 @@ static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu)
 	bool isnull[Natts_monitor_cpu];
 
 	datum[Anum_monitor_cpu_host_oid - 1] = ObjectIdGetDatum(host_oid);
-	datum[Anum_monitor_cpu_mc_timestamptz - 1] = DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	datum[Anum_monitor_cpu_mc_timestamptz - 1] = 
+		DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
 	datum[Anum_monitor_cpu_mc_usage - 1] = Float4GetDatum(monitor_cpu->cpu_usage);
 
 	memset(isnull, 0, sizeof(isnull));
 
 	monitorcpu = heap_open(MonitorCpuRelationId, RowExclusiveLock);
 	newtuple = heap_form_tuple(RelationGetDescr(monitorcpu), datum, isnull);
-	
 	simple_heap_insert(monitorcpu, newtuple);
-	//heap_insert(monitorcpu, newtuple, GetCurrentCommandId(true), 0, NULL);
 
 	heap_freetuple(newtuple);
 	heap_close(monitorcpu, RowExclusiveLock);
+}
+
+static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem)
+{
+	Relation monitormem;
+	HeapTuple newtuple;
+	Datum datum[Natts_monitor_mem];
+	bool isnull[Natts_monitor_mem];
+
+	datum[Anum_monitor_mem_host_oid - 1] = ObjectIdGetDatum(host_oid);
+	datum[Anum_monitor_mem_mm_timestamptz - 1] = 
+		DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_mem->mem_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	datum[Anum_monitor_mem_mm_total - 1] = Int64GetDatum(monitor_mem->mem_total);
+	datum[Anum_monitor_mem_mm_used - 1] = Int16GetDatum(monitor_mem->mem_used);
+	datum[Anum_monitor_mem_mm_usage - 1] = Float4GetDatum(monitor_mem->mem_usage);
+
+	memset(isnull, 0, sizeof(isnull));
+
+	monitormem = heap_open(MonitorMemRelationId, RowExclusiveLock);
+	newtuple = heap_form_tuple(RelationGetDescr(monitormem), datum, isnull);
+	simple_heap_insert(monitormem, newtuple);
+
+	heap_freetuple(newtuple);
+	heap_close(monitormem, RowExclusiveLock);
 }
 
 static void init_Monitor_Host(Monitor_Host *monitor_host)
