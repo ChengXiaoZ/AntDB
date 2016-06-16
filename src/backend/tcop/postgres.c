@@ -4911,7 +4911,10 @@ PostgresMain(int argc, char *argv[],
 			case 'A':
 				{
 					/* process agtm command */
-					ProcessAGtmCommand(&input_message);
+					start_xact_command();
+					ProcessAGtmCommand(&input_message, whereToSendOutput);
+					finish_xact_command();
+					send_ready_for_query = true;
 				}
 				break;
 #endif

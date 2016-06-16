@@ -3,11 +3,14 @@
 
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
+#include "agtm/agtm_utils.h"
 #include "access/transam.h"
 #include "access/xact.h"
+#include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "libpq/libpq-int.h"
 #include "libpq/fe-protocol3.c"
+#include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "pgxc/pgxc.h"
 #include "utils/memutils.h"
@@ -19,24 +22,8 @@ extern int 			AGtmPort;
 static AGTM_Conn	*agtm_conn = NULL;
 #define AGTM_PORT	"agtm_port"
 
-#define VALID_AGTM_MESSAGE_TYPE(id) \
-	((id) == 'S' || (id) == 'E')
-
-#define safe_free(p)	\
-	do {				\
-		if ((p))		\
-		{				\
-			pfree((p));	\
-			(p) = NULL;	\
-		}				\
-	} while (0)
-
 static void agtm_Connect(void);
-static void agtm_ConnectByDBname(const char *databaseName);	
-static AGTM_Result* agtm_PqParseInput(AGTM_Conn *conn);
-static void agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result);
-static int agtm_PqParseSuccess(PGconn *conn, AGTM_Result *result);
-static void agtm_PqResetResultData(AGTM_Result* result);
+static void agtm_ConnectByDBname(const char *databaseName);
 
 static void
 agtm_Connect(void)
@@ -109,8 +96,6 @@ agtm_ConnectByDBname(const char *databaseName)
 			oldctx = MemoryContextSwitchTo(TopMemoryContext);
 			agtm_conn = (AGTM_Conn *)palloc0(sizeof(AGTM_Conn));
 			agtm_conn->pg_Conn = (PGconn*)pg_conn;
-			agtm_conn->agtm_Result = (AGTM_Result *)palloc0(sizeof(AGTM_Result));
-			agtm_conn->agtm_Result->gr_resdata.snapshot = (GlobalSnapshot)palloc0(sizeof(SnapshotData));
 			(void)MemoryContextSwitchTo(oldctx);
 		}
 	}PG_CATCH();
@@ -180,7 +165,11 @@ void agtm_Close(void)
 {
 	if (agtm_conn)
 	{
-		MemoryContext oldctx = NULL;
+		if(agtm_conn->pg_res)
+		{
+			PQclear(agtm_conn->pg_res);
+			agtm_conn->pg_res = NULL;
+		}
 
 		if (agtm_conn->pg_Conn)
 		{
@@ -188,18 +177,9 @@ void agtm_Close(void)
 			agtm_conn->pg_Conn = NULL;
 		}
 
-		oldctx = MemoryContextSwitchTo(TopMemoryContext);
-		if (agtm_conn->agtm_Result)
-		{
-			/* TODO: free agtm_Result */
-			safe_free(agtm_conn->agtm_Result->gr_resdata.snapshot);
-			safe_free(agtm_conn->agtm_Result);
-		}
-
 		pfree(agtm_conn);
-		(void)MemoryContextSwitchTo(oldctx);
+		agtm_conn = NULL;
 	}
-	agtm_conn = NULL;
 }
 
 void agtm_Reset(void)
@@ -259,8 +239,8 @@ getAgtmConnectionByDBname(const char *dbname)
 		agtm_Close();
 		SetTopXactBeginAGTM(false);
 
-		elog(ERROR,
-			"Bad AGTM connection, status: %d", PQstatus(agtm_conn->pg_Conn));
+		ereport(ERROR,
+			(errmsg("Bad AGTM connection, status: %d", PQstatus(agtm_conn->pg_Conn))));
 	} else
 	{
 		agtm_Close();
@@ -270,345 +250,61 @@ getAgtmConnectionByDBname(const char *dbname)
 	return agtm_conn->pg_Conn;
 }
 
-AGTM_Result*
+PGresult*
 agtm_GetResult(void)
 {
-	AGTM_Result 	*res = NULL;
 	AGTM_Conn 		*conn = agtm_conn;
 
 	if (!conn)
 		return NULL;
 
-	while ((res = agtm_PqParseInput(conn)) == NULL)
+	if(conn->pg_res)
 	{
-		int			flushResult;
-
-		/*
-		 * If data remains unsent, send it.  Else we might be waiting for the
-		 * result of a command the backend hasn't even got yet.
-		 */
-		while ((flushResult = pqFlush(conn->pg_Conn)) > 0)
-		{
-			if (pqWait(false, true, conn->pg_Conn))
-			{
-				flushResult = -1;
-				break;
-			}
-		}
-
-		/* Wait for some more data, and load it. */
-		if (flushResult ||
-			pqWait(true, false, conn->pg_Conn) ||
-			pqReadData(conn->pg_Conn) < 0)
-		{
-			/*
-			 * conn->errorMessage has been set by gtmpqWait or gtmpqReadData.
-			 */
-			return NULL;
-		}
+		PQclear(conn->pg_res);
+		conn->pg_res = NULL;
 	}
 
-	return res;
+	conn->pg_res = PQexecFinish(conn->pg_Conn);
+	return conn->pg_res;
 }
 
-static AGTM_Result*
-agtm_PqParseInput(AGTM_Conn *conn)
+StringInfo agtm_use_result_data(const PGresult *res, StringInfo buf)
 {
-	char		id;
-	int			msgLength;
-	int			avail;
-	AGTM_Result *result = NULL;
+	AssertArg(res && buf);
 
-	Assert(conn);
-
-	agtm_PqResetResultData(conn->agtm_Result);
-
-	result = conn->agtm_Result;
-
-	/*
-	 * Try to read a message.  First get the type code and length. Return
-	 * if not enough data.
-	 */
-	conn->pg_Conn->inCursor = conn->pg_Conn->inStart;
-	if (pqGetc(&id, conn->pg_Conn))
-		return NULL;
-
-	if (pqGetInt(&msgLength, 4, conn->pg_Conn))
-		return NULL;
-
-	/*
-	 * Try to validate message type/length here.  A length less than 4 is
-	 * definitely broken.  Large lengths should only be believed for a few
-	 * message types.
-	 */
-	if (msgLength < 4)
+	if(PQftype(res, 0) != BYTEAOID
+		|| (buf->data = PQgetvalue(res, 0, 0)) == NULL)
 	{
-		handleSyncLoss(conn->pg_Conn, id, msgLength);
-		return NULL;
+		ereport(ERROR, (errmsg("Invalid AGTM message")
+			, errcode(ERRCODE_INTERNAL_ERROR)));
 	}
-
-	if (msgLength > 30000 && !VALID_AGTM_MESSAGE_TYPE(id))
-	{
-		handleSyncLoss(conn->pg_Conn, id, msgLength);
-		return NULL;
-	}
-
-	/*
-	 * Can't process if message body isn't all here yet.
-	 */
-	msgLength = msgLength -4;
-	conn->agtm_Result->gr_msglen = msgLength;
-	avail = conn->pg_Conn->inEnd - conn->pg_Conn->inCursor;
-
-	if (avail < msgLength)
-	{
-
-		if (pqCheckInBufferSpace(conn->pg_Conn->inCursor + (size_t) msgLength,conn->pg_Conn))
-		{
-						/*
-			 * XXX add some better recovery code... plan is to skip over
-			 * the message using its length, then report an error. For the
-			 * moment, just treat this like loss of sync (which indeed it
-			 * might be!)
-			 */
-			handleSyncLoss(conn->pg_Conn, id, msgLength);
-		}
-
-		return NULL;
-	}
-
-	if(id == 'S')
-	{
-		if(agtm_PqParseSuccess(conn->pg_Conn, result) != 0)
-			return NULL;
-		/* Successfully consumed this message */
-		if (conn->pg_Conn->inCursor == conn->pg_Conn->inStart + 5 + msgLength)
-		{
-			/* Normal case: parsing agrees with specified length */
-			conn->pg_Conn->inStart = conn->pg_Conn->inCursor;
-		}
-		else
-		{
-			/* Trouble --- report it */
-			printfPQExpBuffer(&conn->pg_Conn->errorMessage,
-							  "message contents do not agree with length in message type \"%c\"\n",
-							  id);
-			/* trust the specified message length as what to skip */
-			conn->pg_Conn->inStart += 5 + msgLength;
-		}
-	}else
-	{
-		/* use default parsse */
-		PGresult *pgres;
-		ExecStatusType est;
-
-		conn->pg_Conn->inStart = conn->pg_Conn->inCursor;
-		pgres = PQgetResult(conn->pg_Conn);
-		est = PQresultStatus(pgres);
-		if(est == PGRES_FATAL_ERROR)
-		{
-			result->gr_status = AGTM_RESULT_ERROR;
-			printfPQExpBuffer(&conn->pg_Conn->errorMessage, "%s", PQresultErrorMessage(pgres));
-		}
-		PQclear(pgres);
-	}
-
-	return result;
+	buf->cursor = 0;
+	buf->len = PQgetlength(res, 0, 0);
+	buf->maxlen = buf->len;
+	return buf;
 }
 
-static void
-agtm_PqParseSnapshot(PGconn *conn, AGTM_Result *result)
+StringInfo agtm_use_result_type(const PGresult *res, StringInfo buf, AGTM_ResultType type)
 {
-	GlobalSnapshot gsnapshot = NULL;
+	agtm_use_result_data(res, buf);
+	agtm_check_result(buf, type);
+	return buf;
+}
 
-	Assert(conn && result);
-
-	gsnapshot = result->gr_resdata.snapshot;
-
-	if (pqGetnchar((char *)&(gsnapshot->xmin), sizeof(TransactionId), conn) ||	/* xmin */
-		pqGetnchar((char *)&(gsnapshot->xmax), sizeof(TransactionId), conn) ||	/* xmax */
-		pqGetInt((int*)&(gsnapshot->xcnt), sizeof(uint32),conn))				/* xcnt */
+void agtm_check_result(StringInfo buf, AGTM_ResultType type)
+{
+	int res = pq_getmsgint(buf, 4);
+	if(res != type)
 	{
-		printfPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("get xmin/xmax/xcnt from connection buffer error"));
-		result->gr_status = AGTM_RESULT_ERROR;
-		return ;
-	}
-
-	Assert(result->gr_resdata.snapshot->xip == NULL);							/* xip */
-	gsnapshot->xip = (TransactionId *)MemoryContextAllocZero(
-						TopMemoryContext,
-						sizeof(TransactionId) * gsnapshot->xcnt);
-	if (pqGetnchar((char *)gsnapshot->xip, sizeof(TransactionId) * gsnapshot->xcnt, conn))
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("get xip from connection buffer error"));
-		result->gr_status = AGTM_RESULT_ERROR;
-		return ;
-	}
-
-	if (pqGetInt((int*)&(gsnapshot->subxcnt), sizeof(uint32), conn))			/* subxcnt */
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("get subxcnt from connection buffer error"));
-		result->gr_status = AGTM_RESULT_ERROR;
-		return ;
-	}
-
-	Assert(result->gr_resdata.snapshot->subxip == NULL);						/* subxip */
-	gsnapshot->subxip = (TransactionId *)MemoryContextAllocZero(
-						TopMemoryContext,
-						sizeof(TransactionId) * gsnapshot->subxcnt);
-	if (pqGetnchar((char *)gsnapshot->subxip, sizeof(TransactionId) * gsnapshot->subxcnt, conn))
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("get subxip from connection buffer error"));
-		result->gr_status = AGTM_RESULT_ERROR;
-		return ;
-	}
-
-	if (pqGetnchar((char *)&(gsnapshot->suboverflowed), sizeof(bool), conn) ||			/* suboverflowed */
-		pqGetnchar((char *)&(gsnapshot->takenDuringRecovery), sizeof(bool), conn) ||	/* takenDuringRecovery */
-		/*pqGetnchar((char *)&(gsnapshot->copied), sizeof(bool), conn) ||*/					/* copied */
-		pqGetnchar((char *)&(gsnapshot->curcid), sizeof(uint32), conn) ||				/* curcid */
-		pqGetnchar((char *)&(gsnapshot->active_count), sizeof(uint32), conn) ||			/* active_count */
-		pqGetnchar((char *)&(gsnapshot->regd_count), sizeof(uint32), conn)) 			/* regd_count */
-	{
-		printfPQExpBuffer(&conn->errorMessage,
-			libpq_gettext("get suboverflowed/takenDuringRecovery/copied/curcid/active_count/regd_count from connection buffer error"));
-		result->gr_status = AGTM_RESULT_ERROR;
-		return ;
+		ereport(ERROR, (errmsg("need AGTM message %s, but result %s"
+			, gtm_util_result_name(type), gtm_util_result_name((AGTM_ResultType)res))));
 	}
 }
 
-static int
-agtm_PqParseSuccess(PGconn *conn, AGTM_Result *result)
+void agtm_use_result_end(StringInfo buf)
 {
-	Assert(conn && result);
-	Assert(result->gr_resdata.snapshot);
-
-	if (pqGetInt((int *)&result->gr_type, 4, conn))
-	{
-		result->gr_status = AGTM_RESULT_ERROR;
-		return EOF;
-	}
-
-	result->gr_status = AGTM_RESULT_OK;
-	result->gr_msglen -= 4;
-	switch (result->gr_type)
-	{
-		case AGTM_SNAPSHOT_GET_RESULT:
-			agtm_PqParseSnapshot(conn, result);
-			break;
-
-		case AGTM_GET_GXID_RESULT:
-			if(pqGetnchar((char *)&result->gr_resdata.grd_gxid,sizeof (TransactionId), conn))
-			{
-				printfPQExpBuffer(&conn->errorMessage,
-					libpq_gettext("get gxid from connection buffer error"));
-				result->gr_status = AGTM_RESULT_ERROR;
-			}
-			break;
-
-		case AGTM_GET_TIMESTAMP_RESULT:
-			if (pqGetnchar((char *)&result->gr_resdata.grd_timestamp,sizeof (Timestamp), conn))
-			{
-				printfPQExpBuffer(&conn->errorMessage,
-					libpq_gettext("get timestamp from connection buffer error"));
-				result->gr_status = AGTM_RESULT_ERROR;
-			}
-			break;
-
-		case AGTM_SEQUENCE_GET_NEXT_RESULT:
-		case AGTM_MSG_SEQUENCE_GET_CUR_RESULT:
-		case AGTM_SEQUENCE_GET_LAST_RESULT:
-		case AGTM_SEQUENCE_SET_VAL_RESULT:
-			if(pqGetnchar((char *)&result->gr_resdata.gsq_val,sizeof(AGTM_Sequence),conn))
-			{
-				printfPQExpBuffer(&conn->errorMessage,
-					libpq_gettext("get seqval from connection buffer error"));
-				result->gr_status = AGTM_RESULT_ERROR;
-			}
-			break;
-
-		case AGTM_COMPLETE_RESULT:
-			/* no message result */
-			break;
-
-		default:			
-			ereport(ERROR,
-				(errmsg("agtm result type is unknow,type : %d",
-				result->gr_type)));
-			break;
-
-	}
-
-	return (result->gr_status);
-}
-
-static void
-agtm_PqResetResultData(AGTM_Result* result)
-{
-	Assert(result);
-
-	switch(result->gr_type)
-	{
-		case AGTM_GET_GXID_RESULT:
-			result->gr_resdata.grd_gxid = InvalidTransactionId;
-			break;
-		case AGTM_GET_TIMESTAMP_RESULT:
-			result->gr_resdata.grd_timestamp = 0;
-			break;
-		case AGTM_SNAPSHOT_GET_RESULT:
-			{
-				MemoryContext oldctx = MemoryContextSwitchTo(TopMemoryContext);
-
-				result->gr_resdata.snapshot->xmin = InvalidTransactionId;
-				result->gr_resdata.snapshot->xmax = InvalidTransactionId;
-				result->gr_resdata.snapshot->xcnt = 0;
-				if(result->gr_resdata.snapshot->xip != NULL)
-				{
-					pfree(result->gr_resdata.snapshot->xip);
-					result->gr_resdata.snapshot->xip = NULL;
-				}
-
-				result->gr_resdata.snapshot->subxcnt = 0;
-				if(result->gr_resdata.snapshot->subxip != NULL)
-				{
-					pfree(result->gr_resdata.snapshot->subxip);
-					result->gr_resdata.snapshot->subxip = NULL;
-				}
-
-				result->gr_resdata.snapshot->suboverflowed = false;
-				result->gr_resdata.snapshot->takenDuringRecovery = false;
-				result->gr_resdata.snapshot->copied = false;
-
-				result->gr_resdata.snapshot->curcid = 0;
-				result->gr_resdata.snapshot->active_count = 0;
-				result->gr_resdata.snapshot->regd_count = 0;
-
-				(void)MemoryContextSwitchTo(oldctx);
-			}
-			break;
-
-		case AGTM_SEQUENCE_GET_NEXT_RESULT:
-		case AGTM_MSG_SEQUENCE_GET_CUR_RESULT:
-		case AGTM_SEQUENCE_GET_LAST_RESULT:
-		case AGTM_SEQUENCE_SET_VAL_RESULT:		
-			result->gr_resdata.gsq_val = 0;
-			break;
-			
-		case AGTM_NONE_RESULT:
-		case AGTM_COMPLETE_RESULT:
-			break;
-
-		default:		
-			ereport(ERROR,
-				(errmsg("agtm result type is unknow, type : %d",
-				result->gr_type)));
-			break;		
-	}
-	result->gr_type = AGTM_NONE_RESULT;
-	result->gr_msglen = 0;
-	result->gr_status = AGTM_RESULT_OK;
+	if (buf->cursor != buf->len)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid message format from AGTM")));
 }

@@ -11,11 +11,8 @@
 #include "storage/procarray.h"
 #include "utils/snapmgr.h"
 
-static void agtm_pq_send_complete(void);
-
-void ProcessGetGXIDCommand(StringInfo message)
+StringInfo ProcessGetGXIDCommand(StringInfo message, StringInfo output)
 {
-	StringInfoData	buf;
 	TransactionId	xid;
 	bool			isSubXact;
 
@@ -32,65 +29,58 @@ void ProcessGetGXIDCommand(StringInfo message)
 	}
 
 	/* Respond to the client */
-	pq_beginmessage(&buf, 'S');
-	pq_sendint(&buf, AGTM_GET_GXID_RESULT, 4);
-	pq_sendbytes(&buf, (char *)&xid, sizeof(xid));
-	pq_endmessage(&buf);
-	pq_flush();
+	pq_sendint(output, AGTM_GET_GXID_RESULT, 4);
+	pq_sendbytes(output, (char *)&xid, sizeof(xid));
+
+	return output;
 }
 
-void ProcessGetTimestamp(StringInfo message)
+StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output)
 {
-	StringInfoData buf;
 	Timestamp timestamp;
 
 	pq_getmsgend(message);
 	timestamp = GetCurrentTransactionStartTimestamp();
 
 	/* Respond to the client */
-	pq_beginmessage(&buf, 'S');
-	pq_sendint(&buf, AGTM_GET_TIMESTAMP_RESULT, 4);
-	pq_sendbytes(&buf, (char *)&timestamp, sizeof(timestamp));
-	pq_endmessage(&buf);
-	pq_flush();
+	pq_sendint(output, AGTM_GET_TIMESTAMP_RESULT, 4);
+	pq_sendbytes(output, (char *)&timestamp, sizeof(timestamp));
+
+	return output;
 }
 
-void ProcessGetSnapshot(StringInfo message)
+StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 {
-	StringInfoData buf;
 	GlobalSnapshot snapshot;
 
 	pq_getmsgend(message);
 	snapshot = (GlobalSnapshot)GetTransactionSnapshot();
 
 	/* Respond to the client */
-	pq_beginmessage(&buf, 'S');
-	pq_sendint(&buf, AGTM_SNAPSHOT_GET_RESULT, 4);
+	pq_sendint(output, AGTM_SNAPSHOT_GET_RESULT, 4);
 
-	pq_sendbytes(&buf, (char *)&snapshot->xmin, sizeof (TransactionId));
-	pq_sendbytes(&buf, (char *)&snapshot->xmax, sizeof (TransactionId));
+	pq_sendbytes(output, (char *)&snapshot->xmin, sizeof (TransactionId));
+	pq_sendbytes(output, (char *)&snapshot->xmax, sizeof (TransactionId));
 
-	pq_sendint(&buf, snapshot->xcnt, sizeof (int));
-	pq_sendbytes(&buf, (char *)snapshot->xip,
+	pq_sendint(output, snapshot->xcnt, sizeof (int));
+	pq_sendbytes(output, (char *)snapshot->xip,
 				 sizeof(TransactionId) * snapshot->xcnt);
 
-	pq_sendint(&buf, snapshot->subxcnt, sizeof (int));
-	pq_sendbytes(&buf, (char *)snapshot->subxip,
+	pq_sendint(output, snapshot->subxcnt, sizeof (int));
+	pq_sendbytes(output, (char *)snapshot->subxip,
 				 sizeof(TransactionId) * snapshot->subxcnt);
 
-	pq_sendbytes(&buf, (char *)&snapshot->suboverflowed, sizeof(snapshot->suboverflowed));
-	pq_sendbytes(&buf, (char *)&snapshot->takenDuringRecovery, sizeof(snapshot->takenDuringRecovery));
-	/*pq_sendbytes(&buf, (char *)&snapshot->copied, sizeof(snapshot->copied));*/
-	pq_sendbytes(&buf, (char *)&snapshot->curcid, sizeof(snapshot->curcid));
-	pq_sendbytes(&buf, (char *)&snapshot->active_count, sizeof(snapshot->active_count));
-	pq_sendbytes(&buf, (char *)&snapshot->regd_count, sizeof(snapshot->regd_count));
+	pq_sendbytes(output, (char *)&snapshot->suboverflowed, sizeof(snapshot->suboverflowed));
+	pq_sendbytes(output, (char *)&snapshot->takenDuringRecovery, sizeof(snapshot->takenDuringRecovery));
+	/*pq_sendbytes(output, (char *)&snapshot->copied, sizeof(snapshot->copied));*/
+	pq_sendbytes(output, (char *)&snapshot->curcid, sizeof(snapshot->curcid));
+	pq_sendbytes(output, (char *)&snapshot->active_count, sizeof(snapshot->active_count));
+	pq_sendbytes(output, (char *)&snapshot->regd_count, sizeof(snapshot->regd_count));
 
-	pq_endmessage(&buf);
-	pq_flush();
-
+	return output;
 }
 
-void ProcessXactLockTableWait(StringInfo message)
+StringInfo ProcessXactLockTableWait(StringInfo message, StringInfo output)
 {
 	TransactionId xid;
 	LOCKTAG		tag;
@@ -108,12 +98,15 @@ void ProcessXactLockTableWait(StringInfo message)
 		if (!TransactionIdIsInProgress(xid))
 			break;
 	}
+	while(TransactionIdIsValid(xid))
+		xid = (TransactionId)pq_getmsgint(message, sizeof(xid));
+
 	pq_getmsgend(message);
 
-	agtm_pq_send_complete();
+	return NULL;
 }
 
-void ProcessLockTransaction(StringInfo message)
+StringInfo ProcessLockTransaction(StringInfo message, StringInfo output)
 {
 	TransactionId xid;
 	LOCKTAG tag;
@@ -131,14 +124,5 @@ void ProcessLockTransaction(StringInfo message)
 	else
 		LockRelease(&tag, mode, false);
 
-	agtm_pq_send_complete();
-}
-
-static void agtm_pq_send_complete(void)
-{
-	StringInfoData buf;
-	pq_beginmessage(&buf, 'S');
-	pq_sendint(&buf, AGTM_COMPLETE_RESULT, 4);
-	pq_endmessage(&buf);
-	pq_flush();
+	return NULL;
 }

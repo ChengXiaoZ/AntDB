@@ -16,263 +16,186 @@
 
 #include <unistd.h>
 
-static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type);
-static AGTM_Result* agtm_get_result(AGTM_MessageType msg_type);
+static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type, AGTM_ResultType rtype);
+static PGresult* agtm_get_result(AGTM_MessageType msg_type);
 static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 			__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
 
 TransactionId
 agtm_GetGlobalTransactionId(bool isSubXact)
 {
-	AGTM_Result 		*res;
+	PGresult 		*res;
+	StringInfoData	buf;
 	GlobalTransactionId gxid;
-	PGconn				*conn = NULL;
 
 	if(!IsUnderAGTM())
 		return InvalidGlobalTransactionId;
 
-	conn = getAgtmConnection();
-
-	/* send message*/
-	if (pqPutMsgStart('A',true,conn) < 0 ||
-		pqPutInt(AGTM_MSG_GET_GXID,4,conn) < 0 ||
-		pqPutc((char)isSubXact, conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("put message to PGconn error, %s, message type = AGTM_MSG_GET_GXID",
-			PQerrorMessage(conn))));
-	}
+	agtm_send_message(AGTM_MSG_GET_GXID, "%c", isSubXact);
 	res = agtm_get_result(AGTM_MSG_GET_GXID);
-	if (res->gr_status != AGTM_RESULT_OK)
-	{
-		return InvalidGlobalTransactionId;
-	}
-
-	gxid = (GlobalTransactionId)res->gr_resdata.grd_gxid;
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_GET_GXID_RESULT);
+	pq_copymsgbytes(&buf, (char*)&gxid, sizeof(TransactionId));
 
 	ereport(LOG, 
 		(errmsg("get global xid: %d from agtm", gxid)));
 
+	agtm_use_result_end(&buf);
 	return gxid;
-
 }
 
 Timestamp
 agtm_GetTimestamptz(void)
 {
-	AGTM_Result		*res;
+	PGresult		*res;
+	StringInfoData	buf;
 	Timestamp		timestamp;
-	PGconn 			*conn = NULL;
 
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_GetTimestamptz function must under AGTM")));
 
-	conn = getAgtmConnection();
-
-	/* send message*/
-	if(pqPutMsgStart('A',true,conn) < 0 ||
-		pqPutInt(AGTM_MSG_GET_TIMESTAMP,4,conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("put message to PGconn error, %s, message type = AGTM_MSG_GET_TIMESTAMP",
-			PQerrorMessage(conn))));
-	}
+	agtm_send_message(AGTM_MSG_GET_TIMESTAMP, "");
 	res = agtm_get_result(AGTM_MSG_GET_TIMESTAMP);
-	if (res->gr_status != AGTM_RESULT_OK)
-		ereport(ERROR,
-			(errmsg("agtm_GetResult result not ok, message type = AGTM_MSG_GET_TIMESTAMP, %s",
-			PQerrorMessage(conn))));
-
-	timestamp = res->gr_resdata.grd_timestamp;
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_GET_TIMESTAMP_RESULT);
+	pq_copymsgbytes(&buf, (char*)&timestamp, sizeof(timestamp));
 
 	ereport(DEBUG1,
 		(errmsg("get timestamp: %ld from agtm", timestamp)));
 
+	agtm_use_result_end(&buf);
 	return timestamp;
 }
 
 GlobalSnapshot
 agtm_GetSnapShot(GlobalSnapshot snapshot)
 {
-	AGTM_Result 	*res;
-	PGconn			*conn = NULL;
+	PGresult 	*res;
+	const char *str;
+	StringInfoData	buf;
 	AssertArg(snapshot && snapshot->xip && snapshot->subxip);
 
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_GetSnapShot function must under AGTM")));
 
-	conn = getAgtmConnection();
-
-	/* send message*/
-	if(pqPutMsgStart('A',true,conn) < 0 ||
-		pqPutInt(AGTM_MSG_SNAPSHOT_GET,4,conn) < 0 ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("put message to PGconn error, %s, message type = AGTM_MSG_SNAPSHOT_GET",
-			PQerrorMessage(conn))));
-	}
+	agtm_send_message(AGTM_MSG_SNAPSHOT_GET, "");
 	res = agtm_get_result(AGTM_MSG_SNAPSHOT_GET);
-	if (res->gr_status != AGTM_RESULT_OK)
-		ereport(ERROR,
-			(errmsg("agtm_GetResult result not ok, message type = AGTM_MSG_SNAPSHOT_GET, %s",
-			PQerrorMessage(conn))));
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_SNAPSHOT_GET_RESULT);
 
-	snapshot->xmin = res->gr_resdata.snapshot->xmin;
-	snapshot->xmax = res->gr_resdata.snapshot->xmax;
-	snapshot->xcnt = res->gr_resdata.snapshot->xcnt;
+	pq_copymsgbytes(&buf, (char*)&(snapshot->xmin), sizeof(snapshot->xmin));
+	pq_copymsgbytes(&buf, (char*)&(snapshot->xmax), sizeof(snapshot->xmax));
+	snapshot->xcnt = pq_getmsgint(&buf, sizeof(snapshot->xcnt));
 	if(snapshot->xcnt > GetMaxSnapshotXidCount())
 		ereport(ERROR, (errmsg("too many transaction")));
-
-	memcpy(snapshot->xip,res->gr_resdata.snapshot->xip,
-		sizeof(TransactionId) * snapshot->xcnt);
-
-	snapshot->suboverflowed = res->gr_resdata.snapshot->suboverflowed;
-	snapshot->subxcnt = res->gr_resdata.snapshot->subxcnt;
+	pq_copymsgbytes(&buf, (char*)(snapshot->xip)
+		, sizeof(snapshot->xip[0]) * (snapshot->xcnt));
+	snapshot->subxcnt = pq_getmsgint(&buf, sizeof(snapshot->subxcnt));
+	str = pq_getmsgbytes(&buf, snapshot->subxcnt * sizeof(snapshot->subxip[0]));
+	snapshot->suboverflowed = pq_getmsgbyte(&buf);
 	if(snapshot->subxcnt > GetMaxSnapshotXidCount())
 	{
-		snapshot->suboverflowed = true;
 		snapshot->subxcnt = GetMaxSnapshotXidCount();
+		snapshot->suboverflowed = true;
 	}
+	memcpy(snapshot->subxip, str, sizeof(snapshot->subxip[0]) * snapshot->subxcnt);
+	snapshot->takenDuringRecovery = pq_getmsgbyte(&buf);
+	pq_copymsgbytes(&buf, (char*)&(snapshot->curcid), sizeof(snapshot->curcid));
+	pq_copymsgbytes(&buf, (char*)&(snapshot->active_count), sizeof(snapshot->active_count));
+	pq_copymsgbytes(&buf, (char*)&(snapshot->regd_count), sizeof(snapshot->regd_count));
 
-	memcpy(snapshot->subxip,res->gr_resdata.snapshot->subxip,
-		sizeof(TransactionId) * snapshot->subxcnt);
-
-	snapshot->takenDuringRecovery = res->gr_resdata.snapshot->takenDuringRecovery;
-	/*snapshot->copied = res->gr_resdata.snapshot->copied;*/
-	snapshot->curcid = res->gr_resdata.snapshot->curcid;
-	snapshot->active_count = res->gr_resdata.snapshot->active_count;
-	snapshot->regd_count = res->gr_resdata.snapshot->regd_count;
-
+	agtm_use_result_end(&buf);
 	return snapshot;
 }
 
 static AGTM_Sequence 
-agtm_DealSequence(const char *seqname, AGTM_MessageType type)
+agtm_DealSequence(const char *seqname, AGTM_MessageType type, AGTM_ResultType rtype)
 {
-	AGTM_Result		*res;
-	PGconn			*conn = NULL;
-	StringInfoData 	seq_key;
+	PGresult		*res;
+	StringInfoData	buf;
+	int				seq_len;
+	AGTM_Sequence	seq;
 
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_DealSequence function must under AGTM")));
 
-	conn = getAgtmConnection();
-
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
 			(errmsg("message type = (%s), parameter seqname is null", gtm_util_message_name(type))));
 
-	initStringInfo(&seq_key);
-	appendStringInfoString(&seq_key,seqname);
-	Assert(seq_key.len > 0);
-
-	/* send message*/
-	if(pqPutMsgStart('A', true, conn) < 0 ||
-		pqPutInt(type, 4, conn) < 0 ||
-		pqPutInt(seq_key.len, 4, conn) ||
-		pqPutnchar(seq_key.data, seq_key.len, conn) ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("put message to PGconn error, %s, message type = %s",
-			PQerrorMessage(conn), gtm_util_message_name(type))));
-	}
+	seq_len = strlen(seqname);
+	agtm_send_message(type, "%d%d %p%d", seq_len, 4, seqname, seq_len);
 	res = agtm_get_result(type);
-	if (res->gr_status != AGTM_RESULT_OK)
-		ereport(ERROR,
-			(errmsg("result status is not ok, %s, message type = %s",
-			PQerrorMessage(conn), gtm_util_message_name(type))));
-	pfree(seq_key.data);
-	return (res->gr_resdata.gsq_val);
-	
+	Assert(res);
+	agtm_use_result_type(res, &buf, rtype);
+	pq_copymsgbytes(&buf, (char*)&seq, sizeof(seq));
+
+	agtm_use_result_end(&buf);
+	return seq;
 }
 
 AGTM_Sequence 
 agtm_GetSeqNextVal(const char *seqname)
 {
-	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_NEXT);
+	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_NEXT
+			, AGTM_SEQUENCE_GET_NEXT_RESULT);
 }
 
 AGTM_Sequence 
 agtm_GetSeqCurrVal(const char *seqname)
 {
-	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_CUR);
+	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_CUR
+			, AGTM_MSG_SEQUENCE_GET_CUR_RESULT);
 }
 
 AGTM_Sequence
 agtm_GetSeqLastVal(const char *seqname)
 {
-	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_LAST);
+	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_LAST
+			, AGTM_SEQUENCE_GET_LAST_RESULT);
 }
 
 
 AGTM_Sequence
-
 agtm_SetSeqVal(const char *seqname, AGTM_Sequence nextval)
 {
 	return (agtm_SetSeqValCalled(seqname, nextval, true));
 }
 
 AGTM_Sequence
-
 agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 {
-	AGTM_Result 	*res;
-	PGconn 			*conn = NULL;
-	StringInfoData 	seq_key;
-	
+	PGresult		*res;
+	StringInfoData	buf;
+	int				len;
+	AGTM_Sequence	seq;
+
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_SetSeqValCalled function must under AGTM")));
-
-	conn = getAgtmConnection();
 
 	if(seqname == NULL || seqname[0] == '\0')
 		ereport(ERROR,
 			(errmsg("message type = %s, parameter seqname is null",
 			"AGTM_MSG_SEQUENCE_SET_VAL")));
 
-	initStringInfo(&seq_key);
-	appendStringInfoString(&seq_key,seqname);
-	Assert(seq_key.len > 0);
-
-	/* send message*/
-	if(pqPutMsgStart('A', true, conn) < 0 ||
-		pqPutInt(AGTM_MSG_SEQUENCE_SET_VAL, 4, conn) < 0 ||
-		pqPutInt(seq_key.len, 4, conn) ||
-		pqPutnchar(seq_key.data, seq_key.len, conn) ||
-		pqPutnchar((char*)&nextval, sizeof(nextval), conn) ||
-		pqPutc(iscalled, conn) ||
-		pqPutMsgEnd(conn) < 0)
-	{
-		pqHandleSendFailure(conn);
-		ereport(ERROR,
-			(errmsg("put message to PGconn error, %s, message type = %s",
-			PQerrorMessage(conn), "AGTM_MSG_SEQUENCE_SET_VAL")));
-	}
+	len = strlen(seqname);
+	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL, "%d%d %p%d %c"
+		, len, 4, seqname, len, iscalled);
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_SET_VAL);
-	if (res->gr_status != AGTM_RESULT_OK)
-		ereport(ERROR,
-			(errmsg("agtm_GetResult result not ok, message type = %s, %s",
-			"AGTM_MSG_SEQUENCE_SET_VAL", PQerrorMessage(conn))));
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_SEQUENCE_SET_VAL_RESULT);
+	pq_copymsgbytes(&buf, (char*)&seq, sizeof(seq));
 
-	pfree(seq_key.data);
-	return (res->gr_resdata.gsq_val);
+	agtm_use_result_end(&buf);
+	return seq;
 }
 
 void agtm_XactLockTableWait(TransactionId xid)
 {
-	AGTM_Result *result;
 	StringInfoData buf;
 
 	if(!IsUnderAGTM())
@@ -293,28 +216,16 @@ void agtm_XactLockTableWait(TransactionId xid)
 	agtm_send_message(AGTM_MSG_XACT_LOCK_TABLE_WAIT, "%p%d", buf.data, buf.len);
 	pfree(buf.data);
 
-	result = agtm_get_result(AGTM_MSG_XACT_LOCK_TABLE_WAIT);
-	if(result == NULL || result->gr_status != AGTM_RESULT_OK)
-	{
-		ereport(ERROR,
-			(errmsg("agtm_XactLockTableWait failed:%s", PQerrorMessage(getAgtmConnection()))));
-	}
+	agtm_get_result(AGTM_MSG_XACT_LOCK_TABLE_WAIT);
 }
 
 void agtm_LockTransactionId(TransactionId xid, char lock_type, bool is_lock)
 {
-	AGTM_Result *result;
-
 	if(!IsUnderAGTM())
 		return;
 
 	agtm_send_message(AGTM_MSG_LOCK_TRANSACTION, "%d%d %c %c", xid, (int)sizeof(xid), lock_type, is_lock);
-	result = agtm_get_result(AGTM_MSG_LOCK_TRANSACTION);
-	if(result == NULL || result->gr_status != AGTM_RESULT_OK)
-	{
-		ereport(ERROR,
-			(errmsg("agtm_LockTransactionId failed:%s", PQerrorMessage(getAgtmConnection()))));
-	}
+	agtm_get_result(AGTM_MSG_LOCK_TRANSACTION);
 }
 
 /*
@@ -339,7 +250,8 @@ static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 	conn = getAgtmConnection();
 
 	/* start message */
-	if(pqPutMsgStart('A', true, conn) < 0)
+	if(PQsendQueryStart(conn) == false
+		|| pqPutMsgStart('A', true, conn) < 0)
 	{
 		pqHandleSendFailure(conn);
 		ereport(ERROR, (errmsg("Start message for agtm failed:%s", PQerrorMessage(conn))));
@@ -414,6 +326,8 @@ static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 		pqHandleSendFailure(conn);
 		ereport(ERROR, (errmsg("End message for agtm failed:%s", PQerrorMessage(conn))));
 	}
+
+	conn->asyncStatus = PGASYNC_BUSY;
 	return;
 
 format_error_:
@@ -433,10 +347,11 @@ put_error_:
 /*
  * call pqFlush, pqWait, pqReadData and return agtm_GetResult
  */
-static AGTM_Result* agtm_get_result(AGTM_MessageType msg_type)
+static PGresult* agtm_get_result(AGTM_MessageType msg_type)
 {
 	PGconn *conn;
-	AGTM_Result *result;
+	PGresult *result;
+	ExecStatusType state;
 	int res;
 
 	conn = getAgtmConnection();
@@ -451,13 +366,23 @@ static AGTM_Result* agtm_get_result(AGTM_MessageType msg_type)
 			PQerrorMessage(conn), gtm_util_message_name(msg_type))));
 	}
 
+	result = NULL;
 	if(pqWait(true, false, conn) != 0
 		|| pqReadData(conn) < 0
-		|| (result = agtm_GetResult()) == NULL)
+		|| (result = PQexecFinish(conn)) == NULL)
 	{
 		ereport(ERROR,
-			(errmsg("flush message to AGTM error:%s, message type:%s",
+			(errmsg("read message from AGTM error:%s, message type:%s",
 			PQerrorMessage(conn), gtm_util_message_name(msg_type))));
+	}
+
+	state = PQresultStatus(result);
+	if(state == PGRES_FATAL_ERROR)
+	{
+		ereport(ERROR, (errmsg("got error message from AGTM %s", PQresultErrorMessage(result))));
+	}else if(state != PGRES_TUPLES_OK && state != PGRES_COMMAND_OK)
+	{
+		ereport(ERROR, (errmsg("AGTM result a \"%s\" message", PQresStatus(state))));
 	}
 
 	return result;

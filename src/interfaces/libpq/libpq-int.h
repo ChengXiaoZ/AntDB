@@ -533,6 +533,8 @@ extern void pqSaveParameterStatus(PGconn *conn, const char *name,
 					  const char *value);
 extern int	pqRowProcessor(PGconn *conn, const char **errmsgp);
 extern void pqHandleSendFailure(PGconn *conn);
+extern PGresult *PQexecFinish(PGconn *conn);
+extern bool PQsendQueryStart(PGconn *conn);
 
 /* === in fe-protocol2.c === */
 

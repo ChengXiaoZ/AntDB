@@ -18,22 +18,22 @@
 
 #include "lib/stringinfo.h"
 
-void ProcessNextSeqCommand(StringInfo message);
+StringInfo ProcessNextSeqCommand(StringInfo message, StringInfo output);
 
 /*
  *  select currval('seq1') will call this fucntion.function currval('sequence') called
  *  must after nextval('sequence') called and in the same session .otherwise function
  *  currval must be ereport(error)
  */
-void ProcessCurSeqCommand(StringInfo message);
+StringInfo ProcessCurSeqCommand(StringInfo message, StringInfo output);
 
 /*
  *  select lastval() will call this fucntion.function currval('sequence') called
  *  must after nextval('sequence') called and in the same session .otherwise function
  *  currval must be ereport(error)
  */
-void PorcessLastSeqCommand(StringInfo message);
+StringInfo PorcessLastSeqCommand(StringInfo message, StringInfo output);
 
-void ProcessSetSeqCommand(StringInfo message); 
+StringInfo ProcessSetSeqCommand(StringInfo message, StringInfo output);
 
 #endif

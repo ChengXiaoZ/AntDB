@@ -17,15 +17,16 @@
 #include "postgres.h"
 
 #include "lib/stringinfo.h"
+#include "tcop/dest.h"
 
-void ProcessGetGXIDCommand(StringInfo message);
+StringInfo ProcessGetGXIDCommand(StringInfo message, StringInfo output);
 
-void ProcessGetTimestamp(StringInfo message);
+StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output);
 
-void ProcessGetSnapshot(StringInfo message);
+StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output);
 
-void ProcessXactLockTableWait(StringInfo message);
+StringInfo ProcessXactLockTableWait(StringInfo message, StringInfo output);
 
-void ProcessLockTransaction(StringInfo message);
+StringInfo ProcessLockTransaction(StringInfo message, StringInfo output);
 
 #endif

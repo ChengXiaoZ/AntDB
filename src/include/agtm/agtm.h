@@ -6,7 +6,9 @@
 
 #include "agtm/agtm_protocol.h"
 #include "catalog/pg_database.h"
+#include "datatype/timestamp.h"
 #include "lib/stringinfo.h"
+#include "tcop/dest.h"
 #include "utils/snapshot.h"
 
 #ifdef  AGTM_DEBUG
@@ -127,6 +129,6 @@ extern void agtm_User(const char *dmlUser);
 /* 
  * process command
  */
-void ProcessAGtmCommand(StringInfo input_message);
+void ProcessAGtmCommand(StringInfo input_message, CommandDest dest);
 
 #endif

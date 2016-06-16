@@ -1,6 +1,7 @@
 #ifndef AGTM_CLIENT_H
 #define AGTM_CLIENT_H
 
+#include "agtm/agtm_msg.h"
 #include "agtm/agtm_protocol.h"
 #include "lib/stringinfo.h"
 #include "libpq/libpq-fe.h"
@@ -8,7 +9,7 @@
 typedef struct AGTM_Conn
 {
 	PGconn 		*pg_Conn;
-	AGTM_Result *agtm_Result;
+	PGresult	*pg_res;
 } AGTM_Conn;
 
 #define AGTM_RESULT_COMM_ERROR (-2) /* Communication error */
@@ -39,5 +40,10 @@ extern void agtm_SetPort(int listen_port);
 
 extern PGconn* getAgtmConnection(void);
 extern PGconn* getAgtmConnectionByDBname(const char *dbname);
-extern AGTM_Result* agtm_GetResult(void);
+extern PGresult* agtm_GetResult(void);
+extern StringInfo agtm_use_result_data(const PGresult *res, StringInfo buf);
+extern StringInfo agtm_use_result_type(const PGresult *res, StringInfo buf, AGTM_ResultType type);
+extern void agtm_check_result(StringInfo buf, AGTM_ResultType type);
+extern void agtm_use_result_end(StringInfo buf);
+
 #endif

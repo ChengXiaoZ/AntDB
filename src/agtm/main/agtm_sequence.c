@@ -6,20 +6,15 @@
 #include "utils/builtins.h"
 #include "utils/resowner.h"
 
-static void RespondSeqToClient(int64 seq_val, AGTM_ResultType type);
+static void RespondSeqToClient(int64 seq_val, AGTM_ResultType type, StringInfo output);
 static void GetSeqKey(StringInfo message, char **seq_key);
 static int  GetSeqKeyToDatumOid(char *seq_key);
 
 static void
-RespondSeqToClient(int64 seq_val, AGTM_ResultType type)
+RespondSeqToClient(int64 seq_val, AGTM_ResultType type, StringInfo output)
 {
-	StringInfoData buf;
-	
-	pq_beginmessage(&buf, 'S');
-	pq_sendint(&buf, type, 4);
-	pq_sendbytes(&buf, (char *)&seq_val, sizeof(seq_val));
-	pq_endmessage(&buf);
-	pq_flush();
+	pq_sendint(output, type, 4);
+	pq_sendbytes(output, (char *)&seq_val, sizeof(seq_val));
 }
 
 static void
@@ -45,8 +40,8 @@ GetSeqKeyToDatumOid(char *seq_key)
 	return seq_name_to_oid;
 }
 
-void
-ProcessNextSeqCommand(StringInfo message)
+StringInfo
+ProcessNextSeqCommand(StringInfo message, StringInfo output)
 {
 	char *seq_key = NULL;
 	Datum seq_val_datum;
@@ -68,13 +63,14 @@ ProcessNextSeqCommand(StringInfo message)
 	CurrentResourceOwner = NULL;
 	
 	/* Respond to the client */
-	RespondSeqToClient(seq_val, AGTM_SEQUENCE_GET_NEXT_RESULT);
+	RespondSeqToClient(seq_val, AGTM_SEQUENCE_GET_NEXT_RESULT, output);
 
 	pfree(seq_key);
+	return output;
 }
 
-void
-ProcessCurSeqCommand(StringInfo message)
+StringInfo
+ProcessCurSeqCommand(StringInfo message, StringInfo output)
 {
 	char *seq_key = NULL;
 	Datum seq_val_datum;
@@ -99,13 +95,14 @@ ProcessCurSeqCommand(StringInfo message)
 	CurrentResourceOwner = NULL;
 	
 	/* Respond to the client */
-	RespondSeqToClient(seq_val, AGTM_MSG_SEQUENCE_GET_CUR_RESULT);
+	RespondSeqToClient(seq_val, AGTM_MSG_SEQUENCE_GET_CUR_RESULT, output);
 
 	pfree(seq_key);
+	return output;
 }
 
-void
-PorcessLastSeqCommand(StringInfo message)
+StringInfo
+PorcessLastSeqCommand(StringInfo message, StringInfo output)
 {
 	char *seq_key = NULL;
 	Datum seq_val_datum;
@@ -127,13 +124,14 @@ PorcessLastSeqCommand(StringInfo message)
 	CurrentResourceOwner = NULL;
 	
 	/* Respond to the client */
-	RespondSeqToClient(seq_val, AGTM_SEQUENCE_GET_LAST_RESULT);
+	RespondSeqToClient(seq_val, AGTM_SEQUENCE_GET_LAST_RESULT, output);
 	
 	pfree(seq_key);
+	return output;
 }
 
-void
-ProcessSetSeqCommand(StringInfo message)
+StringInfo
+ProcessSetSeqCommand(StringInfo message, StringInfo output)
 {
 	char *seq_key = NULL;
 	int64 seq_nextval;
@@ -161,8 +159,8 @@ ProcessSetSeqCommand(StringInfo message)
 	CurrentResourceOwner = NULL;
 	
 	/* Respond to the client */
-	RespondSeqToClient(seq_val,AGTM_SEQUENCE_SET_VAL_RESULT);	
+	RespondSeqToClient(seq_val,AGTM_SEQUENCE_SET_VAL_RESULT, output);
 
 	pfree(seq_key);
+	return output;
 }
-
