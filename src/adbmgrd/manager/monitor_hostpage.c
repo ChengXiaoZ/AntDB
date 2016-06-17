@@ -109,6 +109,7 @@ static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk);
 static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu);
 static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
 static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
+static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net);
 
 /*
  *	get the host info(host base info, cpu, disk, mem, net)
@@ -266,12 +267,23 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 		/* disk i/o write time (in milliseconds) */
 		monitor_disk.disk_io_write_time = atoui(&agentRstStr.data[agentRstStr.cursor]);
 		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+		/* net timestamp with timezone */
+		appendStringInfoString(&monitor_net.net_timestamp, &agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
+
+		/* net sent speed (in bytes/s) */
+		monitor_net.net_sent = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+		
+		/* net recv (in bytes/s) */
+		monitor_net.net_recv = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 	//}
 
 	insert_into_monotor_cpu(host_oid, &monitor_cpu);
 	insert_into_monotor_mem(host_oid, &monitor_mem);
 	insert_into_monotor_disk(host_oid, &monitor_disk);
-
+	insert_into_monotor_net(host_oid, &monitor_net);
 	pfree_Monitor_Host(&monitor_host);
 	pfree_Monitor_Cpu(&monitor_cpu);
 	pfree_Monitor_Mem(&monitor_mem);
@@ -357,6 +369,28 @@ static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk)
 	heap_close(monitordisk, RowExclusiveLock);
 }
 
+static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net)
+{
+	Relation monitornet;
+	HeapTuple newtuple;
+	Datum datum[Natts_monitor_net];
+	bool isnull[Natts_monitor_net];
+
+	datum[Anum_monitor_net_host_oid - 1] = ObjectIdGetDatum(host_oid);
+	datum[Anum_monitor_net_mn_timestamptz - 1] = 
+		DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_net->net_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	datum[Anum_monitor_net_mn_sent - 1] = Int16GetDatum(monitor_net->net_sent);
+	datum[Anum_monitor_net_mn_recv - 1] = Int16GetDatum(monitor_net->net_recv);
+
+	memset(isnull, 0, sizeof(isnull));
+
+	monitornet = heap_open(MonitorNetRelationId, RowExclusiveLock);
+	newtuple = heap_form_tuple(RelationGetDescr(monitornet), datum, isnull);
+	simple_heap_insert(monitornet, newtuple);
+
+	heap_freetuple(newtuple);
+	heap_close(monitornet, RowExclusiveLock);
+}
 static void init_Monitor_Host(Monitor_Host *monitor_host)
 {
 	initStringInfo(&monitor_host->ip_addr);
