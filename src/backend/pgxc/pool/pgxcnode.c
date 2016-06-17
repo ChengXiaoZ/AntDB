@@ -528,8 +528,10 @@ retry:
 			{
 				/* Can not read - no more actions, just discard connection */
 				conn->state = DN_CONNECTION_STATE_ERROR_FATAL;
-				add_error_message(conn, "unexpected EOF on datanode connection");
-				elog(WARNING, "unexpected EOF on datanode connection");
+				add_error_message(conn,
+					"unexpected EOF on datanode %s's connection", NameStr(conn->name));
+				elog(WARNING,
+					"unexpected EOF on datanode %s's connection", NameStr(conn->name));
 				/* Should we read from the other connections before returning? */
 				return ERROR_OCCURED;
 			}
@@ -645,9 +647,10 @@ retry:
 			if (close_if_error)
 			{
 				add_error_message(conn,
-								"Datanode closed the connection unexpectedly\n"
+					"Datanode %s closed the connection unexpectedly\n"
 					"\tThis probably means the Datanode terminated abnormally\n"
-								"\tbefore or while processing the request.\n");
+					"\tbefore or while processing the request.",
+					NameStr(conn->name));
 				conn->state = DN_CONNECTION_STATE_ERROR_FATAL;	/* No more connection to
 															* backend */
 				closesocket(conn->sock);
@@ -657,7 +660,10 @@ retry:
 		}
 #endif
 		if (close_if_error)
-			add_error_message(conn, "could not receive data from server");
+		{
+			add_error_message(conn,
+				"Could not receive data from server %s", NameStr(conn->name));
+		}
 		return -1;
 
 	}
@@ -1178,9 +1184,11 @@ send_some(PGXCNodeHandle *handle, int len)
 #ifdef ECONNRESET
 				case ECONNRESET:
 #endif
-					add_error_message(handle, "server closed the connection unexpectedly\n"
-					"\tThis probably means the server terminated abnormally\n"
-							  "\tbefore or while processing the request.\n");
+					add_error_message(handle,
+						"server %s closed the connection unexpectedly\n"
+						"\tThis probably means the server terminated abnormally\n"
+						"\tbefore or while processing the request.",
+						NameStr(handle->name));
 
 					/*
 					 * We used to close the socket here, but that's a bad idea
@@ -1626,7 +1634,8 @@ pgxc_node_flush(PGXCNodeHandle *handle)
 	{
 		if (send_some(handle, handle->outEnd) < 0)
 		{
-			add_error_message(handle, "failed to send data to datanode");
+			add_error_message(handle,
+				"Fail to send data to datanode %s", NameStr(handle->name));
 			return EOF;
 		}
 	}

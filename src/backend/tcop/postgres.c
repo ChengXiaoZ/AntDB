@@ -4503,6 +4503,14 @@ PostgresMain(int argc, char *argv[],
 		ma_clean();
 #endif /* ADBMGRD */
 
+#ifdef ADB
+		if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		{
+			cancel_query();
+			clear_all_data();
+		}
+#endif
+
 		/* Now we can allow interrupts again */
 		RESUME_INTERRUPTS();
 	}

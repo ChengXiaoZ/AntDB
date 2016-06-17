@@ -731,7 +731,7 @@ HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, Oid nodeoi
  * Handle ErrorResponse ('E') message from a Datanode connection
  */
 static void
-HandleError(Oid from, RemoteQueryState *combiner, char *msg_body, size_t len)
+HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t len)
 {
 	/* parse error message */
 	char *code = NULL;
@@ -786,7 +786,7 @@ HandleError(Oid from, RemoteQueryState *combiner, char *msg_body, size_t len)
 	 */
 	if (combiner->errorMessage.len == 0)
 	{
-		appendStringInfo(&(combiner->errorMessage), "[From node %u]%s", from, message);
+		appendStringInfo(&(combiner->errorMessage), "[From node '%s']%s", from, message);
 		/* Error Code is exactly 5 significant bytes */
 		if (code)
 			memcpy(combiner->errorCode, code, 5);
@@ -1064,13 +1064,13 @@ BufferConnection(PGXCNodeHandle *conn)
 			if (pgxc_node_receive(1, &conn, NULL))
 			{
 				conn->state = DN_CONNECTION_STATE_ERROR_FATAL;
-				add_error_message(conn, "Failed to fetch from Datanode");
+				add_error_message(conn, "Failed to fetch from Datanode %s", NameStr(conn->name));
 			}
 		}
 		else if (res == RESPONSE_COMPLETE)
 		{
 			/* Remove current connection, move last in-place, adjust current_conn */
-			if (combiner->current_conn < --combiner->conn_count)
+			if (combiner->conn_count > 0 && combiner->current_conn < --combiner->conn_count)
 				combiner->connections[combiner->current_conn] = combiner->connections[combiner->conn_count];
 			else
 				combiner->current_conn = 0;
@@ -1209,7 +1209,7 @@ FetchTuple(RemoteQueryState *combiner, TupleTableSlot *slot)
 		else if (res == RESPONSE_COMPLETE)
 		{
 			/* Remove current connection, move last in-place, adjust current_conn */
-			if (combiner->current_conn < --combiner->conn_count)
+			if (combiner->conn_count > 0 && combiner->current_conn < --combiner->conn_count)
 				combiner->connections[combiner->current_conn] = combiner->connections[combiner->conn_count];
 			else
 				combiner->current_conn = 0;
@@ -1305,12 +1305,16 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 				default:
 					/* Inconsistent responses */
 					add_error_message(to_receive[i],
-						"Unexpected response from the Datanodes: %u, result = %d, request type %s",
-						to_receive[i]->nodeoid, result, print_request_type(combiner->request_type));
+						"Unexpected response from the Datanodes: %s, result = %d, request type %s",
+						NameStr(to_receive[i]->name),
+						result,
+						print_request_type(combiner->request_type));
 
 					elog(ERROR,
-						"Unexpected response from the Datanodes: %u, result = %d, request type %d",
-						to_receive[i]->nodeoid, result, combiner->request_type);
+						"Unexpected response from the Datanodes: %s, result = %d, request type %s",
+						NameStr(to_receive[i]->name),
+						result,
+						print_request_type(combiner->request_type));
 
 					/* Stop tracking and move last connection in place */
 					count--;
@@ -1433,8 +1437,9 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 				HandleCopyDataRow(combiner, msg, msg_len);
 				break;
 			case 'E':			/* ErrorResponse */
-				HandleError(conn->nodeoid, combiner, msg, msg_len);
-				add_error_message(conn, "%s", combiner->errorMessage.data);
+				HandleError(NameStr(conn->name), combiner, msg, msg_len);
+				add_error_message(conn, "[From node '%s']%s",
+					NameStr(conn->name), combiner->errorMessage.data);
 				/*
 				 * Do not return with an error, we still need to consume Z,
 				 * ready-for-query
@@ -2206,7 +2211,8 @@ pgxcNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot, char nod
 
 		if (pgxc_node_send_query(connections[i], query) != 0)
 		{
-			add_error_message(connections[i], "Can not send request");
+			add_error_message(connections[i], "Can not send request to %s",
+				NameStr(connections[i]->name));
 			pfree_pgxc_all_handles(pgxc_handles);
 			pfree(copy_connections);
 			return NULL;
@@ -2264,7 +2270,8 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 				int read_status = pgxc_node_read_data(primary_handle, true);
 				if (read_status == EOF || read_status < 0)
 				{
-					add_error_message(primary_handle, "failed to read data from Datanode");
+					add_error_message(primary_handle,
+						"Fail to read data from Datanode %s", NameStr(primary_handle->name));
 					return EOF;
 				}
 
@@ -2281,7 +2288,8 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 
 				if (send_some(primary_handle, primary_handle->outEnd) < 0)
 				{
-					add_error_message(primary_handle, "failed to send data to Datanode");
+					add_error_message(primary_handle,
+						"Fail to send data to Datanode %s", NameStr(primary_handle->name));
 					return EOF;
 				}
 				else if (primary_handle->outEnd > MAX_SIZE_TO_FORCE_FLUSH)
@@ -2309,7 +2317,8 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 		}
 		else
 		{
-			add_error_message(primary_handle, "Invalid Datanode connection");
+			add_error_message(primary_handle,
+				"Invalid Datanode %s's connection", NameStr(primary_handle->name));
 			return EOF;
 		}
 	}
@@ -2332,7 +2341,8 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 				int read_status = pgxc_node_read_data(handle, true);
 				if (read_status == EOF || read_status < 0)
 				{
-					add_error_message(handle, "failed to read data from Datanode");
+					add_error_message(handle,
+						"Fail to read data from Datanode %s", NameStr(handle->name));
 					return EOF;
 				}
 
@@ -2367,7 +2377,8 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 				 */
 				if (to_send && send_some(handle, to_send) < 0)
 				{
-					add_error_message(handle, "failed to send data to Datanode");
+					add_error_message(handle,
+						"Fail to send data to Datanode %s", NameStr(handle->name));
 					return EOF;
 				}
 				else if (handle->outEnd > MAX_SIZE_TO_FORCE_FLUSH)
@@ -2395,7 +2406,8 @@ DataNodeCopyIn(char *data_row, int len, ExecNodes *exec_nodes, PGXCNodeHandle** 
 		}
 		else
 		{
-			add_error_message(handle, "Invalid Datanode connection");
+			add_error_message(handle, "Invalid Datanode %s's connection",
+				NameStr(handle->name));
 			return EOF;
 		}
 	}
@@ -3281,6 +3293,7 @@ do_query(RemoteQueryState *node)
 		 * If we got EOF, move to the next connection, will receive more
 		 * data on the next iteration.
 		 */
+		i = 0;
 		while (i < regular_conn_count)
 		{
 			int res = handle_response(connections[i], node);
@@ -3328,7 +3341,7 @@ do_query(RemoteQueryState *node)
 		pgxc_node_report_error(node);
 	}
 
-	if (node->cursor_count)
+	if (node->cursor_count > 0)
 	{
 		node->conn_count = node->cursor_count;
 		memcpy(connections, node->cursor_connections, node->cursor_count * sizeof(PGXCNodeHandle *));
@@ -4273,7 +4286,8 @@ int DataNodeCopyInBinaryForAll(char *msg_buf, int len, PGXCNodeHandle** copy_con
 		}
 		else
 		{
-			add_error_message(handle, "Invalid Datanode connection");
+			add_error_message(handle,
+				"Invalid Datanode %s's connection", NameStr(handle->name));
 			return EOF;
 		}
 	}
@@ -5316,7 +5330,8 @@ static int flushPGXCNodeHandleData(PGXCNodeHandle *handle)
 		remaining = handle->outEnd;
 		if (send_some(handle, handle->outEnd) <0)
 		{
-			add_error_message(handle, "failed to send data to Datanode");
+			add_error_message(handle,
+				"Fail to send data to Datanode %s", NameStr(handle->name));
 			return EOF;
 		}
 		if (remaining == handle->outEnd)
