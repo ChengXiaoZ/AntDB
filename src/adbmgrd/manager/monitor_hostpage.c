@@ -85,7 +85,7 @@ typedef struct Monitor_Net
 /* for table: monitor_disk */
 typedef struct Monitor_Disk
 {
-	StringInfoData  disk_timestamp;
+	StringInfoData  disk_timestamptz;
 	int64			disk_total;
 	int64			disk_available;
 	int64			disk_io_read_bytes;
@@ -108,6 +108,7 @@ static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk);
 
 static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu);
 static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
+static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
 
 /*
  *	get the host info(host base info, cpu, disk, mem, net)
@@ -133,15 +134,15 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 	Monitor_Host monitor_host;
 	Monitor_Cpu monitor_cpu;
 	Monitor_Mem monitor_mem;
-	Monitor_Net monitor_net;
 	Monitor_Disk monitor_disk;
-	
+	Monitor_Net monitor_net;
+
 	initStringInfo(&agentRstStr);
 	init_Monitor_Host(&monitor_host);
 	init_Monitor_Cpu(&monitor_cpu);
 	init_Monitor_Mem(&monitor_mem);
-	init_Monitor_Net(&monitor_net);
 	init_Monitor_Disk(&monitor_disk);
+	init_Monitor_Net(&monitor_net);
 
     if (SRF_IS_FIRSTCALL())
     {
@@ -211,7 +212,6 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 		&(mgr_host->hostname)
 		, ret
 		, agentRstStr.data);
-	
 
 	//while ((ptmp = &agentRstStr.data[agentRstStr.cursor]) != '\0' && (agentRstStr.cursor < agentRstStr.len))
 	//{
@@ -227,22 +227,51 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 		appendStringInfoString(&monitor_mem.mem_timestamp, &agentRstStr.data[agentRstStr.cursor]);
 		agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
 
-		/* memory total size (in bytes)*/
+		/* memory total size (in Bytes)*/
 		monitor_mem.mem_total = atoui(&agentRstStr.data[agentRstStr.cursor]);
 		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
-		/* memory used size (in bytes) */
+		/* memory used size (in Bytes) */
 		monitor_mem.mem_used = atoui(&agentRstStr.data[agentRstStr.cursor]);
 		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
 		/* memory usage */
 		monitor_mem.mem_usage = atof(&agentRstStr.data[agentRstStr.cursor]);
 		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* disk timestamp with timezone */
+		appendStringInfoString(&monitor_disk.disk_timestamptz, &agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_timestamp.len + 1;
+
+		/* disk total size */
+		monitor_disk.disk_total = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* disk available size */
+		monitor_disk.disk_available = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* disk i/o read (in Bytes) */
+		monitor_disk.disk_io_read_bytes = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* disk i/o read time (in milliseconds) */
+		monitor_disk.disk_io_read_time = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* disk i/o write (in Bytes) */
+		monitor_disk.disk_io_write_bytes = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+		/* disk i/o write time (in milliseconds) */
+		monitor_disk.disk_io_write_time = atoui(&agentRstStr.data[agentRstStr.cursor]);
+		agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 	//}
 
 	insert_into_monotor_cpu(host_oid, &monitor_cpu);
 	insert_into_monotor_mem(host_oid, &monitor_mem);
-	
+	insert_into_monotor_disk(host_oid, &monitor_disk);
+
 	pfree_Monitor_Host(&monitor_host);
 	pfree_Monitor_Cpu(&monitor_cpu);
 	pfree_Monitor_Mem(&monitor_mem);
@@ -301,6 +330,33 @@ static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem)
 	heap_close(monitormem, RowExclusiveLock);
 }
 
+static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk)
+{
+	Relation monitordisk;
+	HeapTuple newtuple;
+	Datum datum[Natts_monitor_disk];
+	bool isnull[Natts_monitor_disk];
+
+	datum[Anum_monitor_disk_host_oid - 1] = ObjectIdGetDatum(host_oid);
+	datum[Anum_monitor_disk_md_timestamptz - 1] = 
+		DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_disk->disk_timestamptz.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+	datum[Anum_monitor_disk_md_total - 1] = Int16GetDatum(monitor_disk->disk_total);
+	datum[Anum_monitor_disk_md_available - 1] = Int16GetDatum(monitor_disk->disk_available);	
+	datum[Anum_monitor_disk_md_io_read_bytes - 1] = Int64GetDatum(monitor_disk->disk_io_read_bytes);
+	datum[Anum_monitor_disk_md_io_reat_time - 1] = Int16GetDatum(monitor_disk->disk_io_read_time);
+	datum[Anum_monitor_disk_md_io_write_bytes - 1] = Int16GetDatum(monitor_disk->disk_io_write_bytes);
+	datum[Anum_monitor_disk_md_io_write_time - 1] = Int16GetDatum(monitor_disk->disk_io_write_time);
+
+	memset(isnull, 0, sizeof(isnull));
+
+	monitordisk = heap_open(MonitorDiskRelationId, RowExclusiveLock);
+	newtuple = heap_form_tuple(RelationGetDescr(monitordisk), datum, isnull);
+	simple_heap_insert(monitordisk, newtuple);
+
+	heap_freetuple(newtuple);
+	heap_close(monitordisk, RowExclusiveLock);
+}
+
 static void init_Monitor_Host(Monitor_Host *monitor_host)
 {
 	initStringInfo(&monitor_host->ip_addr);
@@ -349,10 +405,10 @@ static void pfree_Monitor_Net(Monitor_Net *Monitor_net)
 
 static void init_Monitor_Disk(Monitor_Disk *Monitor_disk)
 {
-	initStringInfo(&Monitor_disk->disk_timestamp);
+	initStringInfo(&Monitor_disk->disk_timestamptz);
 }
 
 static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk)
 {
-	pfree(Monitor_disk->disk_timestamp.data);
+	pfree(Monitor_disk->disk_timestamptz.data);
 }
