@@ -20,6 +20,10 @@
 #include "lib/stringinfo.h"
 #include "libpq/libpq-be.h"
 
+#ifdef AGTM
+#define INVALID_PQ_ID	0
+#define FIRST_PQ_ID		1
+#endif /* AGTM */
 
 typedef struct
 {
@@ -31,6 +35,9 @@ typedef struct
 	void		(*putmessage_noblock) (char msgtype, const char *s, size_t len);
 	void		(*startcopyout) (void);
 	void		(*endcopyout) (bool errorAbort);
+#ifdef AGTM
+	int			(*get_id)(void);
+#endif /* AGTM */
 } PQcommMethods;
 
 extern PGDLLIMPORT PQcommMethods *PqCommMethods;
@@ -45,6 +52,9 @@ extern PGDLLIMPORT PQcommMethods *PqCommMethods;
 	(PqCommMethods->putmessage(msgtype, s, len))
 #define pq_startcopyout() (PqCommMethods->startcopyout())
 #define pq_endcopyout(errorAbort) (PqCommMethods->endcopyout(errorAbort))
+#ifdef AGTM
+#define pq_get_id() (PqCommMethods->get_id)()
+#endif /* AGTM */
 
 /*
  * External functions.
@@ -77,7 +87,9 @@ extern int	socket_flush(void);
 extern int	pq_recvbuf(void);
 extern int	pq_getmessage_noblock(StringInfo s, int maxlen);
 extern void pq_switch_to_socket(void);
-
+#ifdef AGTM
+extern int pq_get_new_id(void);
+#endif /* AGTM */
 /*
  * prototypes for functions in be-secure.c
  */

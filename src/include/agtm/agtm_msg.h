@@ -31,9 +31,10 @@ typedef enum AGTM_MessageType
 	AGTM_MSG_SEQUENCE_SET_VAL,		/* Set values for sequence */
 	AGTM_MSG_GET_STATUS,		/* Get status of a given transaction */
 	AGTM_MSG_XACT_LOCK_TABLE_WAIT, /* Wait for the specified transaction(s) to commit or abort */
-	AGTM_MSG_LOCK_TRANSACTION		/* lock or release TransactionID with locktype */
+	AGTM_MSG_LOCK_TRANSACTION,		/* lock or release TransactionID with locktype */
+	AGTM_MSG_XACT_LOCK_RELEASE_ALL
 } AGTM_MessageType;
-#define AGTM_MSG_TYPE_COUNT (AGTM_MSG_LOCK_TRANSACTION+1)
+#define AGTM_MSG_TYPE_COUNT (AGTM_MSG_XACT_LOCK_RELEASE_ALL+1)
 
 /*
  * Symbols in the following enum are usd in result_name_tab defined in agtm_utils.c.

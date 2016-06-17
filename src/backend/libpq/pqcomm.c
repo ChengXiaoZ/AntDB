@@ -145,6 +145,9 @@ static void socket_startcopyout(void);
 static void socket_endcopyout(bool errorAbort);
 static int	internal_putbytes(const char *s, size_t len);
 static int	internal_flush(void);
+#ifdef AGTM
+static int socket_get_id(void);
+#endif /* AGTM */
 
 #ifdef HAVE_UNIX_SOCKETS
 static int	Lock_AF_UNIX(char *unixSocketDir, char *unixSocketPath);
@@ -160,6 +163,9 @@ static PQcommMethods PqCommSocketMethods = {
 	socket_putmessage_noblock,
 	socket_startcopyout,
 	socket_endcopyout
+#ifdef AGTM
+	,socket_get_id
+#endif /* AGTM */
 };
 
 PQcommMethods *PqCommMethods = &PqCommSocketMethods;
@@ -1882,6 +1888,20 @@ pq_setkeepalivescount(int count, Port *port)
 
 	return STATUS_OK;
 }
+
+#ifdef AGTM
+static int socket_get_id(void)
+{
+	return FIRST_PQ_ID;
+}
+
+int pq_get_new_id(void)
+{
+	static int pq_id = FIRST_PQ_ID;
+	++pq_id;
+	return pq_id;
+}
+#endif /* AGTM */
 
 void pq_switch_to_socket(void)
 {

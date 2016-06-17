@@ -17,7 +17,6 @@
 #include "postgres.h"
 
 #include "lib/stringinfo.h"
-#include "tcop/dest.h"
 
 StringInfo ProcessGetGXIDCommand(StringInfo message, StringInfo output);
 
@@ -28,5 +27,9 @@ StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output);
 StringInfo ProcessXactLockTableWait(StringInfo message, StringInfo output);
 
 StringInfo ProcessLockTransaction(StringInfo message, StringInfo output);
+
+StringInfo ProcessXactLockReleaseAll(StringInfo message, StringInfo output);
+
+void agtm_AtXactNodeClose(int pq_id);
 
 #endif

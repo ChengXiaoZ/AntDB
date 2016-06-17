@@ -17,6 +17,7 @@ struct pq_comm_node
 	StringInfoData in_buf;
 	pgsocket	sock;
 	int			last_reported_send_errno;
+	int			pq_id;
 	bool		busy;
 	bool		noblock;
 	bool		doing_copy_out;
@@ -41,6 +42,7 @@ static void pq_node_startcopyout(void);
 static void pq_node_startcopyout_sock(pq_comm_node *node);
 static void pq_node_endcopyout(bool errorAbort);
 static void pq_node_endcopyout_sock(pq_comm_node *node, bool errorAbort);
+static int	pq_node_get_id(void);
 
 static int pq_node_putbytes(pq_comm_node *node, const char *s, size_t len);
 static int pq_node_internal_flush(pq_comm_node *node);
@@ -56,7 +58,8 @@ static PQcommMethods PqCommoNodeMethods = {
 	pq_node_putmessage,
 	pq_node_putmessage_noblock,
 	pq_node_startcopyout,
-	pq_node_endcopyout
+	pq_node_endcopyout,
+	pq_node_get_id
 };
 static pq_comm_node *current_pq_node = NULL;
 static List *list_pq_node = NIL;
@@ -345,6 +348,18 @@ static void pq_node_endcopyout(bool errorAbort)
 	pq_node_endcopyout_sock(current_pq_node, errorAbort);
 }
 
+static int	pq_node_get_id(void)
+{
+	Assert(current_pq_node);
+	return pq_node_get_id_socket(current_pq_node);
+}
+
+int	pq_node_get_id_socket(pq_comm_node *node)
+{
+	AssertArg(node);
+	return node->pq_id;
+}
+
 static void pq_node_endcopyout_sock(pq_comm_node *node, bool errorAbort)
 {
 	AssertArg(node);
@@ -519,9 +534,13 @@ static void pq_node_proc_start_msg(pq_comm_node *node)
 	PG_TRY();
 	{
 		if(pq_node_ProcessStartupPacket(node))
+		{
 			node->in_start = false;		/* auth success */
-		else
+			node->pq_id = pq_get_new_id();
+		}else
+		{
 			node->in_buf.cursor = 0;	/* reset readed buf */
+		}
 	}PG_CATCH();
 	{
 		node->write_only = true;

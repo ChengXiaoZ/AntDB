@@ -228,6 +228,32 @@ void agtm_LockTransactionId(TransactionId xid, char lock_type, bool is_lock)
 	agtm_get_result(AGTM_MSG_LOCK_TRANSACTION);
 }
 
+void agtm_XactLockReleaseAll(bool no_error)
+{
+	volatile bool report;
+	volatile uint32 save_InterruptHoldoffCount;
+	volatile uint32 save_QueryCancelHoldoffCount;
+
+	if(!IsUnderAGTM())
+		return;
+
+	report = (!no_error);
+	PG_TRY();
+	{
+		save_InterruptHoldoffCount = InterruptHoldoffCount;
+		save_QueryCancelHoldoffCount = QueryCancelHoldoffCount;
+		agtm_send_message(AGTM_MSG_XACT_LOCK_RELEASE_ALL, "");
+		agtm_get_result(AGTM_MSG_XACT_LOCK_RELEASE_ALL);
+	}PG_CATCH();
+	{
+		if(report)
+			PG_RE_THROW();
+		errdump();
+		InterruptHoldoffCount = save_InterruptHoldoffCount;
+		QueryCancelHoldoffCount = save_QueryCancelHoldoffCount;
+	}PG_END_TRY();
+}
+
 /*
  * call pqPutMsgStart ... pqPutMsgEnd
  * only support:

@@ -1,4 +1,5 @@
 
+#include "agtm/agtm_transaction.h"
 #include "libpq/pqnone.h"
 #include "libpq/pqnode.h"
 
@@ -76,6 +77,7 @@ static int agtm_ReadCommand(StringInfo inBuf)
 			{
 				closesocket(MyProcPort->sock);
 				MyProcPort->sock = PGINVALID_SOCKET;
+				agtm_AtXactNodeClose(FIRST_PQ_ID);
 			}else if(firstChar != 0)
 			{
 				pq_switch_to_socket();
@@ -91,14 +93,16 @@ re_try_node_:
 		/* test have unread message from node */
 		foreach(lc, list_pq_node)
 		{
-			firstChar = pq_node_get_msg(inBuf, lfirst(lc));
+			pq_comm_node *node = lfirst(lc);
+			firstChar = pq_node_get_msg(inBuf, node);
 			if(firstChar == 'X')
 			{
-				pq_node_close(lfirst(lc));
+				agtm_AtXactNodeClose(pq_node_get_id_socket(node));
+				pq_node_close(node);
 				goto re_try_node_;
 			}else if(firstChar != 0)
 			{
-				pq_node_switch_to(lfirst(lc));
+				pq_node_switch_to(node);
 				goto end_try_node_;
 			}
 		}

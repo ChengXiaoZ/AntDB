@@ -13,5 +13,6 @@ extern int	pq_node_recvbuf(pq_comm_node *node);
 extern void pq_node_close(pq_comm_node *node);
 extern int	pq_node_get_msg(StringInfo s, pq_comm_node *node);
 extern void pq_node_switch_to(pq_comm_node *node);
+extern int	pq_node_get_id_socket(pq_comm_node *node);
 
 #endif /* PQ_NODE_H */

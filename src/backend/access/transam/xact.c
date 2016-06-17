@@ -3514,6 +3514,10 @@ AbortCurrentTransaction(void)
 			AbortCurrentTransaction();
 			break;
 	}
+#ifdef ADB
+	if(s->nestingLevel == 0)
+		agtm_XactLockReleaseAll(true);
+#endif /* ADB */
 }
 
 /*

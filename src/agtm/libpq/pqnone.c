@@ -11,6 +11,7 @@ static int	pq_none_putmessage(char msgtype, const char *s, size_t len);
 static void pq_none_putmessage_noblock(char msgtype, const char *s, size_t len);
 static void pq_none_startcopyout(void);
 static void pq_none_endcopyout(bool errorAbort);
+static int	pq_none_get_id(void);
 
 static PQcommMethods PqCommoNoneMethods = {
 	pq_none_comm_reset,
@@ -20,7 +21,8 @@ static PQcommMethods PqCommoNoneMethods = {
 	pq_none_putmessage,
 	pq_none_putmessage_noblock,
 	pq_none_startcopyout,
-	pq_none_endcopyout
+	pq_none_endcopyout,
+	pq_none_get_id
 };
 
 void pq_switch_to_none(void)
@@ -62,4 +64,9 @@ static void pq_none_startcopyout(void)
 
 static void pq_none_endcopyout(bool errorAbort)
 {
+}
+
+static int pq_none_get_id(void)
+{
+	return INVALID_PQ_ID;
 }
