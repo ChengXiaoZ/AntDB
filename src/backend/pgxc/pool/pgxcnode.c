@@ -103,6 +103,10 @@ static void pgxc_node_flush_read(PGXCNodeHandle *handle);
 static void
 init_pgxc_handle(PGXCNodeHandle *pgxc_handle)
 {
+#ifdef ADB
+	Assert(pgxc_handle);
+	MemSet(pgxc_handle->name.data, 0, NAMEDATALEN);
+#endif
 	/*
 	 * Socket descriptor is small non-negative integer,
 	 * Indicate the handle is not initialized yet
@@ -138,7 +142,11 @@ void
 InitMultinodeExecutor(bool is_force)
 {
 	int				count;
-	Oid				*coOids, *dnOids;
+	Oid				*coOids = NULL;
+	Oid				*dnOids = NULL;
+#ifdef ADB
+	char			*nodeName = NULL;
+#endif
 
 	/* Free all the existing information first */
 	if (is_force)
@@ -158,10 +166,10 @@ InitMultinodeExecutor(bool is_force)
 	/* Do proper initialization of handles */
 	if (NumDataNodes > 0)
 		dn_handles = (PGXCNodeHandle *)
-			palloc(NumDataNodes * sizeof(PGXCNodeHandle));
+			palloc0(NumDataNodes * sizeof(PGXCNodeHandle));
 	if (NumCoords > 0)
 		co_handles = (PGXCNodeHandle *)
-			palloc(NumCoords * sizeof(PGXCNodeHandle));
+			palloc0(NumCoords * sizeof(PGXCNodeHandle));
 
 	if ((!dn_handles && NumDataNodes > 0) ||
 		(!co_handles && NumCoords > 0))
@@ -174,12 +182,33 @@ InitMultinodeExecutor(bool is_force)
 	{
 		init_pgxc_handle(&dn_handles[count]);
 		dn_handles[count].nodeoid = dnOids[count];
+#ifdef ADB
+		nodeName = get_pgxc_nodename(dn_handles[count].nodeoid);
+		strncpy(NameStr(dn_handles[count].name),
+				nodeName,
+				NAMEDATALEN);
+		pfree(nodeName);
+#endif
 	}
 	for (count = 0; count < NumCoords; count++)
 	{
 		init_pgxc_handle(&co_handles[count]);
 		co_handles[count].nodeoid = coOids[count];
+#ifdef ADB
+		nodeName = get_pgxc_nodename(co_handles[count].nodeoid);
+		strncpy(NameStr(co_handles[count].name),
+				nodeName,
+				NAMEDATALEN);
+		pfree(nodeName);
+#endif
 	}
+
+#ifdef ADB
+	if (coOids)
+		pfree(coOids);
+	if (dnOids)
+		pfree(dnOids);
+#endif
 
 	datanode_count = 0;
 	coord_count = 0;
@@ -329,6 +358,9 @@ pgxc_node_free(PGXCNodeHandle *handle)
 {
 	close(handle->sock);
 	handle->sock = NO_SOCKET;
+#ifdef ADB
+	MemSet(handle->name.data, 0, NAMEDATALEN);
+#endif
 	if(handle->file_data)
 	{
 		char file_name[20];
