@@ -1,5 +1,6 @@
 #include "postgres.h"
 
+#include "access/hash.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "agtm/agtm_msg.h"
@@ -23,6 +24,7 @@ typedef struct XactLockInfo
 
 static HTAB *htab_xact_lock = NULL;
 
+static uint32 xid_hash(const void *key, Size keysize);
 static void create_htab_xact_lock(void);
 static void inc_xact_lock(XactLockInfo *info, LOCKMODE mode, int pqid);
 static bool dec_xact_lock(XactLockInfo *info, LOCKMODE mode, int pqid);
@@ -195,6 +197,12 @@ re_clean_:
 	}
 }
 
+static uint32 xid_hash(const void *key, Size keysize)
+{
+	Datum datum = hash_any(key, keysize);
+	return DatumGetUInt32(datum);
+}
+
 static void create_htab_xact_lock(void)
 {
 	HASHCTL hctl;
@@ -202,9 +210,10 @@ static void create_htab_xact_lock(void)
 	memset(&hctl, 0, sizeof(hctl));
 	hctl.keysize = sizeof(TransactionId);
 	hctl.entrysize = sizeof(XactLockInfo);
+	hctl.hash = xid_hash;
 	hctl.hcxt = TopMemoryContext;
 	htab_xact_lock = hash_create("AGTM TransactionId lock info", 97, &hctl
-			, HASH_ELEM | HASH_CONTEXT);
+			, HASH_ELEM | HASH_CONTEXT | HASH_FUNCTION);
 }
 
 static void inc_xact_lock(XactLockInfo *info, LOCKMODE mode, int pqid)

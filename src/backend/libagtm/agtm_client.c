@@ -146,7 +146,7 @@ agtm_SetPort(int listen_port)
 {
 	if(IsConnFromApp())
 		ereport(ERROR, (errmsg("Can not set agtm listen port")));
-	if(listen_port < 1 || listen_port > 65535)
+	if(listen_port < 0 || listen_port > 65535)
 		ereport(ERROR, (errmsg("Invalid port number %d", listen_port)));
 	ereport(LOG,
 		(errmsg("Get AGTM listen port: %d from coordinator,", listen_port)));

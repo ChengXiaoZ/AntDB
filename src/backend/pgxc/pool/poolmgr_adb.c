@@ -1692,7 +1692,8 @@ static void release_slot(PGXCNodePoolSlot *slot)
 static void idle_slot(PGXCNodePoolSlot *slot)
 {
 	AssertArg(slot);
-	if(PGXCNodeSendSetQuery(slot->conn, "RESET ALL;") != 0)
+	if(PGXCNodeSendSetQuery(slot->conn, "RESET ALL;") != 0
+		|| send_agtm_listen_port(slot->conn, 0) == false)
 	{
 		destroy_slot(slot);
 	}else
@@ -1700,6 +1701,7 @@ static void idle_slot(PGXCNodePoolSlot *slot)
 		slot->state = SLOT_STATE_IDLE;
 		slot->last_user_pid = 0;
 		slot->released_time = time(NULL);
+		slot->last_agtm_port = 0;
 	}
 }
 
@@ -1810,9 +1812,10 @@ static DatabasePool *get_database_pool(const char *database, const char *user_na
 			memset(&hctl, 0, sizeof(hctl));
 			hctl.keysize = sizeof(Oid);
 			hctl.entrysize = sizeof(PGXCNodePool);
+			hctl.hash = oid_hash;
 			hctl.hcxt = TopMemoryContext;
 			tmp_pool.htab_nodes = hash_create("hash PGXCNodePool", 97, &hctl
-				, HASH_ELEM | HASH_CONTEXT);
+				, HASH_ELEM | HASH_CONTEXT | HASH_FUNCTION);
 #ifdef ADB_DEBUG_POOL
 			tmp_pool.list_nodes = NIL;
 			list_database = lappend(list_database, dbpool);
