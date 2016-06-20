@@ -19,13 +19,14 @@
 CATALOG(monitor_host,4921)
 {
 	Oid 			host_oid;				/* host name */
-	inet			mh_ip_addr;				/* host ip address */
 	int16 			mh_run_state;			/* host run state */
 	timestamptz 	mh_begin_run_time;		/* host begin run time */
+	int16			mh_cpu_core_total;		/* host cpu total cores */
+	int16			mh_cpu_core_available;	/* host cpu available cores */
 	
 #ifdef CATALOG_VARLEN
+	text			mh_system;				/* host system */
 	text			mh_platform_type;		/* host plateform type */
-	text			mh_cpu_type;			/* host cpu type */
 #endif /* CATALOG_VARLEN */
 } FormData_monitor_host;
 
@@ -44,12 +45,14 @@ typedef FormData_monitor_host *Form_monitor_host;
  *		compiler constants for monitor_host
  * ----------------
  */
-#define Natts_monitor_host							6
+#define Natts_monitor_host							7
 #define Anum_monitor_host_host_oid					1
-#define Anum_monitor_host_mh_ip_addr				2
-#define Anum_monitor_host_mh_run_state				3
-#define Anum_monitor_host_mh_begin_run_time			4
-#define Anum_monitor_host_mh_platform_type			5
-#define Anum_monitor_host_mh_cpu_type				6
+#define Anum_monitor_host_mh_run_state				2
+#define Anum_monitor_host_mh_begin_run_time			3
+#define Anum_monitor_host_mh_cpu_core_total			4
+#define Anum_monitor_host_mh_cpu_core_available		5
+#define Anum_monitor_host_mh_system					6
+#define Anum_monitor_host_mh_platform_type			7
+
 
 #endif /* MONITOR_HOST_H */

@@ -4,6 +4,7 @@
 import psutil
 import time
 import sys
+import platform
 
 # set timeformat. (e.g. 2016-06-16 16:49:51 HKT)
 ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'
@@ -47,9 +48,14 @@ def get_net_info():
 	#print "%s %d %d" % (time_stamp, sent, recv)
 	return (time_stamp, sent, recv)
 
+def get_host_info():
+	host_system = platform.system()
+	host_platform_type = platform.machine()
+	return (host_system, host_platform_type)
 
 if __name__ == "__main__":
 	get_cpu_info()
 	get_mem_info()
 	get_disk_info()
 	get_net_info()
+	get_host_info()
