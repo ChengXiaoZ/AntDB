@@ -108,6 +108,13 @@ StringInfo ProcessXactLockTableWait(StringInfo message, StringInfo output)
 		if(!TransactionIdIsValid(xid))
 			break;
 
+		/* is locked by me ? */
+		if(htab_xact_lock != NULL
+			&& hash_search(htab_xact_lock, &xid, HASH_FIND, NULL) != NULL)
+		{
+			continue;
+		}
+
 		SET_LOCKTAG_TRANSACTION(tag, xid);
 		(void) LockAcquire(&tag, ShareLock, false, false);
 
@@ -220,6 +227,11 @@ static void inc_xact_lock(XactLockInfo *info, LOCKMODE mode, int pqid)
 {
 	MemoryContext oldcontext;
 	AssertArg(info && pqid != INVALID_PQ_ID);
+
+	if(bms_is_member(pqid, info->bms_pq))
+	{
+		ereport(ERROR, (errmsg("Can not lock transaction %u again", (unsigned)(info->xid))));
+	}
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 	info->bms_pq = bms_add_member(info->bms_pq, pqid);
