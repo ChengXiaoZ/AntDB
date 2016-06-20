@@ -16,7 +16,9 @@
 #include "fmgr.h"
 #include "utils/resowner.h"
 #include "utils/snapshot.h"
-
+#ifdef ADB
+#include "lib/stringinfo.h"
+#endif
 
 extern bool FirstSnapshotSet;
 
@@ -49,5 +51,11 @@ extern void ImportSnapshot(const char *idstr);
 extern bool XactHasExportedSnapshots(void);
 extern void DeleteAllExportedSnapshotFiles(void);
 extern bool ThereAreNoPriorRegisteredSnapshots(void);
+
+#ifdef ADB
+extern void UnsetGlobalSnapshot(void);
+extern void SetGlobalSnapshot(StringInfo input_message);
+extern Snapshot GetGlobalSnapshot(Snapshot snapshot);
+#endif
 
 #endif   /* SNAPMGR_H */

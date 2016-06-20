@@ -28,7 +28,6 @@ extern void ProcArrayEndTransaction(PGPROC *proc, TransactionId latestXid);
 extern void ProcArrayClearTransaction(PGPROC *proc);
 
 #ifdef PGXC  /* PGXC_DATANODE */
-extern void UnsetGlobalSnapshot(void);
 extern void ReloadConnInfoOnBackends(void);
 #endif /* PGXC */
 extern void ProcArrayInitRecovery(TransactionId initializedUptoXID);

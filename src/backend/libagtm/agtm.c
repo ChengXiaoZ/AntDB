@@ -68,8 +68,8 @@ agtm_GetTimestamptz(void)
 	return timestamp;
 }
 
-GlobalSnapshot
-agtm_GetSnapShot(GlobalSnapshot snapshot)
+Snapshot
+agtm_GetGlobalSnapShot(Snapshot snapshot)
 {
 	PGresult 	*res;
 	const char *str;
@@ -78,7 +78,7 @@ agtm_GetSnapShot(GlobalSnapshot snapshot)
 
 	if(!IsUnderAGTM())
 		ereport(ERROR,
-			(errmsg("agtm_GetSnapShot function must under AGTM")));
+			(errmsg("agtm_GetGlobalSnapShot function must under AGTM")));
 
 	agtm_send_message(AGTM_MSG_SNAPSHOT_GET, "");
 	res = agtm_get_result(AGTM_MSG_SNAPSHOT_GET);

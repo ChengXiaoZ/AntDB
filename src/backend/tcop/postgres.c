@@ -4852,7 +4852,7 @@ PostgresMain(int argc, char *argv[],
 				break;
 
 #ifdef ADB
-			case 'L':
+			case 'L':		/* AGTM backend listen port */
 				{
 					int listen_port;
 
@@ -4934,7 +4934,14 @@ PostgresMain(int argc, char *argv[],
 					elog(DEBUG1, "Received cmd id %u", cid);
 					SaveReceivedCommandId(cid);
 				}
-				break; 
+				break;
+
+			case 's':			/* global snapshot */
+				{
+					Assert(IS_PGXC_DATANODE || IsConnFromCoord());
+					SetGlobalSnapshot(&input_message);
+				}
+				break;
 #if 0
 			case 'b':			/* barrier */
 				{

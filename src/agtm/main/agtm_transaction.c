@@ -69,10 +69,10 @@ StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output)
 
 StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 {
-	GlobalSnapshot snapshot;
+	Snapshot snapshot;
 
 	pq_getmsgend(message);
-	snapshot = (GlobalSnapshot)GetTransactionSnapshot();
+	snapshot = GetTransactionSnapshot();
 
 	/* Respond to the client */
 	pq_sendint(output, AGTM_SNAPSHOT_GET_RESULT, 4);

@@ -182,6 +182,7 @@ extern int	pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *que
 							  int paramlen, char *params,
 							  bool send_describe, int fetch_size);
 extern int	pgxc_node_send_cmd_id(PGXCNodeHandle *handle, CommandId cid);
+extern int  pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot);
 extern bool	pgxc_node_receive(const int conn_count,
 				  PGXCNodeHandle ** connections, struct timeval * timeout);
 extern int	pgxc_node_read_data(PGXCNodeHandle * conn, bool close_if_error);

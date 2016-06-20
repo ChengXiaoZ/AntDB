@@ -1813,6 +1813,74 @@ pgxc_node_send_cmd_id(PGXCNodeHandle *handle, CommandId cid)
 	return 0;
 }
 
+int
+pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
+{
+	StringInfoData	buf;
+	uint32			nval;
+	int				i;
+	char			msgtyp = 's';
+
+	/* Invalid connection state, return error */
+	if (handle->state != DN_CONNECTION_STATE_IDLE)
+		return EOF;
+
+	initStringInfo(&buf);
+
+	/* msgtype 's' */
+	appendBinaryStringInfo(&buf, (const char *) &msgtyp, sizeof(char));
+	/* xmin */
+	nval = htonl(snapshot->xmin);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
+	/* xmax */
+	nval = htonl(snapshot->xmax);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
+	/* xcnt */
+	nval = htonl(snapshot->xcnt);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));
+	/* xip */
+	for (i = 0; i < snapshot->xcnt; i++)
+	{
+		nval = htonl(snapshot->xip[i]);
+		appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
+	}
+	/* subxcnt */
+	nval = htonl(snapshot->subxcnt);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(int32));
+	/* subxip */
+	for (i = 0; i < snapshot->subxcnt; i++)
+	{
+		nval = htonl(snapshot->subxip[i]);
+		appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
+	}
+	/* suboverflowed */
+	appendBinaryStringInfo(&buf, (const char *) &(snapshot->suboverflowed), sizeof(bool));
+	/* takenDuringRecovery */
+	appendBinaryStringInfo(&buf, (const char *) &(snapshot->takenDuringRecovery), sizeof(bool));
+	/* copied */
+	appendBinaryStringInfo(&buf, (const char *) &(snapshot->copied), sizeof(bool));
+	/* curcid */
+	nval = htonl(snapshot->curcid);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(CommandId));
+	/* active_count */
+	nval = htonl(snapshot->active_count);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));
+	/* regd_count */
+	nval = htonl(snapshot->regd_count);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));
+
+	/* message length */
+	if (ensure_out_buffer_capacity(handle->outEnd + buf.len, handle) != 0)
+	{
+		add_error_message(handle, "out of memory");
+		return EOF;
+	}
+	memcpy(handle->outBuffer + handle->outEnd, buf.data, buf.len);
+	pfree(buf.data);
+
+	return 0;
+}
+
 /*
  * Add another message to the list of errors to be returned back to the client
  * at the convenient time

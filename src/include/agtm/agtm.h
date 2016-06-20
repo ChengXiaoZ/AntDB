@@ -33,7 +33,7 @@ extern TransactionId agtm_GetGlobalTransactionId(bool isSubXact);
 /*
  * get Snapshot info from AGTM
  */
-extern GlobalSnapshot agtm_GetSnapShot(GlobalSnapshot snapshot);
+extern Snapshot agtm_GetGlobalSnapShot(Snapshot snapshot);
 
 /*
  * get next Sequence from AGTM

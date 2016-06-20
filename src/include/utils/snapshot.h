@@ -19,12 +19,6 @@
 
 
 typedef struct SnapshotData *Snapshot;
-#if defined(ADB) || defined(AGTM)
-typedef struct SnapshotData *GlobalSnapshot;
-
-#define InvalidGlobalSnapshot	((GlobalSnapshot) NULL)
-#endif /* defined(ADB) || defined(AGTM) */
-
 #define InvalidSnapshot		((Snapshot) NULL)
 
 /*

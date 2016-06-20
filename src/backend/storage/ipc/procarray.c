@@ -95,7 +95,6 @@
 #include "agtm/agtm.h"
 #endif
 
-
 /* Our shared memory area */
 typedef struct ProcArrayStruct
 {
@@ -193,15 +192,6 @@ static void DisplayXidCache(void);
 #define xc_no_overflow_inc()		((void) 0)
 #define xc_slow_answer_inc()		((void) 0)
 #endif   /* XIDCACHE_DEBUG */
-
-#ifdef ADB
-/*
- * Global snapshot will obtain from AGTM
- */
-static GlobalSnapshot global_snapshot = NULL;
-
-static GlobalSnapshot GetGlobalSnapshot(GlobalSnapshot snapshot);
-#endif /* ADB */
 
 /* Primitives for KnownAssignedXids array handling for standby */
 static void KnownAssignedXidsCompress(bool force);
@@ -1440,11 +1430,16 @@ GetSnapshotData(Snapshot snapshot)
 	if (is_under_agtm)
 	{
 		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
-		snap = GetGlobalSnapshot((GlobalSnapshot) snapshot);
+		snap = GetGlobalSnapshot(snapshot);
 		Assert(snap == snapshot);
 
 		globalxmin = xmin = snapshot->xmin;
 		xmax = snapshot->xmax;
+
+		LWLockAcquire(ProcArrayLock, LW_SHARED);
+		if (!TransactionIdIsValid(MyPgXact->xmin))
+		MyPgXact->xmin = TransactionXmin = xmin;
+		LWLockRelease(ProcArrayLock);
 	}else
 	{
 #endif /* ADB */
@@ -2757,33 +2752,6 @@ DisplayXidCache(void)
 			xc_slow_answer);
 }
 #endif   /* XIDCACHE_DEBUG */
-
-
-#ifdef ADB
-/*
- * Force Datanode to use local snapshot data
- */
-void
-UnsetGlobalSnapshot(void)
-{
-	global_snapshot = NULL;
-}
-
-/*
- * Entry of snapshot obtention for Postgres-XC node
- */
-static GlobalSnapshot
-GetGlobalSnapshot(GlobalSnapshot snapshot)
-{
-	if (global_snapshot == InvalidGlobalSnapshot ||
-		global_snapshot != snapshot)
-	{
-		global_snapshot = agtm_GetSnapShot(snapshot);
-	}
-
-	return global_snapshot;
-}
-#endif /* ADB */
 
 /* ----------------------------------------------
  *		KnownAssignedTransactions sub-module
