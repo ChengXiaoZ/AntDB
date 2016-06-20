@@ -20,9 +20,6 @@ const char *gtm_util_message_name(AGTM_MessageType type)
 	CASE_TYPE_(AGTM_MSG_SEQUENCE_GET_LAST);
 	CASE_TYPE_(AGTM_MSG_SEQUENCE_SET_VAL);
 	CASE_TYPE_(AGTM_MSG_GET_STATUS);
-	CASE_TYPE_(AGTM_MSG_XACT_LOCK_TABLE_WAIT);
-	CASE_TYPE_(AGTM_MSG_LOCK_TRANSACTION);
-	CASE_TYPE_(AGTM_MSG_XACT_LOCK_RELEASE_ALL);
 	/* here no default, we need a compiler warning */
 	}
 	return "Unknown AGTM_MessageType";

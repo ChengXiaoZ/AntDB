@@ -449,10 +449,6 @@ XactLockTableInsert(TransactionId xid)
 {
 	LOCKTAG		tag;
 
-#ifdef ADB
-	agtm_LockTransactionId(xid, ExclusiveLock, true);
-#endif /* ADB */
-
 	SET_LOCKTAG_TRANSACTION(tag, xid);
 
 	(void) LockAcquire(&tag, ExclusiveLock, false, false);
@@ -469,10 +465,6 @@ void
 XactLockTableDelete(TransactionId xid)
 {
 	LOCKTAG		tag;
-
-#ifdef ADB
-	agtm_LockTransactionId(xid, ExclusiveLock, false);
-#endif /* ADB */
 
 	SET_LOCKTAG_TRANSACTION(tag, xid);
 
@@ -495,11 +487,6 @@ void
 XactLockTableWait(TransactionId xid)
 {
 	LOCKTAG		tag;
-
-#ifdef ADB
-	/* we need lock in agtm */
-	agtm_XactLockTableWait(xid);
-#endif /* ADB */
 
 	for (;;)
 	{

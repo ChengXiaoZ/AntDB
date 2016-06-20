@@ -24,12 +24,4 @@ StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output);
 
 StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output);
 
-StringInfo ProcessXactLockTableWait(StringInfo message, StringInfo output);
-
-StringInfo ProcessLockTransaction(StringInfo message, StringInfo output);
-
-StringInfo ProcessXactLockReleaseAll(StringInfo message, StringInfo output);
-
-void agtm_AtXactNodeClose(int pq_id);
-
 #endif

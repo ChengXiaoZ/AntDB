@@ -77,7 +77,6 @@ static int agtm_ReadCommand(StringInfo inBuf)
 			{
 				closesocket(MyProcPort->sock);
 				MyProcPort->sock = PGINVALID_SOCKET;
-				agtm_AtXactNodeClose(FIRST_PQ_ID);
 			}else if(firstChar != 0)
 			{
 				pq_switch_to_socket();
@@ -97,7 +96,6 @@ re_try_node_:
 			firstChar = pq_node_get_msg(inBuf, node);
 			if(firstChar == 'X')
 			{
-				agtm_AtXactNodeClose(pq_node_get_id_socket(node));
 				pq_node_close(node);
 				goto re_try_node_;
 			}else if(firstChar != 0)
