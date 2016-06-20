@@ -143,7 +143,7 @@ static void write_eventlog(int level, const char *line, int len);
 #endif
 
 /* We provide a small stack of ErrorData records for re-entrant cases */
-#define ERRORDATA_STACK_SIZE  5
+#define ERRORDATA_STACK_SIZE  20
 
 static ErrorData errordata[ERRORDATA_STACK_SIZE];
 
