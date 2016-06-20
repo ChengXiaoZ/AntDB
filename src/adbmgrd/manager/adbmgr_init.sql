@@ -153,6 +153,10 @@ CREATE VIEW adbmgr.stopall_i AS
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_i(NULL)
     UNION ALL
     SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm('immediate');
+	
+-- insert the cpu, memory and disk threshold, default cpu is 99, memory is 90, disk is 85.
+insert into adbmgr.monitor_varparm (mv_cpu_threshold, mv_mem_threshold, mv_disk_threshold)
+	values (99, 90, 85);
 
 --insert data into mgr.parm
 
