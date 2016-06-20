@@ -38,7 +38,7 @@
 #include "fmgr.h"
 #include "utils/lsyscache.h"
 
-#define atoui(x)  ((unsigned int) strtoul((x), NULL, 10))
+#define strtoull(x)  ((unsigned long long int) strtoull((x), NULL, 10))
 
 typedef struct InitHostInfo
 {
@@ -87,7 +87,7 @@ typedef struct Monitor_Disk
 {
     StringInfoData  disk_timestamptz;
     int64           disk_total;
-    int64           disk_available;
+    int64           disk_used;
     int64           disk_io_read_bytes;
     int64           disk_io_read_time;
     int64           disk_io_write_bytes;
@@ -230,11 +230,11 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
         agentRstStr.cursor = agentRstStr.cursor + monitor_mem.mem_timestamp.len + 1;
 
         /* memory total size (in Bytes)*/
-        monitor_mem.mem_total = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_mem.mem_total = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* memory used size (in Bytes) */
-        monitor_mem.mem_used = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_mem.mem_used = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* memory usage */
@@ -245,39 +245,40 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
         appendStringInfoString(&monitor_disk.disk_timestamptz, &agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + monitor_disk.disk_timestamptz.len + 1;
 
-        /* disk total size */
-        monitor_disk.disk_total = atoui(&agentRstStr.data[agentRstStr.cursor]);
-        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
-
-        /* disk available size */
-        monitor_disk.disk_available = atoui(&agentRstStr.data[agentRstStr.cursor]);
-        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
-
         /* disk i/o read (in Bytes) */
-        monitor_disk.disk_io_read_bytes = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_disk.disk_io_read_bytes = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* disk i/o read time (in milliseconds) */
-        monitor_disk.disk_io_read_time = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_disk.disk_io_read_time = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* disk i/o write (in Bytes) */
-        monitor_disk.disk_io_write_bytes = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_disk.disk_io_write_bytes = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* disk i/o write time (in milliseconds) */
-        monitor_disk.disk_io_write_time = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_disk.disk_io_write_time = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+        
+        /* disk total size */
+        monitor_disk.disk_total = strtoull(&agentRstStr.data[agentRstStr.cursor]);
+        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+        /* disk used size */
+        monitor_disk.disk_used = strtoull(&agentRstStr.data[agentRstStr.cursor]);
+        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
         /* net timestamp with timezone */
         appendStringInfoString(&monitor_net.net_timestamp, &agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + monitor_net.net_timestamp.len + 1;
 
         /* net sent speed (in bytes/s) */
-        monitor_net.net_sent = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_net.net_sent = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
-        
-        /* net recv (in bytes/s) */
-        monitor_net.net_recv = atoui(&agentRstStr.data[agentRstStr.cursor]);
+
+        /* net recv speed (in bytes/s) */
+        monitor_net.net_recv = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* host system */
@@ -289,11 +290,11 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
         agentRstStr.cursor = agentRstStr.cursor + monitor_host.platform_type.len + 1;
 
         /* host cpu total cores */
-        monitor_host.cpu_core_total = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_host.cpu_core_total = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
         /* host cpu available cores */
-        monitor_host.cpu_core_available = atoui(&agentRstStr.data[agentRstStr.cursor]);
+        monitor_host.cpu_core_available = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
     //}
 
@@ -351,7 +352,7 @@ static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem)
     datum[Anum_monitor_mem_mm_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_mem->mem_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
     datum[Anum_monitor_mem_mm_total - 1] = Int64GetDatum(monitor_mem->mem_total);
-    datum[Anum_monitor_mem_mm_used - 1] = Int16GetDatum(monitor_mem->mem_used);
+    datum[Anum_monitor_mem_mm_used - 1] = Int64GetDatum(monitor_mem->mem_used);
     datum[Anum_monitor_mem_mm_usage - 1] = Float4GetDatum(monitor_mem->mem_usage);
 
     memset(isnull, 0, sizeof(isnull));
@@ -374,12 +375,12 @@ static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk)
     datum[Anum_monitor_disk_host_oid - 1] = ObjectIdGetDatum(host_oid);
     datum[Anum_monitor_disk_md_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_disk->disk_timestamptz.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
-    datum[Anum_monitor_disk_md_total - 1] = Int16GetDatum(monitor_disk->disk_total);
-    datum[Anum_monitor_disk_md_available - 1] = Int16GetDatum(monitor_disk->disk_available);    
+    datum[Anum_monitor_disk_md_total - 1] = Int64GetDatum(monitor_disk->disk_total);
+    datum[Anum_monitor_disk_md_used - 1] = Int64GetDatum(monitor_disk->disk_used);    
     datum[Anum_monitor_disk_md_io_read_bytes - 1] = Int64GetDatum(monitor_disk->disk_io_read_bytes);
-    datum[Anum_monitor_disk_md_io_reat_time - 1] = Int16GetDatum(monitor_disk->disk_io_read_time);
-    datum[Anum_monitor_disk_md_io_write_bytes - 1] = Int16GetDatum(monitor_disk->disk_io_write_bytes);
-    datum[Anum_monitor_disk_md_io_write_time - 1] = Int16GetDatum(monitor_disk->disk_io_write_time);
+    datum[Anum_monitor_disk_md_io_reat_time - 1] = Int64GetDatum(monitor_disk->disk_io_read_time);
+    datum[Anum_monitor_disk_md_io_write_bytes - 1] = Int64GetDatum(monitor_disk->disk_io_write_bytes);
+    datum[Anum_monitor_disk_md_io_write_time - 1] = Int64GetDatum(monitor_disk->disk_io_write_time);
 
     memset(isnull, 0, sizeof(isnull));
 
@@ -401,8 +402,8 @@ static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net)
     datum[Anum_monitor_net_host_oid - 1] = ObjectIdGetDatum(host_oid);
     datum[Anum_monitor_net_mn_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_net->net_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
-    datum[Anum_monitor_net_mn_sent - 1] = Int16GetDatum(monitor_net->net_sent);
-    datum[Anum_monitor_net_mn_recv - 1] = Int16GetDatum(monitor_net->net_recv);
+    datum[Anum_monitor_net_mn_sent - 1] = Int64GetDatum(monitor_net->net_sent);
+    datum[Anum_monitor_net_mn_recv - 1] = Int64GetDatum(monitor_net->net_recv);
 
     memset(isnull, 0, sizeof(isnull));
 
