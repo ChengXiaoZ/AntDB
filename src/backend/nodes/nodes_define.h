@@ -54,6 +54,9 @@
 #ifndef NODE_SCALAR
 #	define NODE_SCALAR(t,m)
 #endif
+#ifndef NODE_OID
+#	define NODE_OID(t,m) NODE_SCALAR(Oid, m)
+#endif
 #ifndef NODE_SCALAR_POINT
 #	define NODE_SCALAR_POINT(t,m,l)
 #endif
@@ -408,7 +411,7 @@ BEGIN_NODE(Hash)
 	NODE_SCALAR(Oid,skewTable)
 	NODE_SCALAR(AttrNumber,skewColumn)
 	NODE_SCALAR(bool,skewInherit)
-	NODE_SCALAR(Oid,skewColType)
+	NODE_OID(type,skewColType)
 	NODE_SCALAR(int32,skewColTypmod)
 END_NODE(Hash)
 #endif /* NO_NODE_Hash */
@@ -468,7 +471,7 @@ BEGIN_NODE(ExecNodes)
 	NODE_NODE(List,nodeList)
 	NODE_SCALAR(char,baselocatortype)
 #ifdef ADB
-	NODE_SCALAR(Oid,en_funcid)
+	NODE_OID(proc,en_funcid)
 	NODE_NODE(List, en_expr)
 #else
 	NODE_NODE(Expr, en_expr)
@@ -621,9 +624,9 @@ END_NODE(Expr)
 BEGIN_NODE(Var)
 	NODE_SCALAR(Index,varno)
 	NODE_SCALAR(AttrNumber,varattno)
-	NODE_SCALAR(Oid,vartype)
+	NODE_OID(type,vartype)
 	NODE_SCALAR(int32,vartypmod)
-	NODE_SCALAR(Oid,varcollid)
+	NODE_OID(collation,varcollid)
 	NODE_SCALAR(Index,varlevelsup)
 	NODE_SCALAR(Index,varnoold)
 	NODE_SCALAR(AttrNumber,varoattno)
@@ -633,9 +636,9 @@ END_NODE(Var)
 
 #ifndef NO_NODE_Const
 BEGIN_NODE(Const)
-	NODE_SCALAR(Oid,consttype)		/* pg_type NODE_SCALAR(OID,of) the constant's datatype */
+	NODE_OID(type,consttype)		/* pg_type NODE_SCALAR(OID,of) the constant's datatype */
 	NODE_SCALAR(int32,consttypmod)	/* typmod value, if any */
-	NODE_SCALAR(Oid,constcollid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,constcollid)	/* OID of collation, or InvalidOid if none */
 	NODE_SCALAR(int,constlen)		/* typlen of the constant's datatype */
 	NODE_DATUM(Datum,constvalue,NODE_ARG_->consttype, NODE_ARG_->constisnull)		/* the constant's value */
 	NODE_SCALAR(bool,constisnull)	/* whether the constant is null (if true,
@@ -652,21 +655,21 @@ END_NODE(Const)
 BEGIN_NODE(Param)
 	NODE_ENUM(ParamKind,paramkind)		/* kind of parameter. See above */
 	NODE_SCALAR(int,paramid)		/* numeric ID for parameter */
-	NODE_SCALAR(Oid,paramtype)		/* pg_type OID of parameter's datatype */
+	NODE_OID(type,paramtype)		/* pg_type OID of parameter's datatype */
 	NODE_SCALAR(int32,paramtypmod)	/* typmod value, if known */
-	NODE_SCALAR(Oid,paramcollid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,paramcollid)	/* OID of collation, or InvalidOid if none */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(Param)
 #endif /* NO_NODE_Param */
 
 #ifndef NO_NODE_Aggref
 BEGIN_NODE(Aggref)
-	NODE_SCALAR(Oid,aggfnoid)		/* pg_proc Oid of the aggregate */
-	NODE_SCALAR(Oid,aggtype)		/* type Oid of result of the aggregate */
-	NODE_SCALAR(Oid,aggcollid)		/* OID of collation of result */
-	NODE_SCALAR(Oid,inputcollid)	/* OID of collation that function should use */
+	NODE_OID(proc,aggfnoid)		/* pg_proc Oid of the aggregate */
+	NODE_OID(type,aggtype)		/* type Oid of result of the aggregate */
+	NODE_OID(collation,aggcollid)		/* OID of collation of result */
+	NODE_OID(collation,inputcollid)	/* OID of collation that function should use */
 #ifdef PGXC
-	NODE_SCALAR(Oid,aggtrantype)	/* type Oid of transition results */
+	NODE_OID(type,aggtrantype)	/* type Oid of transition results */
 	NODE_SCALAR(bool,agghas_collectfn)	/* is collection function available */
 #endif /* PGXC */
 	NODE_NODE(List,args)			/* arguments and sort expressions */
@@ -680,10 +683,10 @@ END_NODE(Aggref)
 
 #ifndef NO_NODE_WindowFunc
 BEGIN_NODE(WindowFunc)
-	NODE_SCALAR(Oid,winfnoid)		/* pg_proc Oid of the function */
-	NODE_SCALAR(Oid,wintype)		/* type Oid of result of the window function */
-	NODE_SCALAR(Oid,wincollid)		/* OID of collation of result */
-	NODE_SCALAR(Oid,inputcollid)	/* OID of collation that function should use */
+	NODE_OID(proc,winfnoid)		/* pg_proc Oid of the function */
+	NODE_OID(type,wintype)		/* type Oid of result of the window function */
+	NODE_OID(collation,wincollid)		/* OID of collation of result */
+	NODE_OID(collation,inputcollid)	/* OID of collation that function should use */
 	NODE_NODE(List,args)			/* arguments to the window function */
 	NODE_SCALAR(Index,winref)			/* index of associated WindowClause */
 	NODE_SCALAR(bool,winstar)		/* TRUE if argument list was really '*' */
@@ -694,10 +697,10 @@ END_NODE(WindowFunc)
 
 #ifndef NO_NODE_ArrayRef
 BEGIN_NODE(ArrayRef)
-	NODE_SCALAR(Oid,refarraytype)	/* type of the array proper */
-	NODE_SCALAR(Oid,refelemtype)	/* type of the array elements */
+	NODE_OID(type,refarraytype)	/* type of the array proper */
+	NODE_OID(type,refelemtype)	/* type of the array elements */
 	NODE_SCALAR(int32,reftypmod)		/* typmod of the array (and elements too) */
-	NODE_SCALAR(Oid,refcollid)		/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,refcollid)		/* OID of collation, or InvalidOid if none */
 	NODE_NODE(List,refupperindexpr)/* expressions that evaluate to upper array
 								 * indexes */
 	NODE_NODE(List,reflowerindexpr)/* expressions that evaluate to lower array
@@ -711,14 +714,14 @@ END_NODE(ArrayRef)
 
 #ifndef NO_NODE_FuncExpr
 BEGIN_NODE(FuncExpr)
-	NODE_SCALAR(Oid,funcid)			/* PG_PROC OID of the function */
-	NODE_SCALAR(Oid,funcresulttype) /* PG_TYPE OID of result value */
+	NODE_OID(proc,funcid)			/* PG_PROC OID of the function */
+	NODE_OID(type,funcresulttype) /* PG_TYPE OID of result value */
 	NODE_SCALAR(bool,funcretset)		/* true if function returns set */
 	NODE_SCALAR(bool,funcvariadic)	/* true if variadic arguments have been
 								 * combined into an array last argument */
 	NODE_ENUM(CoercionForm,funcformat)	/* how to display this function call */
-	NODE_SCALAR(Oid,funccollid)		/* OID of collation of result */
-	NODE_SCALAR(Oid,inputcollid)	/* OID of collation that function should use */
+	NODE_OID(collation,funccollid)		/* OID of collation of result */
+	NODE_OID(collation,inputcollid)	/* OID of collation that function should use */
 	NODE_NODE(List,args)			/* arguments to the function */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(FuncExpr)
@@ -735,12 +738,12 @@ END_NODE(NamedArgExpr)
 
 #ifndef NO_NODE_OpExpr
 BEGIN_NODE(OpExpr)
-	NODE_SCALAR(Oid,opno)			/* PG_OPERATOR OID of the operator */
-	NODE_SCALAR(Oid,opfuncid)		/* PG_PROC OID of underlying function */
-	NODE_SCALAR(Oid,opresulttype)	/* PG_TYPE OID of result value */
+	NODE_OID(operator,opno)			/* PG_OPERATOR OID of the operator */
+	NODE_OID(proc,opfuncid)		/* PG_PROC OID of underlying function */
+	NODE_OID(type,opresulttype)	/* PG_TYPE OID of result value */
 	NODE_SCALAR(bool,opretset)		/* true if operator returns set */
-	NODE_SCALAR(Oid,opcollid)		/* OID of collation of result */
-	NODE_SCALAR(Oid,inputcollid)	/* OID of collation that operator should use */
+	NODE_OID(collation,opcollid)		/* OID of collation of result */
+	NODE_OID(collation,inputcollid)	/* OID of collation that operator should use */
 	NODE_NODE(List,args)			/* arguments to the operator (1 or 2) */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(OpExpr)
@@ -752,10 +755,10 @@ NODE_SAME(NullIfExpr,OpExpr)
 
 #ifndef NO_NODE_ScalarArrayOpExpr
 BEGIN_NODE(ScalarArrayOpExpr)
-	NODE_SCALAR(Oid,opno)			/* PG_OPERATOR OID of the operator */
-	NODE_SCALAR(Oid,opfuncid)		/* PG_PROC OID of underlying function */
+	NODE_OID(operator,opno)			/* PG_OPERATOR OID of the operator */
+	NODE_OID(proc,opfuncid)		/* PG_PROC OID of underlying function */
 	NODE_SCALAR(bool,useOr)			/* true for ANY, false for ALL */
-	NODE_SCALAR(Oid,inputcollid)	/* OID of collation that operator should use */
+	NODE_OID(collation,inputcollid)	/* OID of collation that operator should use */
 	NODE_NODE(List,args)			/* the scalar and array operands */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(ScalarArrayOpExpr)
@@ -791,9 +794,9 @@ BEGIN_NODE(SubPlan)
 	/* Identification of the SubPlan for EXPLAIN and debugging purposes: */
 	NODE_STRING(plan_name)		/* A name assigned during planning */
 	/* Extra data useful for determining subplan's output type: */
-	NODE_SCALAR(Oid,firstColType)	/* Type of first column of subplan result */
+	NODE_OID(type,firstColType)	/* Type of first column of subplan result */
 	NODE_SCALAR(int32,firstColTypmod) /* Typmod of first column of subplan result */
-	NODE_SCALAR(Oid,firstColCollation)		/* Collation of first column of
+	NODE_OID(collation,firstColCollation)		/* Collation of first column of
 										 * subplan result */
 	/* Information about execution strategy: */
 	NODE_SCALAR(bool,useHashTable)	/* TRUE to store subselect output in a hash
@@ -823,10 +826,10 @@ END_NODE(AlternativeSubPlan)
 BEGIN_NODE(FieldSelect)
 	NODE_NODE(Expr,arg)			/* input expression */
 	NODE_SCALAR(AttrNumber,fieldnum)		/* attribute number of field to extract */
-	NODE_SCALAR(Oid,resulttype)		/* type of the field (result type of this
+	NODE_OID(type,resulttype)		/* type of the field (result type of this
 								 * node) */
 	NODE_SCALAR(int32,resulttypmod)	/* output typmod (usually -1) */
-	NODE_SCALAR(Oid,resultcollid)	/* OID of collation of the field */
+	NODE_OID(collation,resultcollid)	/* OID of collation of the field */
 END_NODE(FieldSelect)
 #endif /* NO_NODE_FieldSelect */
 
@@ -835,7 +838,7 @@ BEGIN_NODE(FieldStore)
 	NODE_NODE(Expr,arg)			/* input tuple value */
 	NODE_NODE(List,newvals)		/* new value(s) for field(s) */
 	NODE_NODE(List,fieldnums)		/* integer list of field attnums */
-	NODE_SCALAR(Oid,resulttype)		/* type of result (same as type of arg) */
+	NODE_OID(type,resulttype)		/* type of result (same as type of arg) */
 	/* Like RowExpr, we deliberately omit a typmod and collation here */
 END_NODE(FieldStore)
 #endif /* NO_NODE_FieldStore */
@@ -843,9 +846,9 @@ END_NODE(FieldStore)
 #ifndef NO_NODE_RelabelType
 BEGIN_NODE(RelabelType)
 	NODE_NODE(Expr,arg)			/* input expression */
-	NODE_SCALAR(Oid,resulttype)		/* output type of coercion expression */
+	NODE_OID(type,resulttype)		/* output type of coercion expression */
 	NODE_SCALAR(int32,resulttypmod)	/* output typmod (usually -1) */
-	NODE_SCALAR(Oid,resultcollid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,resultcollid)	/* OID of collation, or InvalidOid if none */
 	NODE_ENUM(CoercionForm,relabelformat) /* how to display this node */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(RelabelType)
@@ -854,9 +857,9 @@ END_NODE(RelabelType)
 #ifndef NO_NODE_CoerceViaIO
 BEGIN_NODE(CoerceViaIO)
 	NODE_NODE(Expr,arg)			/* input expression */
-	NODE_SCALAR(Oid,resulttype)		/* output type of coercion */
+	NODE_OID(type,resulttype)		/* output type of coercion */
 	/* output typmod is not stored, but is presumed -1 */
-	NODE_SCALAR(Oid,resultcollid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,resultcollid)	/* OID of collation, or InvalidOid if none */
 	NODE_ENUM(CoercionForm,coerceformat)	/* how to display this node */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(CoerceViaIO)
@@ -865,10 +868,10 @@ END_NODE(CoerceViaIO)
 #ifndef NO_NODE_ArrayCoerceExpr
 BEGIN_NODE(ArrayCoerceExpr)
 	NODE_NODE(Expr,arg)			/* input expression (yields an array) */
-	NODE_SCALAR(Oid,elemfuncid)		/* OID of element coercion function, or 0 */
-	NODE_SCALAR(Oid,resulttype)		/* output type of coercion (an array type) */
+	NODE_OID(collation,elemfuncid)		/* OID of element coercion function, or 0 */
+	NODE_OID(type,resulttype)		/* output type of coercion (an array type) */
 	NODE_SCALAR(int32,resulttypmod)	/* output typmod (also element typmod) */
-	NODE_SCALAR(Oid,resultcollid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,resultcollid)	/* OID of collation, or InvalidOid if none */
 	NODE_SCALAR(bool,isExplicit)		/* conversion semantics flag to pass to func */
 	NODE_ENUM(CoercionForm,coerceformat)	/* how to display this node */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
@@ -878,7 +881,7 @@ END_NODE(ArrayCoerceExpr)
 #ifndef NO_NODE_ConvertRowtypeExpr
 BEGIN_NODE(ConvertRowtypeExpr)
 	NODE_NODE(Expr,arg)			/* input expression */
-	NODE_SCALAR(Oid,resulttype)		/* output type (always a composite type) */
+	NODE_OID(type,resulttype)		/* output type (always a composite type) */
 	/* Like RowExpr, we deliberately omit a typmod and collation here */
 	NODE_ENUM(CoercionForm,convertformat) /* how to display this node */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
@@ -888,15 +891,15 @@ END_NODE(ConvertRowtypeExpr)
 #ifndef NO_NODE_CollateExpr
 BEGIN_NODE(CollateExpr)
 	NODE_NODE(Expr,arg)			/* input expression */
-	NODE_SCALAR(Oid,collOid)		/* collation's OID */
+	NODE_OID(collation,collOid)		/* collation's OID */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(CollateExpr)
 #endif /* NO_NODE_CollateExpr */
 
 #ifndef NO_NODE_CaseExpr
 BEGIN_NODE(CaseExpr)
-	NODE_SCALAR(Oid,casetype)		/* type of expression result */
-	NODE_SCALAR(Oid,casecollid)		/* OID of collation, or InvalidOid if none */
+	NODE_OID(type,casetype)		/* type of expression result */
+	NODE_OID(collation,casecollid)		/* OID of collation, or InvalidOid if none */
 	NODE_NODE(Expr,arg)			/* implicit equality comparison argument */
 	NODE_NODE(List,args)			/* the arguments (list of WHEN clauses) */
 	NODE_NODE(Expr,defresult)		/* the default result (ELSE clause) */
@@ -917,17 +920,17 @@ END_NODE(CaseWhen)
 
 #ifndef NO_NODE_CaseTestExpr
 BEGIN_NODE(CaseTestExpr)
-	NODE_SCALAR(Oid,typeId)			/* type for substituted value */
+	NODE_OID(type,typeId)			/* type for substituted value */
 	NODE_SCALAR(int32,typeMod)		/* typemod for substituted value */
-	NODE_SCALAR(Oid,collation)		/* collation for the substituted value */
+	NODE_OID(collation,collation)		/* collation for the substituted value */
 END_NODE(CaseTestExpr)
 #endif /* NO_NODE_CaseTestExpr */
 
 #ifndef NO_NODE_ArrayExpr
 BEGIN_NODE(ArrayExpr)
-	NODE_SCALAR(Oid,array_typeid)	/* type of expression result */
-	NODE_SCALAR(Oid,array_collid)	/* OID of collation, or InvalidOid if none */
-	NODE_SCALAR(Oid,element_typeid) /* common type of array elements */
+	NODE_OID(type,array_typeid)	/* type of expression result */
+	NODE_OID(collation,array_collid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(type,element_typeid) /* common type of array elements */
 	NODE_NODE(List,elements)		/* the array elements or sub-arrays */
 	NODE_SCALAR(bool,multidims)		/* true if elements are sub-arrays */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
@@ -937,7 +940,7 @@ END_NODE(ArrayExpr)
 #ifndef NO_NODE_RowExpr
 BEGIN_NODE(RowExpr)
 	NODE_NODE(List,args)			/* the fields */
-	NODE_SCALAR(Oid,row_typeid)		/* RECORDOID or a composite type's ID */
+	NODE_OID(type,row_typeid)		/* RECORDOID or a composite type's ID */
 	NODE_ENUM(CoercionForm,row_format)	/* how to display this node */
 	NODE_NODE(List,colnames)		/* list of String, or NIL */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
@@ -957,8 +960,8 @@ END_NODE(RowCompareExpr)
 
 #ifndef NO_NODE_CoalesceExpr
 BEGIN_NODE(CoalesceExpr)
-	NODE_SCALAR(Oid,coalescetype)	/* type of expression result */
-	NODE_SCALAR(Oid,coalescecollid) /* OID of collation, or InvalidOid if none */
+	NODE_OID(type,coalescetype)	/* type of expression result */
+	NODE_OID(collation,coalescecollid) /* OID of collation, or InvalidOid if none */
 	NODE_NODE(List,args)			/* the arguments */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(CoalesceExpr)
@@ -966,9 +969,9 @@ END_NODE(CoalesceExpr)
 
 #ifndef NO_NODE_MinMaxExpr
 BEGIN_NODE(MinMaxExpr)
-	NODE_SCALAR(Oid,minmaxtype)		/* common type of arguments and result */
-	NODE_SCALAR(Oid,minmaxcollid)	/* OID of collation of result */
-	NODE_SCALAR(Oid,inputcollid)	/* OID of collation that function should use */
+	NODE_OID(type,minmaxtype)		/* common type of arguments and result */
+	NODE_OID(collation,minmaxcollid)	/* OID of collation of result */
+	NODE_OID(collation,inputcollid)	/* OID of collation that function should use */
 	NODE_ENUM(MinMaxOp,op)				/* function to execute */
 	NODE_NODE(List,args)			/* the arguments */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
@@ -983,7 +986,7 @@ BEGIN_NODE(XmlExpr)
 	NODE_NODE(List,arg_names)		/* parallel list of Value strings */
 	NODE_NODE(List,args)			/* list of expressions */
 	NODE_ENUM(XmlOptionType,xmloption)	/* DOCUMENT or CONTENT */
-	NODE_SCALAR(Oid,type)			/* target type/typmod for XMLSERIALIZE */
+	NODE_OID(type,type)			/* target type/typmod for XMLSERIALIZE */
 	NODE_SCALAR(int32,typmod)
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(XmlExpr)
@@ -1007,9 +1010,9 @@ END_NODE(BooleanTest)
 #ifndef NO_NODE_CoerceToDomain
 BEGIN_NODE(CoerceToDomain)
 	NODE_NODE(Expr,arg)			/* input expression */
-	NODE_SCALAR(Oid,resulttype)		/* domain type ID (result type) */
+	NODE_OID(type,resulttype)		/* domain type ID (result type) */
 	NODE_SCALAR(int32,resulttypmod)	/* output typmod (currently always -1) */
-	NODE_SCALAR(Oid,resultcollid)	/* OID of collation, or InvalidOid if none */
+	NODE_OID(collation,resultcollid)	/* OID of collation, or InvalidOid if none */
 	NODE_ENUM(CoercionForm,coercionformat)	/* how to display this node */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(CoerceToDomain)
@@ -1017,18 +1020,18 @@ END_NODE(CoerceToDomain)
 
 #ifndef NO_NODE_CoerceToDomainValue
 BEGIN_NODE(CoerceToDomainValue)
-	NODE_SCALAR(Oid,typeId)			/* type for substituted value */
+	NODE_OID(type,typeId)			/* type for substituted value */
 	NODE_SCALAR(int32,typeMod)		/* typemod for substituted value */
-	NODE_SCALAR(Oid,collation)		/* collation for the substituted value */
+	NODE_OID(collation,collation)		/* collation for the substituted value */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(CoerceToDomainValue)
 #endif /* NO_NODE_CoerceToDomainValue */
 
 #ifndef NO_NODE_SetToDefault
 BEGIN_NODE(SetToDefault)
-	NODE_SCALAR(Oid,typeId)			/* type for substituted value */
+	NODE_OID(type,typeId)			/* type for substituted value */
 	NODE_SCALAR(int32,typeMod)		/* typemod for substituted value */
-	NODE_SCALAR(Oid,collation)		/* collation for the substituted value */
+	NODE_OID(collation,collation)		/* collation for the substituted value */
 	NODE_LOCATION(int,location)		/* token location, or -1 if unknown */
 END_NODE(SetToDefault)
 #endif /* NO_NODE_SetToDefault */
@@ -1276,7 +1279,7 @@ END_NODE(IndexOptInfo)
 #ifndef NO_NODE_EquivalenceClass
 BEGIN_NODE(EquivalenceClass)
 	NODE_NODE(List,ec_opfamilies)	/* btree operator family OIDs */
-	NODE_SCALAR(Oid,ec_collation)	/* collation, if datatypes are collatable */
+	NODE_OID(collation,ec_collation)	/* collation, if datatypes are collatable */
 	NODE_NODE(List,ec_members)		/* list of EquivalenceMembers */
 	NODE_NODE(List,ec_sources)		/* list of generating RestrictInfos */
 	NODE_NODE(List,ec_derives)		/* list of derived RestrictInfos */
@@ -1297,7 +1300,7 @@ BEGIN_NODE(EquivalenceMember)
 	NODE_RELIDS(Relids,em_nullable_relids)		/* nullable by lower outer joins */
 	NODE_SCALAR(bool,em_is_const)	/* expression is pseudoconstant? */
 	NODE_SCALAR(bool,em_is_child)	/* derived version for a child relation? */
-	NODE_SCALAR(Oid,em_datatype)	/* the "nominal type" used by the opfamily */
+	NODE_OID(collation,em_datatype)	/* the "nominal type" used by the opfamily */
 END_NODE(EquivalenceMember)
 #endif /* NO_NODE_EquivalenceMember */
 
@@ -1519,7 +1522,7 @@ END_NODE(RestrictInfo)
 BEGIN_STRUCT(MergeScanSelCache)
 	/* Ordering details (cache lookup key) */
 	NODE_SCALAR(Oid,opfamily)		/* btree opfamily defining the ordering */
-	NODE_SCALAR(Oid,collation)		/* collation for the ordering */
+	NODE_OID(collation,collation)		/* collation for the ordering */
 	NODE_SCALAR(int,strategy)		/* sort direction (ASC or DESC) */
 	NODE_SCALAR(bool,nulls_first)	/* do NULLs come before normal values? */
 	/* Results */
@@ -1563,8 +1566,8 @@ END_NODE(LateralJoinInfo)
 BEGIN_NODE(AppendRelInfo)
 	NODE_SCALAR(Index,parent_relid)	/* RT index of append parent rel */
 	NODE_SCALAR(Index,child_relid)	/* RT index of append child rel */
-	NODE_SCALAR(Oid,parent_reltype) /* OID of parent's composite type */
-	NODE_SCALAR(Oid,child_reltype)	/* OID of child's composite type */
+	NODE_OID(type,parent_reltype) /* OID of parent's composite type */
+	NODE_OID(type,child_reltype)	/* OID of child's composite type */
 	NODE_NODE(List,translated_vars)	/* Expressions in the child's Vars */
 	NODE_SCALAR(Oid,parent_reloid)	/* OID of parent relation */
 END_NODE(AppendRelInfo)
@@ -1583,7 +1586,7 @@ END_NODE(PlaceHolderInfo)
 
 #ifndef NO_NODE_MinMaxAggInfo
 BEGIN_NODE(MinMaxAggInfo)
-	NODE_SCALAR(Oid,aggfnoid)		/* pg_proc Oid of the aggregate */
+	NODE_OID(proc,aggfnoid)		/* pg_proc Oid of the aggregate */
 	NODE_SCALAR(Oid,aggsortop)		/* Oid of its sort operator */
 	NODE_NODE(Expr,target)			/* expression we are aggregating on */
 	NODE_NODE(PlannerInfo,subroot)		/* modified "root" for planning the subquery */
@@ -1635,7 +1638,7 @@ BEGIN_STRUCT(ParamExternData)
 	NODE_DATUM(Datum,value,NODE_ARG_->ptype, NODE_ARG_->isnull)			/* parameter value */
 	NODE_SCALAR(bool,isnull)			/* is it NULL? */
 	NODE_SCALAR(uint16,pflags)			/* flag bits, see above */
-	NODE_SCALAR(Oid,ptype)			/* parameter's datatype, or 0 */
+	NODE_OID(type,ptype)			/* parameter's datatype, or 0 */
 END_STRUCT(ParamExternData)
 #endif /* NO_STRUCT_ParamExternData */
 
@@ -1693,7 +1696,7 @@ END_NODE(Query)
 #ifndef NO_NODE_TypeName
 BEGIN_NODE(TypeName)
 	NODE_NODE(List,names)			/* qualified name (list of Value strings) */
-	NODE_SCALAR(Oid,typeOid)		/* type identified by OID */
+	NODE_OID(type,typeOid)		/* type identified by OID */
 	NODE_SCALAR(bool,setof)			/* is a set? */
 	NODE_SCALAR(bool,pct_type)		/* %TYPE specified? */
 	NODE_NODE(List,typmods)		/* type modifier expression(s) */
@@ -1946,7 +1949,7 @@ BEGIN_NODE(ColumnDef)
 	NODE_NODE(Node,raw_default)	/* default value (untransformed parse tree) */
 	NODE_NODE(Node,cooked_default) /* default value (transformed expr tree) */
 	NODE_NODE(CollateClause,collClause)	/* untransformed COLLATE spec, if any */
-	NODE_SCALAR(Oid,collOid)		/* collation OID (InvalidOid if not set) */
+	NODE_OID(collation,collOid)		/* collation OID (InvalidOid if not set) */
 	NODE_NODE(List,constraints)	/* other constraints on column */
 	NODE_NODE(List,fdwoptions)		/* per-column FDW options */
 END_NODE(ColumnDef)
@@ -2240,8 +2243,8 @@ END_NODE(RangeTblEntry)
 #ifndef NO_NODE_SortGroupClause
 BEGIN_NODE(SortGroupClause)
 	NODE_SCALAR(Index,tleSortGroupRef)	/* reference into targetlist */
-	NODE_SCALAR(Oid,eqop)			/* the equality operator ('=' op) */
-	NODE_SCALAR(Oid,sortop)			/* the ordering operator ('<' op), or 0 */
+	NODE_OID(operator,eqop)			/* the equality operator ('=' op) */
+	NODE_OID(operator,sortop)			/* the ordering operator ('<' op), or 0 */
 	NODE_SCALAR(bool,nulls_first)	/* do NULLs come before normal values? */
 	NODE_SCALAR(bool,hashable)		/* can eqop be implemented by hashing? */
 END_NODE(SortGroupClause)

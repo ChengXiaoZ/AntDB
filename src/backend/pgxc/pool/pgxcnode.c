@@ -1734,11 +1734,11 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 	/* size + strlen */
 	msgLen = 4 + strLen;
 #ifdef ADB
-	/*if(tree_data && tree_data->len > 0)
+	if(tree_data && tree_data->len > 0)
 	{
 		tree_len = tree_data->len;
 		msgLen += tree_len;
-	}else*/
+	}else
 	{
 		tree_len = 0;
 	}

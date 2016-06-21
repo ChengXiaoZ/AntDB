@@ -12,18 +12,27 @@
 #include "libpq/pqformat.h"
 
 #include "access/htup_details.h"
+#include "access/transam.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/pg_operator.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
+#include "mb/pg_wchar.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/plannodes.h"
 #include "nodes/primnodes.h"
 #include "optimizer/pgxcplan.h"
+#include "parser/parse_func.h"
 #include "parser/parse_type.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+
+#define IS_OID_BUILTIN(oid_) (oid_ < FirstNormalObjectId)
 
 /* not support Node */
 #define NO_NODE_PlannerInfo
@@ -46,7 +55,8 @@
 
 /* save functions */
 #define SAVE_IS_NULL()			pq_sendbyte(buf, true)
-#define SAVE_IS_NOT_NULL()	pq_sendbyte(buf, false)
+#define SAVE_IS_NOT_NULL()		pq_sendbyte(buf, false)
+#define SAVE_BOOL(b_)			pq_sendbyte(buf, (b_) ? true:false)
 
 #define BEGIN_NODE(type) 											\
 static void save_##type(StringInfo buf, const type *node)			\
@@ -116,6 +126,7 @@ static void save_##type(StringInfo buf, const type *node)			\
 #define NODE_STRUCT_MEB(t,m)			save_##t(buf, &node->m);
 #define NODE_ENUM(t,m)					NODE_SCALAR(t,m)
 #define NODE_DATUM(t,m,o,n)			not support
+#define NODE_OID(t, m)					save_oid_##t(buf, node->m);
 
 /*#define SAVE_ARRAY(t,m,l,f,t2)										\
 	do{																	\
@@ -139,13 +150,37 @@ static void save_node_bitmapset(StringInfo buf, const Bitmapset *node)
 	}
 }
 
-static void save_typeoid(StringInfo buf, Oid typid)
+static void save_namespace(StringInfo buf, Oid nsp)
 {
-	HeapTuple tup;
-	Type type;
 	Form_pg_namespace nspForm;
+	HeapTuple tup;
+
+	if(!OidIsValid(nsp))
+		ereport(ERROR, (errmsg("can not save invalid OID for namespace")));
+
+	if(IS_OID_BUILTIN(nsp))
+	{
+		SAVE_BOOL(true);
+		pq_sendbytes(buf, (char*)&nsp, sizeof(nsp));
+	}else
+	{
+		/* search namespace*/
+		tup = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(nsp));
+		if(!HeapTupleIsValid(tup))
+			ereport(ERROR, (errmsg("Can not find namespace id %u", (unsigned)nsp)));
+		nspForm = (Form_pg_namespace)GETSTRUCT(tup);
+		Assert(nspForm);
+
+		/* save namespace and type name */
+		pq_sendstring(buf, NameStr(nspForm->nspname));
+		ReleaseSysCache(tup);
+	}
+}
+
+static void save_oid_type(StringInfo buf, Oid typid)
+{
+	Type type;
 	Form_pg_type typ;
-	Oid namespaceId;
 
 	if(!OidIsValid(typid))
 	{
@@ -160,20 +195,98 @@ static void save_typeoid(StringInfo buf, Oid typid)
 	typ = (Form_pg_type)GETSTRUCT(type);
 	Assert(typ);
 
-	/* get namespace ID */
-	namespaceId = typ->typnamespace;
-
-	/* get namespace cache */
-	tup = SearchSysCache1(NAMESPACEOID, ObjectIdGetDatum(namespaceId));
-	Assert(HeapTupleIsValid(tup));
-	nspForm = (Form_pg_namespace)GETSTRUCT(tup);
-	Assert(nspForm);
-
-	/* save namespace and type name */
-	pq_sendstring(buf, NameStr(nspForm->nspname));
-	ReleaseSysCache(tup);
+	save_namespace(buf, typ->typnamespace);
 	pq_sendstring(buf, NameStr(typ->typname));
 	ReleaseSysCache(type);
+}
+
+static void save_oid_collation(StringInfo buf, Oid collation)
+{
+	Form_pg_collation form_collation;
+	HeapTuple	tuple;
+
+	if(IS_OID_BUILTIN(collation))
+	{
+		SAVE_BOOL(true);
+		pq_sendbytes(buf, (char*)&collation, sizeof(collation));
+	}else
+	{
+		SAVE_BOOL(false);
+
+		/*tuple = systable_getnext(scandesc);*/
+		tuple = SearchSysCache1(COLLOID, ObjectIdGetDatum(collation));
+		if(!HeapTupleIsValid(tuple))
+		{
+			ereport(ERROR, (errmsg("Can not found collation %u", collation)));
+		}
+		form_collation = (Form_pg_collation)GETSTRUCT(tuple);
+		save_namespace(buf, form_collation->collnamespace);
+		pq_sendstring(buf, NameStr(form_collation->collname));
+		pq_sendint(buf, form_collation->collencoding, sizeof(form_collation->collencoding));
+
+		ReleaseSysCache(tuple);
+	}
+}
+
+static void save_oid_proc(StringInfo buf, Oid proc)
+{
+	HeapTuple	proctup;
+	Form_pg_proc procform;
+	oidvector  *oidArray;
+	int i,count;
+
+	if(IS_OID_BUILTIN(proc))
+	{
+		SAVE_BOOL(true);
+		pq_sendbytes(buf, (char*)&proc, sizeof(proc));
+	}else
+	{
+		SAVE_BOOL(false);
+		proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(proc));
+		if (!HeapTupleIsValid(proctup))
+			ereport(ERROR, (errmsg("cache lookup failed for function %u", proc)));
+		procform = (Form_pg_proc) GETSTRUCT(proctup);
+		save_namespace(buf, procform->pronamespace);
+		pq_sendstring(buf, NameStr(procform->proname));
+
+		/* save return type for check in load */
+		save_oid_type(buf, procform->prorettype);
+
+		/* save arg(s) type */
+		pq_sendint(buf, procform->pronargs, sizeof(procform->pronargs));
+		oidArray = &(procform->proargtypes);
+		count = oidArray->dim1;
+		Assert(count == procform->pronargs);
+		for(i=0;i<count;++i)
+			save_oid_type(buf, oidArray->values[i]);
+		ReleaseSysCache(proctup);
+	}
+}
+
+static void save_oid_operator(StringInfo buf, Oid op)
+{
+	HeapTuple opertup;
+	Form_pg_operator operform;
+	if(IS_OID_BUILTIN(op))
+	{
+		SAVE_BOOL(true);
+		pq_sendbytes(buf, (char*)&op, sizeof(op));
+	}else
+	{
+		opertup = SearchSysCache1(OPEROID, ObjectIdGetDatum(op));
+		if (!HeapTupleIsValid(opertup))
+			elog(ERROR, "cache lookup failed for operator %u", op);
+		operform = (Form_pg_operator) GETSTRUCT(opertup);
+
+		/* save result type for check in load */
+		save_oid_type(buf, operform->oprresult);
+
+		save_namespace(buf, operform->oprnamespace);
+		pq_sendstring(buf, NameStr(operform->oprname));
+
+		save_oid_type(buf, operform->oprleft);
+		save_oid_type(buf, operform->oprright);
+	}
 }
 
 static void save_datum(StringInfo buf, Oid typid, Datum datum)
@@ -194,7 +307,7 @@ static void save_ParamExternData(StringInfo buf, const ParamExternData *node)
 {
 	AssertArg(node);
 	pq_sendbytes(buf, (const char*)&(node->pflags), sizeof(node->pflags));
-	save_typeoid(buf, node->ptype);
+	save_oid_type(buf, node->ptype);
 	if(node->isnull)
 	{
 		SAVE_IS_NULL();
@@ -225,6 +338,7 @@ static void save_String(StringInfo buf, const Value *node)
 	AssertArg(node);
 	pq_sendstring(buf, strVal(node));
 }
+
 BEGIN_NODE(List)
 	do{
 		ListCell *lc;
@@ -250,8 +364,9 @@ static void save_OidList(StringInfo buf, const List *node)
 	foreach(lc,node)
 		pq_sendbytes(buf, (const char*)&lfirst_oid(lc), sizeof(lfirst_oid(lc)));
 }
+
 BEGIN_NODE(Const)
-	save_typeoid(buf, node->consttype);
+	NODE_OID(type,consttype);
 	NODE_SCALAR(int32,consttypmod)
 	NODE_SCALAR(Oid,constcollid)
 	NODE_SCALAR(int,constlen)
@@ -339,6 +454,7 @@ void saveNode(StringInfo buf, const Node *node)
 
 /* load functions */
 #define LOAD_IS_NULL() pq_getmsgbyte(buf)
+#define LOAD_BOOL() pq_getmsgbyte(buf)
 
 #define BEGIN_NODE(type)									\
 	static type* load_##type(StringInfo buf, type *node)	\
@@ -395,6 +511,7 @@ void saveNode(StringInfo buf, const Node *node)
 #define NODE_STRUCT_MEB(t,m)			(void)load_##t(buf,&(node->m));
 #define NODE_ENUM(t,m)					NODE_SCALAR(t,m)
 #define NODE_DATUM(t,m,o,n)				not support
+#define NODE_OID(t,m)					node->m = load_oid_##t(buf);
 
 static Bitmapset* load_Bitmapset(StringInfo buf)
 {
@@ -410,30 +527,198 @@ static Bitmapset* load_Bitmapset(StringInfo buf)
 	return node;
 }
 
-static Oid load_typeoid(StringInfo buf)
+static Oid load_namespace(StringInfo buf)
 {
-	const char *str_nsp,*str_type;
+	Oid oid;
+	if(LOAD_BOOL())
+	{
+		pq_copymsgbytes(buf, (char*)&oid, sizeof(oid));
+	}else
+	{
+		const char *nsp_name = pq_getmsgstring(buf);
+		oid = LookupExplicitNamespace(nsp_name, false);
+	}
+	return oid;
+}
+
+static Oid load_oid_type(StringInfo buf)
+{
+	const char *str_type;
 	HeapTuple tup;
 	Oid typid,namespaceId;
 
 	if(LOAD_IS_NULL())
 		return InvalidOid;
 
-	str_nsp = pq_getmsgstring(buf);
-	namespaceId = LookupExplicitNamespace(str_nsp, false);
-	Assert(OidIsValid(namespaceId));
+	namespaceId = load_namespace(buf);
+	if(!OidIsValid(namespaceId))
+		ereport(ERROR, (errmsg("Load an invalid namespace id")));
 
 	str_type = pq_getmsgstring(buf);
 	tup = SearchSysCache2(TYPENAMENSP, CStringGetDatum(str_type)
 		, ObjectIdGetDatum(namespaceId));
 	if(!HeapTupleIsValid(tup))
 	{
-		ereport(ERROR, (errmsg("Can not found type \"%s\".\"%s\"", str_nsp, str_type)));
+		ereport(ERROR, (errmsg("Can not found type \"%s\" at namespace %u", str_type, (unsigned)namespaceId)));
 	}
 
 	typid = HeapTupleGetOid(tup);
 	ReleaseSysCache(tup);
 	return typid;
+}
+
+static Oid load_oid_collation(StringInfo buf)
+{
+	Oid oid;
+	if(LOAD_BOOL())
+	{
+		pq_copymsgbytes(buf, (char*)&oid, sizeof(oid));
+	}else
+	{
+		const char *coll_name;
+		NameData name;
+		Oid nsp;
+		int32 encoding;
+		HeapTuple tup;
+
+		nsp = load_namespace(buf);
+		coll_name = pq_getmsgstring(buf);
+		namestrcpy(&name, coll_name);
+		encoding = pq_getmsgint(buf, sizeof(encoding));
+
+		tup = SearchSysCache3(COLLNAMEENCNSP
+				, NameGetDatum(&name)
+				, Int32GetDatum(encoding)
+				, ObjectIdGetDatum(nsp));
+		if(!HeapTupleIsValid(tup))
+		{
+			ereport(ERROR, (errmsg("Can not collation \"%s\" for encoding \"%s\" in namespace \"%s\""
+				, NameStr(name), pg_encoding_to_char(encoding), get_namespace_name(nsp))));
+		}
+		oid = HeapTupleGetOid(tup);
+		ReleaseSysCache(tup);
+	}
+	return oid;
+}
+
+static Oid load_oid_proc(StringInfo buf)
+{
+	Oid oid;
+	if(LOAD_BOOL())
+	{
+		pq_copymsgbytes(buf, (char*)&oid, sizeof(oid));
+	}else
+	{
+		Oid nsp;
+		Oid rettype;
+		oidvector *vector;
+		NameData name;
+		int16 i,nargs;
+		const char *proc_name;
+		Oid *args;
+		HeapTuple tup;
+
+		nsp = load_namespace(buf);
+		proc_name = pq_getmsgstring(buf);
+		namestrcpy(&name, proc_name);
+
+		rettype = load_oid_type(buf);
+
+		nargs = pq_getmsgint(buf, sizeof(nargs));
+		if(nargs > 0)
+		{
+			args = palloc(sizeof(Oid)*nargs);
+			for(i=0;i<nargs;++i)
+				args[i] = load_oid_type(buf);
+		}else if(nargs < 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
+				, errmsg("Invalid count of Oid %d", nargs)));
+		}else
+		{
+			args = NULL;
+		}
+		vector = buildoidvector(args, nargs);
+
+		tup = SearchSysCache3(PROCNAMEARGSNSP
+			, NameGetDatum(&name)
+			, PointerGetDatum(vector)
+			, ObjectIdGetDatum(nsp));
+		if(!HeapTupleIsValid(tup))
+		{
+			ereport(ERROR, (errmsg("Can not load function %s at namespace %s"
+				, funcname_signature_string(NameStr(name), nargs, NIL, args), get_namespace_name(nsp))));
+		}
+		oid = HeapTupleGetOid(tup);
+		ReleaseSysCache(tup);
+
+		/* test return type */
+		if(rettype != get_func_rettype(oid))
+		{
+			ereport(ERROR, (errmsg("function %s.%s return type is not %s"
+					, get_namespace_name(nsp)
+					, funcname_signature_string(NameStr(name), nargs, NIL, args)
+					, format_type_be(rettype))
+				, errhint("return type is %s", format_type_be(get_func_rettype(oid)))));
+		}
+
+		if(args)
+			pfree(args);
+		pfree(vector);
+	}
+	return oid;
+}
+
+static Oid load_oid_operator(StringInfo buf)
+{
+	Oid oid;
+	if(LOAD_BOOL())
+	{
+		pq_copymsgbytes(buf, (char*)&oid, sizeof(oid));
+	}else
+	{
+		HeapTuple tup;
+		Form_pg_operator form_oper;
+		const char *opr_name;
+		NameData name;
+		Oid nsp;
+		Oid rettype;
+		Oid left;
+		Oid right;
+
+		rettype = load_oid_type(buf);
+		nsp = load_namespace(buf);
+		opr_name = pq_getmsgstring(buf);
+		namestrcpy(&name, opr_name);
+
+		left = load_oid_type(buf);
+		right = load_oid_type(buf);
+
+		tup = SearchSysCache4(OPERNAMENSP
+			, NameGetDatum(&name)
+			, ObjectIdGetDatum(left)
+			, ObjectIdGetDatum(right)
+			, ObjectIdGetDatum(nsp));
+		if(!HeapTupleIsValid(tup))
+		{
+			ereport(ERROR, (errmsg("Can not load opeator %s", NameStr(name))
+				,errhint("left %s, right %s"
+					, OidIsValid(left) ? format_type_be(left) : "invalid"
+					, OidIsValid(right) ? format_type_be(right) : "invalid")));
+		}
+		oid = HeapTupleGetOid(tup);
+
+		form_oper = (Form_pg_operator)GETSTRUCT(tup);
+		if(rettype != form_oper->oprresult)
+		{
+			ereport(ERROR,
+				(errmsg("operator %u result type is not %s", oid, format_type_be(rettype))
+				,errhint("it result type %s", format_type_be(form_oper->oprresult))));
+		}
+		ReleaseSysCache(tup);
+	}
+
+	return oid;
 }
 
 static Datum load_datum(StringInfo buf, Oid typid)
@@ -453,7 +738,7 @@ static ParamExternData* load_ParamExternData(StringInfo buf, ParamExternData *no
 {
 	AssertArg(node);
 	pq_copymsgbytes(buf, (char*)&(node->pflags), sizeof(node->pflags));
-	node->ptype = load_typeoid(buf);
+	node->ptype = load_oid_type(buf);
 	if(LOAD_IS_NULL())
 	{
 		node->isnull = true;
@@ -529,7 +814,7 @@ static List* load_IntList(StringInfo buf)
 }
 
 BEGIN_NODE(Const)
-	node->consttype = load_typeoid(buf);
+	NODE_OID(type,consttype);
 	NODE_SCALAR(int32,consttypmod)
 	NODE_SCALAR(Oid,constcollid)
 	NODE_SCALAR(int,constlen)
