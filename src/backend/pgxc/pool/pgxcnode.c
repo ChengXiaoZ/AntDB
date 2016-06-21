@@ -358,9 +358,6 @@ pgxc_node_free(PGXCNodeHandle *handle)
 {
 	close(handle->sock);
 	handle->sock = NO_SOCKET;
-#ifdef ADB
-	MemSet(handle->name.data, 0, NAMEDATALEN);
-#endif
 	if(handle->file_data)
 	{
 		char file_name[20];
@@ -1202,7 +1199,8 @@ send_some(PGXCNodeHandle *handle, int len)
 					return -1;
 
 				default:
-					add_error_message(handle, "could not send data to server");
+					add_error_message(handle,
+						"could not send data to server %s", NameStr(handle->name));
 					/* We don't assume it's a fatal error... */
 					handle->outEnd = 0;
 					return -1;
@@ -1819,16 +1817,12 @@ pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
 	StringInfoData	buf;
 	uint32			nval;
 	int				i;
-	char			msgtyp = 's';
 
 	/* Invalid connection state, return error */
 	if (handle->state != DN_CONNECTION_STATE_IDLE)
 		return EOF;
 
 	initStringInfo(&buf);
-
-	/* msgtype 's' */
-	appendBinaryStringInfo(&buf, (const char *) &msgtyp, sizeof(char));
 	/* xmin */
 	nval = htonl(snapshot->xmin);
 	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
@@ -1870,12 +1864,18 @@ pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
 	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));
 
 	/* message length */
-	if (ensure_out_buffer_capacity(handle->outEnd + buf.len, handle) != 0)
+	if (ensure_out_buffer_capacity(handle->outEnd + 1 + 4 + buf.len, handle) != 0)
 	{
 		add_error_message(handle, "out of memory");
 		return EOF;
 	}
+
+	handle->outBuffer[handle->outEnd++] = 's';
+	nval = htonl(4 + buf.len);
+	memcpy(handle->outBuffer + handle->outEnd, &nval, sizeof(nval));
+	handle->outEnd += sizeof(nval);
 	memcpy(handle->outBuffer + handle->outEnd, buf.data, buf.len);
+	handle->outEnd += buf.len;
 	pfree(buf.data);
 
 	return 0;

@@ -552,6 +552,8 @@ SocketBackend(StringInfo inBuf)
 #ifdef ADB
 		case 'L':				/* agtm backend listen port */
 			break;
+		case 's':				/* snapshot */
+			break;
 #endif /* ADB */
 #ifdef AGTM
 		case 'A':				/* agtm command */
