@@ -51,7 +51,8 @@ typedef struct InitHostInfo
 typedef struct Monitor_Host
 {
     int            run_state;
-    StringInfoData begin_run_time;
+    StringInfoData current_time;
+    int64          seconds_since_boot;
     int            cpu_core_total;
     int            cpu_core_available;
     StringInfoData system;
@@ -296,10 +297,14 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
         /* host cpu available cores */
         monitor_host.cpu_core_available = strtoull(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+        
+        /* host seconds since boot */
+        monitor_host.seconds_since_boot = strtoull(&agentRstStr.data[agentRstStr.cursor]);
+        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;  
     //}
 
     monitor_host.run_state = 1;
-    appendStringInfoString(&monitor_host.begin_run_time, monitor_cpu.cpu_timestamp.data);
+    appendStringInfoString(&monitor_host.current_time, monitor_cpu.cpu_timestamp.data);
     
     insert_into_monotor_cpu(host_oid, &monitor_cpu);
     insert_into_monotor_mem(host_oid, &monitor_mem);
@@ -424,8 +429,9 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
 
     datum[Anum_monitor_net_host_oid - 1] = ObjectIdGetDatum(host_oid);
     datum[Anum_monitor_host_mh_run_state - 1] = Int16GetDatum(monitor_host->run_state);
-    datum[Anum_monitor_host_mh_begin_run_time - 1] = 
-        DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_host->begin_run_time.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+    datum[Anum_monitor_host_mh_current_time - 1] = 
+        DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_host->current_time.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+    datum[Anum_monitor_host_mh_seconds_since_boot - 1] = Int64GetDatum(monitor_host->seconds_since_boot);
     datum[Anum_monitor_host_mh_cpu_core_total - 1] = Int16GetDatum(monitor_host->cpu_core_total);
     datum[Anum_monitor_host_mh_cpu_core_available - 1] = Int16GetDatum(monitor_host->cpu_core_available);
     datum[Anum_monitor_host_mh_system - 1] = CStringGetTextDatum(monitor_host->system.data);
@@ -443,14 +449,14 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
 
 static void init_Monitor_Host(Monitor_Host *monitor_host)
 {
-    initStringInfo(&monitor_host->begin_run_time);
+    initStringInfo(&monitor_host->current_time);
     initStringInfo(&monitor_host->system);
     initStringInfo(&monitor_host->platform_type);
 }
 
 static void pfree_Monitor_Host(Monitor_Host *monitor_host)
 {
-    pfree(monitor_host->begin_run_time.data);
+    pfree(monitor_host->current_time.data);
     pfree(monitor_host->system.data);
     pfree(monitor_host->platform_type.data);
 }

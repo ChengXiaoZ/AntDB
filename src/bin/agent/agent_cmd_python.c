@@ -1,5 +1,8 @@
 #include "postgres.h"
 #include <unistd.h>
+#include <time.h>
+#include <sys/sysinfo.h>
+#include <errno.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -336,6 +339,8 @@ bool get_host_info(StringInfo hostinfostring)
 {
     PyObject *pModule,*pDict,*pFunc,*pRetValue,*sysPath,*path;
     int result;
+    struct sysinfo info;
+    time_t seconds_since_boot;
     int cpu_cores_total, cpu_cores_available;
     char *platform_type = NULL;
     char *system = NULL;
@@ -393,6 +398,15 @@ bool get_host_info(StringInfo hostinfostring)
     cpu_cores_available = sysconf(_SC_NPROCESSORS_ONLN);
     monitor_append_int64(hostinfostring, cpu_cores_total);
     monitor_append_int64(hostinfostring, cpu_cores_available);
+
+    if (sysinfo(&info))
+    {
+        fprintf(stderr, "Failed to get sysinfo, errno:%u, reason:%s\n", errno, strerror(errno));
+        return -1;
+    }
+
+    seconds_since_boot = info.uptime;
+    monitor_append_int64(hostinfostring, seconds_since_boot);
 
     Py_DECREF(pModule);
     Py_DECREF(pRetValue);

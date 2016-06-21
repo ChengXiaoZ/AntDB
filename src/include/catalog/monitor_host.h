@@ -20,7 +20,8 @@ CATALOG(monitor_host,4921)
 {
 	Oid 			host_oid;				/* host name */
 	int16 			mh_run_state;			/* host run state */
-	timestamptz 	mh_begin_run_time;		/* host begin run time */
+	timestamptz 	mh_current_time;		/* host cuttent time */
+    int64           mh_seconds_since_boot;  /* host seconds since boot */
 	int16			mh_cpu_core_total;		/* host cpu total cores */
 	int16			mh_cpu_core_available;	/* host cpu available cores */
 	
@@ -45,14 +46,15 @@ typedef FormData_monitor_host *Form_monitor_host;
  *		compiler constants for monitor_host
  * ----------------
  */
-#define Natts_monitor_host							7
+#define Natts_monitor_host							8
 #define Anum_monitor_host_host_oid					1
 #define Anum_monitor_host_mh_run_state				2
-#define Anum_monitor_host_mh_begin_run_time			3
-#define Anum_monitor_host_mh_cpu_core_total			4
-#define Anum_monitor_host_mh_cpu_core_available		5
-#define Anum_monitor_host_mh_system					6
-#define Anum_monitor_host_mh_platform_type			7
+#define Anum_monitor_host_mh_current_time			3
+#define Anum_monitor_host_mh_seconds_since_boot     4
+#define Anum_monitor_host_mh_cpu_core_total			5
+#define Anum_monitor_host_mh_cpu_core_available		6
+#define Anum_monitor_host_mh_system					7
+#define Anum_monitor_host_mh_platform_type			8
 
 
 #endif /* MONITOR_HOST_H */
