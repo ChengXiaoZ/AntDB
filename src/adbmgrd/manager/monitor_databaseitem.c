@@ -53,8 +53,8 @@ typedef enum ResultChoice
 */
 int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname)
 {
-  StringInfoData constr;
-  PGconn* conn;
+	StringInfoData constr;
+	PGconn* conn;
 	PGresult *res;
 	char *oneCoordValueStr;
 	int oneCoordTpsInt = -1;
@@ -66,14 +66,14 @@ int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, in
 		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
 	conn = PQconnectdb(constr.data);
 	/* Check to see that the backend connection was successfully made */
-  if (PQstatus(conn) != CONNECTION_OK) 
+	if (PQstatus(conn) != CONNECTION_OK) 
 	{
 		ereport(LOG,
 		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
 		PQfinish(conn);
 		pfree(constr.data);
 		return -1;
-  }
+	}
 	res = PQexec(conn, sqlstr);
 	if(PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -88,12 +88,12 @@ int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, in
 	Assert(1 == PQntuples(res));
 	/*check column number*/
 	Assert(1 == PQnfields(res));
-  oneCoordValueStr = PQgetvalue(res, 0, 0 );
+	oneCoordValueStr = PQgetvalue(res, 0, 0 );
 	oneCoordTpsInt = atoi(oneCoordValueStr);
-  PQclear(res);
-  PQfinish(conn);
+	PQclear(res);
+	PQfinish(conn);
 	pfree(constr.data);
-  return oneCoordTpsInt;
+	return oneCoordTpsInt;
 }
 
 /*

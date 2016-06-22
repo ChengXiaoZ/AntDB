@@ -16,9 +16,9 @@
 CATALOG(monitor_databasetps,4950)
 {
 	timestamptz		monitor_databasetps_time;		/* monitor tps timestamp */
-	NameData			monitor_databasetps_dbname;
-	int32     		monitor_databasetps_tps;
-	int32     		monitor_databasetps_qps;
+	NameData		monitor_databasetps_dbname;
+	int32			monitor_databasetps_tps;
+	int32			monitor_databasetps_qps;
 } FormData_monitor_databasetps;
 
 /* ----------------
@@ -36,9 +36,9 @@ typedef FormData_monitor_databasetps *Form_monitor_databasetps;
  *		compiler constants for monitor_databasetps
  * ----------------
  */
-#define Natts_monitor_databasetps									4
+#define Natts_monitor_databasetps								4
 #define Anum_monitor_databasetps_time							1
-#define Anum_monitor_databasetps_dbname						2
+#define Anum_monitor_databasetps_dbname							2
 #define Anum_monitor_databasetps_tps							3
 #define Anum_monitor_databasetps_qps							4
 
