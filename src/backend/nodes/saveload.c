@@ -100,7 +100,7 @@ static void save_##type(StringInfo buf, const type *node)			\
 		{														\
 			Assert(node->m != NULL);							\
 			SAVE_IS_NOT_NULL();									\
-			pq_sendstring(buf, node->m);						\
+			save_node_string(buf, node->m);						\
 		}else													\
 		{														\
 			SAVE_IS_NULL();										\
@@ -137,6 +137,12 @@ static void save_##type(StringInfo buf, const type *node)			\
 			f(buf, (const t2*)node->m[i]);									\
 	}while(0);*/
 
+static void save_node_string(StringInfo buf, const char *str)
+{
+	int len = strlen(str);
+	appendBinaryStringInfo(buf, str, len+1);
+}
+
 static void save_node_bitmapset(StringInfo buf, const Bitmapset *node)
 {
 	if(node == NULL)
@@ -172,7 +178,7 @@ static void save_namespace(StringInfo buf, Oid nsp)
 		Assert(nspForm);
 
 		/* save namespace and type name */
-		pq_sendstring(buf, NameStr(nspForm->nspname));
+		save_node_string(buf, NameStr(nspForm->nspname));
 		ReleaseSysCache(tup);
 	}
 }
@@ -196,7 +202,7 @@ static void save_oid_type(StringInfo buf, Oid typid)
 	Assert(typ);
 
 	save_namespace(buf, typ->typnamespace);
-	pq_sendstring(buf, NameStr(typ->typname));
+	save_node_string(buf, NameStr(typ->typname));
 	ReleaseSysCache(type);
 }
 
@@ -221,7 +227,7 @@ static void save_oid_collation(StringInfo buf, Oid collation)
 		}
 		form_collation = (Form_pg_collation)GETSTRUCT(tuple);
 		save_namespace(buf, form_collation->collnamespace);
-		pq_sendstring(buf, NameStr(form_collation->collname));
+		save_node_string(buf, NameStr(form_collation->collname));
 		pq_sendint(buf, form_collation->collencoding, sizeof(form_collation->collencoding));
 
 		ReleaseSysCache(tuple);
@@ -247,7 +253,7 @@ static void save_oid_proc(StringInfo buf, Oid proc)
 			ereport(ERROR, (errmsg("cache lookup failed for function %u", proc)));
 		procform = (Form_pg_proc) GETSTRUCT(proctup);
 		save_namespace(buf, procform->pronamespace);
-		pq_sendstring(buf, NameStr(procform->proname));
+		save_node_string(buf, NameStr(procform->proname));
 
 		/* save return type for check in load */
 		save_oid_type(buf, procform->prorettype);
@@ -282,7 +288,7 @@ static void save_oid_operator(StringInfo buf, Oid op)
 		save_oid_type(buf, operform->oprresult);
 
 		save_namespace(buf, operform->oprnamespace);
-		pq_sendstring(buf, NameStr(operform->oprname));
+		save_node_string(buf, NameStr(operform->oprname));
 
 		save_oid_type(buf, operform->oprleft);
 		save_oid_type(buf, operform->oprright);
@@ -291,16 +297,51 @@ static void save_oid_operator(StringInfo buf, Oid op)
 
 static void save_datum(StringInfo buf, Oid typid, Datum datum)
 {
-	bytea *save_data;
-	Oid typeSendId;
-	bool typIsVarlena;
+	int16 typlen;
+	bool byval;
 
-	getTypeBinaryOutputInfo(typid, &typeSendId, &typIsVarlena);
-	save_data = OidSendFunctionCall(typeSendId, datum);
-	Assert(save_data);
-	//pq_sendint(buf, VARSIZE(save_data), 4);
-	pq_sendbytes(buf, VARDATA(save_data), VARSIZE(save_data) - VARHDRSZ);
-	pfree(save_data);
+	get_typlenbyval(typid, &typlen, &byval);
+	pq_sendint(buf, typlen, sizeof(typlen));
+
+	if(typlen > 0)
+	{
+		if(byval)
+		{
+			pq_sendbytes(buf, (char*)&datum, SIZEOF_DATUM);
+		}else
+		{
+			pq_sendbytes(buf, DatumGetPointer(datum), typlen);
+		}
+	}else if(typlen == -2)
+	{
+		/* a null-terminated C string */
+		int len = strlen(DatumGetCString(datum));
+		++len;
+		pq_sendbytes(buf, DatumGetCString(datum), len);
+	}else if(typlen == -1)
+	{
+		/* "varlena" type */
+		TupleDesc desc;
+		Size need_size;
+		uint16 infomask;
+		bool isnull;
+
+		desc = CreateTemplateTupleDesc(1, false);
+		TupleDescInitEntry(desc, 1, "???", typid, -1, 0);
+
+		isnull = false;
+		need_size = heap_compute_data_size(desc, &datum, &isnull);
+		enlargeStringInfo(buf, (int)need_size);
+
+		infomask = 0;
+		heap_fill_tuple(desc, &datum, &isnull, buf->data+buf->len, need_size, &infomask, NULL);
+		buf->len += need_size;
+
+		FreeTupleDesc(desc);
+	}else
+	{
+		ereport(ERROR, (errmsg("unknown type length %d", typlen)));
+	}
 }
 
 static void save_ParamExternData(StringInfo buf, const ParamExternData *node)
@@ -336,7 +377,7 @@ static void save_Integer(StringInfo buf, const Value *node)
 static void save_String(StringInfo buf, const Value *node)
 {
 	AssertArg(node);
-	pq_sendstring(buf, strVal(node));
+	save_node_string(buf, strVal(node));
 }
 
 BEGIN_NODE(List)
@@ -480,7 +521,7 @@ void saveNode(StringInfo buf, const Node *node)
 		if(LOAD_IS_NULL())									\
 			node->m = NULL;									\
 		else												\
-			node->m = pstrdup(pq_getmsgstring(buf));		\
+			node->m = load_node_string(buf, true);			\
 	}while(0);
 #define NODE_STRUCT(t,m)									\
 	do{														\
@@ -513,6 +554,25 @@ void saveNode(StringInfo buf, const Node *node)
 #define NODE_DATUM(t,m,o,n)				not support
 #define NODE_OID(t,m)					node->m = load_oid_##t(buf);
 
+static char * load_node_string(StringInfo buf, bool need_dup)
+{
+	char *str;
+	int len;
+	AssertArg(buf && buf->data);
+
+	str = (buf->data + buf->cursor);
+	len = strlen(str);
+	if (buf->cursor + len >= buf->len)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid string in message")));
+	buf->cursor += (len + 1);
+
+	if(need_dup)
+		str = pnstrdup(str, len);
+	return str;
+}
+
 static Bitmapset* load_Bitmapset(StringInfo buf)
 {
 	Bitmapset *node;
@@ -535,7 +595,7 @@ static Oid load_namespace(StringInfo buf)
 		pq_copymsgbytes(buf, (char*)&oid, sizeof(oid));
 	}else
 	{
-		const char *nsp_name = pq_getmsgstring(buf);
+		const char *nsp_name = load_node_string(buf, false);
 		oid = LookupExplicitNamespace(nsp_name, false);
 	}
 	return oid;
@@ -554,7 +614,7 @@ static Oid load_oid_type(StringInfo buf)
 	if(!OidIsValid(namespaceId))
 		ereport(ERROR, (errmsg("Load an invalid namespace id")));
 
-	str_type = pq_getmsgstring(buf);
+	str_type = load_node_string(buf, false);
 	tup = SearchSysCache2(TYPENAMENSP, CStringGetDatum(str_type)
 		, ObjectIdGetDatum(namespaceId));
 	if(!HeapTupleIsValid(tup))
@@ -582,7 +642,7 @@ static Oid load_oid_collation(StringInfo buf)
 		HeapTuple tup;
 
 		nsp = load_namespace(buf);
-		coll_name = pq_getmsgstring(buf);
+		coll_name = load_node_string(buf, false);
 		namestrcpy(&name, coll_name);
 		encoding = pq_getmsgint(buf, sizeof(encoding));
 
@@ -619,7 +679,7 @@ static Oid load_oid_proc(StringInfo buf)
 		HeapTuple tup;
 
 		nsp = load_namespace(buf);
-		proc_name = pq_getmsgstring(buf);
+		proc_name = load_node_string(buf, false);
 		namestrcpy(&name, proc_name);
 
 		rettype = load_oid_type(buf);
@@ -688,7 +748,7 @@ static Oid load_oid_operator(StringInfo buf)
 
 		rettype = load_oid_type(buf);
 		nsp = load_namespace(buf);
-		opr_name = pq_getmsgstring(buf);
+		opr_name = load_node_string(buf, false);
 		namestrcpy(&name, opr_name);
 
 		left = load_oid_type(buf);
@@ -724,12 +784,49 @@ static Oid load_oid_operator(StringInfo buf)
 static Datum load_datum(StringInfo buf, Oid typid)
 {
 	Datum datum;
-	Oid typReceive,typIOParam;
+	int16 typlen,typlen2;
+	bool byval;
 
-	Assert(OidIsValid(typid));
+	get_typlenbyval(typid, &typlen, &byval);
+	typlen2 = (int16)pq_getmsgint(buf, sizeof(typlen2));
+	if(typlen2 != typlen)
+	{
+		ereport(ERROR, (errmsg("local type %s length %d not equal load length"
+			, format_type_be(typid), typlen)));
+	}
 
-	getTypeBinaryInputInfo(typid, &typReceive, &typIOParam);
-	datum = OidReceiveFunctionCall(typReceive, buf, typIOParam, -1);
+	if(typlen > 0)
+	{
+		if(byval)
+		{
+			Assert(typlen <= SIZEOF_DATUM);
+			pq_copymsgbytes(buf, (char*)&datum, typlen);
+		}else
+		{
+			datum = PointerGetDatum(palloc(typlen));
+			pq_copymsgbytes(buf, DatumGetPointer(datum), typlen);
+		}
+	}else if(typlen == -2)
+	{
+		/* a null-terminated C string */
+		char *str = buf->data + buf->cursor;
+		int len = strlen(str);
+		str = pnstrdup(str, len);
+		buf->cursor += len+1;
+		datum = CStringGetDatum(str);
+	}else if(typlen == -1)
+	{
+		/* "varlena" type */
+		void *p = (buf->data + buf->cursor);
+		void *var;
+		int len = VARSIZE_ANY(p);
+		var = palloc(len);
+		pq_copymsgbytes(buf, var, len);
+		datum = PointerGetDatum(var);
+	}else
+	{
+		ereport(ERROR, (errmsg("unknown type length %d", typlen)));
+	}
 
 	return datum;
 }
@@ -772,7 +869,7 @@ static Value* load_Integer(StringInfo buf, Value *node)
 static Value* load_String(StringInfo buf, Value *node)
 {
 	AssertArg(node);
-	strVal(node) = pstrdup(pq_getmsgstring(buf));
+	strVal(node) = load_node_string(buf, true);
 	return node;
 }
 
