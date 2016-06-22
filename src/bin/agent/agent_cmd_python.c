@@ -1,20 +1,19 @@
-#include "postgres.h"
+#include "agent.h"
+
 #include <unistd.h>
 #include <time.h>
-#include <sys/sysinfo.h>
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "agent.h"
 
 /*#include "plpython.h"*/
 
 #include "agt_msg.h"
-#include "mgr/mgr_cmds.h"
 #include "agt_utility.h"
 #include "mgr/mgr_msg_type.h"
 #include "conf_scan.h"
+#include "get_uptime.h"
 #include "hba_scan.h"
 #include "utils/memutils.h"
 
@@ -323,7 +322,6 @@ bool get_host_info(StringInfo hostinfostring)
 {
     PyObject *pModule,*pDict,*pFunc,*pRetValue,*sysPath,*path;
     int result;
-    struct sysinfo info;
     time_t seconds_since_boot;
     int cpu_cores_total, cpu_cores_available;
     char *platform_type = NULL;
@@ -379,10 +377,7 @@ bool get_host_info(StringInfo hostinfostring)
     monitor_append_int64(hostinfostring, cpu_cores_total);
     monitor_append_int64(hostinfostring, cpu_cores_available);
 
-    if (sysinfo(&info))
-        ereport(ERROR, (errmsg("Failed to get sysinfo, errno:%u, reason:%s\n", errno, strerror(errno))));
-
-    seconds_since_boot = info.uptime;
+    seconds_since_boot = get_uptime();
     monitor_append_int64(hostinfostring, seconds_since_boot);
 
     Py_DECREF(pModule);

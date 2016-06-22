@@ -2036,6 +2036,7 @@ AC_CONFIG_LINKS([
   src/include/dynloader.h:src/backend/port/dynloader/${template}.h
   src/include/pg_config_os.h:src/include/port/${template}.h
   src/Makefile.port:src/makefiles/Makefile.${template}
+  src/bin/agent/get_uptime.c:src/bin/agent/uptime_${template}.c
 ])
 
 if test "$PORTNAME" = "win32"; then

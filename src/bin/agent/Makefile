@@ -50,7 +50,7 @@ OBJS= agent.o agent_elog.o globals.o \
 	agt_msg.o agt_cmd.o backend.o \
 	agent_utility.o agent_cmd_python.o\
 	assert.o aset.o mcxt.o stringinfo.o \
-	conf_scan.o hba_scan.o \
+	conf_scan.o hba_scan.o get_uptime.o \
 	$(top_builddir)/src/port/libpgport_srv.a \
 	$(top_builddir)/src/common/libpgcommon_srv.a
 
