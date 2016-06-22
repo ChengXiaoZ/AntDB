@@ -211,14 +211,10 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	int coordport = 0;
 	int dbnum = 0;
 	int dbsize = 0;
-	int heaphitpre = 0;
-	int heapreadpre = 0;
-	int heaphitnow = 0;
-	int heapreadnow = 0;
-	int commitpre = 0;
-	int rollbackpre = 0;
-	int commitnow = 0;
-	int rollbacknow = 0;
+	int heaphit = 0;
+	int heapread = 0;
+	int commit = 0;
+	int rollback = 0;
 	int preparenum = 0;
 	int unusedindexnum = 0;
 	int locksnum = 0;
@@ -278,16 +274,24 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		dbsize = monitor_get_result_one_node(sqldbsizeStrData.data, "postgres", CNDN_TYPE_COORDINATOR_MASTER);
 
 		/*get heap hit rate on datanode master*/
-		heaphitpre = monitor_get_result_every_node_master_one_database(sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
-		heapreadpre = monitor_get_result_every_node_master_one_database(sqlheapread, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		heaphit = monitor_get_result_every_node_master_one_database(sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		heapread = monitor_get_result_every_node_master_one_database(sqlheapread, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		if((heaphit + heapread) == 0)
+			heaphitrate = 1;
+		else
+			heaphitrate = heaphit*1.0/(heaphit + heapread);
 		
 		/*xact_commit_rate on coordinator*/
 		initStringInfo(&sqlcommitStrData);
 		initStringInfo(&sqlrollbackStrData);
 		appendStringInfo(&sqlcommitStrData, "select xact_commit from pg_stat_database where datname = \'%s\'", dbname);
 		appendStringInfo(&sqlrollbackStrData, "select xact_rollback from pg_stat_database where datname = \'%s\'", dbname);
-		commitpre = monitor_get_result_every_node_master_one_database(sqlcommitStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		rollbackpre = monitor_get_result_every_node_master_one_database(sqlrollbackStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		commit = monitor_get_result_every_node_master_one_database(sqlcommitStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		rollback = monitor_get_result_every_node_master_one_database(sqlrollbackStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		if((commit + rollback) == 0)
+			commitrate = 1;
+		else
+			commitrate = commit*1.0/(commit + rollback);
 		
 		/*prepare query num on coordinator*/
 		initStringInfo(&sqlprepareStrData);
@@ -331,17 +335,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		initStringInfo(&sqlconnectnumStrData);
 		appendStringInfo(&sqlconnectnumStrData, "select numbackends from pg_stat_database where datname = \'%s\'", dbname);
 		connectnum = monitor_get_result_one_node(sqlconnectnumStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER);
-
-		sleep(sleepTime);
-		/*for heap hit*/
-		heaphitnow = monitor_get_result_every_node_master_one_database(sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
-		heapreadnow = monitor_get_result_every_node_master_one_database(sqlheapread, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
-		heaphitrate = (heaphitnow - heaphitpre)/(heaphitnow - heaphitpre + heapreadnow - heapreadnow+0.1);
-		/*for commit rate*/
-		commitnow = monitor_get_result_every_node_master_one_database(sqlcommitStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		rollbacknow = monitor_get_result_every_node_master_one_database(sqlrollbackStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		commitrate = (commitnow-commitpre)/(commitnow-commitpre+rollbacknow-rollbackpre);		
-		
+	
 		/*build tuple*/
 		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, heaphitrate, commitrate, preparenum, unusedindexnum, locksnum, longquerynum, idlequerynum, bautovacuum, barchive, dbage, standbydelay, connectnum);
 		simple_heap_insert(rel, tuple);
