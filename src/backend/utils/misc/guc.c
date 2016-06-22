@@ -6783,6 +6783,10 @@ ExecSetVariableStmt(VariableSetStmt *stmt)
 			break;
 		case VAR_RESET_ALL:
 			ResetAllOptions();
+#ifdef ADB
+			if (IS_PGXC_DATANODE || IsConnFromCoord())
+				ResetTempTableNamespace();
+#endif
 			break;
 	}
 }

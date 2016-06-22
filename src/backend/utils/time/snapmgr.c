@@ -1282,7 +1282,7 @@ SetGlobalSnapshot(StringInfo input_message)
 	Assert(IS_PGXC_DATANODE || IsConnFromCoord());
 
 	GlobalSnapshot = MemoryContextAllocZero(TopMemoryContext, sizeof(SnapshotData));
-	
+	GlobalSnapshot->satisfies = HeapTupleSatisfiesMVCC;
 	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
 	GlobalSnapshot->xmax = pq_getmsgint(input_message, sizeof(TransactionId));
 	GlobalSnapshot->xcnt = pq_getmsgint(input_message, sizeof(uint32));

@@ -2179,7 +2179,7 @@ CommitTransaction(void)
 		 */
 		if (IsOnCommitActions() || ExecIsTempObjectIncluded())
 		{
-			if (!EnforceTwoPhaseCommit)
+			if (!EnforceTwoPhaseCommit || isimplicit)
 				ExecSetTempObjectIncluded();
 			else
 				ereport(ERROR,
