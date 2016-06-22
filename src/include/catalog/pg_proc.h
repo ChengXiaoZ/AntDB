@@ -5181,6 +5181,12 @@ DESCR("mgr stop dn slave immediate");
 DATA(insert OID = 3223 ( monitor_get_hostinfo      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ monitor_get_hostinfo _null_ _null_ _null_ ));
 DESCR("monitor_get_hostinfo");
 
+DATA(insert OID = 3224 ( monitor_databasetps_insert_data      PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ monitor_databasetps_insert_data _null_ _null_ _null_ ));
+DESCR("monitor_databasetps_insert_data");
+
+DATA(insert OID = 3225 ( monitor_databaseitem_insert_data      PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ monitor_databaseitem_insert_data _null_ _null_ _null_ ));
+DESCR("monitor_databaseitem_insert_data");
+
 #endif
 
 /*

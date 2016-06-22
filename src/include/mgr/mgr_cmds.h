@@ -10,6 +10,7 @@
 #include "utils/relcache.h"
 #include "access/heapam.h"
 #include "mgr/mgr_agent.h"
+#include "utils/timestamp.h"
 
 #define run_success "success"
 
@@ -132,8 +133,22 @@ char *get_hostuser_from_hostoid(Oid hostOid);
 /* get msg from agent */
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
 bool mgr_recv_msg_for_monitor(ManagerAgent	*ma, bool *ret, StringInfo agentRstStr);
+extern List *monitor_get_dbname_list(char *user, char *address, int port);
+
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
 bool get_cpu_info(StringInfo hostinfostring);
+
+/*monitor_databaseitem.c*/
+extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
+extern void monitor_get_one_node_user_address_port(char **user, char **address, int *coordport, char nodetype);
+extern int monitor_get_result_one_node(char *sqlstr, char *dbname, char nodetype);
+extern int monitor_get_result_every_node_master_one_database(char *sqlstr, char *dbname, char nodetype, int gettype);
+extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
+extern HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
+			, int dbsize, float heaphitrate, float commitrate, int preparenum, int unusedindexnum
+			, int locksnum, int longquerynum, int idlequerynum, bool autovacuum, bool archive, int dbage, int standbydelay, int connectnum);
+extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
+extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps);	
 
 #endif /* MGR_CMDS_H */

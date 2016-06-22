@@ -322,3 +322,54 @@ bool	mgr_check_host_in_use(Oid hostoid)
 	heap_close(rel, RowExclusiveLock);
 	return false;
 }
+
+/*
+* get database namelist
+*/
+List *monitor_get_dbname_list(char *user, char *address, int port)
+{
+	StringInfoData constr;
+	PGconn* conn;
+	PGresult *res;
+	char *oneCoordValueStr;
+	List *nodenamelist =NIL;
+	int iN = 0;
+	char *sqlstr = "select datname from pg_database  where datname != \'template0\' and datname != \'template1\' order by 1;";
+		
+	initStringInfo(&constr);
+	appendStringInfo(&constr, "postgresql://%s@%s:%d/postgres", user, address, port);
+	ereport(LOG,
+		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
+	conn = PQconnectdb(constr.data);
+	/* Check to see that the backend connection was successfully made */
+	if (PQstatus(conn) != CONNECTION_OK) 
+	{
+		ereport(LOG, 
+			(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
+		PQfinish(conn);
+		pfree(constr.data);
+		return NULL;
+	}
+	res = PQexec(conn, sqlstr);
+	if(PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ereport(LOG, 
+			(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
+		PQclear(res);
+		PQfinish(conn);
+		pfree(constr.data);
+		return NULL;
+	}
+	/*check column number*/
+	Assert(1 == PQnfields(res));
+	for (iN=0; iN < PQntuples(res); iN++)
+	{
+		oneCoordValueStr = PQgetvalue(res, iN, 0 );
+		nodenamelist = lappend(nodenamelist, pstrdup(oneCoordValueStr));
+	}
+	PQclear(res);
+	PQfinish(conn);
+	pfree(constr.data);
+	
+	return nodenamelist;
+}

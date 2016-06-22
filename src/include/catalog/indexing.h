@@ -366,6 +366,12 @@ DECLARE_UNIQUE_INDEX(mgr_parm_parmkey_index, 4930, on mgr_parm using btree(parmk
 DECLARE_UNIQUE_INDEX(mgr_node_oid_index, 4949, on mgr_node using btree(oid oid_ops));
 #define NodeOidIndexId 4949
 
+DECLARE_UNIQUE_INDEX(monitor_databasetps_oid_index, 4951, on monitor_databasetps using btree(oid oid_ops));
+#define MonitordatabasetpsOidIndexId 4951
+
+DECLARE_UNIQUE_INDEX(monitor_databaseitem_oid_index, 4953, on monitor_databaseitem using btree(oid oid_ops));
+#define MonitordatabaseitemOidIndexId 4953
+
 #endif /* ADBMGRD */
 
 /* last step of initialization script: build the indexes declared above */
