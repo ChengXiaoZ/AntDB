@@ -434,14 +434,15 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	List *dbnamelist = NIL;
 	ListCell *cell;
-	int dbtpspre = 0;
-	int dbqpspre = 0;
-	int dbtps = 0;
-	int dbqps = 0;
+	int **dbtps = NULL;
+	int **dbqps = NULL;
 	int tps = 0;
 	int qps = 0;
 	int dbnum = 0;
 	int coordport = 0;
+	int iloop = 0;
+	int idex = 0;
+	const int ncol = 2;
 	char *user = NULL;
 	char *hostaddress = NULL;
 	char *dbname = NULL;
@@ -463,35 +464,63 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	}
 	dbnum = list_length(dbnamelist);
 	Assert(dbnum > 0);
+	dbtps = (int **)palloc(sizeof(int *)*dbnum);
+	dbqps = (int **)palloc(sizeof(int *)*dbnum);
+	iloop = 0;
+	while(iloop < dbnum)
+	{
+		dbtps[iloop] = (int *)palloc(sizeof(int)*ncol);
+		dbqps[iloop] = (int *)palloc(sizeof(int)*ncol);
+		iloop++;
+	}
 	rel = heap_open(MdatabasetpsRelationId, RowExclusiveLock);
 	initStringInfo(&sqltpsStrData);
 	initStringInfo(&sqlqpsStrData);
+	time = GetCurrentTimestamp();
+	iloop = 0;
+	while(iloop<ncol)
+	{
+		idex = 0;
+		foreach(cell, dbnamelist)
+		{
+			dbname = (char *)(lfirst(cell));
+			appendStringInfo(&sqltpsStrData, "select xact_commit+xact_rollback from pg_stat_database where datname = \'%s\';",  dbname);
+			appendStringInfo(&sqlqpsStrData, "select sum(calls)from pg_stat_statements, pg_database where dbid = pg_database.oid and pg_database.datname=\'%s\';",  dbname);
+			/*get given database tps first*/
+			dbtps[idex][iloop] = monitor_get_result_every_node_master_one_database(sqltpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+			/*get given database qps first*/
+			dbqps[idex][iloop] = monitor_get_result_every_node_master_one_database(sqlqpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+			resetStringInfo(&sqltpsStrData);
+			resetStringInfo(&sqlqpsStrData);
+			idex++;
+		}
+		iloop++;
+		if(iloop < ncol)
+			sleep(sleepTime);
+	}
+	/*insert data*/
+	idex = 0;
 	foreach(cell, dbnamelist)
 	{
-		time = GetCurrentTimestamp();
 		dbname = (char *)(lfirst(cell));
-		appendStringInfo(&sqltpsStrData, "select xact_commit+xact_rollback from pg_stat_database where datname = \'%s\';",  dbname);
-		/*get given database tps first*/
-		dbtpspre = monitor_get_result_every_node_master_one_database(sqltpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		appendStringInfo(&sqlqpsStrData, "select sum(calls)from pg_stat_statements, pg_database where dbid = pg_database.oid and pg_database.datname=\'%s\';",  dbname);
-		/*get given database qps first*/
-		dbqpspre = monitor_get_result_every_node_master_one_database(sqlqpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		
-		sleep(sleepTime);
-		/*get given database tps second*/
-		dbtps = monitor_get_result_every_node_master_one_database(sqltpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		/*get given database qps second*/
-		dbqps = monitor_get_result_every_node_master_one_database(sqlqpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		
-		tps = abs(dbtpspre - dbtps)/sleepTime;
-		qps = abs(dbqpspre - dbqps)/sleepTime;
+		tps = abs(dbtps[idex][1] - dbtps[idex][0])/sleepTime;
+		qps = abs(dbqps[idex][1] - dbqps[idex][0])/sleepTime;
 		tup_result = monitor_build_databasetps_qps_tuple(rel, time, dbname, tps, qps);
 		simple_heap_insert(rel, tup_result);
 		CatalogUpdateIndexes(rel, tup_result);
 		heap_freetuple(tup_result);
-		resetStringInfo(&sqltpsStrData);
-		resetStringInfo(&sqlqpsStrData);
+		idex++;
 	}
+	/*pfree dbtps, dbqps*/
+	iloop = 0;
+	while(iloop < dbnum)
+	{
+		pfree((int *)dbtps[iloop]);
+		pfree((int *)dbqps[iloop]);
+		iloop++;
+	}
+	pfree(dbtps);
+	pfree(dbqps);	
 	pfree(sqltpsStrData.data);
 	pfree(sqlqpsStrData.data);
 	list_free(dbnamelist);
