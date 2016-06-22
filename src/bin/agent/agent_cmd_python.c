@@ -53,12 +53,14 @@ bool get_cpu_info(StringInfo hostinfostring)
     float cpu_Usage;
     int result;
     char *time_Stamp = NULL;
-
     char my_exec_path[MAXPGPATH];
     char pghome[MAXPGPATH];
+
     memset(pghome, 0, MAXPGPATH);
+
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
-        elog(FATAL, "%s: could not locate my own executable path", agent_argv0);
+        ereport(ERROR, (errmsg("%s: could not locate my own executable path", agent_argv0)));
+
     get_parent_directory(my_exec_path);
     get_parent_directory(my_exec_path);
     strcpy(pghome, my_exec_path);
@@ -76,25 +78,19 @@ bool get_cpu_info(StringInfo hostinfostring)
     sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
-        elog(FATAL, "can't insert path %s to sysPath.", pghome);
+        ereport(ERROR, (errmsg("can't insert path %s to sysPath", pghome)));
 
     pModule = PyImport_ImportModule("host_info");
     if (!pModule)
-    {
-        elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
-        return false;
-    }
-    
+        ereport(ERROR, (errmsg("can't find file host_info.py in path:%s", pghome)));
+
     pDict = PyModule_GetDict(pModule);
     if (!pDict)
-        return false;
+        ereport(ERROR, (errmsg("can't get path for host_info.py")));
 
     pFunc = PyDict_GetItemString(pDict, "get_cpu_info");
     if (!pFunc || !PyCallable_Check(pFunc))
-    {
-        elog(FATAL, "can't find function get_cpu_info in file host_info.py.");
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find function get_cpu_info in file host_info.py")));
 
     pRetValue = PyObject_CallObject(pFunc, NULL);
     PyArg_ParseTuple(pRetValue, "sf", &time_Stamp,&cpu_Usage);
@@ -124,12 +120,14 @@ bool get_mem_info(StringInfo hostinfostring)
     float mem_Usage;
     int64 mem_Total, mem_Used;
     int result;
-
     char my_exec_path[MAXPGPATH];
     char pghome[MAXPGPATH];
+
     memset(pghome, 0, MAXPGPATH);
+
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
-        elog(FATAL, "%s: could not locate my own executable path", agent_argv0);
+        ereport(ERROR, (errmsg("%s: could not locate my own executable path", agent_argv0)));
+
     get_parent_directory(my_exec_path);
     get_parent_directory(my_exec_path);
     strcpy(pghome, my_exec_path);
@@ -147,25 +145,19 @@ bool get_mem_info(StringInfo hostinfostring)
     sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
-        elog(FATAL, "can't insert path %s to sysPath.", pghome);
+        ereport(ERROR, (errmsg("can't insert path %s to sysPath", pghome)));
 
     pModule = PyImport_ImportModule("host_info");
     if (!pModule)
-    {
-        elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find file host_info.py in path:%s", pghome)));
 
     pDict = PyModule_GetDict(pModule);
     if (!pDict)
-        return false;
+        ereport(ERROR, (errmsg("can't get path for host_info.py")));
 
     pFunc = PyDict_GetItemString(pDict, "get_mem_info");
     if (!pFunc || !PyCallable_Check(pFunc))
-    {
-        elog(FATAL, "can't find function get_mem_info in file host_info.py.");
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find function get_mem_info in file host_info.py")));
 
     pRetValue = PyObject_CallObject(pFunc, NULL);
     PyArg_ParseTuple(pRetValue, "sllf", &time_Stamp,&mem_Total,&mem_Used,&mem_Usage);
@@ -201,12 +193,14 @@ bool get_disk_info(StringInfo hostinfostring)
           disk_Write_Bytes, disk_Write_Time,
           disk_Total, disk_Used;
     int result;
-
     char my_exec_path[MAXPGPATH];
     char pghome[MAXPGPATH];
+
     memset(pghome, 0, MAXPGPATH);
+
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
-        elog(FATAL, "%s: could not locate my own executable path", agent_argv0);
+        ereport(ERROR, (errmsg("%s: could not locate my own executable path", agent_argv0)));
+
     get_parent_directory(my_exec_path);
     get_parent_directory(my_exec_path);
     strcpy(pghome, my_exec_path);
@@ -224,25 +218,19 @@ bool get_disk_info(StringInfo hostinfostring)
     sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
-        elog(FATAL, "can't insert path %s to sysPath.", pghome);
+        ereport(ERROR, (errmsg("can't insert path %s to sysPath", pghome)));
 
     pModule = PyImport_ImportModule("host_info");
     if (!pModule)
-    {
-        elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find file host_info.py in path:%s", pghome)));
 
     pDict = PyModule_GetDict(pModule);
     if (!pDict)
-        return false;
+        ereport(ERROR, (errmsg("can't get path for host_info.py")));
 
     pFunc = PyDict_GetItemString(pDict, "get_disk_info");
     if (!pFunc || !PyCallable_Check(pFunc))
-    {
-        elog(FATAL, "can't find function get_disk_info in file host_info.py.");
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find function get_disk_info in file host_info.py.")));
 
     pRetValue = PyObject_CallObject(pFunc, NULL);
     PyArg_ParseTuple(pRetValue, "sllllll", &time_Stamp, &disk_Read_Bytes, &disk_Read_Time,
@@ -278,12 +266,14 @@ bool get_net_info(StringInfo hostinfostring)
     int64 sent_Speed,recv_Speed;
     int result;
     char *time_Stamp = NULL;
-
     char my_exec_path[MAXPGPATH];
     char pghome[MAXPGPATH];
+    
     memset(pghome, 0, MAXPGPATH);
+    
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
-        elog(FATAL, "%s: could not locate my own executable path", agent_argv0);
+        ereport(ERROR, (errmsg("%s: could not locate my own executable path.", agent_argv0)));
+
     get_parent_directory(my_exec_path);
     get_parent_directory(my_exec_path);
     strcpy(pghome, my_exec_path);
@@ -301,25 +291,19 @@ bool get_net_info(StringInfo hostinfostring)
     sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
-        elog(FATAL, "can't insert path %s to sysPath.", pghome);
+        ereport(ERROR, (errmsg("can't insert path %s to sysPath.", pghome)));
 
     pModule = PyImport_ImportModule("host_info");
     if (!pModule)
-    {
-        elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find file host_info.py in path:%s.", pghome)));
 
     pDict = PyModule_GetDict(pModule);
     if ( !pDict )
-        return false;
+        ereport(ERROR, (errmsg("can't get path for host_info.py")));
 
     pFunc = PyDict_GetItemString(pDict, "get_net_info");
     if (!pFunc || !PyCallable_Check(pFunc))
-    {
-        elog(FATAL, "can't find function get_net_info in file host_info.py.");
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find function get_net_info in file host_info.py.")));
 
     pRetValue = PyObject_CallObject(pFunc, NULL);
     PyArg_ParseTuple(pRetValue, "sll", &time_Stamp,&sent_Speed,&recv_Speed);
@@ -344,17 +328,19 @@ bool get_host_info(StringInfo hostinfostring)
     int cpu_cores_total, cpu_cores_available;
     char *platform_type = NULL;
     char *system = NULL;
-
     char my_exec_path[MAXPGPATH];
     char pghome[MAXPGPATH];
+
     memset(pghome, 0, MAXPGPATH);
+
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
-        elog(FATAL, "%s: could not locate my own executable path", agent_argv0);
+        ereport(ERROR, (errmsg("%s: could not locate my own executable path.", agent_argv0)));
+
     get_parent_directory(my_exec_path);
     get_parent_directory(my_exec_path);
     strcpy(pghome, my_exec_path);
     strcat(pghome, "/share/postgresql/");
-    
+
     Py_Initialize();
     if (!Py_IsInitialized())
         return false;
@@ -368,29 +354,23 @@ bool get_host_info(StringInfo hostinfostring)
     sysPath = PySys_GetObject("path");
     path = PyString_FromString(pghome);
     if ((result = PyList_Insert(sysPath, 0, path)) != 0)
-        elog(FATAL, "can't insert path %s to sysPath.", pghome);
+        ereport(ERROR, (errmsg("can't insert path %s to sysPath.", pghome)));
 
     pModule = PyImport_ImportModule("host_info");
     if (!pModule)
-    {
-        elog(FATAL, "can't find file host_info.py in path:%s.", pghome);
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find file host_info.py in path:%s.", pghome)));
 
     pDict = PyModule_GetDict(pModule);
     if (!pDict)
-        return false;
+        ereport(ERROR, (errmsg("can't get path for host_info.py")));
 
     pFunc = PyDict_GetItemString(pDict, "get_host_info");
     if (!pFunc || !PyCallable_Check(pFunc))
-    {
-        elog(FATAL, "can't find function get_host_info in file host_info.py.");
-        return false;
-    }
+        ereport(ERROR, (errmsg("can't find function get_host_info in file host_info.py.")));
 
     pRetValue = PyObject_CallObject(pFunc, NULL);
     PyArg_ParseTuple(pRetValue, "ss", &system, &platform_type);
-    
+
     monitor_append_str(hostinfostring, system);
     monitor_append_str(hostinfostring, platform_type);
 
@@ -400,10 +380,7 @@ bool get_host_info(StringInfo hostinfostring)
     monitor_append_int64(hostinfostring, cpu_cores_available);
 
     if (sysinfo(&info))
-    {
-        fprintf(stderr, "Failed to get sysinfo, errno:%u, reason:%s\n", errno, strerror(errno));
-        return -1;
-    }
+        ereport(ERROR, (errmsg("Failed to get sysinfo, errno:%u, reason:%s\n", errno, strerror(errno))));
 
     seconds_since_boot = info.uptime;
     monitor_append_int64(hostinfostring, seconds_since_boot);
