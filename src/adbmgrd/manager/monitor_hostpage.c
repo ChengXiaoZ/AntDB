@@ -304,6 +304,14 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     //}
 
     monitor_host.run_state = 1;
+    
+    resetStringInfo(&monitor_mem.mem_timestamp);
+    resetStringInfo(&monitor_disk.disk_timestamptz);
+    resetStringInfo(&monitor_net.net_timestamp);
+    
+    appendStringInfoString(&monitor_mem.mem_timestamp, monitor_cpu.cpu_timestamp.data);
+    appendStringInfoString(&monitor_disk.disk_timestamptz, monitor_cpu.cpu_timestamp.data);
+    appendStringInfoString(&monitor_net.net_timestamp, monitor_cpu.cpu_timestamp.data);
     appendStringInfoString(&monitor_host.current_time, monitor_cpu.cpu_timestamp.data);
     
     insert_into_monotor_cpu(host_oid, &monitor_cpu);
