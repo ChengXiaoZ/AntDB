@@ -21,14 +21,15 @@
  */
 typedef enum AGTM_MessageType
 {
-	AGTM_MSG_GET_GXID,		/* Get a GXID for a transaction */
+	AGTM_MSG_GET_GXID,			/* Get a GXID for a transaction */
 	AGTM_MSG_GET_TIMESTAMP,
 	AGTM_MSG_GXID_LIST,
 	AGTM_MSG_SNAPSHOT_GET,		/* Get a global snapshot */
-	AGTM_MSG_SEQUENCE_GET_NEXT,		/* Get the next sequence value of sequence */
+	AGTM_MSG_GET_XACT_STATUS,		/* Get transaction status by xid */
+	AGTM_MSG_SEQUENCE_GET_NEXT,	/* Get the next sequence value of sequence */
 	AGTM_MSG_SEQUENCE_GET_CUR,
 	AGTM_MSG_SEQUENCE_GET_LAST,	/* Get the last sequence value of sequence */
-	AGTM_MSG_SEQUENCE_SET_VAL,		/* Set values for sequence */
+	AGTM_MSG_SEQUENCE_SET_VAL,	/* Set values for sequence */
 	AGTM_MSG_GET_STATUS			/* Get status of a given transaction */
 } AGTM_MessageType;
 #define AGTM_MSG_TYPE_COUNT (AGTM_MSG_GET_STATUS+1)
@@ -44,6 +45,7 @@ typedef enum AGTM_ResultType
 	AGTM_GET_TIMESTAMP_RESULT,
 	AGTM_GXID_LIST_RESULT,
 	AGTM_SNAPSHOT_GET_RESULT,
+	AGTM_GET_XACT_STATUS_RESULT,
 	AGTM_SEQUENCE_GET_NEXT_RESULT,
 	AGTM_MSG_SEQUENCE_GET_CUR_RESULT,
 	AGTM_SEQUENCE_GET_LAST_RESULT,

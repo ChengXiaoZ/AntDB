@@ -31,6 +31,56 @@
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
 
+#ifdef ADB
+TransactionId
+GetNewGlobalTransactionId(bool isSubXact)
+{
+	TransactionId xid;
+
+	/* safety check, we should never get this far in a HS slave */
+	if (RecoveryInProgress())
+		elog(ERROR, "cannot assign TransactionIds during recovery");
+
+	xid = agtm_GetGlobalTransactionId(isSubXact);
+
+	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+
+	ExtendCLOG(xid);
+	ExtendSUBTRANS(xid);
+
+	{
+		/*
+		 * Use volatile pointer to prevent code rearrangement; other backends
+		 * could be examining my subxids info concurrently, and we don't want
+		 * them to see an invalid intermediate state, such as incrementing
+		 * nxids before filling the array entry.  Note we are assuming that
+		 * TransactionId and int fetch/store are atomic.
+		 */
+		volatile PGPROC *myproc = MyProc;
+		volatile PGXACT *mypgxact = MyPgXact;
+
+		if (!isSubXact)
+			mypgxact->xid = xid;
+		else
+		{
+			int			nxids = mypgxact->nxids;
+
+			if (nxids < PGPROC_MAX_CACHED_SUBXIDS)
+			{
+				myproc->subxids.xids[nxids] = xid;
+				mypgxact->nxids = nxids + 1;
+			}
+			else
+				mypgxact->overflowed = true;
+		}
+	}
+
+	LWLockRelease(XidGenLock);
+
+	return xid;
+}
+#endif
+
 /*
  * Allocate the next XID for a new transaction or subtransaction.
  *

@@ -25,7 +25,12 @@
 #include "utils/snapmgr.h"
 
 #ifdef PGXC
+#include "pgxc/pgxc.h"
 #include "utils/builtins.h"
+#endif
+
+#ifdef ADB
+#include "agtm/agtm.h"
 #endif
 
 /*
@@ -84,6 +89,13 @@ TransactionLogFetch(TransactionId transactionId)
 	/*
 	 * Get the transaction status.
 	 */
+/*
+#ifdef ADB
+	if (IsUnderAGTM())
+		xidstatus = agtm_TransactionIdGetStatus(transactionId, &xidlsn);
+	else
+#endif
+*/
 	xidstatus = TransactionIdGetStatus(transactionId, &xidlsn);
 
 	/*
@@ -438,8 +450,15 @@ TransactionIdGetCommitLSN(TransactionId xid)
 	 * checking TransactionLogFetch's cache will usually succeed and avoid an
 	 * extra trip to shared memory.
 	 */
+/*
+#ifdef ADB
+	if (!IsUnderAGTM() && TransactionIdEquals(xid, cachedFetchXid))
+		return cachedCommitLSN;
+#else
+*/
 	if (TransactionIdEquals(xid, cachedFetchXid))
 		return cachedCommitLSN;
+/*#endif*/
 
 	/* Special XIDs are always known committed */
 	if (!TransactionIdIsNormal(xid))

@@ -284,8 +284,10 @@ RecordRemoteXactInternal(uint8 info,
 			case XLOG_RXACT_COMMIT:
 			case XLOG_RXACT_COMMIT_PREPARED:
 				{
+					START_CRIT_SECTION();
 					PreCommit_Remote(gid, missing_ok);
 					agtm_CommitTransaction(gid, missing_ok);
+					END_CRIT_SECTION();
 
 					if (info == XLOG_RXACT_COMMIT_PREPARED)
 					{
@@ -297,8 +299,10 @@ RecordRemoteXactInternal(uint8 info,
 			case XLOG_RXACT_ABORT:
 			case XLOG_RXACT_ABORT_PREPARED:
 				{
+					START_CRIT_SECTION();
 					PreAbort_Remote(gid, missing_ok);
 					agtm_AbortTransaction(gid, missing_ok);
+					END_CRIT_SECTION();
 
 					if (info == XLOG_RXACT_ABORT_PREPARED)
 					{

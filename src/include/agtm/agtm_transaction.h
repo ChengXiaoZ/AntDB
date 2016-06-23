@@ -24,4 +24,6 @@ StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output);
 
 StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output);
 
+StringInfo ProcessGetXactStatus(StringInfo message, StringInfo output);
+
 #endif

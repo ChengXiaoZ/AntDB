@@ -110,6 +110,31 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	return snapshot;
 }
 
+XidStatus
+agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
+{
+	PGresult		*res;
+	StringInfoData	buf;
+	XidStatus		xid_status;
+
+	if(!IsUnderAGTM())
+		ereport(ERROR,
+			(errmsg("agtm_TransactionIdGetStatus function must under AGTM")));
+
+	agtm_send_message(AGTM_MSG_GET_XACT_STATUS, "%d%d", (int)xid, (int)sizeof(xid));
+	res = agtm_get_result(AGTM_MSG_GET_XACT_STATUS);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_GET_XACT_STATUS_RESULT);
+	pq_copymsgbytes(&buf, (char*)&xid_status, sizeof(xid_status));
+	pq_copymsgbytes(&buf, (char*)lsn, sizeof(XLogRecPtr));
+
+	ereport(DEBUG1,
+		(errmsg("get xid %u status %d", xid, xid_status)));
+
+	agtm_use_result_end(&buf);
+	return xid_status;
+}
+
 static AGTM_Sequence 
 agtm_DealSequence(const char *seqname, AGTM_MessageType type, AGTM_ResultType rtype)
 {

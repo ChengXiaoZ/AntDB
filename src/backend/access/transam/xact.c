@@ -583,7 +583,7 @@ AssignTransactionId(TransactionState s)
 	if (IsUnderAGTM())
 	{
 		agtm_BeginTransaction();
-		s->transactionId = agtm_GetGlobalTransactionId(isSubXact);
+		s->transactionId = GetNewGlobalTransactionId(isSubXact);
 		AGTMxactStartTimestamp = agtm_GetTimestamptz();
 		AGTMdeltaTimestamp = AGTMxactStartTimestamp - stmtStartTimestamp;
 	} else

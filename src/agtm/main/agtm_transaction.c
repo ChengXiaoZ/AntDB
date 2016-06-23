@@ -1,5 +1,6 @@
 #include "postgres.h"
 
+#include "access/clog.h"
 #include "access/hash.h"
 #include "access/transam.h"
 #include "access/xact.h"
@@ -76,6 +77,25 @@ StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 	pq_sendbytes(output, (char *)&snapshot->curcid, sizeof(snapshot->curcid));
 	pq_sendbytes(output, (char *)&snapshot->active_count, sizeof(snapshot->active_count));
 	pq_sendbytes(output, (char *)&snapshot->regd_count, sizeof(snapshot->regd_count));
+
+	return output;
+}
+
+StringInfo ProcessGetXactStatus(StringInfo message, StringInfo output)
+{
+	TransactionId	xid;
+	XidStatus		xid_status;
+	XLogRecPtr		xid_lsn;
+
+	xid = pq_getmsgint(message, sizeof(xid));
+	pq_getmsgend(message);
+
+	xid_status = TransactionIdGetStatus(xid, &xid_lsn);
+
+	/* Respond to the client */
+	pq_sendint(output, AGTM_GET_XACT_STATUS_RESULT, 4);
+	pq_sendbytes(output, (char *)&xid_status, sizeof(XidStatus));
+	pq_sendbytes(output, (char *)&xid_lsn, sizeof(XLogRecPtr));
 
 	return output;
 }

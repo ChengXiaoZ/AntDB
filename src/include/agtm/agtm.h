@@ -4,6 +4,7 @@
 #include "postgres.h"
 #include "miscadmin.h"
 
+#include "access/clog.h"
 #include "agtm/agtm_protocol.h"
 #include "catalog/pg_database.h"
 #include "datatype/timestamp.h"
@@ -34,6 +35,11 @@ extern TransactionId agtm_GetGlobalTransactionId(bool isSubXact);
  * get Snapshot info from AGTM
  */
 extern Snapshot agtm_GetGlobalSnapShot(Snapshot snapshot);
+
+/*
+ * get transaction status from AGTM by transaction ID.
+ */
+extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
 
 /*
  * get next Sequence from AGTM
