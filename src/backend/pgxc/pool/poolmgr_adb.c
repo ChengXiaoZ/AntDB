@@ -822,10 +822,11 @@ static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node)
 			PG_RE_THROW();
 		}PG_END_TRY();
 		memcpy(node_pool, &tmp_node_pool, sizeof(*node_pool));
+		node_pool->parent = dbPool;
 	}
 
 	/* find an idle slot */
-	Assert(node_pool && node_pool->slot);
+	Assert(node_pool && node_pool->slot && node_pool->parent == dbPool);
 	released_slot = uninit_slot = slot = NULL;
 	for(i=0;i<MaxConnections;++i)
 	{
