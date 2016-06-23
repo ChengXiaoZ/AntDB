@@ -158,6 +158,168 @@ CREATE VIEW adbmgr.stopall_i AS
 insert into monitor_varparm (mv_cpu_threshold, mv_mem_threshold, mv_disk_threshold)
 	values (99, 90, 85);
 
+-- for ADB monitor host page: get all host various parameters.
+CREATE VIEW adbmgr.get_all_host_parm AS
+	select 
+		mgh.hostname AS hostName, 
+		mgh.hostaddr AS ip,
+		nh.mh_cpu_core_available AS cpu,
+		c.mc_cpu_usage AS cpuRate,
+		m.mm_total AS mem,
+		m.mm_usage AS memRate,
+		d.md_total AS disk,
+		((d.md_used/d.md_total::float) * 100)::numeric(4,2) AS diskRate,
+		mv.mv_cpu_threshold AS cpu_threshold,
+		mv.mv_mem_threshold AS mem_threshold,
+		mv.mv_disk_threshold AS disk_threshold
+	from 
+		mgr_host mgh,
+		
+		(
+			select * from (
+							select *, (ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.mc_timestamptz desc)) as rm
+							from monitor_cpu t
+						) tt where tt.rm = 1
+		) c,
+		
+		(
+			select * from (
+							select *,(ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.mm_timestamptz desc)) as rm
+							from monitor_mem t
+						) tt where tt.rm =1
+		) m,
+		
+		(
+			select * from (
+							select *, (ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.md_timestamptz desc)) as rm
+							from monitor_disk t
+						) tt where tt.rm = 1
+		) d,
+		
+		(
+			select * from (
+							select *, (ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.mh_current_time desc)) as rm
+							from monitor_host t
+						) tt where tt.rm = 1
+		) nh,
+		
+		monitor_varparm mv
+	where mgh.oid = c.host_oid and
+		c.host_oid = m.host_oid and
+		m.host_oid = d.host_oid and
+		d.host_oid = nh.host_oid;
+
+-- for ADB monitor host page: get specific host various parameters.
+CREATE VIEW adbmgr.get_spec_host_parm AS
+	select mgh.hostname as hostname,
+	   mgh.hostaddr as ip,
+	   mh.mh_system as os,
+	   mh.mh_cpu_core_available as cpu,
+	   mm.mm_total as mem,
+	   md.md_total as disk,
+	   mh.mh_current_time - (mh.mh_seconds_since_boot || 'sec')::interval as createtime,
+	   mh_run_state as state,
+	   mc.mc_cpu_usage as cpurate,
+	   mm.mm_usage as memrate,
+	   ((md.md_used/md.md_total::float) * 100)::numeric(4,1) as diskRate,
+	   round((md.md_io_read_bytes/1024.0/1024.0)/(md.md_io_read_time/1000.0), 1) as ioreadps,
+	   round((md.md_io_write_bytes/1024.0/1024.0)/(md.md_io_write_time/1000.0), 1) as iowriteps,
+	   round(mn.mn_recv/1024.0,1) as netinps,
+	   round(mn.mn_sent/1024.0,1) as netoutps,
+	   mh.mh_seconds_since_boot as runtime
+	from mgr_host mgh,
+	
+		(
+			select * from (
+							select *, (ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mh_current_time desc)) as rm
+							from monitor_host t
+						) tt where tt.rm = 1
+		) mh,
+		
+		(
+			select * from (
+							select *,(ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mc_timestamptz desc)) as rm
+							from monitor_cpu t
+						) tt where tt.rm = 1
+		) mc,
+		
+		(
+			select * from (
+							select *,(ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mm_timestamptz desc)) as rm
+							from monitor_mem t
+						) tt where tt.rm =1
+		) mm,
+		
+		(
+			select * from (
+							select *, (ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.md_timestamptz desc)) as rm
+							from monitor_disk t
+						) tt where tt.rm = 1
+		) md,
+		
+		(
+			select * from (
+							select *, (ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mn_timestamptz desc)) as rm
+							from monitor_net t
+						) tt where tt.rm = 1
+		) mn
+	where mgh.oid = mh.host_oid and
+		mh.host_oid = mc.host_oid and
+		mc.host_oid = mm.host_oid and
+		mm.host_oid = md.host_oid and
+		md.host_oid = mn.host_oid;
+
+-- for ADB monitor host page: get cpu, memory, i/o and net info for specific time period.
+create table temp_table
+(
+recordtimes timestamptz,
+cpuuseds real,
+memuseds real,
+ioreadps numeric,
+iowriteps numeric,
+netinps numeric,
+netoutps numeric
+);
+CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i int)
+    RETURNS setof temp_table
+    AS 
+	$$
+	
+	select c.mc_timestamptz as recordtimes,
+	   c.mc_cpu_usage as cpuuseds,
+	   m.mm_usage as memuseds,
+	   round((d.md_io_read_bytes/1024.0/1024.0)/(d.md_io_read_time/1000.0), 1) as ioreadps,
+	   round((d.md_io_write_bytes/1024.0/1024.0)/(d.md_io_write_time/1000.0), 1) as iowriteps,
+	   round(n.mn_recv/1024.0,1) as netinps,
+	   round(n.mn_sent/1024.0,1) as netoutps
+	from  monitor_cpu c,
+		monitor_mem m,
+		monitor_disk d,
+		monitor_net n,
+		monitor_host h,
+		mgr_host mgr
+	where c.host_oid = m.host_oid and
+		c.host_oid = d.host_oid and
+		c.host_oid = n.host_oid and 
+		c.host_oid = h.host_oid and
+		c.host_oid = h.host_oid and
+		c.host_oid = mgr.oid and
+		c.mc_timestamptz = m.mm_timestamptz and
+		c.mc_timestamptz = d.md_timestamptz and
+		c.mc_timestamptz = n.mn_timestamptz and
+		c.mc_timestamptz = h.mh_current_time and
+		c.mc_timestamptz  >  h.mh_current_time - case $2 
+													when 0 then interval '1 hour'
+													when 1 then interval '1 day'
+													when 2 then interval '7 day'
+													end and
+		mgr.hostname = $1;
+		
+	$$
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
 --insert data into mgr.parm
 
 --insert gtm parameters

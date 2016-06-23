@@ -112,6 +112,7 @@ extern char *defGetString(DefElem *def);
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
+				Gethostparm
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -136,6 +137,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
+%token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC GET_HOST_HISTORY_USAGE
 %%
 /*
  *	The target production for the whole parse.
@@ -189,9 +191,36 @@ stmt :
 	| FailoverStmt
 	| ConfigAllStmt
 	| DeploryStmt
+	| Gethostparm     /* for ADB monitor host page */
 	| /* empty */
 		{ $$ = NULL; }
 	;
+	
+Gethostparm:
+		GET_HOST_LIST_ALL
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_all_host_parm"), -1));
+			$$ = (Node*)stmt;
+		}
+		| GET_HOST_LIST_SPEC '(' AConstList ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_spec_host_parm"), -1));
+			stmt->whereClause = make_column_in("hostname", $3);
+			$$ = (Node*)stmt;
+		}
+		| GET_HOST_HISTORY_USAGE '(' Ident ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeIntConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("get_host_history_usage", args));
+			$$ = (Node*)stmt;
+		};
 
 ConfigAllStmt:
 		CONFIG ALL
@@ -1278,6 +1307,9 @@ unreserved_keyword:
 	| F
 	| FAILOVER
 	| FAST
+	| GET_HOST_LIST_ALL
+	| GET_HOST_LIST_SPEC
+	| GET_HOST_HISTORY_USAGE
 	| GTM
 	| GTM_PROXY
 	| HOST
