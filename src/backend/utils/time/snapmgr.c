@@ -774,7 +774,7 @@ AtEOXact_Snapshot(bool isCommit)
 	SecondarySnapshot = NULL;
 
 #ifdef ADB
-	UnsetGlobalSnapshot();
+	GlobalSnapshot = NULL;
 #endif
 
 	FirstSnapshotSet = false;
@@ -1302,27 +1302,6 @@ SetGlobalSnapshot(StringInfo input_message)
 	GlobalSnapshot->active_count = pq_getmsgint(input_message, sizeof(uint32));
 	GlobalSnapshot->regd_count = pq_getmsgint(input_message, sizeof(uint32));
 	pq_getmsgend(input_message);
-}
-
-static void
-CopyGlobalSnapshot(Snapshot from, Snapshot to)
-{
-	Assert(from && to);
-	to->satisfies = HeapTupleSatisfiesMVCC;
-	to->xmin = from->xmin;
-	to->xmax = from->xmax;
-	to->xcnt = from->xcnt;
-	if (from->xcnt > 0)
-		memcpy(to->xip, from->xip, from->xcnt * sizeof(TransactionId));
-	to->subxcnt = from->subxcnt;
-	if (from->subxcnt > 0)
-		memcpy(to->subxip, from->subxip, from->subxcnt * sizeof(TransactionId));
-	to->suboverflowed = from->suboverflowed;
-	to->takenDuringRecovery = from->takenDuringRecovery;
-	to->copied = from->copied;
-	to->curcid = from->curcid;
-	to->active_count = from->active_count;
-	to->regd_count = from->regd_count;
 }
 
 /*

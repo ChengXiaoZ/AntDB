@@ -93,6 +93,7 @@
 
 #ifdef ADB
 #include "agtm/agtm.h"
+#include "utils/tqual.h"
 #endif
 
 /* Our shared memory area */
@@ -1438,7 +1439,7 @@ GetSnapshotData(Snapshot snapshot)
 
 		LWLockAcquire(ProcArrayLock, LW_SHARED);
 		if (!TransactionIdIsValid(MyPgXact->xmin))
-		MyPgXact->xmin = TransactionXmin = xmin;
+			MyPgXact->xmin = TransactionXmin = xmin;
 		LWLockRelease(ProcArrayLock);
 	}else
 	{
@@ -1628,6 +1629,7 @@ GetSnapshotData(Snapshot snapshot)
 	snapshot->regd_count = 0;
 #ifdef ADB
 	}
+	InitSnapshotLevel(snapshot);
 #endif /* ADB */
 	snapshot->copied = false;
 

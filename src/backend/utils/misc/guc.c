@@ -95,6 +95,10 @@
 #include "utils/tzparser.h"
 #include "utils/xml.h"
 
+#ifdef ADB
+#include "utils/tqual.h"
+#endif
+
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
 #endif
@@ -417,6 +421,16 @@ static const struct config_enum_entry synchronous_commit_options[] = {
 static const struct config_enum_entry parse_grammer_options[] = {
 	{"postgres", PARSE_GRAM_POSTGRES, false},
 	{"oracle", PARSE_GRAM_ORACLE, false},
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry snapshot_level_options[] = {
+	{"mvcc", SNAPSHOT_MVCC, false},
+	{"now", SNAPSHOT_NOW, false},
+	{"self", SNAPSHOT_SELF, false},
+	{"any", SNAPSHOT_ANY, false},
+	{"toast", SNAPSHOT_TOAST, false},
+	{"dirty", SNAPSHOT_DIRTY, false},
 	{NULL, 0, false}
 };
 #endif /* ADB */
@@ -3780,6 +3794,16 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&parse_grammar,
 		PARSE_GRAM_POSTGRES, parse_grammer_options,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"snapshot_level", PGC_USERSET, UNGROUPED,
+			gettext_noop("Set snapshot satisfie level"),
+			NULL
+		},
+		&snapshot_level,
+		SNAPSHOT_MVCC, snapshot_level_options,
 		NULL, NULL, NULL
 	},
 #endif /* ADB */
