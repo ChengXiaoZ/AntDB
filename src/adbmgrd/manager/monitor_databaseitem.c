@@ -271,7 +271,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		/* get database size on coordinator*/
 		initStringInfo(&sqldbsizeStrData);
 		appendStringInfo(&sqldbsizeStrData, "select round(pg_database_size(datname)::numeric(18,4)/1024/1024/1024) from pg_database where datname=\'%s\';", dbname);
-		dbsize = monitor_get_result_one_node(sqldbsizeStrData.data, "postgres", CNDN_TYPE_COORDINATOR_MASTER);
+		dbsize = monitor_get_result_one_node(sqldbsizeStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 
 		/*get heap hit rate on datanode master*/
 		heaphit = monitor_get_result_every_node_master_one_database(sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
@@ -322,14 +322,14 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		if(bfrist)
 		{
 			/*these vars just need get one time*/
-			bautovacuum = (monitor_get_result_one_node(sqlautovacuum, "postgres",CNDN_TYPE_DATANODE_MASTER) == 0 ? false:true);
-			barchive = (monitor_get_result_one_node(sqlarchive, "postgres", CNDN_TYPE_DATANODE_MASTER) == 0 ? false:true);
+			bautovacuum = (monitor_get_result_one_node(sqlautovacuum, DEFAULT_DB,CNDN_TYPE_DATANODE_MASTER) == 0 ? false:true);
+			barchive = (monitor_get_result_one_node(sqlarchive, DEFAULT_DB, CNDN_TYPE_DATANODE_MASTER) == 0 ? false:true);
 	
 			/*get database age*/
-			dbage = monitor_get_result_one_node(sqlstrgetdbage, "postgres", CNDN_TYPE_COORDINATOR_MASTER);
+			dbage = monitor_get_result_one_node(sqlstrgetdbage, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 		
 			/*standby delay*/
-			standbydelay = monitor_get_result_every_node_master_one_database(sqlstrstandbydelay, "postgres", CNDN_TYPE_DATANODE_SLAVE, GET_MAX);
+			standbydelay = monitor_get_result_every_node_master_one_database(sqlstrstandbydelay, DEFAULT_DB, CNDN_TYPE_DATANODE_SLAVE, GET_MAX);
 		}
 		/*connect num*/
 		initStringInfo(&sqlconnectnumStrData);
@@ -337,7 +337,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		connectnum = monitor_get_result_one_node(sqlconnectnumStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER);
 	
 		/*build tuple*/
-		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, heaphitrate, commitrate, preparenum, unusedindexnum, locksnum, longquerynum, idlequerynum, bautovacuum, barchive, dbage, standbydelay, connectnum);
+		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, barchive, bautovacuum, heaphitrate, commitrate, dbage, connectnum, standbydelay, locksnum, longquerynum, idlequerynum, preparenum, unusedindexnum);
 		simple_heap_insert(rel, tuple);
 		CatalogUpdateIndexes(rel, tuple);
 		heap_freetuple(tuple);
@@ -369,8 +369,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 * build tuple for table: monitor_databasetps, see: monitor_databasetps.h
 */
 HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
-			, int dbsize, float heaphitrate, float commitrate, int preparenum, int unusedindexnum
-			, int locksnum, int longquerynum, int idlequerynum, bool autovacuum, bool archive, int dbage, int standbydelay, int connectnum)
+			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum)
 {
 	Datum datums[15];
 	bool nulls[15];
@@ -384,15 +383,15 @@ HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time
 		&& desc->attrs[0]->atttypid == TIMESTAMPTZOID
 		&& desc->attrs[1]->atttypid == NAMEOID
 		&& desc->attrs[2]->atttypid == INT4OID
-		&& desc->attrs[3]->atttypid == FLOAT4OID
-		&& desc->attrs[4]->atttypid == FLOAT4OID
-		&& desc->attrs[5]->atttypid == INT4OID
-		&& desc->attrs[6]->atttypid == INT4OID
+		&& desc->attrs[3]->atttypid == BOOLOID
+		&& desc->attrs[4]->atttypid == BOOLOID
+		&& desc->attrs[5]->atttypid == FLOAT4OID
+		&& desc->attrs[6]->atttypid == FLOAT4OID
 		&& desc->attrs[7]->atttypid == INT4OID
 		&& desc->attrs[8]->atttypid == INT4OID
 		&& desc->attrs[9]->atttypid == INT4OID
-		&& desc->attrs[10]->atttypid == BOOLOID
-		&& desc->attrs[11]->atttypid == BOOLOID
+		&& desc->attrs[10]->atttypid == INT4OID
+		&& desc->attrs[11]->atttypid == INT4OID
 		&& desc->attrs[12]->atttypid == INT4OID
 		&& desc->attrs[13]->atttypid == INT4OID
 		&& desc->attrs[14]->atttypid == INT4OID
@@ -402,18 +401,19 @@ HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time
 	datums[0] = TimestampTzGetDatum(time);
 	datums[1] = NameGetDatum(&name);
 	datums[2] = Int32GetDatum(dbsize);
-	datums[3] = Float4GetDatum(heaphitrate);
-	datums[4] = Float4GetDatum(commitrate);
-	datums[5] = Int32GetDatum(preparenum);
-	datums[6] = Int32GetDatum(unusedindexnum);
-	datums[7] = Int32GetDatum(locksnum);
-	datums[8] = Int32GetDatum(longquerynum);
-	datums[9] = Int32GetDatum(idlequerynum);
-	datums[10] = BoolGetDatum(autovacuum);
-	datums[11] = BoolGetDatum(archive);
-	datums[12] = Int32GetDatum(dbage);
-	datums[13] = Int32GetDatum(standbydelay);
-	datums[14] = Int32GetDatum(connectnum);
+	datums[3] = BoolGetDatum(archive);
+	datums[4] = BoolGetDatum(autovacuum);
+	datums[5] = Float4GetDatum(heaphitrate);
+	datums[6] = Float4GetDatum(commitrate);
+	datums[7] = Int32GetDatum(dbage);
+	datums[8] = Int32GetDatum(connectnum);
+	datums[9] = Int32GetDatum(standbydelay);
+	datums[10] = Int32GetDatum(locksnum);
+	datums[11] = Int32GetDatum(longquerynum);
+	datums[12] = Int32GetDatum(idlequerynum);
+	datums[13] = Int32GetDatum(preparenum);
+	datums[14] = Int32GetDatum(unusedindexnum);
+
 	for (idex=0; idex<sizeof(nulls); idex++)
 		nulls[idex] = false;
 	
@@ -431,6 +431,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 {
 	Relation rel;
 	TimestampTz time;
+	TimestampTz pgstarttime;
 	HeapTuple tup_result;
 	List *dbnamelist = NIL;
 	ListCell *cell;
@@ -477,6 +478,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	initStringInfo(&sqltpsStrData);
 	initStringInfo(&sqlqpsStrData);
 	time = GetCurrentTimestamp();
+	pgstarttime = DatumGetTimestampTz(DirectFunctionCall1(pg_postmaster_start_time, (Datum)0));
 	iloop = 0;
 	while(iloop<ncol)
 	{
@@ -487,9 +489,9 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 			appendStringInfo(&sqltpsStrData, "select xact_commit+xact_rollback from pg_stat_database where datname = \'%s\';",  dbname);
 			appendStringInfo(&sqlqpsStrData, "select sum(calls)from pg_stat_statements, pg_database where dbid = pg_database.oid and pg_database.datname=\'%s\';",  dbname);
 			/*get given database tps first*/
-			dbtps[idex][iloop] = monitor_get_result_every_node_master_one_database(sqltpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+			dbtps[idex][iloop] = monitor_get_result_every_node_master_one_database(sqltpsStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 			/*get given database qps first*/
-			dbqps[idex][iloop] = monitor_get_result_every_node_master_one_database(sqlqpsStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+			dbqps[idex][iloop] = monitor_get_result_every_node_master_one_database(sqlqpsStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 			resetStringInfo(&sqltpsStrData);
 			resetStringInfo(&sqlqpsStrData);
 			idex++;
@@ -505,7 +507,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 		dbname = (char *)(lfirst(cell));
 		tps = abs(dbtps[idex][1] - dbtps[idex][0])/sleepTime;
 		qps = abs(dbqps[idex][1] - dbqps[idex][0])/sleepTime;
-		tup_result = monitor_build_databasetps_qps_tuple(rel, time, dbname, tps, qps);
+		tup_result = monitor_build_databasetps_qps_tuple(rel, time, dbname, tps, qps, pgstarttime);
 		simple_heap_insert(rel, tup_result);
 		CatalogUpdateIndexes(rel, tup_result);
 		heap_freetuple(tup_result);
@@ -531,20 +533,21 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 /*
 * build tuple for table: monitor_databasetps, see: monitor_databasetps.h
 */
-HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps)
+HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, TimestampTz pgstarttime)
 {
-	Datum datums[4];
-	bool nulls[4];
+	Datum datums[5];
+	bool nulls[5];
 	TupleDesc desc;
 	NameData name;
 	
 	desc = RelationGetDescr(rel);
 	namestrcpy(&name, dbname);
-	AssertArg(desc && desc->natts == 4
+	AssertArg(desc && desc->natts == 5
 		&& desc->attrs[0]->atttypid == TIMESTAMPTZOID
 		&& desc->attrs[1]->atttypid == NAMEOID
 		&& desc->attrs[2]->atttypid == INT4OID
 		&& desc->attrs[3]->atttypid == INT4OID
+		&& desc->attrs[4]->atttypid == INT8OID
 		);
 	memset(datums, 0, sizeof(datums));
 	memset(nulls, 0, sizeof(nulls));
@@ -552,7 +555,8 @@ HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz ti
 	datums[1] = NameGetDatum(&name);
 	datums[2] = Int32GetDatum(tps);
 	datums[3] = Int32GetDatum(qps);
-	nulls[0] = nulls[1] = nulls[2] = nulls[3] = false;
+	datums[4] = Int64GetDatum(abs(time-pgstarttime));
+	nulls[0] = nulls[1] = nulls[2] = nulls[3] = nulls[4] = false;
 	
 	return heap_form_tuple(desc, datums, nulls);
 }

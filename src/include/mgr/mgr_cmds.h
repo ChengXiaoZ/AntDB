@@ -146,9 +146,9 @@ extern int monitor_get_result_one_node(char *sqlstr, char *dbname, char nodetype
 extern int monitor_get_result_every_node_master_one_database(char *sqlstr, char *dbname, char nodetype, int gettype);
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
-			, int dbsize, float heaphitrate, float commitrate, int preparenum, int unusedindexnum
-			, int locksnum, int longquerynum, int idlequerynum, bool autovacuum, bool archive, int dbage, int standbydelay, int connectnum);
+			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum
+			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum);
 extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
-extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps);	
+extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, TimestampTz pgstarttime);	
 
 #endif /* MGR_CMDS_H */
