@@ -26,6 +26,9 @@
 
 #ifdef PGXC
 #include "pgxc/pgxc.h"
+#endif
+
+#if defined(ADB) || defined(AGTM)
 #include "utils/builtins.h"
 #endif
 
@@ -471,3 +474,28 @@ TransactionIdGetCommitLSN(TransactionId xid)
 
 	return result;
 }
+
+#if defined(ADB) || defined(AGTM)
+Datum pg_xact_status(PG_FUNCTION_ARGS)
+{
+	TransactionId	tid = (TransactionId) PG_GETARG_UINT32(0);
+	XidStatus		xidstatus;
+
+	xidstatus = TransactionLogFetch(tid);
+
+	switch (xidstatus)
+	{
+		case TRANSACTION_STATUS_IN_PROGRESS:
+			PG_RETURN_CSTRING("IN PROGRESS");
+		case TRANSACTION_STATUS_COMMITTED:
+			PG_RETURN_CSTRING("COMMITTED");
+		case TRANSACTION_STATUS_ABORTED:
+			PG_RETURN_CSTRING("ABORTED");
+		case TRANSACTION_STATUS_SUB_COMMITTED:
+			PG_RETURN_CSTRING("SUB COMMITTED");
+		default:
+			break;
+	}
+	PG_RETURN_CSTRING("UNKNOWN");
+}
+#endif

@@ -4778,6 +4778,11 @@ DATA(insert OID = 3204 ( pgxc_lock_for_backup	PGNSP PGUID 12 1 0 0 0 f f f f t f
 DESCR("lock the cluster for taking backup");
 #endif
 
+#if defined(ADB) || defined(AGTM)
+DATA(insert OID = 3184 (  pg_xact_status	PGNSP PGUID 12 1 1 0 0 f f f f t t s 1 0 2275 "28" _null_ _null_ _null_ _null_ pg_xact_status _null_ _null_ _null_ ));
+DESCR("transaction status of specifical xid");
+#endif
+
 DATA(insert OID = 3469 (  spg_range_quad_config PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_  spg_range_quad_config _null_ _null_ _null_ ));
 DESCR("SP-GiST support for quad tree over range");
 DATA(insert OID = 3470 (  spg_range_quad_choose PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_  spg_range_quad_choose _null_ _null_ _null_ ));

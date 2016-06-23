@@ -1378,4 +1378,8 @@ extern Datum pgxc_is_committed(PG_FUNCTION_ARGS);
 extern Datum mgr_start_agent(PG_FUNCTION_ARGS);
 #endif
 
+#if defined(ADB) || defined(AGTM)
+extern Datum pg_xact_status(PG_FUNCTION_ARGS);
+#endif
+
 #endif   /* BUILTINS_H */

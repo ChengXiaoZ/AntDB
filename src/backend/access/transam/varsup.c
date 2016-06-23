@@ -25,6 +25,10 @@
 #include "storage/proc.h"
 #include "utils/syscache.h"
 
+#ifdef ADB
+#include "agtm/agtm.h"
+#endif
+
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
 
