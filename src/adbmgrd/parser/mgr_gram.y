@@ -137,7 +137,10 @@ extern char *defGetString(DefElem *def);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
-%token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC GET_HOST_HISTORY_USAGE
+
+/* for ADB monitor host page */
+%token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
+                GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
 %%
 /*
  *	The target production for the whole parse.
@@ -220,7 +223,15 @@ Gethostparm:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("get_host_history_usage", args));
 			$$ = (Node*)stmt;
-		};
+		}
+        | GET_ALL_NODENAME_IN_SPEC_HOST '(' Ident ')'
+        {
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("get_all_nodename_in_spec_host", args));
+			$$ = (Node*)stmt;
+        };
 
 ConfigAllStmt:
 		CONFIG ALL
@@ -1310,6 +1321,7 @@ unreserved_keyword:
 	| GET_HOST_LIST_ALL
 	| GET_HOST_LIST_SPEC
 	| GET_HOST_HISTORY_USAGE
+    | GET_ALL_NODENAME_IN_SPEC_HOST
 	| GTM
 	| GTM_PROXY
 	| HOST

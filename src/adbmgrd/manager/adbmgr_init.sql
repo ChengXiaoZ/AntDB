@@ -320,6 +320,22 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
+-- for ADB monitor host page: The names of all the nodes on a host
+create table pg_catalog.get_all_nodename_in_spec_host_temp_table(all_nodename name);
+CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname text)
+    RETURNS setof get_all_nodename_in_spec_host_temp_table
+    AS 
+    $$
+
+    select nodename as all_node_name
+    from mgr_node
+    where nodehost = (select oid from mgr_host where hostname = $1);
+
+    $$
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
 --insert data into mgr.parm
 
 --insert gtm parameters
