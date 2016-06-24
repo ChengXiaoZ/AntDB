@@ -1037,7 +1037,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	if (AGT_CMD_CNDN_CNDN_INIT == cmdtype)
 	{
 		appendStringInfo(&infosendmsg, " -D %s", cndnPath);
-		appendStringInfo(&infosendmsg, " --nodename %s", cndnname);
+		appendStringInfo(&infosendmsg, " --nodename %s --locale=C", cndnname);
 	}
 	/*stop coordinator/datanode*/
 	else if(AGT_CMD_CN_STOP == cmdtype || AGT_CMD_DN_STOP == cmdtype)

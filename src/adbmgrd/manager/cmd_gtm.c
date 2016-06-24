@@ -631,7 +631,7 @@ void mgr_runmode_gtm_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdR
 	}
 	if (AGT_CMD_GTM_INIT == cmdtype)
 	{
-		appendStringInfo(&infosendmsg, " %s -D %s", runmode, gtmPath);
+		appendStringInfo(&infosendmsg, " %s -D %s --locale=C", runmode, gtmPath);
 	}
 	else if (AGT_CMD_GTM_STOP_MASTER == cmdtype || AGT_CMD_GTM_STOP_SLAVE == cmdtype)
 	{
