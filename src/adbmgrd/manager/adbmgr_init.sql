@@ -338,7 +338,7 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname tex
 
 --make view for 12 hours data for  tps, qps, connectnum, dbsize 
 CREATE VIEW adbmgr.monitor_cluster_fouritem_v AS 
-SELECT a.monitor_databasetps_time AS time , a.tps, a.qps, b. connectnum, b.dbsize
+SELECT a.monitor_databasetps_time AS time , a.tps, a.qps, b.connectnum, b.dbsize, b.indexsize
 FROM
 	(SELECT monitor_databasetps_time, sum(monitor_databasetps_tps) AS tps , 
 	sum(monitor_databasetps_qps) AS qps  , row_number() over (PARTITION BY 1) FROM (SELECT 
@@ -348,9 +348,9 @@ FROM
 	monitor_databasetps ) ORDER BY 2 ASC)AS a  GROUP BY monitor_databasetps_time) AS a
 JOIN 
 	(SELECT  monitor_databaseitem_time, sum(monitor_databaseitem_connectnum) AS connectnum, 
-	sum(monitor_databaseitem_dbsize) AS dbsize , row_number() over (PARTITION BY 1) FROM (SELECT 
+	sum(monitor_databaseitem_dbsize) AS dbsize , sum(monitor_databaseitem_indexsize) AS indexsize, row_number() over (PARTITION BY 1) FROM (SELECT 
 	distinct(monitor_databaseitem_dbname),  monitor_databaseitem_time, monitor_databaseitem_connectnum, 
-	monitor_databaseitem_dbsize  FROM monitor_databaseitem WHERE monitor_databaseitem_time > (SELECT 
+	monitor_databaseitem_dbsize, monitor_databaseitem_indexsize FROM monitor_databaseitem WHERE monitor_databaseitem_time > (SELECT 
 	max(monitor_databaseitem_time) - interval '12 hour' FROM monitor_databaseitem ) ORDER BY 2 ASC) AS b 
 GROUP BY monitor_databaseitem_time ) AS b on a.row_number = b.row_number;
 
@@ -361,7 +361,8 @@ CREATE table adbmgr.monitor_cluster_fouritem_tb
 	tps  bigint,
 	qps  bigint,
 	connectnum bigint,
-	dbsize   bigint
+	dbsize   bigint,
+	indexsize bigint
 );
 
 --make function for 12 hours data for tps qps connectnum dbsize 
@@ -369,7 +370,7 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 	RETURNS setof adbmgr.monitor_cluster_fouritem_tb
 	AS 
 	$$
-	SELECT time, tps, qps, connectnum, dbsize
+	SELECT time, tps, qps, connectnum, dbsize, indexsize
 	FROM 
 		adbmgr.monitor_cluster_fouritem_v
 	$$
@@ -381,23 +382,23 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 CREATE VIEW adbmgr.monitor_cluster_firstline_v
 AS
 	SELECT monitor_databasetps_time AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
-		sum(monitor_databaseitem_connectnum) AS connectnum , sum(monitor_databaseitem_dbsize) AS dbsize
+		sum(monitor_databaseitem_connectnum) AS connectnum , sum(monitor_databaseitem_dbsize) AS dbsize, sum(monitor_databaseitem_indexsize) AS indexsize
 	FROM 
 		(SELECT  tps.monitor_databasetps_time, tps.monitor_databasetps_tps,  tps.monitor_databasetps_qps, 
-				b.monitor_databaseitem_connectnum , b.monitor_databaseitem_dbsize
+				b.monitor_databaseitem_connectnum , b.monitor_databaseitem_dbsize, b.monitor_databaseitem_indexsize
 			FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databasetps_dbname ORDER BY 
 								monitor_databasetps_time desc ))AS tc  
 						FROM monitor_databasetps
-		)AS tps
-	JOIN 
+						)AS tps
+		JOIN 
 		(SELECT monitor_databaseitem_dbname,
-				monitor_databaseitem_connectnum,  monitor_databaseitem_dbsize
+				monitor_databaseitem_connectnum,  monitor_databaseitem_dbsize, monitor_databaseitem_indexsize
 		 FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databaseitem_dbname ORDER BY 
 								monitor_databaseitem_time desc ))AS tc  
 						FROM monitor_databaseitem)AS item  WHERE item.tc =1
 		) AS b
-	on tps.monitor_databasetps_dbname = b.monitor_databaseitem_dbname 
-	WHERE   tps.tc =1
+		on tps.monitor_databasetps_dbname = b.monitor_databaseitem_dbname 
+		WHERE   tps.tc =1
 	) AS c 
 	GROUP BY  monitor_databasetps_time;
 

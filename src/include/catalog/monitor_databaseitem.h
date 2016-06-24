@@ -30,6 +30,7 @@ CATALOG(monitor_databaseitem,4952)
 	int32			monitor_databaseitem_idletransnum;
 	int32			monitor_databaseitem_preparenum;	
 	int32			monitor_databaseitem_unusedindexnum;
+	int32			monitor_databaseitem_indexsize;
 } FormData_monitor_databaseitem;
 
 /* ----------------
@@ -47,7 +48,7 @@ typedef FormData_monitor_databaseitem *Form_monitor_databaseitem;
  * compiler constants for monitor_databaseitem
  * ----------------
  */
-#define Natts_monitor_databaseitem								15
+#define Natts_monitor_databaseitem								16
 #define Anum_monitor_databaseitem_time							1
 #define Anum_monitor_databaseitem_dbname						2
 #define Anum_monitor_databaseitem_dbsize						3
@@ -63,5 +64,6 @@ typedef FormData_monitor_databaseitem *Form_monitor_databaseitem;
 #define Anum_monitor_databaseitem_idletransnum					13
 #define Anum_monitor_databaseitem_preparenum					14
 #define Anum_monitor_databaseitem_unusedindexnum				15
+#define Anum_monitor_databaseitem_indexsize						16
 
 #endif /* MONITOR_MULTEITEM_H */

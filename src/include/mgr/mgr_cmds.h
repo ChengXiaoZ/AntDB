@@ -147,7 +147,7 @@ extern int monitor_get_result_every_node_master_one_database(Relation rel_node, 
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
 			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum
-			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum);
+			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum, int indexsize);
 extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);	
 
