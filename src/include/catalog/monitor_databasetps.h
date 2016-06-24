@@ -19,7 +19,7 @@ CATALOG(monitor_databasetps,4950)
 	NameData		monitor_databasetps_dbname;
 	int32			monitor_databasetps_tps;
 	int32			monitor_databasetps_qps;
-	int64			monitor_databasetps_runtime;
+	int32			monitor_databasetps_runtime;
 	
 } FormData_monitor_databasetps;
 

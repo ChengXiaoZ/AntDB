@@ -336,6 +336,101 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname tex
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
+--make view for 12 hours data for  tps, qps, connectnum, dbsize 
+CREATE VIEW adbmgr.monitor_cluster_fouritem_v AS 
+SELECT a.monitor_databasetps_time AS time , a.tps, a.qps, b. connectnum, b.dbsize
+FROM
+	(SELECT monitor_databasetps_time, sum(monitor_databasetps_tps) AS tps , 
+	sum(monitor_databasetps_qps) AS qps  , row_number() over (PARTITION BY 1) FROM (SELECT 
+	distinct(monitor_databasetps_dbname),  monitor_databasetps_time, monitor_databasetps_tps,
+	monitor_databasetps_qps, monitor_databasetps_runtime FROM monitor_databasetps WHERE 
+	monitor_databasetps_time > (SELECT max(monitor_databasetps_time) - interval '12 hour' FROM 
+	monitor_databasetps ) ORDER BY 2 ASC)AS a  GROUP BY monitor_databasetps_time) AS a
+JOIN 
+	(SELECT  monitor_databaseitem_time, sum(monitor_databaseitem_connectnum) AS connectnum, 
+	sum(monitor_databaseitem_dbsize) AS dbsize , row_number() over (PARTITION BY 1) FROM (SELECT 
+	distinct(monitor_databaseitem_dbname),  monitor_databaseitem_time, monitor_databaseitem_connectnum, 
+	monitor_databaseitem_dbsize  FROM monitor_databaseitem WHERE monitor_databaseitem_time > (SELECT 
+	max(monitor_databaseitem_time) - interval '12 hour' FROM monitor_databaseitem ) ORDER BY 2 ASC) AS b 
+GROUP BY monitor_databaseitem_time ) AS b on a.row_number = b.row_number;
+
+
+CREATE table adbmgr.monitor_cluster_fouritem_tb
+(
+	time timestamptz,
+	tps  bigint,
+	qps  bigint,
+	connectnum bigint,
+	dbsize   bigint
+);
+
+--make function for 12 hours data for tps qps connectnum dbsize 
+CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
+	RETURNS setof adbmgr.monitor_cluster_fouritem_tb
+	AS 
+	$$
+	SELECT time, tps, qps, connectnum, dbsize
+	FROM 
+		adbmgr.monitor_cluster_fouritem_v
+	$$
+	LANGUAGE SQL
+	IMMUTABLE
+	RETURNS NULL ON NULL INPUT;	
+		
+--get first page first line values
+CREATE VIEW adbmgr.monitor_cluster_firstline_v
+AS
+	SELECT monitor_databasetps_time AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
+		sum(monitor_databaseitem_connectnum) AS connectnum , sum(monitor_databaseitem_dbsize) AS dbsize
+	FROM 
+		(SELECT  tps.monitor_databasetps_time, tps.monitor_databasetps_tps,  tps.monitor_databasetps_qps, 
+				b.monitor_databaseitem_connectnum , b.monitor_databaseitem_dbsize
+			FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databasetps_dbname ORDER BY 
+								monitor_databasetps_time desc ))AS tc  
+						FROM monitor_databasetps
+		)AS tps
+	JOIN 
+		(SELECT monitor_databaseitem_dbname,
+				monitor_databaseitem_connectnum,  monitor_databaseitem_dbsize
+		 FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databaseitem_dbname ORDER BY 
+								monitor_databaseitem_time desc ))AS tc  
+						FROM monitor_databaseitem)AS item  WHERE item.tc =1
+		) AS b
+	on tps.monitor_databasetps_dbname = b.monitor_databaseitem_dbname 
+	WHERE   tps.tc =1
+	) AS c 
+	GROUP BY  monitor_databasetps_time;
+
+	
+CREATE table adbmgr.monitor_databasetps_content_tb
+(
+time timestamptz,
+tps int,
+qps int
+);
+--make function to get tps and qps for given dbname time and time interval
+CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in timestamptz, in int)
+		RETURNS setof adbmgr.monitor_databasetps_content_tb
+	AS 
+		$$
+	SELECT monitor_databasetps_time AS time,
+				monitor_databasetps_tps   AS tps,
+				monitor_databasetps_qps   AS qps
+	FROM 
+				monitor_databasetps
+	WHERE monitor_databasetps_dbname = $1 and monitor_databasetps_time >= $2 and monitor_databasetps_time <= $2 + case $3
+				when 0 then interval '1 hour'
+				when 1 then interval '24 hour'
+				end;
+	$$
+		LANGUAGE SQL
+	IMMUTABLE
+	RETURNS NULL ON NULL INPUT;	
+--to show all database tps, qps, runtime at current_time
+ CREATE VIEW adbmgr.monitor_all_dbname_tps_qps_runtime_v
+ AS 
+ SELECT distinct(monitor_databasetps_dbname), monitor_databasetps_tps, monitor_databasetps_qps, monitor_databasetps_runtime FROM monitor_databasetps WHERE monitor_databasetps_time=(SELECT max(monitor_databasetps_time) FROM monitor_databasetps) ORDER BY 1 ASC;
+
 --insert data into mgr.parm
 
 --insert gtm parameters

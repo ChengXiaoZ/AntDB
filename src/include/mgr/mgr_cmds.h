@@ -141,14 +141,14 @@ bool get_cpu_info(StringInfo hostinfostring);
 
 /*monitor_databaseitem.c*/
 extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
-extern void monitor_get_one_node_user_address_port(char **user, char **address, int *coordport, char nodetype);
-extern int monitor_get_result_one_node(char *sqlstr, char *dbname, char nodetype);
-extern int monitor_get_result_every_node_master_one_database(char *sqlstr, char *dbname, char nodetype, int gettype);
+extern void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype);
+extern int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype);
+extern int monitor_get_result_every_node_master_one_database(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
 			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum
 			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum);
 extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
-extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, TimestampTz pgstarttime);	
+extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);	
 
 #endif /* MGR_CMDS_H */
