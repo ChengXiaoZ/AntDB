@@ -359,6 +359,51 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 		error_context_stack = save_context_stack; \
 	} while (0)
 
+/*----------
+ * API for catching ereport(ERROR) exits.  Use these macros like so:
+ *
+ *		PG_TRY();
+ *		{
+ *			... code that might throw ereport(ERROR) ...
+ *		}
+ *		PG_CATCH();
+ *		{
+ *			... error recovery code ...
+ *			here maybe not call PG_RE_THROW()
+ *		}
+ *		PG_END_TRY();
+ */
+#ifdef ADB
+#define PG_TRY_HOLD()														\
+	do {																	\
+		extern PGDLLIMPORT volatile uint32 InterruptHoldoffCount;			\
+		extern PGDLLIMPORT volatile uint32 QueryCancelHoldoffCount;			\
+		sigjmp_buf *save_exception_stack = PG_exception_stack;				\
+		ErrorContextCallback *save_context_stack = error_context_stack;		\
+		volatile uint32 save_InterruptHoldoffCount = InterruptHoldoffCount;	\
+		volatile uint32 save_QueryCancelHoldoffCount = QueryCancelHoldoffCount; \
+		sigjmp_buf local_sigjmp_buf;										\
+		if (sigsetjmp(local_sigjmp_buf, 0) == 0) 							\
+		{ 																	\
+			PG_exception_stack = &local_sigjmp_buf
+
+#define PG_CATCH_HOLD()														\
+		}																	\
+		else																\
+		{																	\
+			PG_exception_stack = save_exception_stack;						\
+			error_context_stack = save_context_stack
+
+#define PG_END_TRY_HOLD()													\
+			errdump();														\
+			InterruptHoldoffCount = save_InterruptHoldoffCount;				\
+			QueryCancelHoldoffCount = save_QueryCancelHoldoffCount;			\
+		}																	\
+		PG_exception_stack = save_exception_stack;							\
+		error_context_stack = save_context_stack;							\
+	} while (0)
+#endif /* ADB */
+
 /*
  * gcc understands __attribute__((noreturn)); for other compilers, insert
  * pg_unreachable() so that the compiler gets the point.
