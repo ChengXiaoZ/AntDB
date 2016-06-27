@@ -3093,6 +3093,13 @@ static bool get_ora_column_join_walker(Node *node, GetOraColumnJoinContext *cont
 	{
 		Var *var = (Var*)node;
 		JoinExprInfo *info = context->info;
+		Assert(var->varno != 0);
+		if(info->lrtindex == var->varno
+			|| info->rrtindex == var->varno)
+		{
+			return false;
+		}
+
 		if(info->lrtindex == 0)
 		{
 			info->lrtindex = var->varno;
