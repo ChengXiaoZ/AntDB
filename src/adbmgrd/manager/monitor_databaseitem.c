@@ -264,10 +264,9 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	}
 	dbnum = list_length(dbnamelist);
 	Assert(dbnum > 0);
-
+	time = GetCurrentTimestamp();
 	foreach(cell, dbnamelist)
 	{
-		time = GetCurrentTimestamp();
 		dbname = (char *)(lfirst(cell));
 		/* get database size on coordinator*/
 		initStringInfo(&sqldbsizeStrData);
@@ -336,10 +335,8 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		initStringInfo(&sqlconnectnumStrData);
 		appendStringInfo(&sqlconnectnumStrData, "select numbackends from pg_stat_database where datname = \'%s\'", dbname);
 		connectnum = monitor_get_result_one_node(rel_node, sqlconnectnumStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER);
-
 		/*the database index size*/
 		indexsize = monitor_get_result_one_node(rel_node, sqlstrindexsize, dbname, CNDN_TYPE_COORDINATOR_MASTER);
-
 		/*build tuple*/
 		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, barchive, bautovacuum, heaphitrate, commitrate, dbage, connectnum, standbydelay, locksnum, longquerynum, idlequerynum, preparenum, unusedindexnum, indexsize);
 		simple_heap_insert(rel, tuple);

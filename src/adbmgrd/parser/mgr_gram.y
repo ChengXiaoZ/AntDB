@@ -112,7 +112,7 @@ extern char *defGetString(DefElem *def);
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
-				Gethostparm
+				Gethostparm ListMonitor
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -141,6 +141,8 @@ extern char *defGetString(DefElem *def);
 /* for ADB monitor host page */
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
                 GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
+								GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
+								GET_DATABASE_TPS_QPS_INTERVAL_TIME
 %%
 /*
  *	The target production for the whole parse.
@@ -180,6 +182,7 @@ stmt :
 	| ListGtmStmt
 	| StartAgentStmt
 	| AlterParmStmt
+	| ListMonitor
 	| ListParmStmt
 	| InitGtmStmt
 	| AddNodeStmt
@@ -1304,6 +1307,47 @@ opt_stop_mode_i:
 	| MODE I			{ $$ = pstrdup("MODE IMMEDIATE"); }
 	;
 
+ListMonitor:
+	GET_CLUSTER_HEADPAGE_LINE
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_cluster_firstline_v"), -1));
+			$$ = (Node*)stmt;
+	}
+	| GET_CLUSTER_FOURITEM  /*monitor first page, four item, the data in current 12hours*/
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_cluster_fouritem_v"), -1));
+			$$ = (Node*)stmt;
+	}
+	| GET_CLUSTER_SUMMARY  /*monitor cluster summary, the data in current time*/
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_cluster_summary_v"), -1));
+			$$ = (Node*)stmt;
+	}
+	| GET_DATABASE_TPS_QPS /*monitor all database tps,qps, runtime at current time*/
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_all_dbname_tps_qps_runtime_v"), -1));
+			$$ = (Node*)stmt;
+	}
+	| GET_DATABASE_TPS_QPS_INTERVAL_TIME '(' Ident ',' Ident ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			args = lappend(args, makeIntConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasetps_func", args));
+			$$ = (Node*)stmt;
+		}
+	;
+
 unreserved_keyword:
 	  ADD_P
 	| AGENT
@@ -1318,10 +1362,15 @@ unreserved_keyword:
 	| F
 	| FAILOVER
 	| FAST
+	| GET_CLUSTER_FOURITEM
+	| GET_CLUSTER_HEADPAGE_LINE
+	| GET_CLUSTER_SUMMARY
+	| GET_DATABASE_TPS_QPS
+	| GET_DATABASE_TPS_QPS_INTERVAL_TIME
 	| GET_HOST_LIST_ALL
 	| GET_HOST_LIST_SPEC
 	| GET_HOST_HISTORY_USAGE
-    | GET_ALL_NODENAME_IN_SPEC_HOST
+	| GET_ALL_NODENAME_IN_SPEC_HOST
 	| GTM
 	| GTM_PROXY
 	| HOST

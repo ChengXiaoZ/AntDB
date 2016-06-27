@@ -381,28 +381,33 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 --get first page first line values
 CREATE VIEW adbmgr.monitor_cluster_firstline_v
 AS
-	SELECT monitor_databasetps_time AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
-		sum(monitor_databaseitem_connectnum) AS connectnum , sum(monitor_databaseitem_dbsize) AS dbsize, sum(monitor_databaseitem_indexsize) AS indexsize
+	SELECT * from 
+	(SELECT monitor_databasetps_time AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
+		sum(monitor_databaseitem_connectnum) AS connectnum , sum(monitor_databaseitem_dbsize) AS dbsize, sum(monitor_databaseitem_indexsize) AS indexsize, max(monitor_databasetps_runtime) as runtime
 	FROM 
-		(SELECT  tps.monitor_databasetps_time, tps.monitor_databasetps_tps,  tps.monitor_databasetps_qps, 
-				b.monitor_databaseitem_connectnum , b.monitor_databaseitem_dbsize, b.monitor_databaseitem_indexsize
-			FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databasetps_dbname ORDER BY 
-								monitor_databasetps_time desc ))AS tc  
-						FROM monitor_databasetps
-						)AS tps
-		JOIN 
-		(SELECT monitor_databaseitem_dbname,
-				monitor_databaseitem_connectnum,  monitor_databaseitem_dbsize, monitor_databaseitem_indexsize
-		 FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databaseitem_dbname ORDER BY 
-								monitor_databaseitem_time desc ))AS tc  
-						FROM monitor_databaseitem)AS item  WHERE item.tc =1
-		) AS b
-		on tps.monitor_databasetps_dbname = b.monitor_databaseitem_dbname 
-		WHERE   tps.tc =1
-	) AS c 
-	GROUP BY  monitor_databasetps_time;
+		(SELECT  tps.monitor_databasetps_time, tps.monitor_databasetps_tps,  tps.monitor_databasetps_qps, tps.monitor_databasetps_runtime,
+					b.monitor_databaseitem_connectnum , b.monitor_databaseitem_dbsize, b.monitor_databaseitem_indexsize
+				FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databasetps_dbname ORDER BY 
+									monitor_databasetps_time desc ))AS tc  
+							FROM monitor_databasetps
+							)AS tps
+			JOIN 
+			(SELECT monitor_databaseitem_dbname,
+					monitor_databaseitem_connectnum,  monitor_databaseitem_dbsize, monitor_databaseitem_indexsize
+			 FROM (SELECT * ,(ROW_NUMBER()OVER(PARTITION BY monitor_databaseitem_dbname ORDER BY 
+									monitor_databaseitem_time desc ))AS tc  FROM monitor_databaseitem)AS item  WHERE item.tc =1
+			) AS b
+			on tps.monitor_databasetps_dbname = b.monitor_databaseitem_dbname 
+			WHERE   tps.tc =1
+		) AS c 
+		GROUP BY  monitor_databasetps_time
+	) AS d
+	join 
+	( SELECT sum(md_total) AS md_total FROM (SELECT  host_oid,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY host_oid  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
+	) AS e
+	on 1=1;
 
-	
+
 CREATE table adbmgr.monitor_databasetps_content_tb
 (
 time timestamptz,
@@ -431,7 +436,29 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in times
  CREATE VIEW adbmgr.monitor_all_dbname_tps_qps_runtime_v
  AS 
  SELECT distinct(monitor_databasetps_dbname), monitor_databasetps_tps, monitor_databasetps_qps, monitor_databasetps_runtime FROM monitor_databasetps WHERE monitor_databasetps_time=(SELECT max(monitor_databasetps_time) FROM monitor_databasetps) ORDER BY 1 ASC;
-
+--show cluster summary at current_time
+CREATE VIEW adbmgr.monitor_cluster_summary_v
+AS
+SELECT SUM(monitor_databaseitem_dbsize) AS dbsize,
+	CASE AVG(monitor_databaseitem_archivemode::int)
+	 WHEN 0 THEN false
+	 ELSE true
+	 END AS archivemode,
+	CASE AVG(monitor_databaseitem_autovacuum::int)
+	 WHEN 0 THEN false
+	 ELSE true
+	 END AS autovacuum,
+	AVG(monitor_databaseitem_heaphitrate) AS heaphitrate,
+	AVG(monitor_databaseitem_commitrate) AS commitrate,
+	AVG(monitor_databaseitem_dbage)::int AS dbage,
+	SUM(monitor_databaseitem_connectnum) AS connectnum,
+	AVG(monitor_databaseitem_standbydelay)::int AS standbydelay,
+	SUM(monitor_databaseitem_locksnum) AS locksnum,
+	SUM(monitor_databaseitem_longtransnum) AS longtransnum,
+	SUM(monitor_databaseitem_idletransnum) AS idletransnum,
+	SUM(monitor_databaseitem_preparenum) AS preparenum,
+	SUM(monitor_databaseitem_unusedindexnum) AS unusedindexnum
+from (SELECT * from monitor_databaseitem where monitor_databaseitem_time=(SELECT MAX(monitor_databaseitem_time) from monitor_databaseitem)) AS a;
 --insert data into mgr.parm
 
 --insert gtm parameters
