@@ -348,7 +348,7 @@ FROM
 	monitor_databasetps ) ORDER BY 2 ASC)AS a  GROUP BY monitor_databasetps_time) AS a
 JOIN 
 	(SELECT  monitor_databaseitem_time, sum(monitor_databaseitem_connectnum) AS connectnum, 
-	sum(monitor_databaseitem_dbsize) AS dbsize , sum(monitor_databaseitem_indexsize) AS indexsize, row_number() over (PARTITION BY 1) FROM (SELECT 
+	(sum(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize , (sum(monitor_databaseitem_indexsize)/1024.0)::numeric(18,2) AS indexsize, row_number() over (PARTITION BY 1) FROM (SELECT 
 	distinct(monitor_databaseitem_dbname),  monitor_databaseitem_time, monitor_databaseitem_connectnum, 
 	monitor_databaseitem_dbsize, monitor_databaseitem_indexsize FROM monitor_databaseitem WHERE monitor_databaseitem_time > (SELECT 
 	max(monitor_databaseitem_time) - interval '12 hour' FROM monitor_databaseitem ) ORDER BY 2 ASC) AS b 
@@ -361,8 +361,8 @@ CREATE table adbmgr.monitor_cluster_fouritem_tb
 	tps  bigint,
 	qps  bigint,
 	connectnum bigint,
-	dbsize   bigint,
-	indexsize bigint
+	dbsize numeric(18,2),
+	indexsize numeric(18,2)
 );
 
 --make function for 12 hours data for tps qps connectnum dbsize 
@@ -383,7 +383,7 @@ CREATE VIEW adbmgr.monitor_cluster_firstline_v
 AS
 	SELECT * from 
 	(SELECT monitor_databasetps_time AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
-		sum(monitor_databaseitem_connectnum) AS connectnum , sum(monitor_databaseitem_dbsize) AS dbsize, sum(monitor_databaseitem_indexsize) AS indexsize, max(monitor_databasetps_runtime) as runtime
+		sum(monitor_databaseitem_connectnum) AS connectnum , (sum(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize, (sum(monitor_databaseitem_indexsize)/1024.0)::numeric(18,2) AS indexsize, max(monitor_databasetps_runtime) as runtime
 	FROM 
 		(SELECT  tps.monitor_databasetps_time, tps.monitor_databasetps_tps,  tps.monitor_databasetps_qps, tps.monitor_databasetps_runtime,
 					b.monitor_databaseitem_connectnum , b.monitor_databaseitem_dbsize, b.monitor_databaseitem_indexsize
@@ -403,7 +403,7 @@ AS
 		GROUP BY  monitor_databasetps_time
 	) AS d
 	join 
-	( SELECT round(sum(md_total/1024.0/1024/1024)) AS md_total FROM (SELECT  host_oid,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY host_oid  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
+	( SELECT (sum(md_total/1024.0/1024)/1024)::numeric(18,2) AS md_total FROM (SELECT  host_oid,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY host_oid  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
 	) AS e
 	on 1=1;
 
@@ -435,11 +435,11 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in times
 --to show all database tps, qps, runtime at current_time
  CREATE VIEW adbmgr.monitor_all_dbname_tps_qps_runtime_v
  AS 
- SELECT distinct(monitor_databasetps_dbname), monitor_databasetps_tps, monitor_databasetps_qps, monitor_databasetps_runtime FROM monitor_databasetps WHERE monitor_databasetps_time=(SELECT max(monitor_databasetps_time) FROM monitor_databasetps) ORDER BY 1 ASC;
+ SELECT distinct(monitor_databasetps_dbname) as databasename, monitor_databasetps_tps as tps, monitor_databasetps_qps as qps, monitor_databasetps_runtime as runtime FROM monitor_databasetps WHERE monitor_databasetps_time=(SELECT max(monitor_databasetps_time) FROM monitor_databasetps) ORDER BY 1 ASC;
 --show cluster summary at current_time
 CREATE VIEW adbmgr.monitor_cluster_summary_v
 AS
-SELECT SUM(monitor_databaseitem_dbsize) AS dbsize,
+SELECT (SUM(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize,
 	CASE AVG(monitor_databaseitem_archivemode::int)
 	 WHEN 0 THEN false
 	 ELSE true
@@ -448,8 +448,8 @@ SELECT SUM(monitor_databaseitem_dbsize) AS dbsize,
 	 WHEN 0 THEN false
 	 ELSE true
 	 END AS autovacuum,
-	AVG(monitor_databaseitem_heaphitrate) AS heaphitrate,
-	AVG(monitor_databaseitem_commitrate) AS commitrate,
+	AVG(monitor_databaseitem_heaphitrate)::numeric(18,2) AS heaphitrate,
+	AVG(monitor_databaseitem_commitrate)::numeric(18,2) AS commitrate,
 	AVG(monitor_databaseitem_dbage)::int AS dbage,
 	SUM(monitor_databaseitem_connectnum) AS connectnum,
 	AVG(monitor_databaseitem_standbydelay)::int AS standbydelay,
