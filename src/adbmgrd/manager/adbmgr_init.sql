@@ -403,7 +403,7 @@ AS
 		GROUP BY  monitor_databasetps_time
 	) AS d
 	join 
-	( SELECT sum(md_total) AS md_total FROM (SELECT  host_oid,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY host_oid  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
+	( SELECT round(sum(md_total/1024.0/1024/1024)) AS md_total FROM (SELECT  host_oid,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY host_oid  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
 	) AS e
 	on 1=1;
 
