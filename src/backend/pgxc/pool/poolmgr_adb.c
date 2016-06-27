@@ -145,7 +145,7 @@ static bool am_pgxc_pooler = false;
 static MemoryContext PoolerMemoryContext;
 
 /* PoolAgents */
-static Size	agentCount;
+static volatile Size	agentCount;
 static PoolAgent **poolAgents;
 
 static PoolHandle *poolHandle = NULL;

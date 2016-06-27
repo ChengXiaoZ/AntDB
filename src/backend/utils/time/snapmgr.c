@@ -1304,6 +1304,36 @@ SetGlobalSnapshot(StringInfo input_message)
 	pq_getmsgend(input_message);
 }
 
+static void
+OutputGlobalSnapshot(Snapshot snapshot)
+{
+	StringInfoData buf;
+	int i;
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "Global Snapshot:");
+	if (snapshot)
+	{
+		appendStringInfo(&buf, " xmin: %u", snapshot->xmin);
+		appendStringInfo(&buf, " xmax: %u", snapshot->xmax);
+		appendStringInfo(&buf, " xip:");
+		for (i = 0; i < snapshot->xcnt; i++)
+			appendStringInfo(&buf, " %u", snapshot->xip[i]);
+		appendStringInfo(&buf, " subxip:");
+		for (i = 0; i < snapshot->subxcnt; i++)
+			appendStringInfo(&buf, " %u", snapshot->subxip[i]);
+		appendStringInfo(&buf, " suboverflowed: %s", snapshot->suboverflowed ? "true" : "false");
+		appendStringInfo(&buf, " takenDuringRecovery: %s", snapshot->takenDuringRecovery ? "true" : "false");
+		appendStringInfo(&buf, " copied: %s", snapshot->copied ? "true" : "false");
+		appendStringInfo(&buf, " curcid: %u", snapshot->curcid);
+		appendStringInfo(&buf, " active_count: %u", snapshot->active_count);
+		appendStringInfo(&buf, " regd_count: %u", snapshot->regd_count);
+	}
+
+	ereport(DEBUG1,
+		(errmsg("%s", buf.data)));
+}
+
 /*
  * Entry of snapshot obtention for Postgres-XC node
  */
@@ -1322,6 +1352,8 @@ GetGlobalSnapshot(Snapshot snapshot)
 		CopyGlobalSnapshot(GlobalSnapshot, snapshot);
 		return snapshot;
 	}*/
+
+	OutputGlobalSnapshot(GlobalSnapshot);
 
 	return GlobalSnapshot;
 }

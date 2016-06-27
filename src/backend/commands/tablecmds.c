@@ -1320,7 +1320,7 @@ ExecuteTruncate(TruncateStmt *stmt)
         step->exec_nodes = NULL;
         step->sql_statement = pstrdup(sql_statement);
         step->force_autocommit = false;
-        step->exec_type = EXEC_ON_DATANODES;
+        step->exec_type = EXEC_ON_ALL_NODES;
         step->is_temp = is_temp;
         ExecRemoteUtility(step);
         pfree(step->sql_statement);

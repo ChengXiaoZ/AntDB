@@ -1436,6 +1436,7 @@ GetSnapshotData(Snapshot snapshot)
 
 		globalxmin = xmin = snapshot->xmin;
 		xmax = snapshot->xmax;
+		snapshot->curcid = GetCurrentCommandId(false);
 
 		LWLockAcquire(ProcArrayLock, LW_SHARED);
 		if (!TransactionIdIsValid(MyPgXact->xmin))
