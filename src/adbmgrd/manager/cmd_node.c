@@ -9,7 +9,6 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
-#include "catalog/mgr_gtm.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -78,7 +77,6 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	Datum datum[Natts_mgr_node];
 	bool isnull[Natts_mgr_node];
 	bool got[Natts_mgr_node];
-	bool primary;
 	ObjectAddress myself;
 	ObjectAddress host;
 	Oid cndn_oid;
@@ -86,24 +84,36 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	Assert(node && node->name);
 	
 	/*get node type*/
-	if(node->is_coordinator && node->is_master)
+	if((!node->is_coordinator) && node->is_master && (node->is_gtm))
+	{
+		nodetype = GTM_TYPE_GTM_MASTER;
+		nodestring = "gtm master";
+	}
+	else if((!node->is_coordinator) && (!node->is_master) && (node->is_gtm))
+	{
+		nodetype = GTM_TYPE_GTM_SLAVE;
+		nodestring = "gtm slave";
+		Assert(node->mastername);
+		namestrcpy(&mastername, node->mastername);
+	}
+	else if(node->is_coordinator && node->is_master && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 		nodestring = "coordinator master";
 	}
-	else if(node->is_coordinator && (!node->is_master))
+	else if(node->is_coordinator && (!node->is_master) && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_COORDINATOR_SLAVE;
 		Assert(node->mastername);
 		namestrcpy(&mastername, node->mastername);
 		nodestring = "coordinator slave";
 	}
-	else if((!node->is_coordinator) && node->is_master)
+	else if((!node->is_coordinator) && node->is_master && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_DATANODE_MASTER;
 		nodestring = "datanode master";
 	}
-	else if((!node->is_coordinator) && (!node->is_master))
+	else if((!node->is_coordinator) && (!node->is_master) && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
 		Assert(node->mastername);
@@ -115,11 +125,12 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 		/*never come here*/
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			, errmsg("node is not recognized")
-			, errhint("option type is coordinator or datanode master/slave")));
+			, errhint("option type is gtm or coordinator or datanode master/slave")));
 	}
 	
 	
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	Assert(node->name);
 	namestrcpy(&name, node->name);
 	/* check exists */
 	checktuple = mgr_get_tuple_node_from_name_type(rel, NameStr(name), nodetype);
@@ -185,19 +196,11 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			datum[Anum_mgr_node_nodepath-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_node_nodepath-1] = true;
-		}else if(strcmp(def->defname, "primary") == 0)
-		{
-			if(got[Anum_mgr_node_nodeprimary-1])
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-					,errmsg("conflicting or redundant options")));
-			primary = defGetBoolean(def);
-			datum[Anum_mgr_node_nodeprimary-1] = BoolGetDatum(primary);
-			got[Anum_mgr_node_nodeprimary-1] = true;
 		}else
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" not recognized", def->defname)
-				,errhint("option is host, port, path and primary")));
+				,errhint("option is host, port and path")));
 		}
 		
 	}
@@ -222,15 +225,11 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			, errmsg("option \"port\" must give")));
 	}
-	if(got[Anum_mgr_node_nodeprimary-1] == false)
-	{
-		datum[Anum_mgr_node_nodeprimary-1] = BoolGetDatum(false);
-	}
 	if(got[Anum_mgr_node_nodemasternameOid-1] == false)
 	{
-		if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+		if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 			datum[Anum_mgr_node_nodemasternameOid-1] = UInt32GetDatum(0);
-		else
+		else if(CNDN_TYPE_DATANODE_SLAVE == nodetype)
 		{
 			mastertuple = mgr_get_tuple_node_from_name_type(rel, NameStr(mastername), CNDN_TYPE_DATANODE_MASTER);
 			if(!HeapTupleIsValid(mastertuple))
@@ -240,7 +239,17 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 			}
 			datum[Anum_mgr_node_nodemasternameOid-1] = ObjectIdGetDatum(HeapTupleGetOid(mastertuple));
 			heap_freetuple(mastertuple);
-			
+		}
+		else
+		{
+			mastertuple = mgr_get_tuple_node_from_name_type(rel, NameStr(mastername), GTM_TYPE_GTM_MASTER);
+			if(!HeapTupleIsValid(mastertuple))
+			{
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					, errmsg("gtm master \"%s\" not exists", NameStr(mastername))));
+			}
+			datum[Anum_mgr_node_nodemasternameOid-1] = ObjectIdGetDatum(HeapTupleGetOid(mastertuple));
+			heap_freetuple(mastertuple);
 		}
 	}
 	/*the node is not in cluster until config all*/
@@ -282,7 +291,6 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 	Datum datum[Natts_mgr_node];
 	bool isnull[Natts_mgr_node];
 	bool got[Natts_mgr_node];
-	bool primary;
 	HeapTuple searchHostTuple;	
 	TupleDesc cndn_dsc;
 	NameData hostname;
@@ -291,24 +299,38 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 	Assert(node && node->name);
 	
 	/*get node type*/
-	if(node->is_coordinator && node->is_master)
+	if((!node->is_coordinator) && node->is_master && (node->is_gtm))
+	{
+		nodetype = GTM_TYPE_GTM_MASTER;
+		nodestring = "gtm master";
+		Assert(node->mastername);
+		namestrcpy(&mastername, node->mastername);
+	}
+	else if((!node->is_coordinator) && (!node->is_master) && (node->is_gtm))
+	{
+		nodetype = GTM_TYPE_GTM_SLAVE;
+		nodestring = "gtm slave";
+		Assert(node->mastername);
+		namestrcpy(&mastername, node->mastername);
+	}
+	else if(node->is_coordinator && node->is_master &&(!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 		nodestring = "coordinator master";
 	}
-	else if(node->is_coordinator && (!node->is_master))
+	else if(node->is_coordinator && (!node->is_master) &&(!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_COORDINATOR_SLAVE;
 		Assert(node->mastername);
 		namestrcpy(&mastername, node->mastername);
 		nodestring = "coordinator slave";
 	}
-	else if((!node->is_coordinator) && node->is_master)
+	else if((!node->is_coordinator) && node->is_master &&(!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_DATANODE_MASTER;
 		nodestring = "datanode master";
 	}
-	else if((!node->is_coordinator) && (!node->is_master))
+	else if((!node->is_coordinator) && (!node->is_master) &&(!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
 		Assert(node->mastername);
@@ -385,19 +407,11 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			datum[Anum_mgr_node_nodepath-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_node_nodepath-1] = true;
-		}else if(strcmp(def->defname, "primary") == 0)
-		{
-			if(got[Anum_mgr_node_nodeprimary-1])
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-					,errmsg("conflicting or redundant options")));
-			primary = defGetBoolean(def);
-			datum[Anum_mgr_node_nodeprimary-1] = BoolGetDatum(primary);
-			got[Anum_mgr_node_nodeprimary-1] = true;
 		}else
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" not recognized", def->defname)
-				,errhint("option is host, port, path and primary")));
+				,errhint("option is host, port and path")));
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
 	}
@@ -422,22 +436,32 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	Form_mgr_node mgr_node;
 
 	/*get node type*/
-	if(node->is_coordinator && node->is_master)
+	if((!node->is_coordinator) && node->is_master && (node->is_gtm))
+	{
+		nodetype = GTM_TYPE_GTM_MASTER;
+		nodestring = "gtm master";
+	}
+	else if((!node->is_coordinator) && (!node->is_master) && (node->is_gtm))
+	{
+		nodetype = GTM_TYPE_GTM_SLAVE;
+		nodestring = "gtm slave";
+	}
+	else if(node->is_coordinator && node->is_master && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 		nodestring = "coordinator master";
 	}
-	else if(node->is_coordinator && (!node->is_master))
+	else if(node->is_coordinator && (!node->is_master) && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_COORDINATOR_SLAVE;
 		nodestring = "coordinator slave";
 	}
-	else if((!node->is_coordinator) && node->is_master)
+	else if((!node->is_coordinator) && node->is_master && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_DATANODE_MASTER;
 		nodestring = "datanode master";
 	}
-	else if((!node->is_coordinator) && (!node->is_master))
+	else if((!node->is_coordinator) && (!node->is_master) && (!node->is_gtm))
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
 		nodestring = "datanode slave";
@@ -501,6 +525,14 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	MemoryContextDelete(context);
 }
 
+/*
+* execute init gtm master, send infomation to agent to init gtm master 
+*/
+Datum 
+mgr_init_gtm_master(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_INIT, fcinfo, takeplaparm_n);
+}
 
 /*
 * init coordinator master dn1,dn2...
@@ -808,7 +840,7 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		/*refresh postgresql.conf of this node*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, cndnnametmp, &infosendmsg);
+		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh recovry.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -822,7 +854,7 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 * get the datanode/coordinator name list
 */
 List *
-start_cn_master_internal(const char *sepstr, int argidx,
+get_fcinfo_namelist(const char *sepstr, int argidx,
 	FunctionCallInfo fcinfo
 #ifdef ADB
 	, void (*check_value_func_ptr)(char*)
@@ -864,6 +896,14 @@ start_cn_master_internal(const char *sepstr, int argidx,
 
 	pfree(str.data);
 	return nodenamelist;
+}
+
+/*
+* start gtm master
+*/
+Datum mgr_start_gtm_master(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_START_MASTER, fcinfo, takeplaparm_n);
 }
 
 /*
@@ -972,13 +1012,13 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	/*get the host address for return result*/
 	namestrcpy(&(getAgentCmdRst->nodename), cndnname);
 	/*check node init or not*/
-	if (AGT_CMD_CNDN_CNDN_INIT == cmdtype && mgr_node->nodeinited)
+	if ((AGT_CMD_CNDN_CNDN_INIT == cmdtype || AGT_CMD_GTM_INIT == cmdtype) && mgr_node->nodeinited)
 	{
 		appendStringInfo(&(getAgentCmdRst->description), "the node \"%s\" has inited", cndnname);
 		getAgentCmdRst->ret = false;
 		return;
 	}
-	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && !mgr_node->nodeinited)
+	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && !mgr_node->nodeinited)
 	{
 		appendStringInfo(&(getAgentCmdRst->description), "the node \"%s\" has not inited", cndnname);
 		getAgentCmdRst->ret = false;
@@ -1003,6 +1043,14 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	cndnPath = TextDatumGetCString(datumPath);	
 	switch(cmdtype)
 	{
+		case AGT_CMD_GTM_START_MASTER:
+		case AGT_CMD_GTM_START_SLAVE:
+			cmdmode = "start";
+			break;
+		case AGT_CMD_GTM_STOP_MASTER:
+		case AGT_CMD_GTM_STOP_SLAVE:
+			cmdmode = "stop";
+			break;
 		case AGT_CMD_CN_START:
 			cmdmode = "start";
 			zmode = "coordinator";
@@ -1038,6 +1086,18 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	{
 		appendStringInfo(&infosendmsg, " -D %s", cndnPath);
 		appendStringInfo(&infosendmsg, " --nodename %s --locale=C", cndnname);
+	} /*init gtm*/
+	else if (AGT_CMD_GTM_INIT == cmdtype)
+	{
+		appendStringInfo(&infosendmsg, " -D %s --locale=C", cndnPath);
+	}
+	else if (AGT_CMD_GTM_START_MASTER == cmdtype || AGT_CMD_GTM_START_SLAVE == cmdtype)
+	{
+		appendStringInfo(&infosendmsg, " %s -D %s -o -i -w -c -l %s/logfile", cmdmode, cndnPath, cndnPath);
+	}
+	else if (AGT_CMD_GTM_STOP_MASTER == cmdtype || AGT_CMD_GTM_STOP_SLAVE == cmdtype)
+	{
+		appendStringInfo(&infosendmsg, " %s -D %s -m %s -o -i -w -c -l %s/logfile", cmdmode, cndnPath, shutdown_mode, cndnPath);
 	}
 	/*stop coordinator/datanode*/
 	else if(AGT_CMD_CN_STOP == cmdtype || AGT_CMD_DN_STOP == cmdtype)
@@ -1077,6 +1137,25 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	execok = mgr_recv_msg(ma, getAgentCmdRst);
 	Assert(execok == getAgentCmdRst->ret);
 	ma_close(ma);
+	
+	/*when init, 1. update gtm system table's column to set initial is true 2. refresh postgresql.conf*/
+	if (execok && AGT_CMD_GTM_INIT == cmdtype)
+	{
+		/*update node system table's column to set initial is true when cmd is init*/
+		mgr_node->nodeinited = true;
+		heap_inplace_update(noderel, aimtuple);
+		/*refresh postgresql.conf of this node*/
+		resetStringInfo(&(getAgentCmdRst->description));
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+		/*refresh pg_hba.conf*/
+		resetStringInfo(&(getAgentCmdRst->description));
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_hbaconf(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+	}
+	
 	/*update node system table's column to set initial is true when cmd is init*/
 	if (AGT_CMD_CNDN_CNDN_INIT == cmdtype && execok)
 	{
@@ -1085,7 +1164,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh postgresql.conf of this node*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, cndnname, &infosendmsg);
+		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -1109,13 +1188,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		getrefresh = mgr_refresh_pgxc_node_tbl(cndnname, cndnport, hostaddress, isprimary, nodemasternameoid, getAgentCmdRst);
 		if(!getrefresh)
 		{
-			/*rename recovery.done to recovery.conf*/
-			resetStringInfo(&(getAgentCmdRst->description));
-			mgr_rename_recovery_to_conf(AGT_CMD_CNDN_RENAME_RECOVERCONF, hostOid,  cndnPath, getAgentCmdRst);
 			resetStringInfo(&(getAgentCmdRst->description));
 			appendStringInfoString(&(getAgentCmdRst->description),"ERROR: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
-			if(!getAgentCmdRst->ret)
-				appendStringInfo(&(getAgentCmdRst->description),"\n rename datanode slave %s/recovery.done to %s/recovery.conf fail", cndnPath, cndnPath);
 			getAgentCmdRst->ret = getrefresh;
 			return;
 		}
@@ -1195,6 +1269,24 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 
 	pfree(infosendmsg.data);
 	pfree(hostaddress);
+}
+
+/*
+* stop gtm master
+*/
+Datum mgr_stop_gtm_master(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, fcinfo, shutdown_s);
+}
+
+Datum mgr_stop_gtm_master_f(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, fcinfo, shutdown_f);
+}
+
+Datum mgr_stop_gtm_master_i(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, fcinfo, shutdown_i);
 }
 
 /*
@@ -1338,9 +1430,9 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shut
 		else
 		{
 			#ifdef ADB
-				nodenamelist = start_cn_master_internal("", 0, fcinfo, NULL);
+				nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
 			#else
-				nodenamelist = start_cn_master_internal("", 0, fcinfo);
+				nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
 			#endif
 		}
 		*(info->lcp) = list_head(nodenamelist);
@@ -1553,9 +1645,9 @@ Datum mgr_monitor_coord_namelist(PG_FUNCTION_ARGS)
         oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		
 		#ifdef ADB
-			nodenamelist = start_cn_master_internal("", 0, fcinfo, NULL);
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
 		#else
-			nodenamelist = start_cn_master_internal("", 0, fcinfo);
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
 		#endif
 		
 		info = palloc(sizeof(*info));
@@ -1637,9 +1729,9 @@ Datum mgr_monitor_dnmaster_namelist(PG_FUNCTION_ARGS)
         oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		
 		#ifdef ADB
-			nodenamelist = start_cn_master_internal("", 0, fcinfo, NULL);
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
 		#else
-			nodenamelist = start_cn_master_internal("", 0, fcinfo);
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
 		#endif
 		
 		info = palloc(sizeof(*info));
@@ -1720,9 +1812,9 @@ Datum mgr_monitor_dnslave_namelist(PG_FUNCTION_ARGS)
         oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		
 		#ifdef ADB
-			nodenamelist = start_cn_master_internal("", 0, fcinfo, NULL);
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
 		#else
-			nodenamelist = start_cn_master_internal("", 0, fcinfo);
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
 		#endif
 		
 		info = palloc(sizeof(*info));
@@ -1946,10 +2038,10 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
 
     switch(type)
     {
-        case GTM_TYPE_GTM:
-                datums[1] = NameGetDatum(pstrdup("gtm"));
+        case GTM_TYPE_GTM_MASTER:
+                datums[1] = NameGetDatum(pstrdup("gtm master"));
                 break;
-        case GTM_TYPE_STANDBY:
+        case GTM_TYPE_GTM_SLAVE:
                 datums[1] = NameGetDatum(pstrdup("gtm standby"));
                 break;
         case CNDN_TYPE_COORDINATOR_MASTER:
@@ -2217,9 +2309,9 @@ mgr_failover_one_dn(PG_FUNCTION_ARGS)
 		else
 		{
 			#ifdef ADB
-				nodenamelist = start_cn_master_internal("", 0, fcinfo, NULL);
+				nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
 			#else
-				nodenamelist = start_cn_master_internal("", 0, fcinfo);
+				nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
 			#endif
 		}
 		/*check all inputs nodename are datanode slaves*/
@@ -2713,37 +2805,37 @@ void mgr_append_pgconf_paras_str_quotastr(char *key, char *value, StringInfo inf
 void mgr_get_gtm_host_port(StringInfo infosendmsg)
 {
 	char *gtm_host;
-	Relation rel_gtm;
+	Relation rel_node;
 	HeapScanDesc rel_scan;
-	Form_mgr_gtm mgr_gtm;
+	Form_mgr_node mgr_node;
 	ScanKeyData key[1];
 	HeapTuple tuple;
 	bool gettuple = false;
 	/*get the gtm_port, gtm_host*/
 	ScanKeyInit(&key[0],
-		Anum_mgr_gtm_gtmtype
+		Anum_mgr_node_nodetype
 		,BTEqualStrategyNumber
 		,F_CHAREQ
-		,CharGetDatum(GTM_TYPE_GTM));
-	rel_gtm = heap_open(GtmRelationId, RowExclusiveLock);
-	rel_scan = heap_beginscan(rel_gtm, SnapshotNow, 1, key);
+		,CharGetDatum(GTM_TYPE_GTM_MASTER));
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		mgr_gtm = (Form_mgr_gtm)GETSTRUCT(tuple);
-		Assert(mgr_gtm);
-		gtm_host = get_hostaddress_from_hostoid(mgr_gtm->gtmhost);
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		gtm_host = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		gettuple = true;
 		break;
 	}
 	heap_endscan(rel_scan);
-	heap_close(rel_gtm, RowExclusiveLock);
+	heap_close(rel_node, RowExclusiveLock);
 	if(!gettuple)
 	{
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-			,errmsg("can't find the gtm master information in the system table of gtm")));
+			,errmsg("can't find the gtm master information in the system table of node")));
 	}
 	mgr_append_pgconf_paras_str_quotastr("agtm_host", gtm_host, infosendmsg);
-	mgr_append_pgconf_paras_str_int("agtm_port", mgr_gtm->gtmport, infosendmsg);
+	mgr_append_pgconf_paras_str_int("agtm_port", mgr_node->nodeport, infosendmsg);
 	pfree(gtm_host);
 }
 
@@ -2766,7 +2858,7 @@ void mgr_append_infostr_infostr(StringInfo infostr, StringInfo sourceinfostr)
 /*
 * the parameters which need refresh for postgresql.conf
 */
-void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, char *nodename, StringInfo infosendparamsg)
+void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, StringInfo infosendparamsg)
 {
 	char *slavename = NULL;
 	if(nodetype == CNDN_TYPE_DATANODE_MASTER)
@@ -2791,7 +2883,11 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, cha
 	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendparamsg);
-	mgr_get_gtm_host_port(infosendparamsg);	
+	/*agtm postgresql.conf does not need these*/
+	if(GTM_TYPE_GTM_MASTER != nodetype && GTM_TYPE_GTM_SLAVE != nodetype)
+	{
+		mgr_get_gtm_host_port(infosendparamsg);
+	}
 }
 
 /*

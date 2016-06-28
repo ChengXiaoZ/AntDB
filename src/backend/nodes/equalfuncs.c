@@ -2571,37 +2571,6 @@ _equalMGRAlterHost(const MGRAlterHost *a, const MGRAlterHost *b)
 	COMPARE_NODE_FIELD(options);
 	return true;
 }
-
-/*
- * stuff from mgr_gtm.h
- */
-
- static bool
-_equalMGRAddGtm(const MGRAddGtm *a, const MGRAddGtm *b)
-{
-	COMPARE_SCALAR_FIELD(if_not_exists);
-	COMPARE_STRING_FIELD(name);
-	COMPARE_NODE_FIELD(options);
-	return true;
-}
-
-static bool
-_equalMGRDropGtm(const MGRDropGtm *a, const MGRDropGtm *b)
-{
-	COMPARE_SCALAR_FIELD(if_exists);
-	COMPARE_NODE_FIELD(hosts);
-	return true;
-}
-
-static bool
-_equalMGRAlterGtm(const MGRAlterGtm *a, const MGRAlterGtm *b)
-{
-	COMPARE_SCALAR_FIELD(if_not_exists);
-	COMPARE_STRING_FIELD(name);
-	COMPARE_NODE_FIELD(options);
-	return true;
-}
-
 #endif
 
 /*
@@ -3236,16 +3205,6 @@ equal(const void *a, const void *b)
 		case T_MGRAlterHost:
 			retval = _equalMGRAlterHost(a, b);
 			break;
-		case T_MGRAddGtm:
-			retval = _equalMGRAddGtm(a, b);
-			break;
-		case T_MGRDropGtm:
-			retval = _equalMGRDropGtm(a, b);
-			break;
-		case T_MGRAlterGtm:
-			retval = _equalMGRAlterGtm(a, b);
-			break;
-      
 #endif
 
 		default:

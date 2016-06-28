@@ -4443,35 +4443,6 @@ _copyMGRAlterHost(const MGRAlterHost *from)
 	COPY_NODE_FIELD(options);
 	return newnode;
 }
-//gnode
-static MGRAddGtm *
-_copyMGRAddGtm(const MGRAddGtm *from)
-{
-	MGRAddGtm *newnode = makeNode(MGRAddGtm);
-	COPY_SCALAR_FIELD(if_not_exists);
-	COPY_STRING_FIELD(name);
-	COPY_NODE_FIELD(options);
-	return newnode;
-}
-
-static MGRDropGtm *
-_copyMGRDropGtm(const MGRDropGtm *from)
-{
-	MGRDropGtm *newnode = makeNode(MGRDropGtm);
-	COPY_SCALAR_FIELD(if_exists);
-	COPY_NODE_FIELD(hosts);
-	return newnode;
-}
-
-static MGRAlterGtm *
-_copyMGRAlterGtm(const MGRAlterGtm *from)
-{
-	MGRAlterGtm *newnode = makeNode(MGRAlterGtm);
-	COPY_SCALAR_FIELD(if_not_exists);
-	COPY_STRING_FIELD(name);
-	COPY_NODE_FIELD(options);
-	return newnode;
-}
 
 #endif
 
@@ -5272,16 +5243,6 @@ copyObject(const void *from)
 		case T_MGRAlterHost:
 			retval = _copyMGRAlterHost(from);
 			break;
-		case T_MGRAddGtm:
-			retval = _copyMGRAddGtm(from);
-			break;
-		case T_MGRDropGtm:
-			retval = _copyMGRDropGtm(from);
-			break;
-		case T_MGRAlterGtm:
-			retval = _copyMGRAlterGtm(from);
-			break;
-
 #endif
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(from));

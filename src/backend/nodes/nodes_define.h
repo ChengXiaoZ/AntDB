@@ -3829,29 +3829,6 @@ BEGIN_NODE(MGRAlterHost)
 END_NODE(MGRAlterHost)
 #endif /* NO_NODE_MGRAlterHost */
 
-#ifndef NO_NODE_MGRAddGtm
-BEGIN_NODE(MGRAddGtm)
-	NODE_SCALAR(bool, if_not_exists)
-	NODE_STRING(name)
-	NODE_NODE(List, options)
-END_NODE(MGRAddGtm)
-#endif /* NO_NODE_MGRAddGtm */
-
-#ifndef NO_NODE_MGRAlterGtm
-BEGIN_NODE(MGRAlterGtm)
-	NODE_SCALAR(bool, if_not_exists)
-	NODE_STRING(name)
-	NODE_NODE(List, options)
-END_NODE(MGRAlterGtm)
-#endif /* NO_NODE_MGRAlterGtm */
-
-#ifndef NO_NODE_MGRDropGtm
-BEGIN_NODE(MGRDropGtm)
-	NODE_SCALAR(bool, if_exists)
-	NODE_NODE(List, hosts)
-END_NODE(MGRDropGtm)
-#endif /* NO_NODE_MGRDropGtm */
-
 #ifndef NO_NODE_MGRAlterParm
 BEGIN_NODE(MGRAlterParm)
 	NODE_SCALAR(bool, if_not_exists)

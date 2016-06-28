@@ -351,12 +351,6 @@ DECLARE_UNIQUE_INDEX(mgr_host_oid_index, 4909, on mgr_host using btree(oid oid_o
 DECLARE_UNIQUE_INDEX(mgr_host_hostname_index, 4910, on mgr_host using btree(hostname name_ops));
 #define HostHostnameIndexId					4910
 
-DECLARE_UNIQUE_INDEX(mgr_gtm_oid_index, 4919, on mgr_gtm using btree(oid oid_ops));
-#define GtmOidIndexId 4919
-
-DECLARE_UNIQUE_INDEX(mgr_gtm_gtmname_index, 4920, on mgr_gtm using btree(gtmname name_ops));
-#define GtmGtmNameIndexId 4920
-
 DECLARE_UNIQUE_INDEX(mgr_parm_oid_index, 4929, on mgr_parm using btree(oid oid_ops));
 #define ParmOidIndexId 4929
 

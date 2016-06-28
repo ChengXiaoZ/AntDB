@@ -14,7 +14,6 @@
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
 #include "catalog/pg_type.h"
-#include "catalog/mgr_gtm.h"
 #include "commands/defrem.h"
 #include "funcapi.h"
 #include "libpq/ip.h"

@@ -13,20 +13,6 @@ CREATE VIEW adbmgr.host AS
     hostpghome AS pghome
   FROM pg_catalog.mgr_host order by 1;
 
-CREATE VIEW adbmgr.gtm AS
-  SELECT
-    gtmname    AS  name,
-    hostname   AS  host,
-    CASE gtmtype
-      WHEN 'g' THEN 'gtm'::text
-      WHEN 's' THEN 'standby'::text
-    END AS type,
-    gtmport    AS  port,
-    gtmpath    AS  path,
-    gtminited  AS  initialized
-  FROM pg_catalog.mgr_gtm LEFT JOIN pg_catalog.mgr_host
-    ON pg_catalog.mgr_gtm.gtmhost = pg_catalog.mgr_host.oid;
-
 CREATE VIEW adbmgr.parm AS
   SELECT
     parmnode       AS  node,
@@ -41,6 +27,8 @@ CREATE VIEW adbmgr.node AS
     mgrnode.nodename    AS  name,
     hostname   AS  host,
     CASE mgrnode.nodetype
+      WHEN 'g' THEN 'gtm master'::text
+      WHEN 'p' THEN 'gtm slave'::text
       WHEN 'c' THEN 'coordinator'::text
       WHEN 's' THEN 'coordinator slave'::text
       WHEN 'd' THEN 'datanode master'::text
@@ -54,28 +42,17 @@ CREATE VIEW adbmgr.node AS
     mgrnode.nodeincluster AS incluster
   FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid LEFT JOIN pg_catalog.mgr_node AS node_alise
   ON node_alise.oid = mgrnode.nodemasternameoid order by 3;
-  
+
 CREATE VIEW adbmgr.monitor_datanode_all AS
 	select * from mgr_monitor_dnmaster_all()
 	union all
 	select * from mgr_monitor_dnslave_all();
-  
-
---init all
---CREATE VIEW adbmgr.initall AS
---   SELECT * FROM mgr_init_gtm_all()
---    UNION
---    SELECT * FROM mgr_init_cn_master(NULL)
---    UNION
---    SELECT * FROM mgr_init_dn_master(NULL)
---    UNION
---    SELECT * FROM mgr_init_dn_slave_all();
 
 --init all
 CREATE VIEW adbmgr.initall AS
-	SELECT 'init gtm master' AS "operation type",* FROM mgr_init_gtm()
+	SELECT 'init gtm master' AS "operation type",* FROM mgr_init_gtm_master(NULL)
 	UNION ALL
-	SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm()
+	SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm_master(NULL)
 	UNION ALL
 	SELECT 'init coordinator' AS "operation type",* FROM mgr_init_cn_master(NULL)
 	UNION ALL
@@ -103,7 +80,7 @@ CREATE VIEW adbmgr.start_datanode_all AS
     SELECT 'start datanode slave' AS "operation type", * FROM mgr_start_dn_slave(NULL);
 --start all
 CREATE VIEW adbmgr.startall AS
-    SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm()
+    SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm_master(NULL)
     UNION ALL
     SELECT 'start coordinator' AS "operation type", * FROM mgr_start_cn_master(NULL)
     UNION all
@@ -134,7 +111,7 @@ CREATE VIEW adbmgr.stopall AS
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave(NULL)
     UNION ALL
-    SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm('smart');
+    SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master(NULL);
 
 CREATE VIEW adbmgr.stopall_f AS
     SELECT 'stop coordinator' AS "operation type", * FROM mgr_stop_cn_master_f(NULL)
@@ -143,7 +120,7 @@ CREATE VIEW adbmgr.stopall_f AS
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_f(NULL)
     UNION ALL
-    SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm('fast');
+    SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_f(NULL);
 
 CREATE VIEW adbmgr.stopall_i AS
     SELECT 'stop coordinator' AS "operation type", * FROM mgr_stop_cn_master_i(NULL)
@@ -152,8 +129,8 @@ CREATE VIEW adbmgr.stopall_i AS
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_i(NULL)
     UNION ALL
-    SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm('immediate');
-    
+    SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_i(NULL);
+
 -- insert the cpu, memory and disk threshold, default cpu is 99, memory is 90, disk is 85.
 insert into monitor_varparm (mv_cpu_threshold, mv_mem_threshold, mv_disk_threshold)
     values (99, 90, 85);

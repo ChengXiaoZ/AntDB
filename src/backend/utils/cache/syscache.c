@@ -67,7 +67,6 @@
 #endif /* PGXC */
 #ifdef ADBMGRD
 #include "catalog/mgr_host.h"
-#include "catalog/mgr_gtm.h"
 #include "catalog/mgr_parm.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/monitor_databasetps.h"
@@ -904,17 +903,6 @@ static const struct cachedesc cacheinfo[] = {
 		1,
 		{
 			ObjectIdAttributeNumber,
-			0,
-			0,
-			0
-		},
-		32
-	}
-	,{GtmRelationId,		/* GTMGTMNAME */
-		GtmGtmNameIndexId,
-		1,
-		{
-			Anum_mgr_gtm_gtmname,
 			0,
 			0,
 			0

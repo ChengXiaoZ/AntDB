@@ -8,7 +8,6 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
-#include "catalog/mgr_gtm.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/pg_type.h"
 #include "utils/timestamp.h"

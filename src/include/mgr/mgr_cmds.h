@@ -40,21 +40,14 @@ extern bool ssh2_deplory_tar(const char *hostname,
 							FILE *tar,
 							StringInfo message);
 
-/*gtm commands, in cmd_gtm.c*/
-extern void mgr_add_gtm(MGRAddGtm *node, ParamListInfo params, DestReceiver *dest);
-extern void mgr_drop_gtm(MGRDropGtm *node, ParamListInfo params, DestReceiver *dest);
-extern void mgr_alter_gtm(MGRAlterGtm *node, ParamListInfo params, DestReceiver *dest);
-extern Datum mgr_start_gtm(PG_FUNCTION_ARGS);
-extern Datum mgr_stop_gtm(PG_FUNCTION_ARGS);
-extern Datum mgr_init_gtm(PG_FUNCTION_ARGS);
-extern Datum mgr_init_gtm_all(PG_FUNCTION_ARGS);
-extern Datum mgr_runmode_gtm(const char gtmtype, const char cmdtype, PG_FUNCTION_ARGS, const char *shutdown_mode);
-extern void mgr_runmode_gtm_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation gtmrel, HeapTuple aimtuple, const char *shutdown_mode);
-
 /*parm commands, in cmd_parm.c*/
 extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceiver *dest);
 
 /*coordinator datanode parse cmd*/
+extern Datum mgr_init_gtm_master(PG_FUNCTION_ARGS);
+extern Datum mgr_start_gtm_master(PG_FUNCTION_ARGS);
+extern Datum mgr_stop_gtm_master_f(PG_FUNCTION_ARGS);
+extern Datum mgr_stop_gtm_master_i(PG_FUNCTION_ARGS);
 extern void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest);
@@ -95,7 +88,7 @@ extern Datum mgr_monitor_dnmaster_namelist(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_dnslave_namelist(PG_FUNCTION_ARGS);
 
 extern void mgr_start_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple);
-extern List * start_cn_master_internal(const char *sepstr, int argidx, FunctionCallInfo fcinfo
+extern List * get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo
 #ifdef ADB
        , void (*check_value_func_ptr)(char*)
 #endif
@@ -108,7 +101,7 @@ extern void mgr_append_pgconf_paras_str_str(char *key, char *value, StringInfo i
 extern void mgr_append_pgconf_paras_str_int(char *key, int value, StringInfo infosendmsg);
 extern void mgr_get_gtm_host_port(StringInfo infosendmsg);
 extern void mgr_append_infostr_infostr(StringInfo infostr, StringInfo sourceinfostr);
-extern void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, char *nodename, StringInfo infosendparamsg);
+extern void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, StringInfo infosendparamsg);
 extern void mgr_append_pgconf_paras_str_quotastr(char *key, char *value, StringInfo infosendmsg);
 extern void mgr_add_parameters_recoveryconf(char *slavename, Oid masteroid, StringInfo infosendparamsg);
 extern void mgr_add_parameters_hbaconf(char nodetype, StringInfo infosendhbamsg);

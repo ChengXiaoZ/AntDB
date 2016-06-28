@@ -23,15 +23,6 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRAlterHost:
 		tag = "ALTER HOST";
 		break;
-	case T_MGRAddGtm:
-		tag = "ADD GTM";
-		break;
-	case T_MGRAlterGtm:
-		tag = "ALTER GTM";
-		break;
-	case T_MGRDropGtm:
-		tag = "DROP GTM";
-		break;
 	case T_MGRAlterParm:
 		tag = "ALTER PARM";
 		break;
@@ -71,15 +62,6 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRAlterHost:
 		mgr_alter_host((MGRAlterHost*)parsetree, params, dest);
-		break;
-	case T_MGRAddGtm:
-		mgr_add_gtm((MGRAddGtm*)parsetree, params, dest);
-		break;
-	case T_MGRAlterGtm:
-		mgr_alter_gtm((MGRAlterGtm*)parsetree, params, dest);
-		break;
-	case T_MGRDropGtm:
-		mgr_drop_gtm((MGRDropGtm*)parsetree, params, dest);
 		break;
 	case T_MGRAlterParm:
 		mgr_alter_parm((MGRAlterParm*)parsetree, params, dest);

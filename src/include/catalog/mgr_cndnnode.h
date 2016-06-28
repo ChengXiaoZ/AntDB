@@ -57,4 +57,11 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define WAL_KEEP_SEGMENTS_NUM				32
 #define WAL_LEVEL_MODE						"hot_standby"
 
+#define GTM_TYPE_GTM_MASTER			'g'
+#define GTM_TYPE_GTM_SLAVE			'p'
+
+#ifndef GTM_DEFAULT_PORT
+#	define GTM_DEFAULT_PORT 6666
+#endif
+
 #endif /* MGR_CNDNNODE_H */

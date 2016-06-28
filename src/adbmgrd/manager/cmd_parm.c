@@ -9,7 +9,6 @@
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
-#include "catalog/mgr_gtm.h"
 #include "catalog/mgr_parm.h"
 #include "commands/defrem.h"
 #include "mgr/mgr_cmds.h"
