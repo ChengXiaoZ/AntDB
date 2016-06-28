@@ -46,6 +46,7 @@ extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceive
 /*coordinator datanode parse cmd*/
 extern Datum mgr_init_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_start_gtm_master(PG_FUNCTION_ARGS);
+extern Datum mgr_stop_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_master_f(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_master_i(PG_FUNCTION_ARGS);
 extern void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest);
