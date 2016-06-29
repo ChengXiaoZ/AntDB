@@ -5629,11 +5629,6 @@ StartupXLOG(void)
 				RmgrTable[rmid].rm_startup();
 		}
 
-#ifdef ADB
-		/* Here is we actually do remote xact redo */
-		ReplayRemoteXact();
-#endif
-
 		/*
 		 * Initialize shared variables for tracking progress of WAL replay,
 		 * as if we had just replayed the record before the REDO location
@@ -5895,6 +5890,11 @@ StartupXLOG(void)
 				/* Else, try to fetch the next WAL record */
 				record = ReadRecord(xlogreader, InvalidXLogRecPtr, LOG, false);
 			} while (record != NULL);
+
+#ifdef ADB
+			/* Here is we actually do remote xact redo */
+			ReplayRemoteXact();
+#endif
 
 			/*
 			 * end of main redo apply loop

@@ -266,6 +266,10 @@ SnapshotSetCommandId(CommandId curcid)
 		CurrentSnapshot->curcid = curcid;
 	if (SecondarySnapshot)
 		SecondarySnapshot->curcid = curcid;
+#ifdef ADB
+	if (GlobalSnapshot)
+		GlobalSnapshot->curcid = curcid;
+#endif
 }
 
 /*

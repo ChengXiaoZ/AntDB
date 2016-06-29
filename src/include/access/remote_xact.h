@@ -15,6 +15,8 @@
 #ifndef REMOTE_XACT_H
 #define REMOTE_XACT_H
 
+#include "datatype/timestamp.h"
+
 /*----------------------------------------
 #define XLOG_XACT_COMMIT			0x00
 #define XLOG_XACT_PREPARE			0x10
@@ -35,6 +37,13 @@
 
 #define GIDSIZE 200
 
+typedef struct remote_node
+{
+	Oid			nodeId;
+	int			nodePort;
+	char		nodeHost[NAMEDATALEN];
+} RemoteNode;
+
 typedef struct xl_remote_xact
 {
 	TransactionId xid;			/* XID of remote xact */
@@ -44,12 +53,13 @@ typedef struct xl_remote_xact
 	bool		missing_ok;		/* OK if gid is not exists?
 								   Just for COMMIT/ROLLBACK PREPARED */
    	char		dbname[NAMEDATALEN];	/* MyDatabase name */
+	char		user[NAMEDATALEN];		/* User name */
 	char		gid[GIDSIZE];	/* GID of remote xact */
 	int			nnodes;			/* num of involved nodes */
-	Oid			nodeIds[1];		/* involved nodes' IDs */
+	RemoteNode	rnodes[1];		/* involved nodes' IDs */
 } xl_remote_xact;
 
-#define MinSizeOfRemoteXact offsetof(xl_remote_xact, nodeIds)
+#define MinSizeOfRemoteXact offsetof(xl_remote_xact, rnodes)
 
 extern void RecordRemoteXactCommit(int nnodes, Oid *nodeIds);
 extern void RecordRemoteXactAbort(int nnodes, Oid *nodeIds);

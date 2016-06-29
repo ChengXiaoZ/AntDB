@@ -178,6 +178,7 @@ remote_xact_desc(StringInfo buf, uint8 xl_info, xl_remote_xact *xlrec)
 			break;
 	}
 	appendStringInfo(buf, "; database: %s", xlrec->dbname);
+	appendStringInfo(buf, "; user: %s", xlrec->user);
 	appendStringInfo(buf, "; xact time: %s", timestamptz_to_str(xlrec->xact_time));
 	appendStringInfo(buf, "; implicit: %s", xlrec->implicit ? "yes" : "no");
 	appendStringInfo(buf, "; involved remote nodes: %d", xlrec->nnodes);	

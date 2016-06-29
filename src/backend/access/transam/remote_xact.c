@@ -10,57 +10,40 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "access/multixact.h"
 #include "access/remote_xact.h"
-#include "access/subtrans.h"
 #include "access/transam.h"
-#include "access/twophase.h"
 #include "access/xact.h"
-#include "access/xlogutils.h"
-#include "catalog/catalog.h"
-#include "catalog/namespace.h"
-#include "catalog/storage.h"
-#include "commands/async.h"
-#include "commands/dbcommands.h"
-#include "commands/tablecmds.h"
-#include "commands/trigger.h"
-#include "executor/spi.h"
-#include "libpq/be-fsstubs.h"
-#include "libpq/pqsignal.h"
-#include "miscadmin.h"
-#include "pgstat.h"
-#include "replication/walsender.h"
-#include "replication/syncrep.h"
-#include "storage/fd.h"
-#include "storage/lmgr.h"
-#include "storage/predicate.h"
-#include "storage/proc.h"
-#include "storage/procarray.h"
-#include "storage/sinvaladt.h"
-#include "storage/smgr.h"
-#include "utils/catcache.h"
-#include "utils/combocid.h"
-#include "utils/guc.h"
-#include "utils/inval.h"
-#include "utils/memutils.h"
-#include "utils/relmapper.h"
-#include "utils/snapmgr.h"
-#include "utils/timeout.h"
-#include "utils/timestamp.h"
-#include "pg_trace.h"
-
-#ifdef ADB
 #include "agtm/agtm.h"
-#endif
-
-#ifdef PGXC
+#include "commands/dbcommands.h"
+#include "libpq/libpq-fe.h"
 #include "pgxc/execRemote.h"
 #include "pgxc/pgxc.h"
-#endif
+#include "replication/walsender.h"
+#include "replication/syncrep.h"
+#include "utils/hsearch.h"
+#include "utils/lsyscache.h"
 
 #define Min2Xid(a, b)		(TransactionIdPrecedes((a), (b)) ? (a) : (b))
 #define Min3Xid(a, b, c)	(Min2Xid(Min2Xid((a), (b)), (c)))
+#define AGTMOID				((Oid) 0)
 
+typedef struct RemoteConnKey
+{
+	RemoteNode	rnode;
+	char		dbname[NAMEDATALEN];
+	char		user[NAMEDATALEN];
+} RemoteConnKey;
+
+typedef struct RemoteConnEnt
+{
+	RemoteConnKey	 key;
+	PGconn			*conn;
+} RemoteConnEnt;
+
+extern char	*AGtmHost;
+extern int 	 AGtmPort;
+
+static HTAB *RemoteConnHashTab = NULL;
 static List *prepared_rxact = NIL;
 static List *commit_prepared_rxact = NIL;
 static List *abort_prepared_rxact = NIL;
@@ -168,10 +151,17 @@ MakeUpXLRemoteXact(xl_remote_xact *xlrec,
 				   TimestampTz xact_time,
 				   bool isimplicit,
 				   bool missing_ok,
-				   const char *dbname,
 				   const char *gid,
 				   int nnodes)
 {
+	char	*dbname = NULL;
+	char	*user = NULL;
+
+	AssertArg(xlrec);
+
+	dbname = get_database_name(MyDatabaseId);
+	user = GetUserNameFromId(GetUserId());
+
 	xlrec->xid = xid;
 	xlrec->xact_time = xact_time;
 	xlrec->xinfo = info;
@@ -184,10 +174,45 @@ MakeUpXLRemoteXact(xl_remote_xact *xlrec,
 	if (dbname && dbname[0])
 		StrNCpy(xlrec->dbname, dbname, NAMEDATALEN);
 
+	/* user */
+	MemSet(xlrec->user, 0, NAMEDATALEN);
+	if (user && user[0])
+		StrNCpy(xlrec->user, user, NAMEDATALEN);
+
 	/* gid */
 	MemSet(xlrec->gid, 0, GIDSIZE);
 	if (gid && gid[0])
 		StrNCpy(xlrec->gid, gid, GIDSIZE);
+}
+
+static RemoteNode *
+MakeUpRemoteNodeInfo(int nnodes, Oid *nodeIds, int *rlen)
+{
+	RemoteNode	*rnodes = NULL;
+	Oid 	 	 nodeId = InvalidOid;
+	char		*nodeHost = NULL;
+	int 	 	 nodePort = -1;
+	int			 i;
+
+	AssertArg(nnodes > 0);
+	AssertArg(nodeIds);
+
+	*rlen = nnodes * sizeof(RemoteNode);
+
+	rnodes = (RemoteNode *)palloc0(*rlen);
+	for (i = 0; i < nnodes; i++)
+	{
+		nodeId = nodeIds[i];
+		rnodes[i].nodeId = nodeId;
+		nodeHost = get_pgxc_nodehost(nodeId);
+		Assert(nodeHost);
+		StrNCpy(rnodes[i].nodeHost, nodeHost, NAMEDATALEN);
+		nodePort = get_pgxc_nodeport(nodeId);
+		Assert(nodePort > 0);
+		rnodes[i].nodePort = nodePort;
+	}
+
+	return rnodes;
 }
 
 static void
@@ -225,45 +250,45 @@ RecordRemoteXactInternal(uint8 info,
 						 int nnodes,
 						 Oid *nodeIds)
 {
-	char *dbname = NULL;
-
 	if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
 		return ;
 
 	if (nnodes > 0)
 	{
-		XLogRecData rdata[2];
-		int			lastrdata = 0;
-		xl_remote_xact xlrec;
-		XLogRecPtr	recptr;
+		XLogRecData		rdata[2];
+		int				lastrdata = 0;
+		xl_remote_xact	xlrec;
+		XLogRecPtr		recptr;
+		RemoteNode	   *rnodes = NULL;
+		int			 	rlen = 0;
 
 		AssertArg(nodeIds);
 
 		START_CRIT_SECTION();
 
 		/* Emit the remote XLOG record */
-		dbname = get_database_name(MyDatabaseId);
 		MakeUpXLRemoteXact(&xlrec, info, xid, xact_time, isimplicit,
-						   missing_ok, dbname, gid, nnodes);
+						   missing_ok, gid, nnodes);
 
 		rdata[0].data = (char *) (&xlrec);
 		rdata[0].len = MinSizeOfRemoteXact;
 		rdata[0].buffer = InvalidBuffer;
+
 		/* dump involved nodes */
-		if (nnodes > 0)
-		{
-			rdata[0].next = &(rdata[1]);
-			rdata[1].data = (char *) nodeIds;
-			rdata[1].len = nnodes * sizeof(Oid);
-			rdata[1].buffer = InvalidBuffer;
-			lastrdata = 1;
-		}
+		rnodes = MakeUpRemoteNodeInfo(nnodes, nodeIds, &rlen);			
+		rdata[0].next = &(rdata[1]);
+		rdata[1].data = (char *) rnodes;
+		rdata[1].len = rlen;
+		rdata[1].buffer = InvalidBuffer;
+		lastrdata = 1;
 		rdata[lastrdata].next = NULL;
 
 		recptr = XLogInsert(RM_XACT_ID, info, rdata);
 
 		/* Always flush, since we're about to remove the 2PC state file */
 		XLogFlush(recptr);
+
+		pfree(rnodes);
 
 		XactLastRecEnd = 0;
 
@@ -360,13 +385,11 @@ CopyXLRemoteXact(xl_remote_xact *from)
 
 	if (from)
 	{
-		int i = 0;
 		int nnodes = from->nnodes;
 
-		to = (xl_remote_xact *)palloc0(MinSizeOfRemoteXact + nnodes * sizeof(Oid));
+		to = (xl_remote_xact *)palloc0(MinSizeOfRemoteXact + nnodes * sizeof(RemoteNode));
 		memcpy(to, from, MinSizeOfRemoteXact);
-		for (i = 0; i < nnodes; i++)
-			to->nodeIds[i] = from->nodeIds[i];
+		memcpy(to->rnodes, from->rnodes, nnodes * sizeof(RemoteNode));
 	}
 
 	return to;
@@ -593,6 +616,217 @@ MinRemoteXact(ListCell *lc1, ListCell *lc2, ListCell *lc3)
 	return NULL;	/* Never reach here */
 }
 
+static void
+DestroyRemoteConnHashTab(void)
+{
+	if (RemoteConnHashTab)
+	{
+		HASH_SEQ_STATUS	 status;
+		RemoteConnEnt	*item = NULL;
+
+		hash_seq_init(&status, RemoteConnHashTab);
+		while ((item = (RemoteConnEnt *) hash_seq_search(&status)) != NULL)
+		{
+			PQfinish(item->conn);
+		}
+
+		hash_destroy(RemoteConnHashTab);
+	}
+
+	RemoteConnHashTab = NULL;
+}
+
+static PGconn *
+ObtainValidConnection(RemoteConnKey *key)
+{
+	RemoteConnEnt	*rce = NULL;
+	bool			 found = false;
+	char			*nodePortStr = NULL;
+
+	if (!key)
+		return NULL;
+
+	/* initialize remote connection hash table */
+	if (RemoteConnHashTab == NULL)
+	{
+		HASHCTL hctl;
+
+		/* Initialize temporary hash table */
+		MemSet(&hctl, 0, sizeof(hctl));
+		hctl.keysize = sizeof(RemoteConnKey);
+		hctl.entrysize = sizeof(RemoteConnEnt);
+		hctl.hash = tag_hash;
+		hctl.hcxt = CurrentMemoryContext;
+
+		RemoteConnHashTab = hash_create("RemoteConnHashTab",
+										32,
+										&hctl,
+										HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+	}
+
+	rce = (RemoteConnEnt *)hash_search(RemoteConnHashTab,
+									   (const void *) &key,
+									   HASH_ENTER,
+									   &found);
+
+	if (!found)
+	{
+		nodePortStr = psprintf("%d", key->rnode.nodePort);
+		rce->conn = PQsetdbLogin(key->rnode.nodeHost,
+								 nodePortStr,
+								 NULL,
+								 NULL,
+								 key->dbname,
+								 key->user,
+								 NULL);
+		if (PQstatus(rce->conn) == CONNECTION_BAD)
+		{
+			char *msg = pstrdup(PQerrorMessage(rce->conn));
+			PQfinish(rce->conn);
+			ereport(ERROR,
+					(errcode(ERRCODE_CONNECTION_FAILURE),
+					 errmsg("could not establish connection with (%s:%s)",
+					 	key->rnode.nodeHost, nodePortStr),
+					 errdetail_internal("%s", msg)));
+		}
+		pfree(nodePortStr);
+	}
+
+	return rce->conn;
+}
+
+static void
+ReplayRemoteCommand(PGconn *conn,
+					const char *command,
+					const char *host,
+					const int port)
+{
+	PGresult	*result = NULL;
+
+	if (!conn || !command)
+		return ;
+
+	/* execute command */
+	result = PQexec(conn, command);
+
+	/* check result */
+	if (PQresultStatus(result) != PGRES_COMMAND_OK)
+	{
+		char *msg = pstrdup(PQresultErrorMessage(result));
+		PQclear(result);
+		ereport(ERROR,
+			(errmsg("Fail to redo command: %s on remote(%s:%d)",
+				command, host, port),
+			errdetail_internal("%s", msg)));
+	}
+
+	PQclear(result);
+}
+
+static void
+MakeUpRemoteConnKey(RemoteConnKey *key,
+					Oid nodeId,
+					char *nodeHost,
+					int nodePort,
+					char *dbname,
+					char *user)
+{
+	if (!key)
+		return ;
+
+	MemSet(key, 0, sizeof(RemoteConnKey));
+	key->rnode.nodeId = nodeId;
+	key->rnode.nodePort = nodePort;
+	StrNCpy(key->rnode.nodeHost, (const char *) nodeHost, NAMEDATALEN);
+	StrNCpy(key->dbname, (const char *) dbname, NAMEDATALEN);
+	StrNCpy(key->user, (const char *) user, NAMEDATALEN);
+}
+
+static void
+ReplayRemoteXactAGTM(xl_remote_xact *xlrec, const char *command)
+{
+	RemoteConnKey	 key;
+	PGconn			*agtm_conn = NULL;
+
+	/* make up key */
+	MakeUpRemoteConnKey(&key, AGTMOID, AGtmHost, AGtmPort,
+						xlrec->dbname, xlrec->user);
+
+	/* search one or add new one */
+	agtm_conn = ObtainValidConnection(&key);
+
+	/* execure command */
+	ReplayRemoteCommand(agtm_conn, command, AGtmHost, AGtmPort);
+}
+
+static void
+ReplayRemoteXactOnce(xl_remote_xact *xlrec)
+{
+	StringInfoData	 command;
+
+	/* sanity check */
+	AssertArg(xlrec);
+	AssertArg(xlrec->nnodes > 0);
+	AssertArg(xlrec->dbname && xlrec->user);
+	AssertArg(xlrec->gid && xlrec->rnodes);
+
+	/* do remote command */
+	initStringInfo(&command);
+	switch (xlrec->xinfo)
+	{
+		case XLOG_RXACT_PREPARE:
+		case XLOG_RXACT_ABORT_PREPARED:
+			appendStringInfo(&command, "ROLLBACK PREPARED IF EXISTS '%s'", xlrec->gid);
+			break;
+		case XLOG_RXACT_COMMIT_PREPARED:
+			appendStringInfo(&command, "COMMIT PREPARED IF EXISTS '%s'", xlrec->gid);
+			break;
+		default:
+			Assert(0);
+			break;
+	}
+
+	PG_TRY();
+	{
+		RemoteConnKey 	 key;
+		int				 nodeCnt = 0;
+		int				 nodeIdx = 0;
+		RemoteNode		*rnodes = NULL;
+		PGconn			*rconn = NULL;
+		
+		/* do command on remote node (not include AGTM) */
+		rnodes = xlrec->rnodes;
+		nodeCnt = xlrec->nnodes;
+		for (nodeIdx = 0; nodeIdx < nodeCnt; nodeIdx++)
+		{
+			/* make up key */
+			MakeUpRemoteConnKey(&key, rnodes[nodeIdx].nodeId,
+								rnodes[nodeIdx].nodeHost,
+								rnodes[nodeIdx].nodePort,
+								xlrec->dbname, xlrec->user);
+
+			/* search one or add new one */
+			rconn = ObtainValidConnection(&key);
+
+			/* execure command */
+			ReplayRemoteCommand(rconn, command.data,
+								rnodes[nodeIdx].nodeHost,
+								rnodes[nodeIdx].nodePort);
+		}
+
+		/* do command on AGMT */
+		ReplayRemoteXactAGTM(xlrec, command.data);
+
+	} PG_CATCH();
+	{
+		pfree(command.data);
+		DestroyRemoteConnHashTab();
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	pfree(command.data);
+}
+
 void
 ReplayRemoteXact(void)
 {
@@ -610,33 +844,7 @@ ReplayRemoteXact(void)
 		lc = MinRemoteXact(lc1, lc2, lc3);
 		xlrec = (xl_remote_xact *) lfirst(lc);
 
-		switch (xlrec->xinfo)
-		{
-			case XLOG_RXACT_PREPARE:
-				{
-					init_RemoteXactStateByNodes(xlrec->nnodes, xlrec->nodeIds, false);
-					PreAbort_Remote(xlrec->gid, true);
-					agtm_AbortTransaction_ByDBname(xlrec->gid, true, xlrec->dbname);
-				}
-				break;
-			case XLOG_RXACT_COMMIT_PREPARED:
-				{
-					init_RemoteXactStateByNodes(xlrec->nnodes, xlrec->nodeIds, true);
-					PreCommit_Remote(xlrec->gid, true);
-					agtm_CommitTransaction_ByDBname(xlrec->gid, true, xlrec->dbname);
-				}
-				break;
-			case XLOG_RXACT_ABORT_PREPARED:
-				{
-					init_RemoteXactStateByNodes(xlrec->nnodes, xlrec->nodeIds, true);
-					PreAbort_Remote(xlrec->gid, true);
-					agtm_AbortTransaction_ByDBname(xlrec->gid, true, xlrec->dbname);
-				}
-				break;
-			default:
-				Assert(0);
-				break;
-		}
+		ReplayRemoteXactOnce(xlrec);
 
 		if (lc == lc1)
 			lc1 = lnext(lc1);
@@ -647,11 +855,12 @@ ReplayRemoteXact(void)
 			lc3 = lnext(lc3);
 	}
 
+	DestroyRemoteConnHashTab();
 	list_free_deep(prepared_rxact);
 	list_free_deep(commit_prepared_rxact);
 	list_free_deep(abort_prepared_rxact);
-
 	prepared_rxact = NIL;
 	commit_prepared_rxact = NIL;
 	abort_prepared_rxact = NIL;
 }
+
