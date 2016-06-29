@@ -1387,6 +1387,7 @@ GetSnapshotData(Snapshot snapshot)
 	bool		suboverflowed = false;
 #ifdef ADB
 	bool		is_under_agtm;
+	bool		hint;
 #endif /* ADB */
 
 	Assert(snapshot != NULL);
@@ -1433,17 +1434,10 @@ GetSnapshotData(Snapshot snapshot)
 		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
 		snap = GetGlobalSnapshot(snapshot);
 		Assert(snap == snapshot);
-
-		globalxmin = xmin = snapshot->xmin;
-		xmax = snapshot->xmax;
-		snapshot->curcid = GetCurrentCommandId(false);
-
-		LWLockAcquire(ProcArrayLock, LW_SHARED);
-		if (!TransactionIdIsValid(MyPgXact->xmin))
-			MyPgXact->xmin = TransactionXmin = xmin;
-		LWLockRelease(ProcArrayLock);
-	}else
-	{
+		subcount = snapshot->subxcnt;
+		count = snapshot->xcnt;
+		suboverflowed = snapshot->suboverflowed;
+	}
 #endif /* ADB */
 
 	/*
@@ -1456,6 +1450,10 @@ GetSnapshotData(Snapshot snapshot)
 	xmax = ShmemVariableCache->latestCompletedXid;
 	Assert(TransactionIdIsNormal(xmax));
 	TransactionIdAdvance(xmax);
+#ifdef ADB
+	if(is_under_agtm && TransactionIdPrecedes(xmax, snapshot->xmax))
+		xmax = snapshot->xmax;
+#endif /* ADB */
 
 	/* initialize xmin calculation with xmax */
 	globalxmin = xmin = xmax;
@@ -1511,6 +1509,22 @@ GetSnapshotData(Snapshot snapshot)
 			if (pgxact == MyPgXact)
 				continue;
 
+#ifdef ADB
+			hint = false;
+			if(is_under_agtm)
+			{
+				int i;
+				for(i=0;i<count;++i)
+				{
+					if(snapshot->xip[i] == xid)
+					{
+						hint = true;
+						break;
+					}
+				}
+			}
+			if(hint == false)
+#endif /* ADB */
 			/* Add XID to snapshot. */
 			snapshot->xip[count++] = xid;
 
@@ -1540,11 +1554,47 @@ GetSnapshotData(Snapshot snapshot)
 					if (nxids > 0)
 					{
 						volatile PGPROC *proc = &allProcs[pgprocno];
-
+#ifdef ADB
+						if(is_under_agtm)
+						{
+							int i,j;
+							for(i=0;i<nxids;++i)
+							{
+								hint = false;
+								for(j=0;j<subcount;++j)
+								{
+									if(snapshot->subxip[j] == proc->subxids.xids[i])
+									{
+										hint = true;
+										break;
+									}
+								}
+								if(hint == false)
+								{
+									if(subcount == GetMaxSnapshotSubxidCount())
+									{
+										suboverflowed = true;
+										break;
+									}
+									snapshot->subxip[subcount++] = proc->subxids.xids[i];
+								}
+							}
+						}else if(nxids + subcount > GetMaxSnapshotSubxidCount())
+						{
+							suboverflowed = true;
+						}else
+						{
+							memcpy(snapshot->subxip + subcount,
+								   (void *) proc->subxids.xids,
+								   nxids * sizeof(TransactionId));
+							subcount += nxids;
+						}
+#else /* ADB */
 						memcpy(snapshot->subxip + subcount,
 							   (void *) proc->subxids.xids,
 							   nxids * sizeof(TransactionId));
 						subcount += nxids;
+#endif /* ADB */
 					}
 				}
 			}
@@ -1600,20 +1650,12 @@ GetSnapshotData(Snapshot snapshot)
 	if (TransactionIdPrecedes(xmin, globalxmin))
 		globalxmin = xmin;
 
-#ifdef ADB
-	}
-#endif /* ADB */
-
 	/* Update global variables too */
 	RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
 	if (!TransactionIdIsNormal(RecentGlobalXmin))
 		RecentGlobalXmin = FirstNormalTransactionId;
 	RecentXmin = xmin;
 
-#ifdef ADB
-	if(!is_under_agtm)
-	{
-#endif /* ADB */
 	snapshot->xmin = xmin;
 	snapshot->xmax = xmax;
 	snapshot->xcnt = count;
@@ -1629,7 +1671,6 @@ GetSnapshotData(Snapshot snapshot)
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
 #ifdef ADB
-	}
 	InitSnapshotLevel(snapshot);
 #endif /* ADB */
 	snapshot->copied = false;
