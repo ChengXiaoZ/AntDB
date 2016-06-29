@@ -453,9 +453,9 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	char *user = NULL;
 	char *hostaddress = NULL;
 	char *dbname = NULL;
-	char *sqlstrgetdbruntime = "select abs(round(extract(epoch from now())- extract(epoch from  pg_postmaster_start_time())));";
 	StringInfoData sqltpsStrData;
 	StringInfoData sqlqpsStrData;
+	StringInfoData sqldbruntimeStrData;
 	
 	rel = heap_open(MdatabasetpsRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
@@ -488,8 +488,8 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 
 	initStringInfo(&sqltpsStrData);
 	initStringInfo(&sqlqpsStrData);
+	initStringInfo(&sqldbruntimeStrData);
 	time = GetCurrentTimestamp();
-	pgdbruntime = monitor_get_result_one_node(rel_node, sqlstrgetdbruntime, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 
 	iloop = 0;
 	while(iloop<ncol)
@@ -519,10 +519,13 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 		dbname = (char *)(lfirst(cell));
 		tps = abs(dbtps[idex][1] - dbtps[idex][0])/sleepTime;
 		qps = abs(dbqps[idex][1] - dbqps[idex][0])/sleepTime;
+		appendStringInfo(&sqldbruntimeStrData, "select case when  stats_reset IS NULL then  extract(epoch from now())- extract(epoch from  now()) else  round(abs(extract(epoch from now())- extract(epoch from  stats_reset))) end from pg_stat_database where datname = \'%s\';", dbname);
+		pgdbruntime = monitor_get_result_one_node(rel_node, sqldbruntimeStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 		tup_result = monitor_build_databasetps_qps_tuple(rel, time, dbname, tps, qps, pgdbruntime);
 		simple_heap_insert(rel, tup_result);
 		CatalogUpdateIndexes(rel, tup_result);
 		heap_freetuple(tup_result);
+		resetStringInfo(&sqldbruntimeStrData);
 		idex++;
 	}
 	/*pfree dbtps, dbqps*/
@@ -537,6 +540,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	pfree(dbqps);	
 	pfree(sqltpsStrData.data);
 	pfree(sqlqpsStrData.data);
+	pfree(sqldbruntimeStrData.data);
 	list_free(dbnamelist);
 	heap_close(rel, RowExclusiveLock);
 	heap_close(rel_node, RowExclusiveLock);
