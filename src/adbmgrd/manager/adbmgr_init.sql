@@ -313,9 +313,9 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname tex
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
---make view for 12 hours data for  tps, qps, connectnum, dbsize 
+--make view for 12 hours data for  tps, qps, connectnum, dbsize, indexsize
 CREATE VIEW adbmgr.monitor_cluster_fouritem_v AS 
-SELECT a.monitor_databasetps_time AS time , a.tps, a.qps, b.connectnum, b.dbsize, b.indexsize
+SELECT a.monitor_databasetps_time::timestamptz(0) AS time , a.tps, a.qps, b.connectnum, b.dbsize, b.indexsize
 FROM
 	(SELECT monitor_databasetps_time, sum(monitor_databasetps_tps) AS tps , 
 	sum(monitor_databasetps_qps) AS qps  , row_number() over (PARTITION BY 1) FROM (SELECT 
@@ -334,7 +334,7 @@ GROUP BY monitor_databaseitem_time ) AS b on a.row_number = b.row_number;
 
 CREATE table adbmgr.monitor_cluster_fouritem_tb
 (
-	time timestamptz,
+	time timestamptz(0),
 	tps  bigint,
 	qps  bigint,
 	connectnum bigint,
@@ -342,7 +342,7 @@ CREATE table adbmgr.monitor_cluster_fouritem_tb
 	indexsize numeric(18,2)
 );
 
---make function for 12 hours data for tps qps connectnum dbsize 
+--make function for 12 hours data for tps qps connectnum dbsize indexsize
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 	RETURNS setof adbmgr.monitor_cluster_fouritem_tb
 	AS 
@@ -359,7 +359,7 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 CREATE VIEW adbmgr.monitor_cluster_firstline_v
 AS
 	SELECT * from 
-	(SELECT monitor_databasetps_time AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
+	(SELECT monitor_databasetps_time::timestamptz(0) AS time, sum(monitor_databasetps_tps) AS tps , sum(monitor_databasetps_qps) AS qps, 
 		sum(monitor_databaseitem_connectnum) AS connectnum , (sum(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize, (sum(monitor_databaseitem_indexsize)/1024.0)::numeric(18,2) AS indexsize, max(monitor_databasetps_runtime) as runtime
 	FROM 
 		(SELECT  tps.monitor_databasetps_time, tps.monitor_databasetps_tps,  tps.monitor_databasetps_qps, tps.monitor_databasetps_runtime,
@@ -387,7 +387,7 @@ AS
 
 CREATE table adbmgr.monitor_databasetps_content_tb
 (
-time timestamptz,
+time timestamptz(0),
 tps int,
 qps int
 );
@@ -396,7 +396,7 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in times
 		RETURNS setof adbmgr.monitor_databasetps_content_tb
 	AS 
 		$$
-	SELECT monitor_databasetps_time AS time,
+	SELECT monitor_databasetps_time::timestamptz(0) AS time,
 				monitor_databasetps_tps   AS tps,
 				monitor_databasetps_qps   AS qps
 	FROM 
@@ -436,6 +436,47 @@ SELECT (SUM(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize,
 	SUM(monitor_databaseitem_preparenum) AS preparenum,
 	SUM(monitor_databaseitem_unusedindexnum) AS unusedindexnum
 from (SELECT * from monitor_databaseitem where monitor_databaseitem_time=(SELECT MAX(monitor_databaseitem_time) from monitor_databaseitem)) AS a;
+--show database summary at current_time for given name
+CREATE table adbmgr.monitor_databasesummary_tb
+(
+	dbsize 			numeric(18,2),
+	archivemode		bool,
+	autovacuum		bool,
+	heaphitrate		numeric(18,2),
+	commitrate		numeric(18,2),
+	dbage			int,
+	connectnum		int,
+	standbydelay	int,
+	locksnum		int,
+	longtransnum	int,
+	idletransnum	int,
+	preparenum		int,
+	unusedindexnum	int
+);
+CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
+	RETURNS setof adbmgr.monitor_databasesummary_tb
+	AS 
+		$$
+	SELECT (monitor_databaseitem_dbsize/1024.0)::numeric(18,2) AS dbsize,
+			 monitor_databaseitem_archivemode AS archivemode,
+			 monitor_databaseitem_autovacuum  AS autovacuum,
+			 monitor_databaseitem_heaphitrate::numeric(18,2) AS heaphitrate,
+			 monitor_databaseitem_commitrate::numeric(18,2)  AS commitrate,
+			 monitor_databaseitem_dbage       AS dbage,
+			 monitor_databaseitem_connectnum  AS connectnum,
+			 monitor_databaseitem_standbydelay AS standbydelay,
+			 monitor_databaseitem_locksnum     AS locksnum,
+			 monitor_databaseitem_longtransnum  AS longtransum,
+			 monitor_databaseitem_idletransnum  AS idletransum,
+			 monitor_databaseitem_preparenum    AS  preparenum,
+			 monitor_databaseitem_unusedindexnum  AS unusedindexnum
+	from (SELECT * from monitor_databaseitem where monitor_databaseitem_time=(SELECT 
+		MAX(monitor_databaseitem_time) from monitor_databaseitem) and monitor_databaseitem_dbname = $1) AS a
+	$$
+		LANGUAGE SQL
+	IMMUTABLE
+	RETURNS NULL ON NULL INPUT;
+
 --insert data into mgr.parm
 
 --insert gtm parameters

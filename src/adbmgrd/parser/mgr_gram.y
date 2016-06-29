@@ -141,7 +141,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
                 GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
 								GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
-								GET_DATABASE_TPS_QPS_INTERVAL_TIME
+								GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY
 %%
 /*
  *	The target production for the whole parse.
@@ -1316,6 +1316,14 @@ ListMonitor:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasetps_func", args));
 			$$ = (Node*)stmt;
 		}
+	| GET_DATABASE_SUMMARY '(' Ident')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasesummary_func", args));
+			$$ = (Node*)stmt;
+		}
 	;
 
 unreserved_keyword:
@@ -1335,6 +1343,7 @@ unreserved_keyword:
 	| GET_CLUSTER_FOURITEM
 	| GET_CLUSTER_HEADPAGE_LINE
 	| GET_CLUSTER_SUMMARY
+	| GET_DATABASE_SUMMARY
 	| GET_DATABASE_TPS_QPS
 	| GET_DATABASE_TPS_QPS_INTERVAL_TIME
 	| GET_HOST_LIST_ALL

@@ -243,8 +243,8 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	char *sqlstrgetdbage = "select max(age(datfrozenxid)) from pg_database";
 	char *sqlautovacuum = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'autovacuum\'";
 	char *sqlarchive = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'archive_mode\'";
-	char *sqlstrstandbydelay = "select CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0  ELSE EXTRACT (EPOCH FROM now() - pg_last_xact_replay_timestamp()) end";
-	char *sqlstrindexsize = "select round(sum(pg_relation_size(relid)::numeric(18,4)/1024/1024)) from pg_stat_user_indexes;";
+	char *sqlstrstandbydelay = "select CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0  ELSE round(EXTRACT (EPOCH FROM now() - pg_last_xact_replay_timestamp())) end;";
+	char *sqlstrindexsize = "select round(sum(pg_relation_size(indexrelid)::numeric(18,4)/1024/1024)) from pg_stat_user_indexes;";
 
 	rel = heap_open(MdatabaseitemRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
@@ -337,7 +337,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		appendStringInfo(&sqlconnectnumStrData, "select numbackends from pg_stat_database where datname = \'%s\'", dbname);
 		connectnum = monitor_get_result_one_node(rel_node, sqlconnectnumStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER);
 		/*the database index size, unit: MB */
-		indexsize = monitor_get_result_one_node(rel_node, sqlstrindexsize, dbname, CNDN_TYPE_COORDINATOR_MASTER);
+		indexsize = monitor_get_result_every_node_master_one_database(rel_node, sqlstrindexsize, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
 		/*build tuple*/
 		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, barchive, bautovacuum, heaphitrate, commitrate, dbage, connectnum, standbydelay, locksnum, longquerynum, idlequerynum, preparenum, unusedindexnum, indexsize);
 		simple_heap_insert(rel, tuple);
@@ -453,7 +453,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	char *user = NULL;
 	char *hostaddress = NULL;
 	char *dbname = NULL;
-	char *sqlstrgetdbruntime = "select round(extract(epoch from now())- extract(epoch from  pg_postmaster_start_time()));";
+	char *sqlstrgetdbruntime = "select abs(round(extract(epoch from now())- extract(epoch from  pg_postmaster_start_time())));";
 	StringInfoData sqltpsStrData;
 	StringInfoData sqlqpsStrData;
 	
