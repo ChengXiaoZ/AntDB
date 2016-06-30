@@ -78,8 +78,8 @@ static PGXCNodeHandle *dn_handles = NULL;
 static PGXCNodeHandle *co_handles = NULL;
 
 /* Current size of dn_handles and co_handles */
-int			NumDataNodes;
-int 		NumCoords;
+volatile int NumDataNodes;
+volatile int NumCoords;
 
 /* Cancel Delay Duration -> set by GUC */
 int			pgxcnode_cancel_delay = 10;
@@ -161,7 +161,7 @@ InitMultinodeExecutor(bool is_force)
 	PgxcNodeListAndCount();
 
 	/* Get classified list of node Oids */
-	PgxcNodeGetOids(&coOids, &dnOids, &NumCoords, &NumDataNodes, true);
+	PgxcNodeGetOids(&coOids, &dnOids, (int*)&NumCoords, (int*)&NumDataNodes, true);
 
 	/* Do proper initialization of handles */
 	if (NumDataNodes > 0)
