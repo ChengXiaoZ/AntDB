@@ -477,6 +477,98 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
 	IMMUTABLE
 	RETURNS NULL ON NULL INPUT;
 
+-- for ADB monitor the topology in home page : get datanode node topology
+CREATE VIEW adbmgr.get_datanode_node_topology AS
+    select '{'|| ARRAY_TO_STRING || '}' as datanode_result
+    from (
+    select ARRAY_TO_STRING(
+                            array(
+                                    select case f.nodetype
+                                           when 'd' then '"master"'
+                                           when 'b' then '"slave"'
+                                           when 'e' then '"extra"'
+                                           end 
+                                           || ':' || '{' || '"node_name"' || ':' || '"' || f.nodename || '"' || ',' 
+                                                         || '"node_port"' || ':' ||        f.nodeport        || ','
+                                                         || '"node_ip"'   || ':' || '"' || f.hostaddr || '"' ||
+                                                     '}'
+                                    from(
+                                            select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid, h.hostaddr
+                                            from mgr_node n, mgr_host h
+                                            where n.nodemasternameoid = '0' and 
+                                                  n.nodename = x.nodename  and 
+                                                  n.nodetype = 'd' and
+                                                  h.oid = n.nodehost and
+                                                  n.nodeincluster = true and
+                                                  n.nodeinited = true
+                                            
+                                            union all
+                                            
+                                            select t2.nodename,t2.oid,t2.nodetype,t2.nodeport,t2.nodemasternameoid,t2.hostaddr
+                                            from (
+                                                    select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid,h.hostaddr
+                                                    from mgr_node n,mgr_host h
+                                                    where n.nodemasternameoid = '0' and 
+                                                          n.nodename = x.nodename and 
+                                                          n.nodetype = 'd' and
+                                                          h.oid = n.nodehost and
+                                                          n.nodeincluster = true and
+                                                          n.nodeinited = true
+                                                ) t1
+                                                left join 
+                                                (
+                                                    select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid,h.hostaddr
+                                                    from mgr_node n,mgr_host h
+                                                    where h.oid = n.nodehost and
+                                                          n.nodeincluster = true and
+                                                          n.nodeinited = true
+                                                ) t2
+                                                on t1.oid = t2.nodemasternameoid and t2.nodetype in ('b','e')
+                                        ) as f
+                                ), ','
+                        ) from (select nodename from mgr_node where nodetype = 'd') x
+        ) r;
+
+-- for ADB monitor the topology in home page : get coordinator node topology 
+CREATE VIEW adbmgr.get_coordinator_node_topology AS
+    select row_to_json(t) as coordinator_result
+    from(      
+        select n.nodename, n.nodeport, h.hostaddr
+        from mgr_node n, mgr_host h
+        where n.nodeincluster = true and
+              n.nodeinited = true and
+              n.nodehost = h.oid and
+              n.nodetype = 'c'
+        ) t;
+
+-- for ADB monitor the topology in home page : get agtm node topology 
+CREATE VIEW adbmgr.get_agtm_node_topology AS
+    select '{'|| ARRAY_TO_STRING || '}' as agtm_result
+    from(
+    select ARRAY_TO_STRING(
+                            array(
+                                    select case f.nodetype
+                                        when 'g' then '"master"'
+                                        when 'p' then '"slave"'
+                                        when 'x' then '"extra"'
+                                        end 
+                                        || ':' || '{' || '"node_name"' || ':' || '"' || f.nodename || '"' || ',' 
+                                                      || '"node_port"' || ':' ||        f.nodeport        || ','
+                                                      || '"node_ip"'   || ':' || '"' || f.hostaddr || '"' ||
+                                                '}'
+                                    from(
+                                        select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid, h.hostaddr
+                                        from mgr_node n, mgr_host h
+                                        where n.nodeincluster = true and
+                                              n.nodeinited = true and
+                                              n.nodehost = h.oid and
+                                              n.nodetype in ('g', 'p', 'x')
+                                        ) f
+                                ) -- end array
+                            , ','
+                        ) -- end ARRAY_TO_STRING
+        ) r;
+
 --insert data into mgr.parm
 
 --insert gtm parameters

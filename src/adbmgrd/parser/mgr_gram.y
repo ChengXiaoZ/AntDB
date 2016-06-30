@@ -111,7 +111,7 @@ extern char *defGetString(DefElem *def);
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
-				Gethostparm ListMonitor
+				Gethostparm ListMonitor Gettopologyparm
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -137,11 +137,12 @@ extern char *defGetString(DefElem *def);
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
 
-/* for ADB monitor host page */
+/* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
                 GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
-								GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
-								GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY
+                GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
+                GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
+                GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY
 %%
 /*
  *	The target production for the whole parse.
@@ -192,10 +193,34 @@ stmt :
 	| ConfigAllStmt
 	| DeploryStmt
 	| Gethostparm     /* for ADB monitor host page */
+    | Gettopologyparm /* for ADB monitor home page */
 	| /* empty */
 		{ $$ = NULL; }
 	;
-	
+
+Gettopologyparm:
+        GET_AGTM_NODE_TOPOLOGY
+        {
+            SelectStmt *stmt = makeNode(SelectStmt);
+            stmt->targetList = list_make1(make_star_target(-1));
+            stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_agtm_node_topology"), -1));
+            $$ = (Node*)stmt;
+        }
+        | GET_COORDINATOR_NODE_TOPOLOGY
+        {
+            SelectStmt *stmt = makeNode(SelectStmt);
+            stmt->targetList = list_make1(make_star_target(-1));
+            stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_coordinator_node_topology"), -1));
+            $$ = (Node*)stmt;
+        }
+        | GET_DATANODE_NODE_TOPOLOGY
+        {
+            SelectStmt *stmt = makeNode(SelectStmt);
+            stmt->targetList = list_make1(make_star_target(-1));
+            stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_datanode_node_topology"), -1));
+            $$ = (Node*)stmt;
+        };
+
 Gethostparm:
 		GET_HOST_LIST_ALL
 		{
@@ -1350,6 +1375,9 @@ unreserved_keyword:
 	| GET_HOST_LIST_SPEC
 	| GET_HOST_HISTORY_USAGE
 	| GET_ALL_NODENAME_IN_SPEC_HOST
+    | GET_AGTM_NODE_TOPOLOGY
+    | GET_COORDINATOR_NODE_TOPOLOGY
+    | GET_DATANODE_NODE_TOPOLOGY
 	| GTM
 	| HOST
 	| I
