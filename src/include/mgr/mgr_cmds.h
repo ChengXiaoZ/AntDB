@@ -128,6 +128,7 @@ char *get_hostuser_from_hostoid(Oid hostOid);
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
 bool mgr_recv_msg_for_monitor(ManagerAgent	*ma, bool *ret, StringInfo agentRstStr);
 extern List *monitor_get_dbname_list(char *user, char *address, int port);
+extern void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
@@ -135,7 +136,6 @@ bool get_cpu_info(StringInfo hostinfostring);
 
 /*monitor_databaseitem.c*/
 extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
-extern void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype);
 extern int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype);
 extern int monitor_get_result_every_node_master_one_database(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
@@ -144,5 +144,11 @@ extern HeapTuple monitor_build_database_item_tuple(Relation rel, const Timestamp
 			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum, int indexsize);
 extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);	
+
+/*monitor_slowlog.c*/
+extern char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
+extern int monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname);
+extern HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, char *dbname, char *username, float singletime, int totalnum, char *query, char *queryplan);
+extern Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS);
 
 #endif /* MGR_CMDS_H */

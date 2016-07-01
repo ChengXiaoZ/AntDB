@@ -366,6 +366,9 @@ DECLARE_UNIQUE_INDEX(monitor_databasetps_oid_index, 4951, on monitor_databasetps
 DECLARE_UNIQUE_INDEX(monitor_databaseitem_oid_index, 4953, on monitor_databaseitem using btree(oid oid_ops));
 #define MonitordatabaseitemOidIndexId 4953
 
+DECLARE_UNIQUE_INDEX(monitor_slowlog_oid_index, 4955, on monitor_slowlog using btree(oid oid_ops));
+#define MonitorslowlogOidIndexId 4955
+
 #endif /* ADBMGRD */
 
 /* last step of initialization script: build the indexes declared above */

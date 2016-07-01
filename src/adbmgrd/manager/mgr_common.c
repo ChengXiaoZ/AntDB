@@ -14,6 +14,7 @@
 #include "utils/rel.h"
 #include "utils/tqual.h"
 #include "../../interfaces/libpq/libpq-fe.h"
+#include "utils/fmgroids.h"
 
 #define MAXLINE (8192-1)
 #define MAXPATH (512-1)
@@ -373,3 +374,32 @@ List *monitor_get_dbname_list(char *user, char *address, int port)
 	
 	return nodenamelist;
 }
+
+/*
+* get user, hostaddress from coordinator
+*/
+void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype)
+{
+	HeapScanDesc rel_scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		*coordport = mgr_node->nodeport;
+		*address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		*user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		break;
+	}
+	heap_endscan(rel_scan);
+}
+

@@ -33,7 +33,6 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 #include "funcapi.h"
-#include "fmgr.h"
 #include "utils/lsyscache.h"
 #include "access/xact.h"
 #include "utils/date.h"
@@ -94,34 +93,6 @@ int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, in
 	PQfinish(conn);
 	pfree(constr.data);
 	return oneCoordTpsInt;
-}
-
-/*
-* get user, hostaddress from coordinator
-*/
-void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype)
-{
-	HeapScanDesc rel_scan;
-	ScanKeyData key[1];
-	HeapTuple tuple;
-	Form_mgr_node mgr_node;
-	
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(nodetype));
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_node);
-		*coordport = mgr_node->nodeport;
-		*address = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		*user = get_hostuser_from_hostoid(mgr_node->nodehost);
-		break;
-	}
-	heap_endscan(rel_scan);
 }
 
 /*
@@ -519,7 +490,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 		dbname = (char *)(lfirst(cell));
 		tps = abs(dbtps[idex][1] - dbtps[idex][0])/sleepTime;
 		qps = abs(dbqps[idex][1] - dbqps[idex][0])/sleepTime;
-		appendStringInfo(&sqldbruntimeStrData, "select case when  stats_reset IS NULL then  extract(epoch from now())- extract(epoch from  now()) else  round(abs(extract(epoch from now())- extract(epoch from  stats_reset))) end from pg_stat_database where datname = \'%s\';", dbname);
+		appendStringInfo(&sqldbruntimeStrData, "select case when  stats_reset IS NULL then  0 else  round(abs(extract(epoch from now())- extract(epoch from  stats_reset))) end from pg_stat_database where datname = \'%s\';", dbname);
 		pgdbruntime = monitor_get_result_one_node(rel_node, sqldbruntimeStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 		tup_result = monitor_build_databasetps_qps_tuple(rel, time, dbname, tps, qps, pgdbruntime);
 		simple_heap_insert(rel, tup_result);
