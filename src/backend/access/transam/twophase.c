@@ -76,6 +76,8 @@
 
 #ifdef ADB
 #include "access/remote_xact.h"
+#include "commands/dbcommands.h"
+#include "utils/lsyscache.h"
 #endif
 
 /*
@@ -167,6 +169,31 @@ static GlobalTransaction MyLockedGxact = NULL;
 
 static bool twophaseExitRegistered = false;
 
+#ifdef ADB
+static void RecordTransactionCommitPrepared(TransactionId xid,
+								const char *gid,
+								bool missing_ok,
+								bool implicit,
+								int nnodes,
+								Oid *nodeIds,
+								int nchildren,
+								TransactionId *children,
+								int nrels,
+								RelFileNode *rels,
+								int ninvalmsgs,
+								SharedInvalidationMessage *invalmsgs,
+								bool initfileinval);
+static void RecordTransactionAbortPrepared(TransactionId xid,
+							   const char *gid,
+							   bool missing_ok,
+							   bool implicit,
+							   int nnodes,
+							   Oid *nodeIds,
+							   int nchildren,
+							   TransactionId *children,
+							   int nrels,
+							   RelFileNode *rels);
+#else
 static void RecordTransactionCommitPrepared(TransactionId xid,
 								int nchildren,
 								TransactionId *children,
@@ -180,6 +207,7 @@ static void RecordTransactionAbortPrepared(TransactionId xid,
 							   TransactionId *children,
 							   int nrels,
 							   RelFileNode *rels);
+#endif
 static void ProcessRecords(char *bufptr, TransactionId xid,
 			   const TwoPhaseCallback callbacks[]);
 static void RemoveGXact(GlobalTransaction gxact);
@@ -1610,28 +1638,6 @@ FinishPreparedTransactionExt(const char *gid,
 	/* compute latestXid among all children */
 	latestXid = TransactionIdLatest(xid, hdr->nsubxacts, children);
 
-#ifdef ADB
-	/*
-	 * Commit or abort transaction on remote nodes.
-	 *
-	 * The operations here is critical.
-	 */
-	if (isCommit)
-		RecordRemoteXactCommitPrepared(xid,
-									   gxact->isimplicit,
-									   isMissingOK,
-									   gid,
-									   hdr->nnodes,
-									   nodeIds);
-	else
-		RecordRemoteXactAbortPrepared(xid,
-									  gxact->isimplicit,
-									  isMissingOK,
-									  gid,
-									  hdr->nnodes,
-									  nodeIds);
-#endif
-
 	/*
 	 * The order of operations here is critical: make the XLOG entry for
 	 * commit or abort, then mark the transaction committed or aborted in
@@ -1640,6 +1646,26 @@ FinishPreparedTransactionExt(const char *gid,
 	 * progress), then run the post-commit or post-abort callbacks. The
 	 * callbacks will release the locks the transaction held.
 	 */
+#ifdef ADB
+	if (isCommit)
+		RecordTransactionCommitPrepared(xid,
+										gid,
+										isMissingOK,
+										gxact->isimplicit,
+										hdr->nnodes, nodeIds,
+										hdr->nsubxacts, children,
+										hdr->ncommitrels, commitrels,
+										hdr->ninvalmsgs, invalmsgs,
+										hdr->initfileinval);
+	else
+		RecordTransactionAbortPrepared(xid,
+									   gid,
+									   isMissingOK,
+									   gxact->isimplicit,
+									   hdr->nnodes, nodeIds,
+									   hdr->nsubxacts, children,
+									   hdr->nabortrels, abortrels);
+#else
 	if (isCommit)
 		RecordTransactionCommitPrepared(xid,
 										hdr->nsubxacts, children,
@@ -1650,7 +1676,7 @@ FinishPreparedTransactionExt(const char *gid,
 		RecordTransactionAbortPrepared(xid,
 									   hdr->nsubxacts, children,
 									   hdr->nabortrels, abortrels);
-
+#endif
 	ProcArrayRemove(proc, latestXid);
 
 	/*
@@ -2321,6 +2347,21 @@ RecoverPreparedTransactions(void)
  * so it is never possible to optimize out the commit record.
  */
 static void
+#ifdef ADB
+RecordTransactionCommitPrepared(TransactionId xid,
+								const char *gid,
+								bool missing_ok,
+								bool implicit,
+								int nnodes,
+								Oid *nodeIds,
+								int nchildren,
+								TransactionId *children,
+								int nrels,
+								RelFileNode *rels,
+								int ninvalmsgs,
+								SharedInvalidationMessage *invalmsgs,
+								bool initfileinval)
+#else
 RecordTransactionCommitPrepared(TransactionId xid,
 								int nchildren,
 								TransactionId *children,
@@ -2329,8 +2370,13 @@ RecordTransactionCommitPrepared(TransactionId xid,
 								int ninvalmsgs,
 								SharedInvalidationMessage *invalmsgs,
 								bool initfileinval)
+#endif
 {
+#ifdef ADB
+	XLogRecData rdata[5];
+#else
 	XLogRecData rdata[4];
+#endif
 	int			lastrdata = 0;
 	xl_xact_commit_prepared xlrec;
 	XLogRecPtr	recptr;
@@ -2352,6 +2398,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	xlrec.crec.nrels = nrels;
 	xlrec.crec.nsubxacts = nchildren;
 	xlrec.crec.nmsgs = ninvalmsgs;
+#ifdef ADB
+	xlrec.crec.can_redo_rxact = IsUnderRemoteXact();
+#endif
 
 	rdata[0].data = (char *) (&xlrec);
 	rdata[0].len = MinSizeOfXactCommitPrepared;
@@ -2383,6 +2432,24 @@ RecordTransactionCommitPrepared(TransactionId xid,
 		rdata[3].buffer = InvalidBuffer;
 		lastrdata = 3;
 	}
+#ifdef ADB
+	/* dump involved remote node info */
+	if (IsUnderRemoteXact())
+	{
+		StringInfoData buf;
+
+		MakeUpRemoteXactBuffer(&buf, XLOG_RXACT_COMMIT_PREPARED,
+							   xid, xlrec.crec.xact_time,
+							   implicit, missing_ok, gid,
+							   nnodes, nodeIds);
+
+		rdata[lastrdata].next = &(rdata[4]);
+		rdata[4].data = buf.data;
+		rdata[4].len = buf.len;
+		rdata[4].buffer = InvalidBuffer;
+		lastrdata = 4;
+	}
+#endif
 	rdata[lastrdata].next = NULL;
 
 	recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_COMMIT_PREPARED, rdata);
@@ -2395,6 +2462,13 @@ RecordTransactionCommitPrepared(TransactionId xid,
 
 	/* Flush XLOG to disk */
 	XLogFlush(recptr);
+
+#ifdef ADB
+	/*
+	 * Here is truely commit prepared gid on remote nodes.
+	 */
+	RemoteXactCommitPrepared(xid, implicit, missing_ok, gid, nnodes, nodeIds);
+#endif
 
 	/* Mark the transaction committed in pg_clog */
 	TransactionIdCommitTree(xid, nchildren, children);
@@ -2422,13 +2496,30 @@ RecordTransactionCommitPrepared(TransactionId xid,
  * so it is never possible to optimize out the abort record.
  */
 static void
+#ifdef ADB
+RecordTransactionAbortPrepared(TransactionId xid,
+							   const char *gid,
+							   bool missing_ok,
+							   bool implicit,
+							   int nnodes,
+							   Oid *nodeIds,
+							   int nchildren,
+							   TransactionId *children,
+							   int nrels,
+							   RelFileNode *rels)
+#else
 RecordTransactionAbortPrepared(TransactionId xid,
 							   int nchildren,
 							   TransactionId *children,
 							   int nrels,
 							   RelFileNode *rels)
+#endif
 {
+#ifdef ADB
+	XLogRecData rdata[4];
+#else
 	XLogRecData rdata[3];
+#endif
 	int			lastrdata = 0;
 	xl_xact_abort_prepared xlrec;
 	XLogRecPtr	recptr;
@@ -2448,6 +2539,9 @@ RecordTransactionAbortPrepared(TransactionId xid,
 	xlrec.arec.xact_time = GetCurrentTimestamp();
 	xlrec.arec.nrels = nrels;
 	xlrec.arec.nsubxacts = nchildren;
+#ifdef ADB
+	xlrec.arec.can_redo_rxact = IsUnderRemoteXact();
+#endif
 	rdata[0].data = (char *) (&xlrec);
 	rdata[0].len = MinSizeOfXactAbortPrepared;
 	rdata[0].buffer = InvalidBuffer;
@@ -2469,12 +2563,38 @@ RecordTransactionAbortPrepared(TransactionId xid,
 		rdata[2].buffer = InvalidBuffer;
 		lastrdata = 2;
 	}
+#ifdef ADB
+	/* dump involved remote node info */
+	if (IsUnderRemoteXact())
+	{
+		StringInfoData buf;
+
+		MakeUpRemoteXactBuffer(&buf, XLOG_RXACT_ABORT_PREPARED,
+							   xid, xlrec.arec.xact_time,
+							   implicit, missing_ok, gid,
+							   nnodes, nodeIds);
+
+		rdata[lastrdata].next = &(rdata[3]);
+		rdata[3].data = buf.data;
+		rdata[3].len = buf.len;
+		rdata[3].buffer = InvalidBuffer;
+		lastrdata = 3;
+	}
+#endif
+
 	rdata[lastrdata].next = NULL;
 
 	recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_ABORT_PREPARED, rdata);
 
 	/* Always flush, since we're about to remove the 2PC state file */
 	XLogFlush(recptr);
+
+#ifdef ADB
+	/*
+	 * Here is truely rollback prepared gid on remote nodes.
+	 */
+	RemoteXactAbortPrepared(xid, implicit, missing_ok, gid, nnodes, nodeIds);
+#endif
 
 	/*
 	 * Mark the transaction aborted in clog.  This is not absolutely necessary

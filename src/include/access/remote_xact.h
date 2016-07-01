@@ -15,6 +15,7 @@
 #ifndef REMOTE_XACT_H
 #define REMOTE_XACT_H
 
+#include "access/xact.h"
 #include "datatype/timestamp.h"
 
 /*----------------------------------------
@@ -27,15 +28,14 @@
 #define XLOG_XACT_COMMIT_COMPACT	0x60
 ----------------------------------------*/
 #define XLOG_RXACT_PREPARE					0x70
-#define XLOG_RXACT_PREPARE_SUCCESS			0x80
-#define XLOG_RXACT_COMMIT					0x90
-#define XLOG_RXACT_COMMIT_PREPARED			0xa0
+#define XLOG_RXACT_COMMIT_PREPARED			0x80
+#define XLOG_RXACT_ABORT_PREPARED			0x90
+#define XLOG_RXACT_PREPARE_SUCCESS			0xa0
 #define XLOG_RXACT_COMMIT_PREPARED_SUCCESS	0xb0
-#define XLOG_RXACT_ABORT					0xc0
-#define XLOG_RXACT_ABORT_PREPARED			0xd0
-#define XLOG_RXACT_ABORT_PREPARED_SUCCESS	0xe0
+#define XLOG_RXACT_ABORT_PREPARED_SUCCESS	0xc0
 
 #define GIDSIZE 200
+#define IsUnderRemoteXact()	(IS_PGXC_COORDINATOR && !IsConnFromCoord())
 
 typedef struct remote_node
 {
@@ -44,11 +44,19 @@ typedef struct remote_node
 	char		nodeHost[NAMEDATALEN];
 } RemoteNode;
 
+typedef struct xl_remote_success
+{
+	TransactionId 	xid;			/* XID of remote xact */
+	char			gid[GIDSIZE];	/* GID of remote xact */
+} xl_remote_success;
+
+#define MinSizeOfRemoteSuccess sizeof(xl_remote_success)
+
 typedef struct xl_remote_xact
 {
 	TransactionId xid;			/* XID of remote xact */
 	TimestampTz xact_time;		/* time of remote xact action */
-	uint32		xinfo;			/* info flags */
+	uint8		xinfo;			/* info flags */
 	bool		implicit;		/* is implicit xact */
 	bool		missing_ok;		/* OK if gid is not exists?
 								   Just for COMMIT/ROLLBACK PREPARED */
@@ -61,27 +69,39 @@ typedef struct xl_remote_xact
 
 #define MinSizeOfRemoteXact offsetof(xl_remote_xact, rnodes)
 
-extern void RecordRemoteXactCommit(int nnodes, Oid *nodeIds);
-extern void RecordRemoteXactAbort(int nnodes, Oid *nodeIds);
+extern void MakeUpRemoteXactBuffer(StringInfo buf,
+								   uint8 info,
+								   TransactionId xid,
+								   TimestampTz xact_time,
+								   bool isimplicit,
+								   bool missing_ok,
+								   const char *gid,
+								   int nnodes,
+								   Oid *nodeIds);
+extern void RemoteXactCommit(int nnodes, Oid *nodeIds);
+extern void RemoteXactAbort(int nnodes, Oid *nodeIds);
 extern void RecordRemoteXactPrepare(TransactionId xid,
 									TimestampTz prepared_at,
 									bool isimplicit,
 									const char *gid,
 									int nnodes,
 									Oid *nodeIds);
-extern void RecordRemoteXactCommitPrepared(TransactionId xid,
-										   bool isimplicit,
-										   bool missing_ok,
-										   const char *gid,
-										   int nnodes,
-										   Oid *nodeIds);
-extern void RecordRemoteXactAbortPrepared(TransactionId xid,
-										  bool isimplicit,
-										  bool missing_ok,
-										  const char *gid,
-										  int nnodes,
-										  Oid *nodeIds);
+extern void RemoteXactCommitPrepared(TransactionId xid,
+									 bool isimplicit,
+									 bool missing_ok,
+									 const char *gid,
+									 int nnodes,
+									 Oid *nodeIds);
+extern void RemoteXactAbortPrepared(TransactionId xid,
+									bool isimplicit,
+									bool missing_ok,
+									const char *gid,
+									int nnodes,
+									Oid *nodeIds);
 extern void ReplayRemoteXact(void);
-extern void remote_xact_redo(uint8 xl_info, xl_remote_xact *xlrec);
+extern void rxact_redo_commit_prepared(xl_xact_commit *xlrec, TransactionId xid, XLogRecPtr lsn);
+extern void rxact_redo_abort_prepared(xl_xact_abort *xlrec, TransactionId xid);
+extern void rxact_redo_prepare(xl_remote_xact *xlrec);
+extern void rxact_redo_success(uint8 info, xl_remote_success *xlrec);
 #endif /* REMOTE_XACT_H */
 

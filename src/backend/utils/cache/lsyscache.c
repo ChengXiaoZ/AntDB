@@ -2475,6 +2475,27 @@ get_pgxc_nodehost(Oid nodeid)
 	return result;
 }
 
+#ifdef ADB
+void
+get_pgxc_nodeinfo(Oid nodeid, char **nodehost, int *nodeport)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	if (nodehost)
+		*nodehost = pstrdup(NameStr(nodeForm->node_host));
+	if (nodeport)
+		*nodeport = nodeForm->node_port;
+	ReleaseSysCache(tuple);
+}
+#endif
+
 /*
  * is_pgxc_nodepreferred
  *		Determine if node is a preferred one

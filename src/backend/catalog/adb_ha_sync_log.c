@@ -86,7 +86,7 @@ AddAdbHaSyncLog(TimestampTz create_time,
 
 	gxid = GetCurrentTransactionId();
 	cmdid = GetCurrentCommandId(false);
-	values[Anum_adb_ha_sync_log_gxid - 1] = TransactionIdGetDatum(gxid);
+	values[Anum_adb_ha_sync_log_gxid - 1] = Int64GetDatum(gxid);
 	values[Anum_adb_ha_sync_log_cmdid - 1] = CommandIdGetDatum(cmdid);
 	values[Anum_adb_ha_sync_log_create_time - 1] = TimestampTzGetDatum(create_time);
 	nulls[Anum_adb_ha_sync_log_finish_time - 1] = true;

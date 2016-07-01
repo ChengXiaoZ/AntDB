@@ -2313,7 +2313,7 @@ CommitTransaction(void)
 			nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
 
 			/* Here is where we commit remote xact */
-			RecordRemoteXactCommit(nodecnt, nodeIds);
+			RemoteXactCommit(nodecnt, nodeIds);
 		}
 
 		/*
@@ -2644,10 +2644,11 @@ PrepareTransaction(void)
 							GetUserId(), MyDatabaseId,
 							nodecnt, nodeIds, isimplicit);
 
-	/* Here is where we truly prepare remote nodes(include AGTM). */
+	/*
+	 * Here is where we truly prepare remote nodes(include AGTM).
+	 */
 	RecordRemoteXactPrepare(xid, prepared_at, isimplicit,
 							prepareGID, nodecnt, nodeIds);
-
 #else
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);
@@ -2843,7 +2844,7 @@ AbortTransaction(void)
 		nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
 
 		/* Abort remote xact */
-		RecordRemoteXactAbort(nodecnt, nodeIds);
+		RemoteXactAbort(nodecnt, nodeIds);
 	}
 #endif
 
@@ -5525,15 +5526,29 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 	{
 		xl_xact_commit_prepared *xlrec = (xl_xact_commit_prepared *) XLogRecGetData(record);
 
+#ifdef ADB
+		if (xlrec->crec.can_redo_rxact == true)
+			rxact_redo_commit_prepared(&xlrec->crec, xlrec->xid, lsn);
+		else
+			xact_redo_commit_prepared(&xlrec->crec, xlrec->xid, lsn);
+#else
 		xact_redo_commit(&xlrec->crec, xlrec->xid, lsn);
 		RemoveTwoPhaseFile(xlrec->xid, false);
+#endif
 	}
 	else if (info == XLOG_XACT_ABORT_PREPARED)
 	{
 		xl_xact_abort_prepared *xlrec = (xl_xact_abort_prepared *) XLogRecGetData(record);
 
+#ifdef ADB
+		if (xlrec->arec.can_redo_rxact == true)
+			rxact_redo_abort_prepared(&xlrec->arec, xlrec->xid);
+		else
+			xact_redo_abort_prepared(&xlrec->arec, xlrec->xid);
+#else
 		xact_redo_abort(&xlrec->arec, xlrec->xid);
 		RemoveTwoPhaseFile(xlrec->xid, false);
+#endif
 	}
 	else if (info == XLOG_XACT_ASSIGNMENT)
 	{
@@ -5544,22 +5559,40 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 										xlrec->nsubxacts, xlrec->xsub);
 	}
 #ifdef ADB
-	else if (info == XLOG_RXACT_COMMIT ||
-			 info == XLOG_RXACT_PREPARE ||
-			 info == XLOG_RXACT_PREPARE_SUCCESS ||
-			 info == XLOG_RXACT_ABORT ||
-			 info == XLOG_RXACT_COMMIT_PREPARED ||
-			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
-			 info == XLOG_RXACT_ABORT_PREPARED ||
-			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
+	else if (info == XLOG_RXACT_PREPARE)
 	{
 		xl_remote_xact *xlrec = (xl_remote_xact *) XLogRecGetData(record);
-		remote_xact_redo(info, xlrec);
+		rxact_redo_prepare(xlrec);
+	}
+	else if (info == XLOG_RXACT_PREPARE_SUCCESS ||
+			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
+			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
+	{
+		xl_remote_success *xlres = (xl_remote_success *) XLogRecGetData(record);
+		rxact_redo_success(info, xlres);
 	}
 #endif
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
+
+#ifdef ADB
+void
+xact_redo_commit_prepared(xl_xact_commit *xlrec,
+						  TransactionId xid,
+						  XLogRecPtr lsn)
+{
+	xact_redo_commit(xlrec, xid, lsn);
+	RemoveTwoPhaseFile(xid, false);
+}
+
+void
+xact_redo_abort_prepared(xl_xact_abort * xlrec, TransactionId xid)
+{
+	xact_redo_abort(xlrec, xid);
+	RemoveTwoPhaseFile(xid, false);
+}
+#endif
 
 #ifdef PGXC
 /*

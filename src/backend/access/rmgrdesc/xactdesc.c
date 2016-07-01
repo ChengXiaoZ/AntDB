@@ -139,49 +139,38 @@ xact_desc_assignment(StringInfo buf, xl_xact_assignment *xlrec)
 
 #ifdef ADB
 static void
-remote_xact_desc(StringInfo buf, uint8 xl_info, xl_remote_xact *xlrec)
+remote_xact_desc_prepare(StringInfo buf, xl_remote_xact *xlrec)
+{
+	appendStringInfo(buf, "remote prepare: xid: %u", xlrec->xid);
+	appendStringInfo(buf, "; xact time: %s", timestamptz_to_str(xlrec->xact_time));
+	appendStringInfo(buf, "; implicit: %s", xlrec->implicit ? "yes" : "no");
+	appendStringInfo(buf, "; missing ok: %s", xlrec->missing_ok? "yes" : "no");
+	appendStringInfo(buf, "; database: %s", xlrec->dbname);
+	appendStringInfo(buf, "; user: %s", xlrec->user);
+	appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+	appendStringInfo(buf, "; involved remote nodes: %d", xlrec->nnodes);
+}
+
+static void
+remote_xact_desc_success(StringInfo buf, uint8 xl_info, xl_remote_success *xlres)
 {
 	switch (xl_info)
 	{
-		case XLOG_RXACT_PREPARE:
-			appendStringInfo(buf, "remote prepare %u:", xlrec->xid);
-			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
-			break;
 		case XLOG_RXACT_PREPARE_SUCCESS:
-			appendStringInfo(buf, "remote prepare success %u:", xlrec->xid);
-			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
-			break;
-		case XLOG_RXACT_COMMIT:
-			appendStringInfo(buf, "remote commit %u:", xlrec->xid);
-			break;
-		case XLOG_RXACT_COMMIT_PREPARED:
-			appendStringInfo(buf, "remote commit prepared %u:", xlrec->xid);
-			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			appendStringInfo(buf, "remote prepare success");
 			break;
 		case XLOG_RXACT_COMMIT_PREPARED_SUCCESS:
-			appendStringInfo(buf, "remote commit prepared success %u:", xlrec->xid);
-			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
-			break;
-		case XLOG_RXACT_ABORT:
-			appendStringInfo(buf, "remote abort %u:", xlrec->xid);
-			break;
-		case XLOG_RXACT_ABORT_PREPARED:
-			appendStringInfo(buf, "remote abort prepared %u:", xlrec->xid);
-			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			appendStringInfo(buf, "remote commit prepared success");
 			break;
 		case XLOG_RXACT_ABORT_PREPARED_SUCCESS:
-			appendStringInfo(buf, "remote abort prepared success %u:", xlrec->xid);
-			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			appendStringInfo(buf, "remote abort prepared success");
 			break;
 		default:
 			Assert(0);
 			break;
 	}
-	appendStringInfo(buf, "; database: %s", xlrec->dbname);
-	appendStringInfo(buf, "; user: %s", xlrec->user);
-	appendStringInfo(buf, "; xact time: %s", timestamptz_to_str(xlrec->xact_time));
-	appendStringInfo(buf, "; implicit: %s", xlrec->implicit ? "yes" : "no");
-	appendStringInfo(buf, "; involved remote nodes: %d", xlrec->nnodes);	
+	appendStringInfo(buf, " %u:", xlres->xid);
+	appendStringInfo(buf, "; prepared gid: '%s'", xlres->gid);
 }
 #endif
 
@@ -242,17 +231,17 @@ xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 		xact_desc_assignment(buf, xlrec);
 	}
 #ifdef ADB
-	else if (info == XLOG_RXACT_PREPARE ||
-			 info == XLOG_RXACT_PREPARE_SUCCESS ||
-			 info == XLOG_RXACT_COMMIT ||
-			 info == XLOG_RXACT_COMMIT_PREPARED ||
-			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
-			 info == XLOG_RXACT_ABORT ||
-			 info == XLOG_RXACT_ABORT_PREPARED ||
-			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
+	else if (info == XLOG_RXACT_PREPARE)
 	{
 		xl_remote_xact *xlrec = (xl_remote_xact *) rec;
-		remote_xact_desc(buf, info, xlrec);
+		remote_xact_desc_prepare(buf, xlrec);
+	}
+	else if (info == XLOG_RXACT_PREPARE_SUCCESS ||
+			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
+			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
+	{
+		xl_remote_success *xlres = (xl_remote_success *) rec;
+		remote_xact_desc_success(buf, info, xlres);
 	}
 #endif
 	else
