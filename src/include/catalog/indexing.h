@@ -369,6 +369,30 @@ DECLARE_UNIQUE_INDEX(monitor_databaseitem_oid_index, 4953, on monitor_databaseit
 DECLARE_UNIQUE_INDEX(monitor_slowlog_oid_index, 4955, on monitor_slowlog using btree(oid oid_ops));
 #define MonitorslowlogOidIndexId 4955
 
+DECLARE_UNIQUE_INDEX(monitor_host_threshlod_oid_index, 4954, on monitor_host_threshlod using btree(oid oid_ops));
+#define MonitorhostthreshlodOidIndexId 4954
+
+DECLARE_UNIQUE_INDEX(monitor_host_threshlod_mt_type_index, 4962, on monitor_host_threshlod using btree(mt_type int2_ops));
+#define MonitorhostthreshlodmttypeIndexId 4962
+
+DECLARE_UNIQUE_INDEX(monitor_cpu_oid_index, 4956, on monitor_cpu using btree(oid oid_ops));
+#define MonitorCpuOidIndexId 4956
+
+DECLARE_UNIQUE_INDEX(monitor_mem_oid_index, 4957, on monitor_mem using btree(oid oid_ops));
+#define MonitorMemOidIndexId 4957
+
+DECLARE_UNIQUE_INDEX(monitor_disk_oid_index, 4958, on monitor_disk using btree(oid oid_ops));
+#define MonitorDiskOidIndexId 4958
+
+DECLARE_UNIQUE_INDEX(monitor_net_oid_index, 4959, on monitor_net using btree(oid oid_ops));
+#define MonitorNetOidIndexId 4959
+
+DECLARE_UNIQUE_INDEX(monitor_host_oid_index, 4960, on monitor_host using btree(oid oid_ops));
+#define MonitorHostOidIndexId 4960
+
+DECLARE_UNIQUE_INDEX(monitor_varparm_oid_index, 4961, on monitor_varparm using btree(oid oid_ops));
+#define MonitorVarparmOidIndexId 4961
+
 #endif /* ADBMGRD */
 
 /* last step of initialization script: build the indexes declared above */

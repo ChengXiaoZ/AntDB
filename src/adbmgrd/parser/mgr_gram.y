@@ -193,7 +193,7 @@ stmt :
 	| ConfigAllStmt
 	| DeploryStmt
 	| Gethostparm     /* for ADB monitor host page */
-    | Gettopologyparm /* for ADB monitor home page */
+	| Gettopologyparm /* for ADB monitor home page */
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -1375,9 +1375,9 @@ unreserved_keyword:
 	| GET_HOST_LIST_SPEC
 	| GET_HOST_HISTORY_USAGE
 	| GET_ALL_NODENAME_IN_SPEC_HOST
-    | GET_AGTM_NODE_TOPOLOGY
-    | GET_COORDINATOR_NODE_TOPOLOGY
-    | GET_DATANODE_NODE_TOPOLOGY
+	| GET_AGTM_NODE_TOPOLOGY
+	| GET_COORDINATOR_NODE_TOPOLOGY
+	| GET_DATANODE_NODE_TOPOLOGY
 	| GTM
 	| HOST
 	| I
