@@ -2374,6 +2374,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 {
 #ifdef ADB
 	XLogRecData rdata[5];
+	StringInfoData buf;
 #else
 	XLogRecData rdata[4];
 #endif
@@ -2436,9 +2437,7 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	/* dump involved remote node info */
 	if (IsUnderRemoteXact())
 	{
-		StringInfoData buf;
-
-		MakeUpRemoteXactBuffer(&buf, XLOG_RXACT_COMMIT_PREPARED,
+		MakeUpRemoteXactBinary(&buf, XLOG_RXACT_COMMIT_PREPARED,
 							   xid, xlrec.crec.xact_time,
 							   implicit, missing_ok, gid,
 							   nnodes, nodeIds);
@@ -2464,6 +2463,9 @@ RecordTransactionCommitPrepared(TransactionId xid,
 	XLogFlush(recptr);
 
 #ifdef ADB
+	if (IsUnderRemoteXact())
+		pfree(buf.data);
+
 	/*
 	 * Here is truely commit prepared gid on remote nodes.
 	 */
@@ -2517,6 +2519,7 @@ RecordTransactionAbortPrepared(TransactionId xid,
 {
 #ifdef ADB
 	XLogRecData rdata[4];
+	StringInfoData buf;
 #else
 	XLogRecData rdata[3];
 #endif
@@ -2567,9 +2570,7 @@ RecordTransactionAbortPrepared(TransactionId xid,
 	/* dump involved remote node info */
 	if (IsUnderRemoteXact())
 	{
-		StringInfoData buf;
-
-		MakeUpRemoteXactBuffer(&buf, XLOG_RXACT_ABORT_PREPARED,
+		MakeUpRemoteXactBinary(&buf, XLOG_RXACT_ABORT_PREPARED,
 							   xid, xlrec.arec.xact_time,
 							   implicit, missing_ok, gid,
 							   nnodes, nodeIds);
@@ -2590,6 +2591,9 @@ RecordTransactionAbortPrepared(TransactionId xid,
 	XLogFlush(recptr);
 
 #ifdef ADB
+	if (IsUnderRemoteXact())
+		pfree(buf.data);
+
 	/*
 	 * Here is truely rollback prepared gid on remote nodes.
 	 */

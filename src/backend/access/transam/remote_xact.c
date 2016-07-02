@@ -71,85 +71,25 @@ RemoteXactAbort(int nnodes, Oid *nodeIds)
 }
 
 static void
-MakeUpXLRemoteXact(xl_remote_xact *xlrec,
-				   uint8 info,
-				   TransactionId xid,
-				   TimestampTz xact_time,
-				   bool isimplicit,
-				   bool missing_ok,
-				   const char *gid,
-				   int nnodes)
+RecordRemoteXactSuccess(uint8 info, TransactionId xid, const char *gid)
 {
-	char	*dbname = NULL;
-	char	*user = NULL;
-
-	AssertArg(xlrec);
-
-	dbname = get_database_name(MyDatabaseId);
-	user = GetUserNameFromId(GetUserId());
-
-	xlrec->xid = xid;
-	xlrec->xact_time = xact_time;
-	xlrec->xinfo = info;
-	xlrec->implicit = isimplicit;
-	xlrec->missing_ok = missing_ok;
-	xlrec->nnodes = nnodes;
-
-	/* database name */
-	if (dbname && dbname[0])
-		StrNCpy(xlrec->dbname, dbname, NAMEDATALEN);
-
-	/* user */
-	if (user && user[0])
-		StrNCpy(xlrec->user, user, NAMEDATALEN);
-
-	/* gid */
-	if (gid && gid[0])
-		StrNCpy(xlrec->gid, gid, GIDSIZE);
-}
-
-static RemoteNode *
-MakeUpRemoteNodeInfo(int nnodes, Oid *nodeIds, int *rlen)
-{
-	RemoteNode	*rnodes = NULL;
-	Oid 	 	 nodeId = InvalidOid;
-	char		*nodeHost = NULL;
-	int 	 	 nodePort = -1;
-	int			 i;
-
-	AssertArg(nnodes > 0);
-	AssertArg(nodeIds);
-
-	*rlen = nnodes * sizeof(RemoteNode);
-
-	rnodes = (RemoteNode *)palloc0(*rlen);
-	for (i = 0; i < nnodes; i++)
-	{
-		nodeId = nodeIds[i];
-		rnodes[i].nodeId = nodeId;
-		nodeHost = get_pgxc_nodehost(nodeId);
-		Assert(nodeHost);
-		StrNCpy(rnodes[i].nodeHost, nodeHost, NAMEDATALEN);
-		nodePort = get_pgxc_nodeport(nodeId);
-		Assert(nodePort > 0);
-		rnodes[i].nodePort = nodePort;
-	}
-
-	return rnodes;
-}
-
-static void
-RecordRemoteXactSuccess(uint8 info, xl_remote_success *xlres)
-{
-	XLogRecData rdata[1];
-	XLogRecPtr	recptr;
+	XLogRecData 		rdata[1];
+	XLogRecPtr			recptr;
+	int					len;
+	xl_remote_success	*xlres;
 
 	Assert(IsUnderRemoteXact());
+	Assert(gid && gid[0]);
+
+	len = strlen(gid) + 1;
+	xlres = (xl_remote_success *) palloc0(MinSizeOfRemoteSuccess + len);
+	xlres->xid = xid;
+	StrNCpy(xlres->gid, gid, len);
 
 	START_CRIT_SECTION();
 
 	rdata[0].data = (char *) xlres;
-	rdata[0].len = MinSizeOfRemoteSuccess;
+	rdata[0].len = MinSizeOfRemoteSuccess + len;
 	rdata[0].buffer = InvalidBuffer;
 	rdata[0].next = NULL;
 
@@ -158,13 +98,22 @@ RecordRemoteXactSuccess(uint8 info, xl_remote_success *xlres)
 	/* Always flush, since we're about to remove the 2PC state file */
 	XLogFlush(recptr);
 
-	XactLastRecEnd = 0;
+	pfree(xlres);
 
 	END_CRIT_SECTION();
 }
 
+/*
+ * MakeUpRemoteXactBinary
+ *
+ * Make up binary buffer for xl_remote_xact.
+ *
+ * Note: if you need to change the function, you must change
+ *       DeparseRemoteXactBinary and remote_xact_desc_prepare
+ *       as well. keep each attribute with the same order.
+ */
 void
-MakeUpRemoteXactBuffer(StringInfo buf,
+MakeUpRemoteXactBinary(StringInfo buf,
 					   uint8 info,
 					   TransactionId xid,
 					   TimestampTz xact_time,
@@ -174,35 +123,130 @@ MakeUpRemoteXactBuffer(StringInfo buf,
 					   int nnodes,
 					   Oid *nodeIds)
 {
+	char			*dbname;
+	char			*user;
 	char			*nodeHost;
 	int				 nodePort;
 	Oid				 nodeId;
-	int				 i, len;
-	xl_remote_xact	*xlrec = NULL;
+	int				 i;
 
 	AssertArg(buf);
 
-	len = MinSizeOfRemoteXact + nnodes * sizeof(RemoteNode);
-	xlrec = (xl_remote_xact *) palloc0(len);
+	dbname = get_database_name(MyDatabaseId);
+	user = GetUserNameFromId(GetUserId());
+	Assert(dbname && dbname[0]);
+	Assert(user && user[0]);
+	Assert(gid && gid[0]);
 
-	MakeUpXLRemoteXact(xlrec, info, xid, xact_time,
-					   isimplicit, missing_ok, gid, nnodes);
-
+	initStringInfo(buf);
+	appendBinaryStringInfo(buf, (const char *) &xid, sizeof(xid));
+	appendBinaryStringInfo(buf, (const char *) gid, strlen(gid) + 1);
+	appendBinaryStringInfo(buf, (const char *) &nnodes, sizeof(nnodes));
+	appendBinaryStringInfo(buf, (const char *) &info, sizeof(info));
+	appendBinaryStringInfo(buf, (const char *) &isimplicit, sizeof(isimplicit));
+	appendBinaryStringInfo(buf, (const char *) &missing_ok, sizeof(missing_ok));
+	appendBinaryStringInfo(buf, (const char *) &xact_time, sizeof(xact_time));
+	appendBinaryStringInfo(buf, (const char *) dbname, strlen(dbname) + 1);
+	appendBinaryStringInfo(buf, (const char *) user, strlen(user) + 1);
+	pfree(dbname);
+	pfree(user);
 	for (i = 0; i < nnodes; i++)
 	{
 		nodeId = nodeIds[i];
-		nodePort = get_pgxc_nodeport(nodeId);
+		nodePort = 0;
+		nodeHost = NULL;
+
+		get_pgxc_nodeinfo(nodeId, &nodeHost, &nodePort);
+		Assert(nodeHost && nodeHost[0]);
 		Assert(nodePort > 0);
-		nodeHost = get_pgxc_nodehost(nodeId);
-		Assert(nodeHost);
-		xlrec->rnodes[i].nodeId = nodeId;
-		xlrec->rnodes[i].nodePort = nodePort;
-		StrNCpy(xlrec->rnodes[i].nodeHost, nodeHost, NAMEDATALEN);
+		appendBinaryStringInfo(buf, (const char *) &nodeId, sizeof(nodeId));
+		appendBinaryStringInfo(buf, (const char *) &nodePort, sizeof(nodePort));
+		appendBinaryStringInfo(buf, (const char *) nodeHost, strlen(nodeHost) + 1);
+		pfree(nodeHost);
+	}
+}
+
+/*
+ * DeparseRemoteXactBinary
+ *
+ * Transform binary buffer to xl_remote_xact.
+ *
+ * extend is the number of extra bytes which will be appended.
+ *
+ * offset is output, which indicates the last byte of xl_remote_xact.
+ * the extra bytes will be appended start from it.
+ */
+xl_remote_xact *
+DeparseRemoteXactBinary(xl_remote_binary *buf, int extend, int *offset)
+{
+	char				*gid;
+	char				*bufptr;
+	xl_remote_xact		*xlrec;
+	RemoteNode			*rnode;
+	TransactionId		 xid;
+	int 				 nnodes;
+	int					 len, i;
+
+	bufptr = (char *) buf;
+
+	/* xid */
+	xid = *(TransactionId *) bufptr;
+	bufptr += sizeof(xid);
+	/* gid */
+	gid = (char *) bufptr;
+	bufptr += strlen(gid) + 1;
+	/* nnodes */
+	nnodes = *(int *) bufptr;
+	bufptr += sizeof(nnodes);
+
+	len = MinSizeOfRemoteXact + nnodes * sizeof(RemoteNode);
+	if (offset)
+		*offset = len;
+	len += extend;
+	xlrec = (xl_remote_xact *) palloc0(len);
+
+	xlrec->xid = xid;
+	xlrec->nnodes = nnodes;
+	len = strlen(gid) + 1;
+	StrNCpy(xlrec->gid, gid, len);
+
+	/* xinfo */
+	xlrec->xinfo = *(uint8 *) bufptr;
+	bufptr += sizeof(xlrec->xinfo);
+	/* implicit */
+	xlrec->implicit = *(bool *) bufptr;
+	bufptr += sizeof(xlrec->implicit);
+	/* missing_ok */
+	xlrec->missing_ok = *(bool *) bufptr;
+	bufptr += sizeof(xlrec->missing_ok);
+	/* xact_time */
+	xlrec->xact_time = *(TimestampTz *) bufptr;
+	bufptr += sizeof(xlrec->xact_time);
+	/* dbname */
+	len = strlen(bufptr) + 1;
+	StrNCpy(xlrec->dbname, bufptr, len);
+	bufptr += len;
+	/* user */
+	len = strlen(bufptr) + 1;
+	StrNCpy(xlrec->user, bufptr, len);
+	bufptr += len;
+	/* rnodes */
+	for (i = 0; i < nnodes; i++)
+	{
+		rnode = &(xlrec->rnodes[i]);
+		/* nodeId */
+		rnode->nodeId = *(Oid *) bufptr;
+		bufptr += sizeof(rnode->nodeId);
+		/* nodePort */
+		rnode->nodePort = *(int *) bufptr;
+		bufptr += sizeof(rnode->nodePort);
+		/* nodeHost */
+		len = strlen(bufptr) + 1;
+		StrNCpy(rnode->nodeHost, bufptr, len);
+		bufptr += len;
 	}
 
-	initStringInfo(buf);
-	appendBinaryStringInfo(buf, (const char *) xlrec, len);
-	pfree(xlrec);
+	return xlrec;
 }
 
 /*
@@ -223,13 +267,9 @@ RecordRemoteXactPrepare(TransactionId xid,
 						int nnodes,
 						Oid *nodeIds)
 {
-	xl_remote_success	 xlres;
-	XLogRecData			 rdata[2];
-	int					 lastrdata = 0;
-	xl_remote_xact		 xlrec;
-	XLogRecPtr			 recptr;
-	RemoteNode			*rnodes = NULL;
-	int					 rlen = 0;
+	XLogRecData			rdata[1];
+	XLogRecPtr			recptr;
+	StringInfoData		buf;
 
 	if (!IsUnderRemoteXact())
 		return ;
@@ -239,47 +279,29 @@ RecordRemoteXactPrepare(TransactionId xid,
 	START_CRIT_SECTION();
 
 	/* Emit the remote XLOG record */
-	MemSet(&xlrec, 0, MinSizeOfRemoteXact);
-	MakeUpXLRemoteXact(&xlrec, XLOG_RXACT_PREPARE,
-					   xid, prepared_at, isimplicit,
-					   false, gid, nnodes);
-	rdata[0].data = (char *) (&xlrec);
-	rdata[0].len = MinSizeOfRemoteXact;
+	MakeUpRemoteXactBinary(&buf, XLOG_RXACT_PREPARE, xid, prepared_at,
+							isimplicit, false, gid, nnodes, nodeIds);
+	rdata[0].data = buf.data;
+	rdata[0].len = buf.len;
 	rdata[0].buffer = InvalidBuffer;
-
-	/* dump involved nodes */
-	if (nnodes > 0)
-	{
-		AssertArg(nodeIds);
-		rnodes = MakeUpRemoteNodeInfo(nnodes, nodeIds, &rlen);
-		rdata[0].next = &(rdata[1]);
-		rdata[1].data = (char *) rnodes;
-		rdata[1].len = rlen;
-		rdata[1].buffer = InvalidBuffer;
-		lastrdata = 1;
-	}
-	rdata[lastrdata].next = NULL;
+	rdata[0].next = NULL;
 
 	recptr = XLogInsert(RM_XACT_ID, XLOG_RXACT_PREPARE, rdata);
 
 	/* Always flush, since we're about to remove the 2PC state file */
 	XLogFlush(recptr);
+	pfree(buf.data);
 
 	/* Prepare at remote nodes */
 	if (nnodes > 0)
-	{
-		pfree(rnodes);
 		PrePrepare_Remote(gid);
-	}
+
 	agtm_PrepareTransaction(gid);
 
 	END_CRIT_SECTION();
 
 	/* Record SUCCESS log for remote prepare */
-	MemSet(&xlres, 0, MinSizeOfRemoteSuccess);
-	xlres.xid = xid;
-	StrNCpy(xlres.gid, gid, GIDSIZE);
-	RecordRemoteXactSuccess(XLOG_RXACT_PREPARE_SUCCESS, &xlres);
+	RecordRemoteXactSuccess(XLOG_RXACT_PREPARE_SUCCESS, xid, gid);
 }
 
 /*
@@ -303,8 +325,6 @@ RemoteXactCommitPrepared(TransactionId xid,
 						 int nnodes,
 						 Oid *nodeIds)
 {
-	xl_remote_success xlres;
-
 	if (!IsUnderRemoteXact())
 		return ;
 
@@ -321,10 +341,7 @@ RemoteXactCommitPrepared(TransactionId xid,
 	 *
 	 * so we just care about xid and gid. see PopXlogRemoteXact
 	 */
-	MemSet(&xlres, 0, MinSizeOfRemoteSuccess);
-	xlres.xid = xid;
-	StrNCpy(xlres.gid, gid, GIDSIZE);
-	RecordRemoteXactSuccess(XLOG_RXACT_COMMIT_PREPARED_SUCCESS, &xlres);
+	RecordRemoteXactSuccess(XLOG_RXACT_COMMIT_PREPARED_SUCCESS, xid, gid);
 }
 
 /*
@@ -349,8 +366,6 @@ RemoteXactAbortPrepared(TransactionId xid,
 						int nnodes,
 						Oid *nodeIds)
 {
-	xl_remote_success xlres;
-
 	if (!IsUnderRemoteXact())
 		return ;
 
@@ -361,36 +376,15 @@ RemoteXactAbortPrepared(TransactionId xid,
 	agtm_AbortTransaction(gid, missing_ok);
 
 	/*
-	 * We record SUCCESS XLOG with xlrec. it is used to judge whether the remote
-	 * transaction needs to be redo.
+	 * We record SUCCESS XLOG with xlrec. it is used to judge
+	 * whether the remote transaction needs to be redo.
 	 *
 	 * so we just care about xid and gid. see PopXlogRemoteXact
 	 */
-	MemSet(&xlres, 0, MinSizeOfRemoteSuccess);
-	xlres.xid = xid;
-	StrNCpy(xlres.gid, gid, GIDSIZE);
-	RecordRemoteXactSuccess(XLOG_RXACT_ABORT_PREPARED_SUCCESS, &xlres);
+	RecordRemoteXactSuccess(XLOG_RXACT_ABORT_PREPARED_SUCCESS, xid, gid);
 }
 
 /* -------------------- remote xact redo interface ---------------------- */
-static xl_remote_xact *
-CopyXLRemoteXact(xl_remote_xact *from)
-{
-	xl_remote_xact  *to = NULL;
-
-	if (from)
-	{
-		int nnodes = from->nnodes;
-
-		to = (xl_remote_xact *) palloc0(MinSizeOfRemoteXact +
-										nnodes * sizeof(RemoteNode));
-		memcpy(to, from, MinSizeOfRemoteXact);
-		memcpy(to->rnodes, from->rnodes, nnodes * sizeof(RemoteNode));
-	}
-
-	return to;
-}
-
 #ifdef WAL_DEBUG
 static void
 rxact_debug(uint8 info, TransactionId xid, const char *gid)
@@ -426,7 +420,12 @@ rxact_debug(uint8 info, TransactionId xid, const char *gid)
 #endif
 
 /*
- * Keep xl_remote_xact in proper list and sort asc by xid
+ * PushXlogRemoteXact
+ *
+ * Keep xl_remote_xact in proper list and sort asc by xid.
+ *
+ * If we get xl_remote_success with the same xid, then pop
+ * from proper list.
  */
 static void
 PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
@@ -501,6 +500,27 @@ PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
 	}
 }
 
+/*
+ * PopXlogRemoteXact
+ *
+ * If we get a xl_remote_success, that means the remote xact
+ * has been already done correctly. so no need redo remote xact.
+ *
+ * Note: XLOG_RXACT_PREPARE_SUCCESS
+ *       pop it with same xid and gid from prepared_rxact.
+ *
+ * Note: XLOG_RXACT_COMMIT_PREPARED_SUCCESS
+ *		 pop it with same xid and gid from commit_prepared_rxact,
+ *       and then redo local xact with XLogRecPtr and xl_xact_commit
+ *       which stored after xl_remote_xact.
+ *       see xact_redo_commit_prepared.
+ *
+ * Note: XLOG_RXACT_ABORT_PREPARED_SUCCESS
+ *		 pop it with same xid and gid from abort_prepared_rxact,
+ *       and then redo local xact with xl_xact_abort which stored
+ *       after xl_remote_xact.
+ *       see xact_redo_abort_prepared.
+ */
 static void
 PopXlogRemoteXact(uint8 info, xl_remote_success *xlres)
 {
@@ -848,10 +868,12 @@ ReplayRemoteXactOnce(xl_remote_xact *xlrec)
 	{
 		case XLOG_RXACT_PREPARE:
 		case XLOG_RXACT_ABORT_PREPARED:
-			appendStringInfo(&command, "ROLLBACK PREPARED IF EXISTS '%s'", xlrec->gid);
+			appendStringInfo(&command, "ROLLBACK PREPARED IF EXISTS '%s'",
+				xlrec->gid);
 			break;
 		case XLOG_RXACT_COMMIT_PREPARED:
-			appendStringInfo(&command, "COMMIT PREPARED IF EXISTS '%s'", xlrec->gid);
+			appendStringInfo(&command, "COMMIT PREPARED IF EXISTS '%s'",
+				xlrec->gid);
 			break;
 		default:
 			Assert(0);
@@ -976,12 +998,13 @@ rxact_redo_commit_prepared(xl_xact_commit *xlrec, TransactionId xid, XLogRecPtr 
 {
 	TransactionId 				*subxacts;
 	SharedInvalidationMessage 	*inval_msgs;
-	xl_remote_xact 				*remote_xlrec, *push_xlrec;
+	xl_remote_xact 				*push_xlrec;
+	xl_remote_binary			*rbinary;
 	char						*bufptr;
-	int 						 len1, len2;
+	int							 offset;
+	int 						 len;
 
 	AssertArg(xlrec);
-
 	if (!xlrec->can_redo_rxact)
 		return ;
 
@@ -991,29 +1014,22 @@ rxact_redo_commit_prepared(xl_xact_commit *xlrec, TransactionId xid, XLogRecPtr 
 	/* invalidation messages array follows subxids */
 	inval_msgs = (SharedInvalidationMessage *) &(subxacts[xlrec->nsubxacts]);
 
-	/* remote xact info */
-	remote_xlrec = (xl_remote_xact *) &(inval_msgs[xlrec->nmsgs]);
+	/* remote xact binary */
+	rbinary = (xl_remote_binary *) &(inval_msgs[xlrec->nmsgs]);
 
 	/* true size of xl_xact_commit */
-	len1 = (char *) remote_xlrec - (char *) xlrec;
+	len = (char *) rbinary - (char *) xlrec;
 
-	/* true size of xl_remote_xact */
-	len2 = MinSizeOfRemoteXact + remote_xlrec->nnodes * sizeof(RemoteNode);
-
-	/* create xl_remote_xact which push to list */
-	push_xlrec = (xl_remote_xact *) palloc0(len2 + sizeof(lsn) + len1);
-
-	bufptr = (char *) push_xlrec;
-	/* copy from remote_xlrec */
-	memcpy((void *) bufptr, (const void *) remote_xlrec, len2);
-	bufptr += len2;
+	/* deparse binary buffer after xl_xact_commit */
+	push_xlrec = DeparseRemoteXactBinary(rbinary, sizeof(lsn) + len, &offset);
+	bufptr = (char *) push_xlrec + offset;
 
 	/* copy from lsn */
 	memcpy((void *) bufptr, (const void *) &lsn, sizeof(lsn));
 	bufptr += sizeof(lsn);
 
 	/* copy from xlrec */
-	memcpy((void *) bufptr, (const void *) xlrec, len1);
+	memcpy((void *) bufptr, (const void *) xlrec, len);
 
 	PushXlogRemoteXact(XLOG_RXACT_COMMIT_PREPARED, push_xlrec);
 }
@@ -1022,51 +1038,49 @@ void
 rxact_redo_abort_prepared(xl_xact_abort *xlrec, TransactionId xid)
 {
 	TransactionId 				*sub_xids;
-	xl_remote_xact 				*remote_xlrec, *push_xlrec;
+	xl_remote_xact 				*push_xlrec;
+	xl_remote_binary			*rbinary;
 	char						*bufptr;
-	int 						 len1, len2;
-
-	if (!IsUnderRemoteXact())
-		return ;
+	int							 offset;
+	int 						 len;
 
 	AssertArg(xlrec);
+	if (!xlrec->can_redo_rxact)
+		return ;
 
 	/* subxid array follows relfilenodes */
 	sub_xids = (TransactionId *) &(xlrec->xnodes[xlrec->nrels]);
 
-	/* remote xact info */
-	remote_xlrec = (xl_remote_xact *) &(sub_xids[xlrec->nsubxacts]);
+	/* remote xact binary */
+	rbinary = (xl_remote_binary *) &(sub_xids[xlrec->nsubxacts]);
 
 	/* true size of xl_xact_abort */
-	len1 = (char *) remote_xlrec - (char *) xlrec;
+	len = (char *) rbinary - (char *) xlrec;
 
-	/* true size of xl_remote_xact */
-	len2 = MinSizeOfRemoteXact + remote_xlrec->nnodes * sizeof(RemoteNode);
-
-	/* create xl_remote_xact which push to list */
-	push_xlrec = (xl_remote_xact *) palloc0(len2 + len1);
-
-	bufptr = (char *) push_xlrec;
-	/* copy from xl_remote_xact */
-	memcpy((void *) bufptr, (const void *) remote_xlrec, len2);
-	bufptr += len2;
+	/* deparse binary buffer after xl_xact_abort */
+	push_xlrec = DeparseRemoteXactBinary(rbinary, len, &offset);
+	bufptr = (char *) push_xlrec + offset;
 
 	/* copy from xl_xact_abort */
-	memcpy((void *) bufptr, (const void *) xlrec, len1);
+	memcpy((void *) bufptr, (const void *) xlrec, len);
 
 	PushXlogRemoteXact(XLOG_RXACT_ABORT_PREPARED, push_xlrec);
 }
 
 void
-rxact_redo_prepare(xl_remote_xact *xlrec)
+rxact_redo_prepare(xl_remote_binary *rbinary)
 {
+	xl_remote_xact *xlrec;
+
 	Assert(IsUnderRemoteXact());
-	PushXlogRemoteXact(XLOG_RXACT_PREPARE, CopyXLRemoteXact(xlrec));
+	xlrec = DeparseRemoteXactBinary(rbinary, 0, NULL);
+	PushXlogRemoteXact(XLOG_RXACT_PREPARE, xlrec);
 }
 
 void
-rxact_redo_success(uint8 info, xl_remote_success *xlrec)
+rxact_redo_success(uint8 info, xl_remote_success *xlres)
 {
 	Assert(IsUnderRemoteXact());
-	PopXlogRemoteXact(info, xlrec);
+	PopXlogRemoteXact(info, xlres);
 }
+

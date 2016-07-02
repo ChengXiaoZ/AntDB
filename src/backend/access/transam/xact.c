@@ -5561,8 +5561,8 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 #ifdef ADB
 	else if (info == XLOG_RXACT_PREPARE)
 	{
-		xl_remote_xact *xlrec = (xl_remote_xact *) XLogRecGetData(record);
-		rxact_redo_prepare(xlrec);
+		xl_remote_binary *rbinary = (xl_remote_binary *) XLogRecGetData(record);
+		rxact_redo_prepare(rbinary);
 	}
 	else if (info == XLOG_RXACT_PREPARE_SUCCESS ||
 			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
