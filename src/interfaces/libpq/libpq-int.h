@@ -551,7 +551,7 @@ extern PGresult *pqFunctionCall2(PGconn *conn, Oid fnid,
 				int *result_buf, int *actual_result_len,
 				int result_is_int,
 				const PQArgBlock *args, int nargs);
-extern PGresult *pqSendAgtmListenPort(PGconn *conn, int port);
+extern int pqSendAgtmListenPort(PGconn *conn, int port);
 
 /* === in fe-protocol3.c === */
 

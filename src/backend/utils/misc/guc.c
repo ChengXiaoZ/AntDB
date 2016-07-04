@@ -2798,7 +2798,19 @@ static struct config_int ConfigureNamesInt[] =
 		10, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
-#endif
+#ifdef ADB
+	{
+		{"pool_remote_cmd_timeout", PGC_POSTMASTER, DATA_NODES,
+			gettext_noop("timeout for pool manager send message to nodes."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&PoolRemoteCmdTimeout,
+		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+#endif /* ADB */
+#endif /* PGXC */
 #ifdef AGTM
 	{
 		{"agtm_port", PGC_INTERNAL, CONN_AUTH,

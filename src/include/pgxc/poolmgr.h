@@ -61,6 +61,7 @@ typedef struct PoolHandle PoolHandle;
 
 extern int	MinPoolSize;
 extern int	MaxPoolSize;
+extern int	PoolRemoteCmdTimeout;
 
 extern bool PersistentConnections;
 

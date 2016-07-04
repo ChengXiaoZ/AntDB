@@ -3686,10 +3686,10 @@ PQunescapeBytea(const unsigned char *strtext, size_t *retbuflen)
 }
 
 
-PGresult *pqSendAgtmListenPort(PGconn *conn, int port)
+int pqSendAgtmListenPort(PGconn *conn, int port)
 {
 	if (!PQexecStart(conn) || !PQsendQueryStart(conn))
-		return NULL;
+		return -1;
 
 	/* send 'L' message */
 	if(pqPutMsgStart('L', false, conn) < 0
@@ -3697,7 +3697,7 @@ PGresult *pqSendAgtmListenPort(PGconn *conn, int port)
 		|| pqPutMsgEnd(conn) < 0)
 	{
 		pqHandleSendFailure(conn);
-		return NULL;
+		return -1;
 	}
 
 	/* remember we are using simple query protocol */
@@ -3717,11 +3717,11 @@ PGresult *pqSendAgtmListenPort(PGconn *conn, int port)
 	if (pqFlush(conn) < 0)
 	{
 		pqHandleSendFailure(conn);
-		return NULL;
+		return -1;
 	}
 
 	/* OK, it's launched! */
 	conn->asyncStatus = PGASYNC_BUSY;
 
-	return PQexecFinish(conn);
+	return 0;
 }

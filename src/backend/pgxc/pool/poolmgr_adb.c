@@ -135,6 +135,7 @@ struct PoolHandle
 /* Configuration options */
 int			MinPoolSize = 1;
 int			MaxPoolSize = 100;
+int			PoolRemoteCmdTimeout = 0;
 
 bool			PersistentConnections = false;
 
@@ -184,13 +185,15 @@ static int node_info_check(PoolAgent *agent);
 static int agent_session_command(PoolAgent *agent, const char *set_command, PoolCommandType command_type);
 static int send_local_commands(PoolAgent *agent, List *datanodelist, List *coordlist);
 
-static void destroy_slot(PGXCNodePoolSlot *slot);
+static void destroy_slot(PGXCNodePoolSlot *slot, bool send_cancel);
 static void release_slot(PGXCNodePoolSlot *slot);
 static void idle_slot(PGXCNodePoolSlot *slot);
 static void destroy_node_pool(PGXCNodePool *node_pool, bool bfree);
 static bool node_pool_in_using(PGXCNodePool *node_pool);
 static time_t close_timeout_idle_slots(time_t timeout);
 static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port);
+static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query);
+static int pool_wait_pq(PGconn *conn);
 
 /* for hash DatabasePool */
 static HTAB *htab_database;
@@ -1560,7 +1563,7 @@ recheck_slot_status_:
 end_check_slot_status_:
 	if(status_error)
 	{
-		destroy_slot(slot);
+		destroy_slot(slot, false);
 		if(re_connect)
 		{
 			slot->conn = PGXCNodeConnect(slot->parent->connstr);
@@ -1655,9 +1658,21 @@ send_local_commands(PoolAgent *agent, List *datanodelist, List *coordlist)
 
 /*------------------------------------------------*/
 
-static void destroy_slot(PGXCNodePoolSlot *slot)
+static void destroy_slot(PGXCNodePoolSlot *slot, bool send_cancel)
 {
 	AssertArg(slot);
+
+	if(send_cancel)
+	{
+		if(slot->xc_cancelConn == NULL)
+			PQgetCancel((PGconn*)slot->conn);
+		if(slot->xc_cancelConn)
+		{
+			char err_msg[256];
+			PQcancel(slot->xc_cancelConn, err_msg, sizeof(err_msg));
+			/* ignore result */
+		}
+	}
 	if(slot->xc_cancelConn)
 	{
 		PQfreeCancel(slot->xc_cancelConn);
@@ -1693,10 +1708,10 @@ static void release_slot(PGXCNodePoolSlot *slot)
 static void idle_slot(PGXCNodePoolSlot *slot)
 {
 	AssertArg(slot);
-	if(PGXCNodeSendSetQuery(slot->conn, "RESET ALL;") != 0
+	if(pool_exec_set_query(slot->conn, "RESET ALL;") == false
 		|| send_agtm_listen_port(slot->conn, 0) == false)
 	{
-		destroy_slot(slot);
+		destroy_slot(slot, true);
 	}else
 	{
 		slot->state = SLOT_STATE_IDLE;
@@ -1713,7 +1728,7 @@ static void destroy_node_pool(PGXCNodePool *node_pool, bool bfree)
 	if(node_pool->slot)
 	{
 		for(i=0;i<(Size)MaxConnections;++i)
-			destroy_slot(&(node_pool->slot[i]));
+			destroy_slot(&(node_pool->slot[i]), false);
 	}
 	if(bfree)
 	{
@@ -1772,7 +1787,7 @@ static time_t close_timeout_idle_slots(time_t timeout)
 				if(slot->state != SLOT_STATE_IDLE)
 					continue;
 				if(slot->released_time <= timeout)
-					destroy_slot(slot);
+					destroy_slot(slot, false);
 				else if(earliest_time > slot->released_time)
 					earliest_time = slot->released_time;
 			}
@@ -1956,10 +1971,10 @@ retry_get_connection_:
 				/* we need reset it and send agtm listen port */
 
 				if((agent->agtm_port != slot->last_agtm_port && send_agtm_listen_port(slot->conn, agent->agtm_port) == false)
-					|| PGXCNodeSendSetQuery(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;") != 0
-					|| (agent->session_params && PGXCNodeSendSetQuery(slot->conn, agent->session_params) != 0))
+					|| pool_exec_set_query(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;") == false
+					|| (agent->session_params && pool_exec_set_query(slot->conn, agent->session_params) == false))
 				{
-					destroy_slot(slot);
+					destroy_slot(slot, true);
 					goto retry_get_connection_;
 				}
 				slot->last_agtm_port = agent->agtm_port;
@@ -1975,9 +1990,9 @@ retry_get_connection_:
 		if(slot->last_user_pid != agent->pid)
 		{
 			if(agent->local_params 
-				&& PGXCNodeSendSetQuery(slot->conn, agent->local_params) != 0)
+				&& pool_exec_set_query(slot->conn, agent->local_params) == false)
 			{
-				destroy_slot(slot);
+				destroy_slot(slot, true);
 				slots[lfirst_int(lc)] = NULL;
 				goto retry_get_connection_;
 			}
@@ -1987,7 +2002,7 @@ retry_get_connection_:
 		{
 			if(send_agtm_listen_port(slot->conn, agent->agtm_port) == false)
 			{
-				destroy_slot(slot);
+				destroy_slot(slot, true);
 				goto retry_get_connection_;
 			}
 			slot->last_agtm_port = agent->agtm_port;
@@ -2435,8 +2450,66 @@ static void on_exit_pooler(int code, Datum arg)
 
 static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port)
 {
-	PGresult *res = pqSendAgtmListenPort((PGconn*)conn, port);
-	ExecStatusType state = PQresultStatus(res);
+	PGresult *res;
+	ExecStatusType state;
+	if(pqSendAgtmListenPort((PGconn*)conn, port) < 0
+		|| pool_wait_pq((PGconn*)conn) < 0)
+	{
+		return false;
+	}
+
+	res = PQexecFinish((PGconn*)conn);
+	state = PQresultStatus(res);
 	PQclear(res);
 	return state == PGRES_COMMAND_OK ? true:false;
+}
+
+static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query)
+{
+	PGresult *result;
+	bool res;
+
+	AssertArg(query);
+	if(!PQsendQuery((PGconn*)conn, query))
+		return false;
+
+	res = true;
+	for(;;)
+	{
+		if(pool_wait_pq((PGconn*)conn) < 0)
+		{
+			res = false;
+			break;
+		}
+		result = PQgetResult((PGconn*)conn);
+		if(result == NULL)
+			break;
+		if(PQresultStatus(result) == PGRES_FATAL_ERROR)
+			res = false;
+		PQclear(result);
+	}
+	return res;
+}
+
+/* return
+ * < 0: EOF or timeout
+ */
+static int pool_wait_pq(PGconn *conn)
+{
+	time_t finish_time;
+	AssertArg(conn);
+
+	if(conn->inEnd > conn->inStart)
+		return 1;
+
+	if(PoolRemoteCmdTimeout == 0)
+	{
+		finish_time = (time_t)-1;
+	}else
+	{
+		Assert(PoolRemoteCmdTimeout > 0);
+		finish_time = time(NULL);
+		finish_time += PoolRemoteCmdTimeout;
+	}
+	return pqWaitTimed(1, 0, conn, finish_time);
 }
