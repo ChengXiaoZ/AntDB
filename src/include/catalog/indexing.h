@@ -369,8 +369,8 @@ DECLARE_UNIQUE_INDEX(monitor_databaseitem_oid_index, 4953, on monitor_databaseit
 DECLARE_UNIQUE_INDEX(monitor_slowlog_oid_index, 4955, on monitor_slowlog using btree(oid oid_ops));
 #define MonitorslowlogOidIndexId 4955
 
-DECLARE_UNIQUE_INDEX(monitor_host_threshlod_oid_index, 4954, on monitor_host_threshlod using btree(oid oid_ops));
-#define MonitorhostthreshlodOidIndexId 4954
+/* DECLARE_UNIQUE_INDEX(monitor_host_threshlod_oid_index, 4954, on monitor_host_threshlod using btree(oid oid_ops));
+#define MonitorhostthreshlodOidIndexId 4954 */
 
 DECLARE_UNIQUE_INDEX(monitor_host_threshlod_mt_type_index, 4962, on monitor_host_threshlod using btree(mt_type int2_ops));
 #define MonitorhostthreshlodmttypeIndexId 4962

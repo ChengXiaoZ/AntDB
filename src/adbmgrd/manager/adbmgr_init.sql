@@ -569,6 +569,47 @@ CREATE VIEW adbmgr.get_agtm_node_topology AS
                         ) -- end ARRAY_TO_STRING
         ) r;
 
+-- insert default values into monitor_host_threthold.
+insert into pg_catalog.monitor_host_threshlod values (1, 90, 95, 99);
+insert into pg_catalog.monitor_host_threshlod values (2, 85, 90, 95);
+insert into pg_catalog.monitor_host_threshlod values (3, 80, 85, 90);
+insert into pg_catalog.monitor_host_threshlod values (4, 2000, 3000, 4000);
+insert into pg_catalog.monitor_host_threshlod values (5, 2000, 3000, 4000);
+insert into pg_catalog.monitor_host_threshlod values (6, 3000, 4000, 5000);
+
+-- update waring value by type
+create or replace function pg_catalog.update_warning_value(type int, value int)
+returns  void
+as $$
+update pg_catalog.monitor_host_threshlod
+set mt_warning_threshold = $2
+where mt_type = $1;
+$$ language sql
+VOLATILE
+returns null on null input;
+
+-- update critical value by type
+create or replace function pg_catalog.update_critical_value(type int, value int)
+returns  void
+as $$
+update pg_catalog.monitor_host_threshlod
+set mt_critical_threshold = $2
+where mt_type = $1;
+$$ language sql
+VOLATILE
+returns null on null input;
+
+-- update emergency value by type
+create or replace function pg_catalog.update_emergency_value(type int, value int)
+returns  void
+as $$
+update pg_catalog.monitor_host_threshlod
+set mt_emergency_threshold = $2
+where mt_type = $1;
+$$ language sql
+VOLATILE
+returns null on null input;
+
 --insert data into mgr.parm
 
 --insert gtm parameters

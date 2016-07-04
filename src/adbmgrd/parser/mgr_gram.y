@@ -111,7 +111,7 @@ extern char *defGetString(DefElem *def);
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
-				Gethostparm ListMonitor Gettopologyparm
+				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -139,10 +139,11 @@ extern char *defGetString(DefElem *def);
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
-                GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
-                GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
-                GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
-                GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY
+				GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
+				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
+				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
+				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY
+				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE
 %%
 /*
  *	The target production for the whole parse.
@@ -194,6 +195,7 @@ stmt :
 	| DeploryStmt
 	| Gethostparm     /* for ADB monitor host page */
 	| Gettopologyparm /* for ADB monitor home page */
+	| Update_host_config_value
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -254,6 +256,35 @@ Gethostparm:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("get_all_nodename_in_spec_host", args));
 			$$ = (Node*)stmt;
         };
+
+Update_host_config_value:
+		UPDATE_WARNING_VALUE '(' SignedIconst ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = lappend(args, makeIntConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("update_warning_value", args));
+			$$ = (Node*)stmt;
+		}
+		| UPDATE_CRITICAL_VALUE '(' SignedIconst ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = lappend(args, makeIntConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("update_critical_value", args));
+			$$ = (Node*)stmt;
+		}
+		| UPDATE_EMERGENCY_VALUE '(' SignedIconst ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = lappend(args, makeIntConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("update_emergency_value", args));
+			$$ = (Node*)stmt;
+		};
 
 ConfigAllStmt:
 		CONFIG ALL
@@ -1399,6 +1430,9 @@ unreserved_keyword:
 	| START
 	| STOP
 	| TO
+	| UPDATE_WARNING_VALUE
+	| UPDATE_CRITICAL_VALUE
+	| UPDATE_EMERGENCY_VALUE
 	;
 
 reserved_keyword:
