@@ -108,9 +108,10 @@ RecordRemoteXactSuccess(uint8 info, TransactionId xid, const char *gid)
  *
  * Make up binary buffer for xl_remote_xact.
  *
- * Note: if you need to change the function, you must change
- *       DeparseRemoteXactBinary and remote_xact_desc_prepare
- *       as well. keep each attribute with the same order.
+ * Note:
+ *     if you need to change the function, you must change
+ *     DeparseRemoteXactBinary and remote_xact_desc_prepare
+ *     as well. keep each attribute with the same order.
  */
 void
 MakeUpRemoteXactBinary(StringInfo buf,
@@ -139,17 +140,27 @@ MakeUpRemoteXactBinary(StringInfo buf,
 	Assert(gid && gid[0]);
 
 	initStringInfo(buf);
+	/* xid */
 	appendBinaryStringInfo(buf, (const char *) &xid, sizeof(xid));
-	appendBinaryStringInfo(buf, (const char *) gid, strlen(gid) + 1);
+	/* nnodes */
 	appendBinaryStringInfo(buf, (const char *) &nnodes, sizeof(nnodes));
-	appendBinaryStringInfo(buf, (const char *) &info, sizeof(info));
-	appendBinaryStringInfo(buf, (const char *) &isimplicit, sizeof(isimplicit));
-	appendBinaryStringInfo(buf, (const char *) &missing_ok, sizeof(missing_ok));
+	/* xact_time */
 	appendBinaryStringInfo(buf, (const char *) &xact_time, sizeof(xact_time));
+	/* xinfo */
+	appendBinaryStringInfo(buf, (const char *) &info, sizeof(info));
+	/* implicit */
+	appendBinaryStringInfo(buf, (const char *) &isimplicit, sizeof(isimplicit));
+	/* missing_ok */
+	appendBinaryStringInfo(buf, (const char *) &missing_ok, sizeof(missing_ok));
+	/* gid */
+	appendBinaryStringInfo(buf, (const char *) gid, strlen(gid) + 1);
+	/* dbname */
 	appendBinaryStringInfo(buf, (const char *) dbname, strlen(dbname) + 1);
+	/* user */
 	appendBinaryStringInfo(buf, (const char *) user, strlen(user) + 1);
 	pfree(dbname);
 	pfree(user);
+	/* rnodes */
 	for (i = 0; i < nnodes; i++)
 	{
 		nodeId = nodeIds[i];
@@ -159,8 +170,11 @@ MakeUpRemoteXactBinary(StringInfo buf,
 		get_pgxc_nodeinfo(nodeId, &nodeHost, &nodePort);
 		Assert(nodeHost && nodeHost[0]);
 		Assert(nodePort > 0);
+		/* nodeId */
 		appendBinaryStringInfo(buf, (const char *) &nodeId, sizeof(nodeId));
+		/* nodePort */
 		appendBinaryStringInfo(buf, (const char *) &nodePort, sizeof(nodePort));
+		/* nodeHost */
 		appendBinaryStringInfo(buf, (const char *) nodeHost, strlen(nodeHost) + 1);
 		pfree(nodeHost);
 	}
@@ -175,11 +189,13 @@ MakeUpRemoteXactBinary(StringInfo buf,
  *
  * offset is output, which indicates the last byte of xl_remote_xact.
  * the extra bytes will be appended start from it.
+ *
+ * Note:
+ *     deparse each attribute with the same order of MakeUpRemoteXactBinary
  */
 xl_remote_xact *
 DeparseRemoteXactBinary(xl_remote_binary *buf, int extend, int *offset)
 {
-	char				*gid;
 	char				*bufptr;
 	xl_remote_xact		*xlrec;
 	RemoteNode			*rnode;
@@ -188,13 +204,9 @@ DeparseRemoteXactBinary(xl_remote_binary *buf, int extend, int *offset)
 	int					 len, i;
 
 	bufptr = (char *) buf;
-
 	/* xid */
 	xid = *(TransactionId *) bufptr;
 	bufptr += sizeof(xid);
-	/* gid */
-	gid = (char *) bufptr;
-	bufptr += strlen(gid) + 1;
 	/* nnodes */
 	nnodes = *(int *) bufptr;
 	bufptr += sizeof(nnodes);
@@ -205,11 +217,13 @@ DeparseRemoteXactBinary(xl_remote_binary *buf, int extend, int *offset)
 	len += extend;
 	xlrec = (xl_remote_xact *) palloc0(len);
 
+	/* xid */
 	xlrec->xid = xid;
+	/* nnodes */
 	xlrec->nnodes = nnodes;
-	len = strlen(gid) + 1;
-	StrNCpy(xlrec->gid, gid, len);
-
+	/* xact_time */
+	xlrec->xact_time = *(TimestampTz *) bufptr;
+	bufptr += sizeof(xlrec->xact_time);
 	/* xinfo */
 	xlrec->xinfo = *(uint8 *) bufptr;
 	bufptr += sizeof(xlrec->xinfo);
@@ -219,9 +233,10 @@ DeparseRemoteXactBinary(xl_remote_binary *buf, int extend, int *offset)
 	/* missing_ok */
 	xlrec->missing_ok = *(bool *) bufptr;
 	bufptr += sizeof(xlrec->missing_ok);
-	/* xact_time */
-	xlrec->xact_time = *(TimestampTz *) bufptr;
-	bufptr += sizeof(xlrec->xact_time);
+	/* gid */
+	len = strlen(bufptr) + 1;
+	StrNCpy(xlrec->gid, bufptr,len);
+	bufptr += len;
 	/* dbname */
 	len = strlen(bufptr) + 1;
 	StrNCpy(xlrec->dbname, bufptr, len);
@@ -250,14 +265,16 @@ DeparseRemoteXactBinary(xl_remote_binary *buf, int extend, int *offset)
 }
 
 /*
- * Record remote prepare log and then prepare xact on remote nodes.
+ * RecordRemoteXactPrepare
  *
- * If fail to prepare xact on remote nodes, ADB will step into recovery mode.
- * it is correct to do "ROLLBACK PREPARED IF EXISTS 'gid'". because it don't
- * prepare on local node.
+ * 1. Record remote prepare log
+ * 2. Prepare xact on remote nodes.
+ * 3. Record SUCCESS log.
  *
- * If number of remote nodes are not bigger than 0(current transaction is local)
- * just prepare at AGTM and will not record remote prepare log.
+ * Note:
+ *     If fail to prepare xact on remote nodes, ADB will step into
+ *     recovery mode. it is correct to do "ROLLBACK PREPARED IF -
+ *     EXISTS 'gid'". because it havn't prepared on local node.
  */
 void
 RecordRemoteXactPrepare(TransactionId xid,
@@ -292,30 +309,37 @@ RecordRemoteXactPrepare(TransactionId xid,
 	XLogFlush(recptr);
 	pfree(buf.data);
 
-	/* Prepare at remote nodes */
+	/* Prepare on remote nodes */
 	if (nnodes > 0)
 		PrePrepare_Remote(gid);
 
+	/* Prepare on AGTM */
 	agtm_PrepareTransaction(gid);
 
 	END_CRIT_SECTION();
 
-	/* Record SUCCESS log for remote prepare */
+	/*
+	 * We record remote SUCCESS XLOG. it is used to judge whether the
+	 * remote transaction needs to be redo. so we just care about xid
+	 * and gid. see PopXlogRemoteXact
+	 */
 	RecordRemoteXactSuccess(XLOG_RXACT_PREPARE_SUCCESS, xid, gid);
 }
 
 /*
- * Commit prepared gid on remote nodes and AGMT if "nnodes" > 0,
- * then record SUCCESS log.
+ * RemoteXactCommitPrepared
  *
- * Otherwise, commit prepared gid only on AGTM.
+ * 1. Commit prepared gid on remote nodes and AGMT
+ * 2. Record SUCCESS log.
  *
- * The function will called in a critical section to force a PANIC
- * if we are unable to complete remote commit prepared transaction
- * then, WAL replay should repair the inconsistency.
+ * Note:
+ *     The function will called in a critical section to force a PANIC
+ *     if we are unable to complete remote commit prepared transaction
+ *     then, WAL replay should repair the inconsistency.
  *
- * Note: we never record REMOTE XLOG, because it has already done.
- * see RecordTransactionCommitPrepared
+ * Note:
+ *     we never record REMOTE XLOG, because it has already done.
+ *     see RecordTransactionCommitPrepared
  */
 void
 RemoteXactCommitPrepared(TransactionId xid,
@@ -330,34 +354,36 @@ RemoteXactCommitPrepared(TransactionId xid,
 
 	Assert(gid && gid[0]);
 
+	/* commit prepared on remote nodes */
 	if (nnodes > 0)
 		PreCommit_Remote(gid, missing_ok);
 
+	/* commit prepared on AGTM */
 	agtm_CommitTransaction(gid, missing_ok);
 
 	/*
-	 * We record SUCCESS XLOG with xlrec. it is used to judge whether the remote
-	 * transaction needs to be redo.
-	 *
-	 * so we just care about xid and gid. see PopXlogRemoteXact
+	 * We record remote SUCCESS XLOG. it is used to judge whether the
+	 * remote transaction needs to be redo. so we just care about xid
+	 * and gid. see PopXlogRemoteXact
 	 */
 	RecordRemoteXactSuccess(XLOG_RXACT_COMMIT_PREPARED_SUCCESS, xid, gid);
 }
 
 /*
- * Rollback prepared gid on remote nodes and AGMT if "nnodes" > 0,
- * then record SUCCESS log.
+ * RemoteXactAbortPrepared
  *
- * Otherwise, Rollback prepared gid only on AGTM.
+ * 1. Rollback prepared gid on remote nodes and AGMT
+ * 2. Record SUCCESS log.
  *
- * The function will called in a critical section to force a PANIC
- * if we are unable to complete remote rollback prepared transaction
- * then, WAL replay should repair the inconsistency.
+ * Note:
+ *     The function will called in a critical section to force a PANIC
+ *     if we are unable to complete remote rollback prepared transaction
+ *     then, WAL replay should repair the inconsistency.
  *
- * Note: we never record REMOTE XLOG, because it has already been done.
- * see RecordTransactionAbortPrepared
+ * Note:
+ *     we never record REMOTE XLOG, because it has already been done.
+ *     see RecordTransactionAbortPrepared
  */
-
 void
 RemoteXactAbortPrepared(TransactionId xid,
 						bool isimplicit,
@@ -371,15 +397,17 @@ RemoteXactAbortPrepared(TransactionId xid,
 
 	Assert(gid && gid[0]);
 
+	/* rollback prepared on remote nodes */
 	if (nnodes > 0)
 		PreAbort_Remote(gid, missing_ok);
+
+	/* rollback prepared on AGTM */
 	agtm_AbortTransaction(gid, missing_ok);
 
 	/*
-	 * We record SUCCESS XLOG with xlrec. it is used to judge
-	 * whether the remote transaction needs to be redo.
-	 *
-	 * so we just care about xid and gid. see PopXlogRemoteXact
+	 * We record remote SUCCESS XLOG. it is used to judge whether the
+	 * remote transaction needs to be redo. so we just care about xid
+	 * and gid. see PopXlogRemoteXact
 	 */
 	RecordRemoteXactSuccess(XLOG_RXACT_ABORT_PREPARED_SUCCESS, xid, gid);
 }
@@ -422,10 +450,11 @@ rxact_debug(uint8 info, TransactionId xid, const char *gid)
 /*
  * PushXlogRemoteXact
  *
- * Keep xl_remote_xact in proper list and sort asc by xid.
+ * Keep "xl_remote_xact" in proper list and sort asc by xid.
  *
- * If we get xl_remote_success with the same xid, then pop
- * from proper list.
+ * Note:
+ *     If we get "xl_remote_success" with the same xid, then
+ *     pop it from proper list.
  */
 static void
 PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
@@ -503,34 +532,34 @@ PushXlogRemoteXact(uint8 info, xl_remote_xact *xlrec)
 /*
  * PopXlogRemoteXact
  *
- * If we get a xl_remote_success, that means the remote xact
+ * If we get a "xl_remote_success", that means the remote xact
  * has been already done correctly. so no need redo remote xact.
  *
  * Note: XLOG_RXACT_PREPARE_SUCCESS
- *       pop it with same xid and gid from prepared_rxact.
+ *     pop it with same xid and gid from the list "prepared_rxact".
  *
  * Note: XLOG_RXACT_COMMIT_PREPARED_SUCCESS
- *		 pop it with same xid and gid from commit_prepared_rxact,
- *       and then redo local xact with XLogRecPtr and xl_xact_commit
- *       which stored after xl_remote_xact.
- *       see xact_redo_commit_prepared.
+ *     pop it with same xid and gid from the list "commit_prepared_rxact",
+ *     and then redo local xact with XLogRecPtr and xl_xact_commit
+ *     which stored after xl_remote_xact.
+ *     see xact_redo_commit_prepared.
  *
  * Note: XLOG_RXACT_ABORT_PREPARED_SUCCESS
- *		 pop it with same xid and gid from abort_prepared_rxact,
- *       and then redo local xact with xl_xact_abort which stored
- *       after xl_remote_xact.
- *       see xact_redo_abort_prepared.
+ *     pop it with same xid and gid from the list "abort_prepared_rxact",
+ *     and then redo local xact with xl_xact_abort which stored
+ *     after xl_remote_xact.
+ *     see xact_redo_abort_prepared.
  */
 static void
 PopXlogRemoteXact(uint8 info, xl_remote_success *xlres)
 {
-	List		  **result = NULL;
-	TransactionId	xid;
-	const char	   *gid;
-	ListCell	   *cell = NULL;
-	xl_remote_xact *rxact = NULL;
-	int				slen1,
-					slen2;
+	List			**result = NULL;
+	const char		*gid;
+	ListCell		*cell = NULL;
+	xl_remote_xact	*rxact = NULL;
+	TransactionId	 xid;
+	int				 slen1,
+					 slen2;
 
 	AssertArg(xlres);
 	Assert(TransactionIdIsValid(xlres->xid));
@@ -561,7 +590,7 @@ PopXlogRemoteXact(uint8 info, xl_remote_success *xlres)
 			break;
 		case XLOG_RXACT_COMMIT_PREPARED_SUCCESS:
 			{
-				XLogRecPtr		lsn;
+				XLogRecPtr		 lsn;
 				xl_xact_commit	*xlrec;
 				char			*bufptr;
 
@@ -628,10 +657,10 @@ PopXlogRemoteXact(uint8 info, xl_remote_success *xlres)
 static ListCell *
 MinRemoteXact(ListCell *lc1, ListCell *lc2, ListCell *lc3)
 {
-	xl_remote_xact 	*xlrec1 = NULL;
-	xl_remote_xact 	*xlrec2 = NULL;
-	xl_remote_xact 	*xlrec3 = NULL;
-	TransactionId 	minxid;
+	xl_remote_xact	*xlrec1 = NULL;
+	xl_remote_xact	*xlrec2 = NULL;
+	xl_remote_xact	*xlrec3 = NULL;
+	TransactionId	 minxid;
 
 	Assert(IsUnderRemoteXact());
 
@@ -960,7 +989,7 @@ ReplayRemoteXact(void)
 	ListCell 		*lc2 = NULL;
 	ListCell 		*lc3 = NULL;
 	ListCell		*lc = NULL;
-	xl_remote_xact 	*xlrec = NULL;
+	xl_remote_xact	*xlrec = NULL;
 
 	if (!IsUnderRemoteXact())
 		return ;
@@ -993,12 +1022,24 @@ ReplayRemoteXact(void)
 	abort_prepared_rxact = NIL;
 }
 
+/*
+ * rxact_redo_commit_prepared
+ *
+ * Redo remote commit prepared xact.
+ *
+ * Note:
+ *     Deparse binary buffer of "xl_remote_xact" appended "xl_xact_commit",
+ *     then append "XLogRecPtr" and "xl_xact_commit" to "xl_remote_xact"
+ *     and push it into the proper list. If we get "xl_remote_success"
+ *     with the same xid(also gid), pop it from the list and then redo
+ *     local xact. see rxact_redo_success.
+ */
 void
 rxact_redo_commit_prepared(xl_xact_commit *xlrec, TransactionId xid, XLogRecPtr lsn)
 {
-	TransactionId 				*subxacts;
+	TransactionId				*subxacts;
 	SharedInvalidationMessage 	*inval_msgs;
-	xl_remote_xact 				*push_xlrec;
+	xl_remote_xact				*push_xlrec;
 	xl_remote_binary			*rbinary;
 	char						*bufptr;
 	int							 offset;
@@ -1034,11 +1075,22 @@ rxact_redo_commit_prepared(xl_xact_commit *xlrec, TransactionId xid, XLogRecPtr 
 	PushXlogRemoteXact(XLOG_RXACT_COMMIT_PREPARED, push_xlrec);
 }
 
+/*
+ * rxact_redo_abort_prepared
+ *
+ * Redo remote rollback prepared xact.
+ *
+ * Note:
+ *     Deparse binary buffer of "xl_remote_xact" appended "xl_xact_abort",
+ *     and append "xl_xact_abort" to "xl_remote_xact" then push it into proper
+ *     list. If we get "xl_remote_success" with the same xid(also gid), pop it
+ *     from the list and then redo local xact. see rxact_redo_success.
+ */
 void
 rxact_redo_abort_prepared(xl_xact_abort *xlrec, TransactionId xid)
 {
-	TransactionId 				*sub_xids;
-	xl_remote_xact 				*push_xlrec;
+	TransactionId				*sub_xids;
+	xl_remote_xact				*push_xlrec;
 	xl_remote_binary			*rbinary;
 	char						*bufptr;
 	int							 offset;
@@ -1067,6 +1119,16 @@ rxact_redo_abort_prepared(xl_xact_abort *xlrec, TransactionId xid)
 	PushXlogRemoteXact(XLOG_RXACT_ABORT_PREPARED, push_xlrec);
 }
 
+/*
+ * rxact_redo_prepare
+ *
+ * Redo remote prepare xact.
+ *
+ * Note:
+ *     Deparse binary buffer of "xl_remote_xact" and then push it into
+ *     proper list. If we get "xl_remote_success" with the same xid(also gid),
+ *     pop it from the list and then redo local xact. see rxact_redo_success.
+ */
 void
 rxact_redo_prepare(xl_remote_binary *rbinary)
 {
@@ -1077,6 +1139,15 @@ rxact_redo_prepare(xl_remote_binary *rbinary)
 	PushXlogRemoteXact(XLOG_RXACT_PREPARE, xlrec);
 }
 
+/*
+ * rxact_redo_success
+ *
+ * Redo SUCCESS remote xact.
+ *
+ * Note:
+ *     Pop "xl_remote_xact" with the same xid(also gid) of "xl_remote_success"
+ *     from the proper list.
+ */
 void
 rxact_redo_success(uint8 info, xl_remote_success *xlres)
 {

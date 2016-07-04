@@ -56,15 +56,15 @@ typedef struct xl_remote_success
 
 typedef struct xl_remote_xact
 {
-	TransactionId 	xid;					/* XID of remote xact */
-	char			gid[GIDSIZE];			/* GID of remote xact */
+	TransactionId	xid;					/* XID of remote xact */
 	int				nnodes;					/* num of involved nodes */
+	TimestampTz 	xact_time;				/* time of remote xact action */
 	uint8			xinfo;					/* info flags */
 	bool			implicit;				/* is implicit xact */
 	bool			missing_ok;				/* OK if gid is not exists?
 											   Just for COMMIT/ROLLBACK PREPARED */
-	TimestampTz 	xact_time;				/* time of remote xact action */
-   	char			dbname[NAMEDATALEN];	/* MyDatabase name */
+	char			gid[GIDSIZE];			/* GID of remote xact */
+	char			dbname[NAMEDATALEN];	/* MyDatabase name */
 	char			user[NAMEDATALEN];		/* User name */
 	RemoteNode		rnodes[1];				/* involved nodes' IDs */
 } xl_remote_xact;

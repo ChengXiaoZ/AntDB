@@ -23,6 +23,11 @@
 #ifdef ADB
 #include "access/remote_xact.h"
 
+/*
+ * remote_xact_desc_prepare
+ *
+ * Note: deparse each attribute with the same order of MakeUpRemoteXactBinary
+ */
 static void
 remote_xact_desc_prepare(StringInfo buf, xl_remote_binary *rbinary)
 {
@@ -43,12 +48,12 @@ remote_xact_desc_prepare(StringInfo buf, xl_remote_binary *rbinary)
 	/* xid */
 	xid = *(TransactionId *) rbinary;
 	rbinary += sizeof(xid);
-	/* gid */
-	gid = (char *) rbinary;
-	rbinary += strlen(gid) + 1;
 	/* nnodes */
 	nnodes = *(int *) rbinary;
 	rbinary += sizeof(nnodes);
+	/* xact_time */
+	xact_time = *(TimestampTz *) rbinary;
+	rbinary += sizeof(xact_time);
 	/* xinfo */
 	xinfo = *(uint8 *) rbinary;
 	rbinary += sizeof(xinfo);
@@ -58,9 +63,9 @@ remote_xact_desc_prepare(StringInfo buf, xl_remote_binary *rbinary)
 	/* missing_ok */
 	missing_ok = *(bool *) rbinary;
 	rbinary += sizeof(missing_ok);
-	/* xact_time */
-	xact_time = *(TimestampTz *) rbinary;
-	rbinary += sizeof(xact_time);
+	/* gid */
+	gid = (char *) rbinary;
+	rbinary += strlen(gid) + 1;
 	/* dbname */
 	dbname = (char *) rbinary;
 	rbinary += strlen(dbname) + 1;
