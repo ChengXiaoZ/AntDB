@@ -2452,6 +2452,7 @@ static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port)
 {
 	PGresult *res;
 	ExecStatusType state;
+	bool success;
 	if(pqSendAgtmListenPort((PGconn*)conn, port) < 0
 		|| pool_wait_pq((PGconn*)conn) < 0)
 	{
@@ -2460,8 +2461,14 @@ static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port)
 
 	res = PQexecFinish((PGconn*)conn);
 	state = PQresultStatus(res);
+	success = true;
+	if(state != PGRES_COMMAND_OK
+		|| atoi(PQcmdStatus(res)) != port)
+	{
+		success = false;
+	}
 	PQclear(res);
-	return state == PGRES_COMMAND_OK ? true:false;
+	return success;
 }
 
 static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query)

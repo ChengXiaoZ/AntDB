@@ -4857,6 +4857,7 @@ PostgresMain(int argc, char *argv[],
 			case 'L':		/* AGTM backend listen port */
 				{
 					int listen_port;
+					char cmd_msg[14];
 
 					listen_port = pq_getmsgint(&input_message, 4);
 
@@ -4865,8 +4866,9 @@ PostgresMain(int argc, char *argv[],
 					if (IS_PGXC_DATANODE ||
 						(IS_PGXC_COORDINATOR && IsConnFromCoord()))
 						agtm_SetPort(listen_port);
+					sprintf(cmd_msg, "%d", listen_port);
+					EndCommand(cmd_msg, whereToSendOutput);
 				}
-				EndCommand("", whereToSendOutput);
 				send_ready_for_query = true;
 				break;
 #endif
