@@ -800,7 +800,7 @@ static Datum load_datum(StringInfo buf, Oid typid)
 		if(byval)
 		{
 			Assert(typlen <= SIZEOF_DATUM);
-			pq_copymsgbytes(buf, (char*)&datum, typlen);
+			pq_copymsgbytes(buf, (char*)&datum, SIZEOF_DATUM);
 		}else
 		{
 			datum = PointerGetDatum(palloc(typlen));
