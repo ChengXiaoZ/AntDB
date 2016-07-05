@@ -583,6 +583,7 @@
 					# (change requires restart)
 #max_pool_size = 100			# Maximum pool size
 					# (change requires restart)
+#pool_remote_cmd_timeout = 10		# timeout for pool manager send message to nodes, default 10 seconds
 #persistent_datanode_connections = off	# Set persistent connection mode for pooler
 					# if set at on, connections taken for session
 					# are not put back to pool
