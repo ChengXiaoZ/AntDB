@@ -628,7 +628,7 @@
 # ADB OPTIONS
 ##------------------------------------------------------------------------------
 #enable_adb_ha_sync_log = on			# Enable record each commit sql for HA synchronization
-#enable_abd_ha_sync_log_select = off	# Disable record SELECT SQL
+#enable_adb_ha_sync_log_select = off	# Disable record SELECT SQL
 
 #------------------------------------------------------------------------------
 # CONFIG FILE INCLUDES
