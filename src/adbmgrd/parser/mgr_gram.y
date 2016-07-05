@@ -142,7 +142,7 @@ extern char *defGetString(DefElem *def);
 				GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
 				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
-				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY
+				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG
 				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE
 %%
 /*
@@ -1380,6 +1380,16 @@ ListMonitor:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasesummary_func", args));
 			$$ = (Node*)stmt;
 		}
+	| GET_SLOWLOG '(' Ident ',' Ident ',' Ident ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_slowlog_func", args));
+			$$ = (Node*)stmt;
+		}
 	;
 
 unreserved_keyword:
@@ -1409,6 +1419,7 @@ unreserved_keyword:
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_COORDINATOR_NODE_TOPOLOGY
 	| GET_DATANODE_NODE_TOPOLOGY
+	| GET_SLOWLOG
 	| GTM
 	| HOST
 	| I

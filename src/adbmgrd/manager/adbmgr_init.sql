@@ -477,6 +477,31 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
 	IMMUTABLE
 	RETURNS NULL ON NULL INPUT;
 
+CREATE table adbmgr.monitor_slowlog_tb
+(
+	query text,
+	dbuser name,
+	singletime float4,
+	totalnum int,
+	queryplan text
+);
+CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func(in name, in timestamptz, in timestamptz)
+		RETURNS setof adbmgr.monitor_slowlog_tb
+	AS 
+		$$
+	SELECT slowlogquery AS query,
+				slowloguser   AS dbuser,
+				slowlogsingletime AS singletime,
+				slowlogtotalnum   AS totalnum,
+				slowlogqueryplan  AS queryplan
+	FROM 
+				monitor_slowlog
+	WHERE slowlogdbname = $1 and slowlogtime >= $2 and slowlogtime < $3 order by slowlogtime desc;
+	$$
+		LANGUAGE SQL
+	IMMUTABLE
+	RETURNS NULL ON NULL INPUT;
+
 -- for ADB monitor the topology in home page : get datanode node topology
 CREATE VIEW adbmgr.get_datanode_node_topology AS
     select '{'|| ARRAY_TO_STRING || '}' as datanode_result
