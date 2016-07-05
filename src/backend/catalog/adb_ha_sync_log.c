@@ -93,14 +93,14 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	values[Anum_adb_ha_sync_log_sql_gram - 1] = CharGetDatum(grammar);	
 	values[Anum_adb_ha_sync_log_sql_kind - 1] = CharGetDatum(sql_kind);
 
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		schema_name = DirectFunctionCall1(current_schema, (Datum)0);
-	} PG_CATCH();
+	} PG_CATCH_HOLD();
 	{
 		errdump();
 		schema_name = (Datum) 0;
-	} PG_END_TRY();
+	} PG_END_TRY_HOLD();
 	
 	if (schema_name == (Datum) 0)
 		nulls[Anum_adb_ha_sync_log_sql_schema - 1] = true;

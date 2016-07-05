@@ -682,14 +682,14 @@ transformOraAExprOp(ParseState * pstate,
 
 	sv_coerce_kind = current_coerce_kind;
 	current_coerce_kind = ORA_COERCE_NOUSE;
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		result = (Node *) make_op(pstate,
 								  opname,
 								  lexpr,
 								  rexpr,
 								  location);
-	} PG_CATCH();
+	} PG_CATCH_HOLD();
 	{
 		/*
 		 * Here we make an error: e1
@@ -697,7 +697,7 @@ transformOraAExprOp(ParseState * pstate,
 		 * throw it before returning.
 		 */
 		err = true;
-	} PG_END_TRY();
+	} PG_END_TRY_HOLD();
 
 	if (!err)
 	{

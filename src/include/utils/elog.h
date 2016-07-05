@@ -395,7 +395,6 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 			error_context_stack = save_context_stack
 
 #define PG_END_TRY_HOLD()													\
-			errdump();														\
 			InterruptHoldoffCount = save_InterruptHoldoffCount;				\
 			QueryCancelHoldoffCount = save_QueryCancelHoldoffCount;			\
 		}																	\

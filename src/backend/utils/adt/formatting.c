@@ -3345,15 +3345,15 @@ DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 #ifdef ADB
 				{
 					volatile bool err = false;
-					PG_TRY();
+					PG_TRY_HOLD();
 					{
 						from_char_seq_search(&value, &s, months_full, ONE_UPPER,
 									 MAX_MONTH_LEN, n);
-					} PG_CATCH();
+					} PG_CATCH_HOLD();
 					{
 						errdump();
 						err = true;
-					} PG_END_TRY();
+					} PG_END_TRY_HOLD();
 
 					if (err)
 						from_char_seq_search(&value, &s, months, ONE_UPPER,

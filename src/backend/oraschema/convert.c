@@ -192,14 +192,14 @@ trunc_text_toint2(PG_FUNCTION_ARGS)
 		volatile bool err = false;
 
 		/* first call int2in to convert text to int2 */
-		PG_TRY();
+		PG_TRY_HOLD();
 		{
 			result = DirectFunctionCall1(int2in, CStringGetDatum(txtstr));
-		} PG_CATCH();
+		} PG_CATCH_HOLD();
 		{
 			errdump();
 			err = true;
-		} PG_END_TRY();
+		} PG_END_TRY_HOLD();
 
 		/* second try to trunc(text::numeric)::int2 */
 		if (err)
@@ -244,14 +244,14 @@ trunc_text_toint4(PG_FUNCTION_ARGS)
 		volatile bool err = false;
 
 		/* first call int4in to convert text to int4 */
-		PG_TRY();
+		PG_TRY_HOLD();
 		{
 			result = DirectFunctionCall1(int4in, CStringGetDatum(txtstr));
-		} PG_CATCH();
+		} PG_CATCH_HOLD();
 		{
 			errdump();
 			err = true;
-		} PG_END_TRY();
+		} PG_END_TRY_HOLD();
 
 		/* second try to trunc(text::numeric)::int4 */
 		if (err)
@@ -296,14 +296,14 @@ trunc_text_toint8(PG_FUNCTION_ARGS)
 		volatile bool err = false;
 
 		/* first call int8in to convert text to int8 */
-		PG_TRY();
+		PG_TRY_HOLD();
 		{
 			result = DirectFunctionCall1(int8in, CStringGetDatum(txtstr));
-		} PG_CATCH();
+		} PG_CATCH_HOLD();
 		{
 			errdump();
 			err = true;
-		} PG_END_TRY();
+		} PG_END_TRY_HOLD();
 
 		/* second try to trunc(text::numeric)::int8 */
 		if (err)

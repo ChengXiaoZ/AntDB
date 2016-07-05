@@ -163,7 +163,7 @@ ora_next_day(PG_FUNCTION_ARGS)
 	/*
 	 * first try next_day(date, idx)
 	 */
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		Datum integer_weekday;
 
@@ -172,11 +172,11 @@ ora_next_day(PG_FUNCTION_ARGS)
 
 		result = next_day_by_index(date, DatumGetInt32(integer_weekday));
 
-	} PG_CATCH();
+	} PG_CATCH_HOLD();
 	{
 		errdump();
 		err = true;
-	} PG_END_TRY();
+	} PG_END_TRY_HOLD();
 
 	/*
 	 * then try next_day(date, weekday)
