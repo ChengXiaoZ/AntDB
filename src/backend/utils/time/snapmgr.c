@@ -1285,6 +1285,8 @@ SetGlobalSnapshot(StringInfo input_message)
 	int i;
 	Assert(IS_PGXC_DATANODE || IsConnFromCoord());
 
+	UnsetGlobalSnapshot();
+
 	GlobalSnapshot = MemoryContextAllocZero(TopMemoryContext, sizeof(SnapshotData));
 	GlobalSnapshot->satisfies = HeapTupleSatisfiesMVCC;
 	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
@@ -1338,13 +1340,34 @@ OutputGlobalSnapshot(Snapshot snapshot)
 		(errmsg("%s", buf.data)));
 }
 
+static void
+CopyGlobalSnapshot(Snapshot from, Snapshot to)
+{
+	Assert(from && to);
+	to->xmin = from->xmin;
+	to->xmax = from->xmax;
+	to->xcnt = from->xcnt;
+	if (from->xcnt > 0)
+		memcpy(to->xip, from->xip, from->xcnt * sizeof(TransactionId));
+	to->subxcnt = from->subxcnt;
+	if (from->subxcnt > 0)
+		memcpy(to->subxip, from->subxip, from->subxcnt * sizeof(TransactionId));
+	to->suboverflowed = from->suboverflowed;
+	to->takenDuringRecovery = from->takenDuringRecovery;
+	to->copied = from->copied;
+	to->curcid = from->curcid;
+	to->active_count = from->active_count;
+	to->regd_count = from->regd_count;
+}
+
 /*
  * Entry of snapshot obtention for Postgres-XC node
  */
 Snapshot
 GetGlobalSnapshot(Snapshot snapshot)
 {
-	/*if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	/*if ((IS_PGXC_COORDINATOR && !IsConnFromCoord()) ||
+		IsPGXCNodeXactDatanodeDirect())
 	{*/
 		if (GlobalSnapshot == InvalidSnapshot ||
 			GlobalSnapshot != snapshot)
@@ -1353,7 +1376,10 @@ GetGlobalSnapshot(Snapshot snapshot)
 		}
 	/*} else
 	{
-		CopyGlobalSnapshot(GlobalSnapshot, snapshot);
+		if (GlobalSnapshot)
+			CopyGlobalSnapshot(GlobalSnapshot, snapshot);
+		else
+			agtm_GetGlobalSnapShot(snapshot);
 		return snapshot;
 	}*/
 
