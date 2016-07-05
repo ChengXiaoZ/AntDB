@@ -2356,6 +2356,9 @@ END_NODE(RownumExpr)
  */
 #ifndef NO_NODE_InsertStmt
 BEGIN_NODE(InsertStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,relation)		/* relation to insert into */
 	NODE_NODE(List,cols)			/* optional: names of the target columns */
 	NODE_NODE(Node,selectStmt)		/* the source SELECT/VALUES, or NULL */
@@ -2369,6 +2372,9 @@ END_NODE(InsertStmt)
  */
 #ifndef NO_NODE_DeleteStmt
 BEGIN_NODE(DeleteStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,relation)		/* relation to delete from */
 	NODE_NODE(List,usingClause)	/* optional using clause for more tables */
 	NODE_NODE(Node,whereClause)	/* qualifications */
@@ -2382,6 +2388,9 @@ END_NODE(DeleteStmt)
  */
 #ifndef NO_NODE_UpdateStmt
 BEGIN_NODE(UpdateStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,relation)		/* relation to update */
 	NODE_NODE(List,targetList)		/* the target list (of ResTarget) */
 	NODE_NODE(Node,whereClause)	/* qualifications */
@@ -2406,7 +2415,9 @@ END_NODE(UpdateStmt)
 
 #ifndef NO_NODE_SelectStmt
 BEGIN_NODE(SelectStmt)
-
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	/*
 	 * These fields are used only in "leaf" SelectStmts.
 	 */
@@ -2472,6 +2483,9 @@ END_NODE(SelectStmt)
  */
 #ifndef NO_NODE_SetOperationStmt
 BEGIN_NODE(SetOperationStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(SetOperation,op)			/* type of set op */
 	NODE_SCALAR(bool,all)			/* ALL specified? */
 	NODE_NODE(Node,larg)			/* left child */
@@ -2515,6 +2529,9 @@ END_NODE(SetOperationStmt)
  */
 #ifndef NO_NODE_CreateSchemaStmt
 BEGIN_NODE(CreateSchemaStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(schemaname)		/* the name of the schema to create */
 	NODE_STRING(authid)			/* the owner of the created schema */
 	NODE_NODE(List,schemaElts)		/* schema components (list of parsenodes) */
@@ -2529,6 +2546,7 @@ END_NODE(CreateSchemaStmt)
 #ifndef NO_NODE_AlterTableStmt
 BEGIN_NODE(AlterTableStmt)
 #ifdef ADB
+	NODE_SCALAR(int,endpos)
 	NODE_ENUM(ParseGrammar, grammar)
 #endif /* ADB */
 	NODE_NODE(RangeVar,relation)		/* table to work on */
@@ -2559,6 +2577,9 @@ END_NODE(AlterTableCmd)
  */
 #ifndef NO_NODE_AlterDomainStmt
 BEGIN_NODE(AlterDomainStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_SCALAR(char,subtype)		/*------------
 								 *	T = alter column default
 								 *	N = alter column drop not null
@@ -2583,6 +2604,9 @@ END_NODE(AlterDomainStmt)
 
 #ifndef NO_NODE_GrantStmt
 BEGIN_NODE(GrantStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_SCALAR(bool,is_grant)		/* true = GRANT, false = REVOKE */
 	NODE_ENUM(GrantTargetType,targtype)	/* type of the grant target */
 	NODE_ENUM(GrantObjectType,objtype)	/* kind of object being operated on */
@@ -2635,6 +2659,9 @@ END_NODE(AccessPriv)
  */
 #ifndef NO_NODE_GrantRoleStmt
 BEGIN_NODE(GrantRoleStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,granted_roles)	/* list of roles to be granted/revoked */
 	NODE_NODE(List,grantee_roles)	/* list of member roles to add/delete */
 	NODE_SCALAR(bool,is_grant)		/* true = GRANT, false = REVOKE */
@@ -2649,6 +2676,9 @@ END_NODE(GrantRoleStmt)
  */
 #ifndef NO_NODE_AlterDefaultPrivilegesStmt
 BEGIN_NODE(AlterDefaultPrivilegesStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,options)		/* list of DefElem */
 	NODE_NODE(GrantStmt,action)			/* GRANT/REVOKE action (with objects=NIL) */
 END_NODE(AlterDefaultPrivilegesStmt)
@@ -2663,6 +2693,9 @@ END_NODE(AlterDefaultPrivilegesStmt)
  */
 #ifndef NO_NODE_CopyStmt
 BEGIN_NODE(CopyStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,relation)		/* the relation to copy */
 	NODE_NODE(Node,query)			/* the SELECT query to copy */
 	NODE_NODE(List,attlist)		/* List of column names (as Strings), or NIL
@@ -2683,6 +2716,9 @@ END_NODE(CopyStmt)
 
 #ifndef NO_NODE_VariableSetStmt
 BEGIN_NODE(VariableSetStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(VariableSetKind,kind)
 	NODE_STRING(name)			/* variable to be set */
 	NODE_NODE(List,args)			/* List of A_Const nodes */
@@ -2695,6 +2731,9 @@ END_NODE(VariableSetStmt)
  */
 #ifndef NO_NODE_VariableShowStmt
 BEGIN_NODE(VariableShowStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(name)
 END_NODE(VariableShowStmt)
 #endif /* NO_NODE_VariableShowStmt */
@@ -2712,6 +2751,7 @@ END_NODE(VariableShowStmt)
 #ifndef NO_NODE_CreateStmt
 BEGIN_NODE(CreateStmt)
 #ifdef ADB
+	NODE_SCALAR(int,endpos)
 	NODE_ENUM(ParseGrammar, grammar)
 #endif
 	NODE_NODE(RangeVar,relation)		/* relation to create */
@@ -2825,6 +2865,9 @@ END_NODE(Constraint)
 
 #ifndef NO_NODE_CreateTableSpaceStmt
 BEGIN_NODE(CreateTableSpaceStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(tablespacename)
 	NODE_STRING(owner)
 	NODE_STRING(location)
@@ -2832,12 +2875,18 @@ END_NODE(CreateTableSpaceStmt)
 #endif /* NO_NODE_CreateTableSpaceStmt */
 #ifndef NO_NODE_DropTableSpaceStmt
 BEGIN_NODE(DropTableSpaceStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(tablespacename)
 	NODE_SCALAR(bool,missing_ok)		/* skip error if missing? */
 END_NODE(DropTableSpaceStmt)
 #endif /* NO_NODE_DropTableSpaceStmt */
 #ifndef NO_NODE_AlterTableSpaceOptionsStmt
 BEGIN_NODE(AlterTableSpaceOptionsStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(tablespacename)
 	NODE_NODE(List,options)
 	NODE_SCALAR(bool,isReset)
@@ -2850,6 +2899,9 @@ END_NODE(AlterTableSpaceOptionsStmt)
 
 #ifndef NO_NODE_CreateExtensionStmt
 BEGIN_NODE(CreateExtensionStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(extname)
 	NODE_SCALAR(bool,if_not_exists)	/* just do nothing if it already exists? */
 	NODE_NODE(List,options)		/* List of DefElem nodes */
@@ -2858,12 +2910,18 @@ END_NODE(CreateExtensionStmt)
 /* Only used for ALTER EXTENSION UPDATE; later might need an action field */
 #ifndef NO_NODE_AlterExtensionStmt
 BEGIN_NODE(AlterExtensionStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(extname)
 	NODE_NODE(List,options)		/* List of DefElem nodes */
 END_NODE(AlterExtensionStmt)
 #endif /* NO_NODE_AlterExtensionStmt */
 #ifndef NO_NODE_AlterExtensionContentsStmt
 BEGIN_NODE(AlterExtensionContentsStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(extname)		/* Extension's name */
 	NODE_SCALAR(int,action)			/* +1 = add object, -1 = drop object */
 	NODE_ENUM(ObjectType,objtype)		/* Object's type */
@@ -2878,6 +2936,9 @@ END_NODE(AlterExtensionContentsStmt)
 
 #ifndef NO_NODE_CreateFdwStmt
 BEGIN_NODE(CreateFdwStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(fdwname)		/* foreign-data wrapper name */
 	NODE_NODE(List,func_options)	/* HANDLER/VALIDATOR options */
 	NODE_NODE(List,options)		/* generic options to FDW */
@@ -2885,6 +2946,9 @@ END_NODE(CreateFdwStmt)
 #endif /* NO_NODE_CreateFdwStmt */
 #ifndef NO_NODE_AlterFdwStmt
 BEGIN_NODE(AlterFdwStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(fdwname)		/* foreign-data wrapper name */
 	NODE_NODE(List,func_options)	/* HANDLER/VALIDATOR options */
 	NODE_NODE(List,options)		/* generic options to FDW */
@@ -2897,6 +2961,9 @@ END_NODE(AlterFdwStmt)
 
 #ifndef NO_NODE_CreateForeignServerStmt
 BEGIN_NODE(CreateForeignServerStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(servername)		/* server name */
 	NODE_STRING(servertype)		/* optional server type */
 	NODE_STRING(version)		/* optional server version */
@@ -2906,6 +2973,9 @@ END_NODE(CreateForeignServerStmt)
 #endif /* NO_NODE_CreateForeignServerStmt */
 #ifndef NO_NODE_AlterForeignServerStmt
 BEGIN_NODE(AlterForeignServerStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(servername)		/* server name */
 	NODE_STRING(version)		/* optional server version */
 	NODE_NODE(List,options)		/* generic options to server */
@@ -2927,6 +2997,9 @@ END_NODE(CreateForeignTableStmt)
 
 #ifndef NO_NODE_CreateUserMappingStmt
 BEGIN_NODE(CreateUserMappingStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(username)		/* username or PUBLIC/CURRENT_USER */
 	NODE_STRING(servername)		/* server name */
 	NODE_NODE(List,options)		/* generic options to server */
@@ -2934,6 +3007,9 @@ END_NODE(CreateUserMappingStmt)
 #endif /* NO_NODE_CreateUserMappingStmt */
 #ifndef NO_NODE_AlterUserMappingStmt
 BEGIN_NODE(AlterUserMappingStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(username)		/* username or PUBLIC/CURRENT_USER */
 	NODE_STRING(servername)		/* server name */
 	NODE_NODE(List,options)		/* generic options to server */
@@ -2941,6 +3017,9 @@ END_NODE(AlterUserMappingStmt)
 #endif /* NO_NODE_AlterUserMappingStmt */
 #ifndef NO_NODE_DropUserMappingStmt
 BEGIN_NODE(DropUserMappingStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(username)		/* username or PUBLIC/CURRENT_USER */
 	NODE_STRING(servername)		/* server name */
 	NODE_SCALAR(bool,missing_ok)		/* ignore missing mappings */
@@ -2952,6 +3031,9 @@ END_NODE(DropUserMappingStmt)
  */
 #ifndef NO_NODE_CreateTrigStmt
 BEGIN_NODE(CreateTrigStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(trigname)		/* TRIGGER's name */
 	NODE_NODE(RangeVar,relation)		/* relation trigger is on */
 	NODE_NODE(List,funcname)		/* qual. name of function to call */
@@ -2976,6 +3058,9 @@ END_NODE(CreateTrigStmt)
  */
 #ifndef NO_NODE_CreateEventTrigStmt
 BEGIN_NODE(CreateEventTrigStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(trigname)		/* TRIGGER's name */
 	NODE_STRING(eventname)		/* event's identifier */
 	NODE_NODE(List,whenclause)		/* list of DefElems indicating filtering */
@@ -2988,6 +3073,9 @@ END_NODE(CreateEventTrigStmt)
  */
 #ifndef NO_NODE_AlterEventTrigStmt
 BEGIN_NODE(AlterEventTrigStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(trigname)		/* TRIGGER's name */
 	NODE_SCALAR(char,tgenabled)		/* trigger's firing configuration WRT
 								 * session_replication_role */
@@ -3000,6 +3088,9 @@ END_NODE(AlterEventTrigStmt)
  */
 #ifndef NO_NODE_CreatePLangStmt
 BEGIN_NODE(CreatePLangStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_SCALAR(bool,replace)		/* T => replace if already exists */
 	NODE_STRING(plname)			/* PL name */
 	NODE_NODE(List,plhandler)		/* PL call handler function (qual. name) */
@@ -3020,6 +3111,9 @@ END_NODE(CreatePLangStmt)
 
 #ifndef NO_NODE_CreateRoleStmt
 BEGIN_NODE(CreateRoleStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(RoleStmtType,stmt_type)		/* ROLE/USER/GROUP */
 	NODE_STRING(role)			/* role name */
 	NODE_NODE(List,options)		/* List of DefElem nodes */
@@ -3027,6 +3121,9 @@ END_NODE(CreateRoleStmt)
 #endif /* NO_NODE_CreateRoleStmt */
 #ifndef NO_NODE_AlterRoleStmt
 BEGIN_NODE(AlterRoleStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(role)			/* role name */
 	NODE_NODE(List,options)		/* List of DefElem nodes */
 	NODE_SCALAR(int,action)			/* +1 = add members, -1 = drop members */
@@ -3034,6 +3131,9 @@ END_NODE(AlterRoleStmt)
 #endif /* NO_NODE_AlterRoleStmt */
 #ifndef NO_NODE_AlterRoleSetStmt
 BEGIN_NODE(AlterRoleSetStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(role)			/* role name */
 	NODE_STRING(database)		/* database name, or NULL */
 	NODE_NODE(VariableSetStmt,setstmt)	/* SET or RESET subcommand */
@@ -3041,6 +3141,9 @@ END_NODE(AlterRoleSetStmt)
 #endif /* NO_NODE_AlterRoleSetStmt */
 #ifndef NO_NODE_DropRoleStmt
 BEGIN_NODE(DropRoleStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,roles)			/* List of roles to remove */
 	NODE_SCALAR(bool,missing_ok)		/* skip error if a role is missing? */
 END_NODE(DropRoleStmt)
@@ -3052,6 +3155,9 @@ END_NODE(DropRoleStmt)
 
 #ifndef NO_NODE_CreateSeqStmt
 BEGIN_NODE(CreateSeqStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,sequence)		/* the sequence to create */
 	NODE_NODE(List,options)
 	NODE_SCALAR(Oid,ownerId)		/* ID of owner, or InvalidOid for default */
@@ -3062,6 +3168,9 @@ END_NODE(CreateSeqStmt)
 #endif /* NO_NODE_CreateSeqStmt */
 #ifndef NO_NODE_AlterSeqStmt
 BEGIN_NODE(AlterSeqStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,sequence)		/* the sequence to alter */
 	NODE_NODE(List,options)
 	NODE_SCALAR(bool,missing_ok)		/* skip error if a role is missing? */
@@ -3076,6 +3185,9 @@ END_NODE(AlterSeqStmt)
  */
 #ifndef NO_NODE_DefineStmt
 BEGIN_NODE(DefineStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,kind)			/* aggregate, operator, type */
 	NODE_SCALAR(bool,oldstyle)		/* hack to signal old CREATE AGG syntax */
 	NODE_NODE(List,defnames)		/* qualified name (list of Value strings) */
@@ -3089,6 +3201,9 @@ END_NODE(DefineStmt)
  */
 #ifndef NO_NODE_CreateDomainStmt
 BEGIN_NODE(CreateDomainStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,domainname)		/* qualified name (list of Value strings) */
 	NODE_NODE(TypeName,typeName)		/* the base type */
 	NODE_NODE(CollateClause,collClause)	/* untransformed COLLATE spec, if any */
@@ -3101,6 +3216,9 @@ END_NODE(CreateDomainStmt)
  */
 #ifndef NO_NODE_CreateOpClassStmt
 BEGIN_NODE(CreateOpClassStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,opclassname)	/* qualified name (list of Value strings) */
 	NODE_NODE(List,opfamilyname)	/* qualified name (ditto); NIL if omitted */
 	NODE_STRING(amname)			/* name of index AM opclass is for */
@@ -3132,6 +3250,9 @@ END_NODE(CreateOpClassItem)
  */
 #ifndef NO_NODE_CreateOpFamilyStmt
 BEGIN_NODE(CreateOpFamilyStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,opfamilyname)	/* qualified name (list of Value strings) */
 	NODE_STRING(amname)			/* name of index AM opfamily is for */
 END_NODE(CreateOpFamilyStmt)
@@ -3142,6 +3263,9 @@ END_NODE(CreateOpFamilyStmt)
  */
 #ifndef NO_NODE_AlterOpFamilyStmt
 BEGIN_NODE(AlterOpFamilyStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,opfamilyname)	/* qualified name (list of Value strings) */
 	NODE_STRING(amname)			/* name of index AM opfamily is for */
 	NODE_SCALAR(bool,isDrop)			/* ADD or DROP the items? */
@@ -3155,6 +3279,9 @@ END_NODE(AlterOpFamilyStmt)
 
 #ifndef NO_NODE_DropStmt
 BEGIN_NODE(DropStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,objects)		/* list of sublists of names (as Values) */
 	NODE_NODE(List,arguments)		/* list of sublists of arguments (as Values) */
 	NODE_ENUM(ObjectType,removeType)		/* object type */
@@ -3169,6 +3296,9 @@ END_NODE(DropStmt)
  */
 #ifndef NO_NODE_TruncateStmt
 BEGIN_NODE(TruncateStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,relations)		/* relations (RangeVars) to be truncated */
 	NODE_SCALAR(bool,restart_seqs)	/* restart owned sequences? */
 	NODE_ENUM(DropBehavior,behavior)		/* RESTRICT or CASCADE behavior */
@@ -3177,6 +3307,9 @@ END_NODE(TruncateStmt)
 
 #ifndef NO_NODE_CommentStmt
 BEGIN_NODE(CommentStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,objtype)		/* Object's type */
 	NODE_NODE(List,objname)		/* Qualified name of the object */
 	NODE_NODE(List,objargs)		/* Arguments if needed (eg, for functions) */
@@ -3189,6 +3322,9 @@ END_NODE(CommentStmt)
  */
 #ifndef NO_NODE_SecLabelStmt
 BEGIN_NODE(SecLabelStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,objtype)		/* Object's type */
 	NODE_NODE(List,objname)		/* Qualified name of the object */
 	NODE_NODE(List,objargs)		/* Arguments if needed (eg, for functions) */
@@ -3216,6 +3352,9 @@ END_NODE(SecLabelStmt)
 
 #ifndef NO_NODE_DeclareCursorStmt
 BEGIN_NODE(DeclareCursorStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(portalname)		/* name of the portal (cursor) */
 	NODE_SCALAR(int,options)		/* bitmask of options (see above) */
 	NODE_NODE(Node,query)			/* the raw SELECT query */
@@ -3227,6 +3366,9 @@ END_NODE(DeclareCursorStmt)
  */
 #ifndef NO_NODE_ClosePortalStmt
 BEGIN_NODE(ClosePortalStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(portalname)		/* name of the portal (cursor) */
 	/* NULL means CLOSE ALL */
 END_NODE(ClosePortalStmt)
@@ -3234,6 +3376,9 @@ END_NODE(ClosePortalStmt)
 
 #ifndef NO_NODE_FetchStmt
 BEGIN_NODE(FetchStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(FetchDirection,direction)	/* see above */
 	NODE_SCALAR(long,howMany)		/* number of rows, or position argument */
 	NODE_STRING(portalname)		/* name of portal (cursor) */
@@ -3254,6 +3399,7 @@ END_NODE(FetchStmt)
 #ifndef NO_NODE_IndexStmt
 BEGIN_NODE(IndexStmt)
 #ifdef ADB
+	NODE_SCALAR(int,endpos)
 	NODE_ENUM(ParseGrammar, grammar)
 #endif /* ADB */
 	NODE_STRING(idxname)		/* name of new index, or NULL for default */
@@ -3281,6 +3427,9 @@ END_NODE(IndexStmt)
  */
 #ifndef NO_NODE_CreateFunctionStmt
 BEGIN_NODE(CreateFunctionStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_SCALAR(bool,replace)		/* T => replace if already exists */
 	NODE_NODE(List,funcname)		/* qualified name of function to create */
 	NODE_NODE(List,parameters)		/* a list of FunctionParameter */
@@ -3300,6 +3449,9 @@ END_NODE(FunctionParameter)
 #endif /* NO_NODE_FunctionParameter */
 #ifndef NO_NODE_AlterFunctionStmt
 BEGIN_NODE(AlterFunctionStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(FuncWithArgs,func)			/* name and args of function */
 	NODE_NODE(List,actions)		/* list of DefElem */
 END_NODE(AlterFunctionStmt)
@@ -3312,6 +3464,9 @@ END_NODE(AlterFunctionStmt)
  */
 #ifndef NO_NODE_DoStmt
 BEGIN_NODE(DoStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,args)			/* List of DefElem nodes */
 END_NODE(DoStmt)
 #endif /* NO_NODE_DoStmt */
@@ -3328,6 +3483,9 @@ END_NODE(InlineCodeBlock)
  */
 #ifndef NO_NODE_RenameStmt
 BEGIN_NODE(RenameStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,renameType)		/* OBJECT_TABLE, OBJECT_COLUMN, etc */
 	NODE_ENUM(ObjectType,relationType)	/* if column name, associated relation type */
 	NODE_NODE(RangeVar,relation)		/* in case it's a table */
@@ -3346,6 +3504,9 @@ END_NODE(RenameStmt)
  */
 #ifndef NO_NODE_AlterObjectSchemaStmt
 BEGIN_NODE(AlterObjectSchemaStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,objectType)		/* OBJECT_TABLE, OBJECT_TYPE, etc */
 	NODE_NODE(RangeVar,relation)		/* in case it's a table */
 	NODE_NODE(List,object)			/* in case it's some other object */
@@ -3357,6 +3518,9 @@ END_NODE(AlterObjectSchemaStmt)
 
 #ifndef NO_NODE_AlterOwnerStmt
 BEGIN_NODE(AlterOwnerStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,objectType)		/* OBJECT_TABLE, OBJECT_TYPE, etc */
 	NODE_NODE(RangeVar,relation)		/* in case it's a table */
 	NODE_NODE(List,object)			/* in case it's some other object */
@@ -3371,6 +3535,9 @@ END_NODE(AlterOwnerStmt)
  */
 #ifndef NO_NODE_RuleStmt
 BEGIN_NODE(RuleStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,relation)		/* relation the rule is for */
 	NODE_STRING(rulename)		/* name of the rule */
 	NODE_NODE(Node,whereClause)	/* qualifications */
@@ -3386,6 +3553,9 @@ END_NODE(RuleStmt)
  */
 #ifndef NO_NODE_NotifyStmt
 BEGIN_NODE(NotifyStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(conditionname)	/* condition name to notify */
 	NODE_STRING(payload)		/* the payload string, or NULL if none */
 END_NODE(NotifyStmt)
@@ -3396,6 +3566,9 @@ END_NODE(NotifyStmt)
  */
 #ifndef NO_NODE_ListenStmt
 BEGIN_NODE(ListenStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(conditionname)	/* condition name to listen on */
 END_NODE(ListenStmt)
 #endif /* NO_NODE_ListenStmt */
@@ -3405,6 +3578,9 @@ END_NODE(ListenStmt)
  */
 #ifndef NO_NODE_UnlistenStmt
 BEGIN_NODE(UnlistenStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(conditionname)	/* name to unlisten on, or NULL for all */
 END_NODE(UnlistenStmt)
 #endif /* NO_NODE_UnlistenStmt */
@@ -3433,6 +3609,9 @@ END_NODE(TransactionStmt)
  */
 #ifndef NO_NODE_CompositeTypeStmt
 BEGIN_NODE(CompositeTypeStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,typevar)		/* the composite type to be created */
 	NODE_NODE(List,coldeflist)		/* list of ColumnDef nodes */
 END_NODE(CompositeTypeStmt)
@@ -3443,6 +3622,9 @@ END_NODE(CompositeTypeStmt)
  */
 #ifndef NO_NODE_CreateEnumStmt
 BEGIN_NODE(CreateEnumStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,typeName)		/* qualified name (list of Value strings) */
 	NODE_NODE(List,vals)			/* enum values (list of Value strings) */
 END_NODE(CreateEnumStmt)
@@ -3453,6 +3635,9 @@ END_NODE(CreateEnumStmt)
  */
 #ifndef NO_NODE_CreateRangeStmt
 BEGIN_NODE(CreateRangeStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,typeName)		/* qualified name (list of Value strings) */
 	NODE_NODE(List,params)			/* range parameters (list of DefElem) */
 END_NODE(CreateRangeStmt)
@@ -3463,6 +3648,9 @@ END_NODE(CreateRangeStmt)
  */
 #ifndef NO_NODE_AlterEnumStmt
 BEGIN_NODE(AlterEnumStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,typeName)		/* qualified name (list of Value strings) */
 	NODE_STRING(newVal)			/* new enum value's name */
 	NODE_STRING(newValNeighbor) /* neighboring enum value, if specified */
@@ -3477,6 +3665,7 @@ END_NODE(AlterEnumStmt)
 #ifndef NO_NODE_ViewStmt
 BEGIN_NODE(ViewStmt)
 #ifdef ADB
+	NODE_SCALAR(int,endpos)
 	NODE_ENUM(ParseGrammar, grammar)
 #endif
 	NODE_NODE(RangeVar,view)			/* the view to be created */
@@ -3492,6 +3681,9 @@ END_NODE(ViewStmt)
  */
 #ifndef NO_NODE_LoadStmt
 BEGIN_NODE(LoadStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(filename)		/* file to load */
 END_NODE(LoadStmt)
 #endif /* NO_NODE_LoadStmt */
@@ -3501,6 +3693,9 @@ END_NODE(LoadStmt)
  */
 #ifndef NO_NODE_CreatedbStmt
 BEGIN_NODE(CreatedbStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(dbname)			/* name of database to create */
 	NODE_NODE(List,options)		/* List of DefElem nodes */
 END_NODE(CreatedbStmt)
@@ -3511,12 +3706,18 @@ END_NODE(CreatedbStmt)
  */
 #ifndef NO_NODE_AlterDatabaseStmt
 BEGIN_NODE(AlterDatabaseStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(dbname)			/* name of database to alter */
 	NODE_NODE(List,options)		/* List of DefElem nodes */
 END_NODE(AlterDatabaseStmt)
 #endif /* NO_NODE_AlterDatabaseStmt */
 #ifndef NO_NODE_AlterDatabaseSetStmt
 BEGIN_NODE(AlterDatabaseSetStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(dbname)			/* database name */
 	NODE_NODE(VariableSetStmt,setstmt)	/* SET or RESET subcommand */
 END_NODE(AlterDatabaseSetStmt)
@@ -3527,6 +3728,9 @@ END_NODE(AlterDatabaseSetStmt)
  */
 #ifndef NO_NODE_DropdbStmt
 BEGIN_NODE(DropdbStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(dbname)			/* database to drop */
 	NODE_SCALAR(bool,missing_ok)		/* skip error if db is missing? */
 END_NODE(DropdbStmt)
@@ -3537,6 +3741,9 @@ END_NODE(DropdbStmt)
  */
 #ifndef NO_NODE_ClusterStmt
 BEGIN_NODE(ClusterStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(RangeVar,relation)		/* relation being indexed, or NULL if all */
 	NODE_STRING(indexname)		/* original index defined */
 	NODE_SCALAR(bool,verbose)		/* print progress info */
@@ -3555,6 +3762,9 @@ END_NODE(ClusterStmt)
 
 #ifndef NO_NODE_VacuumStmt
 BEGIN_NODE(VacuumStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_SCALAR(int,options)		/* OR of VacuumOption flags */
 	NODE_SCALAR(int,freeze_min_age) /* min freeze age, or -1 to use default */
 	NODE_SCALAR(int,freeze_table_age)		/* age at which to scan whole table */
@@ -3574,6 +3784,9 @@ END_NODE(VacuumStmt)
  */
 #ifndef NO_NODE_BarrierStmt
 BEGIN_NODE(BarrierStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(id)			/* User supplied barrier id, if any */
 END_NODE(BarrierStmt)
 #endif /* NO_NODE_BarrierStmt */
@@ -3590,6 +3803,9 @@ END_NODE(BarrierStmt)
  */
 #ifndef NO_NODE_ExplainStmt
 BEGIN_NODE(ExplainStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(Node,query)			/* the query (see comments above) */
 	NODE_NODE(List,options)		/* list of DefElem nodes */
 END_NODE(ExplainStmt)
@@ -3610,6 +3826,7 @@ END_NODE(ExplainStmt)
 #ifndef NO_NODE_CreateTableAsStmt
 BEGIN_NODE(CreateTableAsStmt)
 #ifdef ADB
+	NODE_SCALAR(int,endpos)
 	NODE_ENUM(ParseGrammar, grammar)
 #endif
 	NODE_NODE(Node,query)			/* the query (see comments above) */
@@ -3624,6 +3841,9 @@ END_NODE(CreateTableAsStmt)
  */
 #ifndef NO_NODE_RefreshMatViewStmt
 BEGIN_NODE(RefreshMatViewStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_SCALAR(bool,skipData)		/* true for WITH NO DATA */
 	NODE_NODE(RangeVar,relation)		/* relation to insert into */
 END_NODE(RefreshMatViewStmt)
@@ -3634,6 +3854,9 @@ END_NODE(RefreshMatViewStmt)
  */
 #ifndef NO_NODE_CheckPointStmt
 BEGIN_NODE(CheckPointStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 END_NODE(CheckPointStmt)
 #endif /* NO_NODE_CheckPointStmt */
 /* ----------------------
@@ -3644,6 +3867,9 @@ END_NODE(CheckPointStmt)
 
 #ifndef NO_NODE_DiscardStmt
 BEGIN_NODE(DiscardStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(DiscardMode,target)
 END_NODE(DiscardStmt)
 #endif /* NO_NODE_DiscardStmt */
@@ -3653,6 +3879,9 @@ END_NODE(DiscardStmt)
  */
 #ifndef NO_NODE_LockStmt
 BEGIN_NODE(LockStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,relations)		/* relations to lock */
 	NODE_SCALAR(int,mode)			/* lock mode */
 	NODE_SCALAR(bool,nowait)			/* no wait mode */
@@ -3664,6 +3893,9 @@ END_NODE(LockStmt)
  */
 #ifndef NO_NODE_ConstraintsSetStmt
 BEGIN_NODE(ConstraintsSetStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,constraints)	/* List of names as RangeVars */
 	NODE_SCALAR(bool,deferred)
 END_NODE(ConstraintsSetStmt)
@@ -3674,6 +3906,9 @@ END_NODE(ConstraintsSetStmt)
  */
 #ifndef NO_NODE_ReindexStmt
 BEGIN_NODE(ReindexStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_ENUM(ObjectType,kind)			/* OBJECT_INDEX, OBJECT_TABLE, etc. */
 	NODE_NODE(RangeVar,relation)		/* Table or index to reindex */
 	NODE_STRING(name)			/* name of database to reindex */
@@ -3687,6 +3922,9 @@ END_NODE(ReindexStmt)
  */
 #ifndef NO_NODE_CreateConversionStmt
 BEGIN_NODE(CreateConversionStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,conversion_name)	/* Name of the conversion */
 	NODE_STRING(for_encoding_name)		/* source encoding name */
 	NODE_STRING(to_encoding_name)		/* destination encoding name */
@@ -3700,6 +3938,9 @@ END_NODE(CreateConversionStmt)
  */
 #ifndef NO_NODE_CreateCastStmt
 BEGIN_NODE(CreateCastStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(TypeName,sourcetype)
 	NODE_NODE(TypeName,targettype)
 	NODE_NODE(FuncWithArgs,func)
@@ -3713,6 +3954,9 @@ END_NODE(CreateCastStmt)
  */
 #ifndef NO_NODE_PrepareStmt
 BEGIN_NODE(PrepareStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(name)			/* Name of plan, arbitrary */
 	NODE_NODE(List,argtypes)		/* Types of parameters (List of TypeName) */
 	NODE_NODE(Node,query)			/* The query itself (as a raw parsetree) */
@@ -3726,6 +3970,9 @@ END_NODE(PrepareStmt)
 
 #ifndef NO_NODE_ExecuteStmt
 BEGIN_NODE(ExecuteStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(name)			/* The name of the plan to execute */
 	NODE_NODE(List,params)			/* Values to assign to parameters */
 END_NODE(ExecuteStmt)
@@ -3737,6 +3984,9 @@ END_NODE(ExecuteStmt)
  */
 #ifndef NO_NODE_DeallocateStmt
 BEGIN_NODE(DeallocateStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_STRING(name)			/* The name of the plan to remove */
 	/* NULL means DEALLOCATE ALL */
 END_NODE(DeallocateStmt)
@@ -3746,6 +3996,9 @@ END_NODE(DeallocateStmt)
  */
 #ifndef NO_NODE_DropOwnedStmt
 BEGIN_NODE(DropOwnedStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,roles)
 	NODE_ENUM(DropBehavior,behavior)
 END_NODE(DropOwnedStmt)
@@ -3755,6 +4008,9 @@ END_NODE(DropOwnedStmt)
  */
 #ifndef NO_NODE_ReassignOwnedStmt
 BEGIN_NODE(ReassignOwnedStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,roles)
 	NODE_STRING(newrole)
 END_NODE(ReassignOwnedStmt)
@@ -3764,6 +4020,9 @@ END_NODE(ReassignOwnedStmt)
  */
 #ifndef NO_NODE_AlterTSDictionaryStmt
 BEGIN_NODE(AlterTSDictionaryStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,dictname)		/* qualified name (list of Value strings) */
 	NODE_NODE(List,options)		/* List of DefElem nodes */
 END_NODE(AlterTSDictionaryStmt)
@@ -3773,6 +4032,9 @@ END_NODE(AlterTSDictionaryStmt)
  */
 #ifndef NO_NODE_AlterTSConfigurationStmt
 BEGIN_NODE(AlterTSConfigurationStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,cfgname)		/* qualified name (list of Value strings) */
 	NODE_NODE(List,tokentype)		/* list of Value strings */
 	NODE_NODE(List,dicts)			/* list of list of Value strings */
@@ -3787,6 +4049,9 @@ END_NODE(AlterTSConfigurationStmt)
  */
 #ifndef NO_NODE_ExecDirectStmt
 BEGIN_NODE(ExecDirectStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,node_names)
 	NODE_STRING(query)
 END_NODE(ExecDirectStmt)
@@ -3796,6 +4061,9 @@ END_NODE(ExecDirectStmt)
  */
 #ifndef NO_NODE_CleanConnStmt
 BEGIN_NODE(CleanConnStmt)
+#ifdef ADB
+	NODE_SCALAR(int,endpos)
+#endif
 	NODE_NODE(List,nodes)		/* list of nodes dropped */
 	NODE_STRING(dbname)	/* name of database to drop connections */
 	NODE_STRING(username)	/* name of user whose connections are dropped */

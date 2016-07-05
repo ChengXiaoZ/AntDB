@@ -1363,9 +1363,6 @@ _equalUnlistenStmt(const UnlistenStmt *a, const UnlistenStmt *b)
 static bool
 _equalTransactionStmt(const TransactionStmt *a, const TransactionStmt *b)
 {
-#ifdef ADB
-	COMPARE_SCALAR_FIELD(endpos);
-#endif
 #if defined(ADB) || defined(AGTM)
 	COMPARE_SCALAR_FIELD(missing_ok);
 #endif
