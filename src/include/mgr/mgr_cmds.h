@@ -147,8 +147,10 @@ extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const Timesta
 
 /*monitor_slowlog.c*/
 extern char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
-extern int monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname);
+extern void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname);
 extern HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, char *dbname, char *username, float singletime, int totalnum, char *query, char *queryplan);
 extern Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS);
+extern HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsyestd, bool *gettoday, bool *getyesdt, char *query, char *user, char *dbname, pg_time_t ptimenow);
+extern void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port);
 
 #endif /* MGR_CMDS_H */

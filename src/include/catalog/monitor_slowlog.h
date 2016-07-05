@@ -14,14 +14,14 @@
 
 CATALOG(monitor_slowlog,4954)
 {
-	timestamptz			monitor_slowlog_time;					/* monitor tps timestamp */
-	NameData				monitor_slowlog_dbname;	      /*the database name*/
-	NameData				monitor_slowlog_user;			
-	float4					monitor_slowlog_singletime;   /*single query one time*/
-	int32						monitor_slowlog_totalnum;			/*how many num the query has runned*/
+	NameData				slowlogdbname;				/*the database name*/
+	NameData				slowloguser;
+	float4					slowlogsingletime;			/*single query one time*/
+	int32					slowlogtotalnum;			/*how many num the query has runned*/
+	timestamptz				slowlogtime;				/* monitor tps timestamp */
 #ifdef CATALOG_VARLEN
-	text						monitor_slowlog_query;				/*the query*/
-	text						monitor_slowlog_queryplan;    /*plan for the query*/
+	text						slowlogquery;			/*the query*/
+	text						slowlogqueryplan;		/*plan for the query*/
 #endif /* CATALOG_VARLEN */	
 } FormData_monitor_slowlog;
 
@@ -41,12 +41,12 @@ typedef FormData_monitor_slowlog *Form_monitor_slowlog;
  * ----------------
  */
 #define Natts_monitor_slowlog									7
-#define Anum_monitor_slowlog_time							1
-#define Anum_monitor_slowlog_dbname						2
-#define Anum_monitor_slowlog_user							3
-#define Anum_monitor_slowlog_singletime				4
-#define Anum_monitor_slowlog_totalnum					5
-#define Anum_monitor_slowlog_query						6
-#define Anum_monitor_slowlog_queryplan				7
+#define Anum_monitor_slowlog_dbname								1
+#define Anum_monitor_slowlog_user								2
+#define Anum_monitor_slowlog_singletime							3
+#define Anum_monitor_slowlog_totalnum							4
+#define Anum_monitor_slowlog_time								5
+#define Anum_monitor_slowlog_query								6
+#define Anum_monitor_slowlog_queryplan							7
 
 #endif /* MONITOR_SLOWLOG_H */

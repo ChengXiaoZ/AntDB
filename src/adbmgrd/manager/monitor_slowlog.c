@@ -34,6 +34,13 @@
 #include "access/xact.h"
 #include "utils/date.h"
 
+
+#define GETMAXROWNUM 5
+#define QUERYMINTIME 2
+#define GETTODAYSTARTTIME(time) ((int)(time/3600/24)*24*3600)
+#define GETLASTDAYSTARTTIME(time) ((int)((time-24*3600)/3600/24)*24*3600)
+#define GETTOMARROWSTARTTIME(time) ((int)((time+24*3600)/3600/24)*24*3600)
+
 /*given one sqlstr, return the result*/
 char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname)
 {
@@ -81,7 +88,7 @@ char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, 
 
 
 /*
-* get 5 rows from pg_stat_statements on everyone coordinator using given sql. using follow method to judge which need 
+* get GETMAXROWNUM rows from pg_stat_statements on everyone coordinator using given sql. using follow method to judge which need 
 * insert into monitor_slowlog table: 1. judge the query exist in yesterday records or not. if not in yesterday records 
 *	or the calls does not equal yesterday's calls on same query, just insert into monitor_slowlog table; if the calls 
 *	equals yesterday's calls on same query, ignore the query.
@@ -91,7 +98,7 @@ char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, 
 *
 */
 
-int monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname)
+void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname)
 {
 	StringInfoData constr;
 	StringInfoData sqlslowlogStrData;
@@ -100,19 +107,21 @@ int monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, i
 	char *connectdbname = "postgres";
 	char *dbuser = NULL;
 	char *querystr = NULL;
-	char *queryplanstr = NULL;
-	char *queryplanres = NULL;
-	char *getplanerror = "check the query, cannot get the queryplan.";
-	int oneCoordTpsInt = -1;
 	int nrow = 0;
 	int ncol = 0;
 	int rowloop = 0;
 	int calls = 0;
-	int queryplanlen;
 	TimestampTz time;
 	float totaltime = 0;
-	HeapTuple tup_result;
-
+	float singletime = 0;
+	HeapTuple tupleret = NULL;
+	int callstoday = 0;
+	int callsyestd = 0;
+	int callstmp = 0;
+	bool gettoday = false;
+	bool getyesdt = false;	
+	Form_monitor_slowlog monitor_slowlog;	
+	pg_time_t ptimenow;
 	
 	initStringInfo(&constr);
 	initStringInfo(&sqlslowlogStrData);
@@ -122,32 +131,30 @@ int monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, i
 	/* Check to see that the backend connection was successfully made */
 	if (PQstatus(conn) != CONNECTION_OK) 
 	{
-		ereport(LOG,
-		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
 		PQfinish(conn);
 		pfree(constr.data);
 		pfree(sqlslowlogStrData.data);
-		return -1;
+		ereport(ERROR,
+		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
 	}
-	appendStringInfo(&sqlslowlogStrData, "select usename, calls, total_time/1000 as totaltime, query  from pg_stat_statements, pg_user, pg_database where ( total_time/calls/1000) > 2 and userid=usesysid and pg_database.oid = dbid and datname=\'%s\';", dbname);
+	appendStringInfo(&sqlslowlogStrData, "select usename, calls, total_time/1000 as totaltime, query  from pg_stat_statements, pg_user, pg_database where ( total_time/calls/1000) > %d and userid=usesysid and pg_database.oid = dbid and datname=\'%s\' limit %d;", QUERYMINTIME, dbname, GETMAXROWNUM);
 	res = PQexec(conn, sqlslowlogStrData.data);
 	if(PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		ereport(LOG,
-			(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
 		PQclear(res);
 		PQfinish(conn);
 		pfree(constr.data);
 		pfree(sqlslowlogStrData.data);
-		return -1;
+		ereport(ERROR,
+			(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
 	}
 	/*get row number*/
 	nrow = PQntuples(res);
 	/*get column number*/
 	ncol = PQnfields(res);
 	time = GetCurrentTimestamp();
+	ptimenow = timestamptz_to_time_t(time);
 
-		
 	for(rowloop=0; rowloop<nrow; rowloop++)
 	{
 		/*get username*/
@@ -156,35 +163,88 @@ int monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, i
 		calls = atoi(PQgetvalue(res, rowloop, 1 ));
 		/*get total used time*/
 		totaltime = atof(PQgetvalue(res, rowloop, 2 ));
+		singletime = totaltime/calls;
 		/*get query string*/
 		querystr = PQgetvalue(res, rowloop, 3 );
 		/*get queryplan*/
-		
-		queryplanlen = strlen(querystr) + strlen("explain ")+1;
-		queryplanstr = (char *)palloc(queryplanlen*sizeof(char));
-		strcpy(queryplanstr, "explain ");
-		strcpy(queryplanstr + strlen("explain "), querystr);
-		queryplanstr[queryplanlen-1] = '\0';
-		queryplanres = monitor_get_onestrvalue_one_node(queryplanstr, user, address, port, dbname);
-		if (NULL == queryplanres)
+		tupleret = check_record_yestoday_today(rel, &callstoday, &callsyestd, &gettoday, &getyesdt, querystr, dbuser, dbname, ptimenow);
+		if (false  == gettoday && false == getyesdt)
 		{
-			tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, totaltime/calls, calls, querystr, getplanerror);
+			/*insert record*/
+			monitor_insert_record(rel, time, dbname, dbuser, singletime, calls, querystr, user, address, port);
 		}
-		else
-		{	
-			tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, totaltime/calls, calls, querystr, queryplanres);
-			pfree(queryplanres);
+		else if (true  == gettoday && false == getyesdt)
+		{
+			monitor_slowlog = (Form_monitor_slowlog)GETSTRUCT(tupleret);
+			Assert(monitor_slowlog);
+			if (calls > callstoday)
+			{
+				monitor_slowlog->slowlogtotalnum = calls;
+				monitor_slowlog->slowlogsingletime = singletime;
+				heap_inplace_update(rel, tupleret);
+				pfree(tupleret);
+				continue;
+			}
+			else if (calls < callstoday)
+			{
+				monitor_slowlog->slowlogtotalnum = calls + callstoday;
+				monitor_slowlog->slowlogsingletime = singletime;
+				heap_inplace_update(rel, tupleret);
+				pfree(tupleret);
+				continue;
+			}
+			else
+			{
+				/*do nothing*/
+			}
 		}
-		simple_heap_insert(rel, tup_result);
-		CatalogUpdateIndexes(rel, tup_result);
-		heap_freetuple(tup_result);
-		pfree(queryplanstr);
+		else if (false  == gettoday && true == getyesdt)
+		{
+			callstmp = calls < callsyestd ? calls:(calls-callsyestd);
+			if (calls != callsyestd)
+			{
+				/*insert the record*/
+				monitor_insert_record(rel, time, dbname, dbuser, singletime, callstmp, querystr, user, address, port);
+			}
+		}
+		else /*true  == gettoday && true == getyesdt*/
+		{
+			monitor_slowlog = (Form_monitor_slowlog)GETSTRUCT(tupleret);
+			Assert(monitor_slowlog);
+			if (calls < callstoday)
+			{
+				monitor_slowlog->slowlogtotalnum = calls + callstoday;
+				monitor_slowlog->slowlogsingletime = singletime;
+				heap_inplace_update(rel, tupleret);
+				pfree(tupleret);
+			}
+			else if (calls > callstoday)
+			{
+				if(calls <= callsyestd)
+				{
+					monitor_slowlog->slowlogtotalnum = calls;
+				}
+				else
+				{
+					monitor_slowlog->slowlogtotalnum = calls - callsyestd;
+				}
+				monitor_slowlog->slowlogsingletime = singletime;
+				heap_inplace_update(rel, tupleret);
+				pfree(tupleret);
+				
+			}
+			else
+			{
+				/*do nothing*/
+			}
+			
+		}
+
 	}
 
 	PQclear(res);
 	PQfinish(conn);
 	pfree(constr.data);
-	return oneCoordTpsInt;
 }
 
 /*
@@ -247,21 +307,21 @@ HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, char *dbna
 	namestrcpy(&dbnamedata, dbname);
 	namestrcpy(&usernamedata, username);
 	AssertArg(desc && desc->natts == 7
-		&& desc->attrs[0]->atttypid == TIMESTAMPTZOID
+		&& desc->attrs[0]->atttypid == NAMEOID
 		&& desc->attrs[1]->atttypid == NAMEOID
-		&& desc->attrs[2]->atttypid == NAMEOID
-		&& desc->attrs[3]->atttypid == FLOAT4OID
-		&& desc->attrs[4]->atttypid == INT4OID
+		&& desc->attrs[2]->atttypid == FLOAT4OID
+		&& desc->attrs[3]->atttypid == INT4OID
+		&& desc->attrs[4]->atttypid == TIMESTAMPTZOID
 		&& desc->attrs[5]->atttypid == TEXTOID
 		&& desc->attrs[6]->atttypid == TEXTOID
 		);
 	memset(datums, 0, sizeof(datums));
 	memset(nulls, 0, sizeof(nulls));
-	datums[0] = TimestampTzGetDatum(time);
-	datums[1] = NameGetDatum(&dbnamedata);
-	datums[2] = NameGetDatum(&usernamedata);
-	datums[3] = Float4GetDatum(singletime);
-	datums[4] = Int32GetDatum(totalnum);
+	datums[0] = NameGetDatum(&dbnamedata);
+	datums[1] = NameGetDatum(&usernamedata);
+	datums[2] = Float4GetDatum(singletime);
+	datums[3] = Int32GetDatum(totalnum);
+	datums[4] = TimestampTzGetDatum(time);
 	datums[5] = CStringGetTextDatum(query);
 	datums[6] = CStringGetTextDatum(queryplan);
 	nulls[0] = nulls[1] = nulls[2] = nulls[3] = nulls[4] = nulls[5] = nulls[6] =false;
@@ -269,6 +329,103 @@ HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, char *dbna
 	return heap_form_tuple(desc, datums, nulls);
 }
 
-	
-	
+HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsyestd, bool *gettoday, bool *getyesdt, char *query, char *user, char *dbname, pg_time_t ptimenow)
+{
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	HeapTuple tupleret = NULL;
+	Form_monitor_slowlog monitor_slowlog;
+	Datum datumquery;
+	Datum datumtime;
+	bool isNull = false;
+	char *querystr = NULL;
+	pg_time_t tupleptime;
+	pg_time_t pgtimetoday;
+	pg_time_t pgtimeyestoday;
+	pg_time_t pgtimetomarrow;
+	TimestampTz tupletime;
 
+	pgtimetoday = GETTODAYSTARTTIME(ptimenow);
+	pgtimeyestoday = GETLASTDAYSTARTTIME(ptimenow);
+	pgtimetomarrow = GETTOMARROWSTARTTIME(ptimenow);	
+	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		/*check the time*/
+		datumtime = heap_getattr(tuple, Anum_monitor_slowlog_time, RelationGetDescr(rel), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_slowlog")
+				, errmsg("column slowlogtime is null")));
+		}
+		tupletime = DatumGetTimestampTz(datumtime);
+		tupleptime = timestamptz_to_time_t(tupletime);
+		/*for yestoday, today record*/
+		if(tupleptime >= pgtimeyestoday && tupleptime < pgtimetomarrow)
+		{
+			/*check query, user, dbname*/
+			monitor_slowlog = (Form_monitor_slowlog)GETSTRUCT(tuple);
+			Assert(monitor_slowlog);
+			if (strcmp(NameStr(monitor_slowlog->slowloguser), user) == 0 && strcmp(NameStr(monitor_slowlog->slowlogdbname), dbname) == 0)
+			{
+				/*check query*/
+				datumquery = heap_getattr(tuple, Anum_monitor_slowlog_query, RelationGetDescr(rel), &isNull);
+				if(isNull)
+				{
+					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+						, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_slowlog")
+						, errmsg("column slowlogquery is null")));
+				}
+				querystr = TextDatumGetCString(datumquery);
+				if(strcmp(querystr, query)==0)
+				{
+					if(tupleptime < pgtimetoday)
+					{
+						*getyesdt = true;
+						*callsyestd = monitor_slowlog->slowlogtotalnum;
+					}
+					else
+					{
+						*gettoday = true;
+						*callstoday = monitor_slowlog->slowlogtotalnum;
+						tupleret = heap_copytuple(tuple);
+					}
+				}
+			}
+			
+		}
+	}
+	heap_endscan(rel_scan);
+	return tupleret;
+}
+
+void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port)
+{
+	int queryplanlen = 0;
+	char *getplanerror = "check the query, cannot get the queryplan.";
+	HeapTuple tup_result;
+	char *queryplanstr;
+	char *queryplanres = NULL;
+	
+	queryplanlen = strlen(querystr) + strlen("explain ")+1;
+	queryplanstr = (char *)palloc(queryplanlen*sizeof(char));
+	strcpy(queryplanstr, "explain ");
+	strcpy(queryplanstr + strlen("explain "), querystr);
+	queryplanstr[queryplanlen-1] = '\0';
+	queryplanres = monitor_get_onestrvalue_one_node(queryplanstr, user, address, port, dbname);
+	if (NULL == queryplanres)
+	{
+		tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, singletime, calls, querystr, getplanerror);
+	}
+	else
+	{
+		tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, singletime, calls, querystr, queryplanres);
+		pfree(queryplanres);
+	}
+	simple_heap_insert(rel, tup_result);
+	CatalogUpdateIndexes(rel, tup_result);
+	heap_freetuple(tup_result);
+	pfree(queryplanstr);
+	
+}
