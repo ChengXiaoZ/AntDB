@@ -112,6 +112,7 @@ extern char *defGetString(DefElem *def);
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
+				Get_host_threshlod
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -144,6 +145,7 @@ extern char *defGetString(DefElem *def);
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG
 				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE
+				GET_THRESHLOD_TYPE GET_THRESHLOD_ALL_TYPE
 %%
 /*
  *	The target production for the whole parse.
@@ -196,6 +198,7 @@ stmt :
 	| Gethostparm     /* for ADB monitor host page */
 	| Gettopologyparm /* for ADB monitor home page */
 	| Update_host_config_value
+	| Get_host_threshlod
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -283,6 +286,23 @@ Update_host_config_value:
 			args = lappend(args, makeIntConst($5, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("update_emergency_value", args));
+			$$ = (Node*)stmt;
+		};
+
+Get_host_threshlod:
+		GET_THRESHLOD_TYPE '(' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("get_threshlod_type", args));
+			$$ = (Node*)stmt;
+		}
+		| GET_THRESHLOD_ALL_TYPE
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_threshlod_all_type"), -1));
 			$$ = (Node*)stmt;
 		};
 
@@ -1420,6 +1440,8 @@ unreserved_keyword:
 	| GET_COORDINATOR_NODE_TOPOLOGY
 	| GET_DATANODE_NODE_TOPOLOGY
 	| GET_SLOWLOG
+	| GET_THRESHLOD_TYPE
+	| GET_THRESHLOD_ALL_TYPE
 	| GTM
 	| HOST
 	| I

@@ -635,6 +635,68 @@ $$ language sql
 VOLATILE
 returns null on null input;
 
+--get the threshlod for specific type
+create or replace function pg_catalog.get_threshlod_type(type int)
+returns text
+as $$
+    select '{' || row_string || '}' as show_threshlod
+    from (
+           select case $1
+                  when 1 then '"cpu_usage"'
+                  when 2 then '"mem_usage"'
+                  when 3 then '"disk_usage"'
+                  when 4 then '"sent_net"'
+                  when 5 then '"recv_net"'
+                  when 6 then '"IOPS"'
+                  END
+                  || ':' || row_to_json as row_string
+           from (
+           
+                   select row_to_json(t)
+                   from (
+                           select 
+                               mt_warning_threshold AS "warning",
+                               mt_critical_threshold AS "critical",
+                               mt_emergency_threshold AS "emergency"
+                           from monitor_host_threshlod
+                           where mt_type = $1
+                        ) t
+               )y
+         )s;
+    $$
+language sql
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+
+--get the threshlod for all type
+CREATE VIEW adbmgr.get_threshlod_all_type AS
+select '{'|| ARRAY_TO_STRING || '}' as show_threshlod
+from(
+        select ARRAY_TO_STRING(
+        array(
+                select  case f.type
+                        when 1 then '"cpu_thresh"'
+                        when 2 then '"mem_usage"'
+                        when 3 then '"disk_usage"'
+                        when 4 then '"sent_net"'
+                        when 5 then '"recv_net"'
+                        when 6 then '"IOPS"'
+                        END
+                        || ':' || '{' || '"warning"'   || ':' || f.warning   || ',' 
+                                      || '"critical"'  || ':' || f.critical  || ','
+                                      || '"emergency"' || ':' || f.emergency ||
+                                   '}'
+                from(
+                        select mt_type AS type,
+                               mt_warning_threshold AS "warning",
+                               mt_critical_threshold AS "critical",
+                               mt_emergency_threshold AS "emergency"
+                        from monitor_host_threshlod
+                    )f
+            ), ','
+                            )
+    ) r;
+
 --insert data into mgr.parm
 
 --insert gtm parameters
