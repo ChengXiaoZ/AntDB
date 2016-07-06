@@ -1400,6 +1400,18 @@ ListMonitor:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasesummary_func", args));
 			$$ = (Node*)stmt;
 		}
+	| GET_SLOWLOG '(' Ident ',' Ident ',' Ident ',' Ident ',' Ident ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			args = lappend(args, makeStringConst($9, -1));
+			args = lappend(args, makeStringConst($11, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_slowlog_func_page", args));
+			$$ = (Node*)stmt;
+		}
 	| GET_SLOWLOG '(' Ident ',' Ident ',' Ident ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
