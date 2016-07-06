@@ -37,9 +37,9 @@
 
 #define GETMAXROWNUM 5
 #define QUERYMINTIME 2
-#define GETTODAYSTARTTIME(time) ((int)(time/3600/24)*24*3600)
-#define GETLASTDAYSTARTTIME(time) ((int)((time-24*3600)/3600/24)*24*3600)
-#define GETTOMARROWSTARTTIME(time) ((int)((time+24*3600)/3600/24)*24*3600)
+#define GETTODAYSTARTTIME(time) ((time+8*3600)/(3600*24)*(3600*24)-8*3600)
+#define GETLASTDAYSTARTTIME(time) ((time+8*3600)/(3600*24)*(3600*24)-8*3600-24*3600)
+#define GETTOMARROWSTARTTIME(time) ((time+8*3600)/(3600*24)*(3600*24)-8*3600+24*3600)
 
 /*given one sqlstr, return the result*/
 char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname)
@@ -108,7 +108,6 @@ void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, 
 	char *dbuser = NULL;
 	char *querystr = NULL;
 	int nrow = 0;
-	int ncol = 0;
 	int rowloop = 0;
 	int calls = 0;
 	TimestampTz time;
@@ -150,8 +149,6 @@ void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, 
 	}
 	/*get row number*/
 	nrow = PQntuples(res);
-	/*get column number*/
-	ncol = PQnfields(res);
 	time = GetCurrentTimestamp();
 	ptimenow = timestamptz_to_time_t(time);
 
