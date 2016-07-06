@@ -79,6 +79,7 @@ bool RequirePKeyForRepTab = true;
 typedef enum RemoteXactNodeStatus
 {
 	RXACT_NODE_NONE,				/* Initial state */
+	RXACT_NODE_PREPARE_SENT_FAILED,	/* PREPARE request is sent failed */
 	RXACT_NODE_PREPARE_SENT,		/* PREPARE request is sent successfully */
 	RXACT_NODE_PREPARE_FAILED,		/* PREPARE request is failed on the node */
 	RXACT_NODE_PREPARED,			/* PREPARE request is successfully executed on the node */
@@ -107,7 +108,6 @@ typedef struct RemoteXactState
 {
 	/* Current status of the remote 2PC */
 	RemoteXactStatus		status;
-	RemoteXactEvent			revent;
 
 	/*
 	 * Information about all the nodes involved in the transaction. We track
@@ -220,9 +220,6 @@ static void ExecClearTempObjectIncluded(void);
 static void init_RemoteXactState(bool preparedLocalNode);
 static void clear_RemoteXactState(void);
 static void pgxc_node_report_error(RemoteQueryState *combiner);
-#ifdef ADB
-static void pgxc_node_report_handle_error(int node_count, PGXCNodeHandle **handles);
-#endif
 static bool IsReturningDMLOnReplicatedTable(RemoteQuery *rq);
 static void SetDataRowForIntParams(JunkFilter *junkfilter,
 					   TupleTableSlot *sourceSlot, TupleTableSlot *newSlot,
@@ -730,7 +727,7 @@ HandleDataRow(RemoteQueryState *combiner, char *msg_body, size_t len, Oid nodeoi
 /*
  * Handle ErrorResponse ('E') message from a Datanode connection
  */
-static void
+static char *
 HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t len)
 {
 	/* parse error message */
@@ -802,6 +799,8 @@ HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t
 	 * Increment the counter to prevent endless waiting for it.
 	 */
 	combiner->command_complete_count++;
+
+	return message;
 }
 
 /*
@@ -1255,8 +1254,34 @@ print_request_type(RequestType type)
 		case REQUEST_TYPE_COPY_OUT:
 			return "REQUEST_TYPE_COPY_OUT";
 		default:
-			return "IMPOSSIBLE";
+			break;
 	}
+	return "UNKNOWN REQUEST";
+}
+
+static const char *
+print_response_result(int result)
+{
+	switch(result)
+	{
+		case RESPONSE_EOF:
+			return "RESPONSE_EOF";
+		case RESPONSE_COMPLETE:
+			return "RESPONSE_COMPLETE";
+		case RESPONSE_SUSPENDED:
+			return "RESPONSE_SUSPENDED";
+		case RESPONSE_TUPDESC:
+			return "RESPONSE_TUPDESC";
+		case RESPONSE_DATAROW:
+			return "RESPONSE_DATAROW";
+		case RESPONSE_COPY:
+			return "RESPONSE_COPY";
+		case RESPONSE_BARRIER_OK:
+			return "RESPONSE_BARRIER_OK";
+		default:
+			break;
+	}
+	return "UNKNOWN RESPONSE";
 }
 #endif
 
@@ -1304,28 +1329,30 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 					break;
 				default:
 					/* Inconsistent responses */
-					add_error_message(to_receive[i],
-						"Unexpected response from the Datanodes: %s, result = %d, request type %s",
-						NameStr(to_receive[i]->name),
-						result,
-						print_request_type(combiner->request_type));
+					{
+						const char *nodeName = NameStr(to_receive[i]->name);
+						const char *requestType = print_request_type(combiner->request_type);
+						const char *resultStr = print_response_result(result);
 
-					elog(ERROR,
-						"Unexpected response from the Datanodes: %s, result = %d, request type %s",
-						NameStr(to_receive[i]->name),
-						result,
-						print_request_type(combiner->request_type));
+						add_error_message(to_receive[i],
+							"[From node '%s']Unexpected response: result = %s, request type %s",
+							nodeName, resultStr, requestType);
 
-					/* Stop tracking and move last connection in place */
-					count--;
-					if (i < count)
-						to_receive[i] = to_receive[count];
+						if (combiner->errorMessage.len == 0)
+						{
+							appendStringInfo(&(combiner->errorMessage),
+								"[From node '%s']Unexpected response: result = %s, request type %s",
+								nodeName, resultStr, requestType);
+						}
+
+						/* Stop tracking and move last connection in place */
+						count--;
+						if (i < count)
+							to_receive[i] = to_receive[count];
+					}
 			}
 		}
 	}
-#ifdef ADB
-	pgxc_node_report_handle_error(conn_count, connections);
-#endif
 	pgxc_node_report_error(combiner);
 
 	return 0;
@@ -1437,12 +1464,16 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 				HandleCopyDataRow(combiner, msg, msg_len);
 				break;
 			case 'E':			/* ErrorResponse */
-				HandleError(NameStr(conn->name), combiner, msg, msg_len);
-				add_error_message(conn, "%s", combiner->errorMessage.data);
-				/*
-				 * Do not return with an error, we still need to consume Z,
-				 * ready-for-query
-				 */
+				{
+					char *errmsg;
+					errmsg = HandleError(NameStr(conn->name), combiner, msg, msg_len);
+					add_error_message(conn, 
+						"[From node '%s']%s", NameStr(conn->name), errmsg);
+					/*
+					 * Do not return with an error, we still need to consume Z,
+					 * ready-for-query
+					 */
+				}
 				break;
 			case 'A':			/* NotificationResponse */
 			case 'N':			/* NoticeResponse */
@@ -1748,12 +1779,12 @@ pgxc_node_remote_prepare(const char *gid)
 		if (pgxc_node_send_query(connections[i], prepare_cmd.data))
 		{
 			pfree(prepare_cmd.data);
-			remoteXactState.remoteNodeStatus[i] = RXACT_NODE_PREPARE_FAILED;
+			remoteXactState.remoteNodeStatus[i] = RXACT_NODE_PREPARE_SENT_FAILED;
 			remoteXactState.status = RXACT_PREPARE_FAILED;
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Fail to send PREPARE TRANSACTION '%s' to "
-							"the node %u", gid, connections[i]->nodeoid),
+							"the node %s", gid, NameStr(connections[i]->name)),
 					 errhint("Error: %s", connections[i]->error)));
 		} else
 		{
@@ -1981,10 +2012,9 @@ pgxc_node_remote_commit(const char *gid, bool missing_ok)
 
 				ereport(WARNING,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Fail to COMMIT transaction on the node: %u",
-						 	connections[i]->nodeoid),
-						 errhint("Error message: %s",
-						 	connections[i]->error ? connections[i]->error : "Receive ROLLBACK response")));
+						 errmsg("%s", connections[i]->error ? 
+						 			  connections[i]->error :
+						 			  "Receive ROLLBACK response")));
 			} else
 			{
 				remoteXactState.remoteNodeStatus[i] = RXACT_NODE_COMMITTED;
@@ -2087,8 +2117,7 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 
 		for (i = 0; i < write_conn_count + read_conn_count; i++)
 		{
-			if (connections[i]->error ||
-				connections[i]->ck_resp_rollback == RESP_ROLLBACK_RECEIVED)
+			if (connections[i]->error)
 			{
 				remoteXactState.remoteNodeStatus[i] = RXACT_NODE_ABORT_FAILED;
 				if (remoteXactState.status != RXACT_PART_ABORTED)
@@ -2096,10 +2125,7 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 
 				ereport(WARNING,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Fail to ROLLBACK transaction on the node: %u",
-						 	connections[i]->nodeoid),
-						 errhint("Error message: %s",
-						 	connections[i]->error ? connections[i]->error : "Receive ROLLBACK response")));
+						 errmsg("%s", connections[i]->error)));
 			}
 			else
 			{
@@ -4728,12 +4754,6 @@ pgxcGetInvolvedNodes(bool localNode, Oid **nodeIds)
 }
 
 void
-SetRemoteXactEvent(RemoteXactEvent revent)
-{
-	remoteXactState.revent = revent;
-}
-
-void
 init_RemoteXactStateByNodes(int node_cnt, Oid *nodeIds, bool isPrepared)
 {
 	int		i;
@@ -4831,7 +4851,6 @@ clear_RemoteXactState(void)
 	remoteXactState.numReadRemoteNodes = 0;
 	remoteXactState.status = RXACT_NONE;
 #ifdef ADB
-	remoteXactState.revent = RXACT_EVENT_NONE;
 	remoteXactState.preparedLocalNode = false;
 #endif
 
@@ -4912,24 +4931,6 @@ pgxc_node_report_error(RemoteQueryState *combiner)
 					errmsg("%s", combiner->errorMessage.data)));
 	}
 }
-
-#ifdef ADB
-static void
-pgxc_node_report_handle_error(int node_count, PGXCNodeHandle **handles)
-{
-	int 			i;
-	PGXCNodeHandle *handle = NULL;
-	
-	for (i = 0; i < node_count; i++)
-	{
-		handle = handles[i];
-		if (handle->error)
-			ereport(WARNING,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("%s", handle->error)));
-	}
-}
-#endif
 
 /*
  * get_success_nodes:

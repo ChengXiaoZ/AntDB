@@ -194,23 +194,10 @@ extern void set_dbcleanup_callback(xact_callback function, void *paraminfo, int 
 extern void do_query(RemoteQueryState *node);
 
 #ifdef ADB
-typedef enum RemoteXactEvent
-{
-	RXACT_EVENT_NONE,
-
-	RXACT_EVENT_BEGIN,
-	RXACT_EVENT_COMMIT,
-	RXACT_EVENT_ABORT,
-	RXACT_EVENT_PREPARE,
-	RXACT_EVENT_COMMIT_PREPARED,
-	RXACT_EVENT_ABORT_PREPARED
-} RemoteXactEvent;
-
 extern void init_RemoteXactStateByNodes(int node_cnt, Oid *nodeIds, bool isPrepared);
 extern void TellRemoteXactLocalPrepared(bool status);
 extern int pgxcGetInvolvedRemoteNodes(Oid **nodeIds);
 extern int pgxcGetInvolvedNodes(bool localNode, Oid **nodeIds);
-extern void SetRemoteXactEvent(RemoteXactEvent revent);
 #endif /* ADB */
 
 #endif
