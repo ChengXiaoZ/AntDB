@@ -393,6 +393,12 @@ DECLARE_UNIQUE_INDEX(monitor_host_oid_index, 4960, on monitor_host using btree(o
 DECLARE_UNIQUE_INDEX(monitor_varparm_oid_index, 4961, on monitor_varparm using btree(oid oid_ops));
 #define MonitorVarparmOidIndexId 4961
 
+DECLARE_UNIQUE_INDEX(monitor_alarm_oid_index, 3177, on monitor_alarm using btree(oid oid_ops));
+#define MonitorAlarmOidIndexId 3177
+
+DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using btree(oid oid_ops));
+#define MonitorResolveOidIndexId 5022
+
 #endif /* ADBMGRD */
 
 /* last step of initialization script: build the indexes declared above */
