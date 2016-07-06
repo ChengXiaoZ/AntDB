@@ -233,6 +233,13 @@
 #endif
 
 /*
+ * for debug alloc and free memory backtrace
+ * if MAX_BT_MEM_COUNT > 0 you need add "-lexecinfo" LIBS value
+ * in src/Makefile.global
+ */
+/*#define MAX_BT_MEM_COUNT	6*/
+
+/*
  * Define this to cause palloc()'d memory to be filled with random data, to
  * facilitate catching code that depends on the contents of uninitialized
  * memory.  Caution: this is horrendously expensive.

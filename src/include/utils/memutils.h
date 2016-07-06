@@ -58,6 +58,9 @@ typedef struct StandardChunkHeader
 	/* when debugging memory usage, also store actual requested size */
 	Size		requested_size;
 #endif
+#if MAX_BT_MEM_COUNT > 0
+	void		*bt[MAX_BT_MEM_COUNT];
+#endif
 } StandardChunkHeader;
 
 #define STANDARDCHUNKHEADERSIZE  MAXALIGN(sizeof(StandardChunkHeader))

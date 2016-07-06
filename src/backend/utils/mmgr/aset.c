@@ -66,6 +66,10 @@
 
 #include "utils/memutils.h"
 
+#if MAX_BT_MEM_COUNT > 0
+#include <execinfo.h>
+#endif
+
 /* Define this to detail debug alloc information */
 /* #define HAVE_ALLOCINFO */
 
@@ -187,6 +191,9 @@ typedef struct AllocChunkData
 	/* this is zero in a free chunk */
 	Size		requested_size;
 #endif
+#if MAX_BT_MEM_COUNT > 0
+	void *bt[MAX_BT_MEM_COUNT];
+#endif
 }	AllocChunkData;
 
 /*
@@ -257,16 +264,26 @@ static const unsigned char LogTable256[256] =
  * Debug macros
  * ----------
  */
+#if MAX_BT_MEM_COUNT > 0
+static void *mem_bt_buf[MAX_BT_MEM_COUNT+1];
+#define BTMem(_chunk)	do{	\
+		backtrace(mem_bt_buf, lengthof(mem_bt_buf));	\
+		memcpy((_chunk)->bt, &mem_bt_buf[1], sizeof((_chunk)->bt));	\
+	}while(0)
+#else
+#define BTMem(_chunk) ((void)0)
+#endif
+
 #ifdef HAVE_ALLOCINFO
 #define AllocFreeInfo(_cxt, _chunk) \
 			fprintf(stderr, "AllocFree: %s: %p, %d\n", \
-				(_cxt)->header.name, (_chunk), (_chunk)->size)
+				(_cxt)->header.name, (_chunk), (_chunk)->size),BTMem(_chunk)
 #define AllocAllocInfo(_cxt, _chunk) \
 			fprintf(stderr, "AllocAlloc: %s: %p, %d\n", \
-				(_cxt)->header.name, (_chunk), (_chunk)->size)
+				(_cxt)->header.name, (_chunk), (_chunk)->size),BTMem(_chunk)
 #else
-#define AllocFreeInfo(_cxt, _chunk)
-#define AllocAllocInfo(_cxt, _chunk)
+#define AllocFreeInfo(_cxt, _chunk) BTMem(_chunk)
+#define AllocAllocInfo(_cxt, _chunk) BTMem(_chunk)
 #endif
 
 /* ----------
