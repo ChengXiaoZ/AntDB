@@ -374,30 +374,28 @@ pgxc_node_free(PGXCNodeHandle *handle)
 static void
 pgxc_node_all_free(void)
 {
-	int i, j;
-	struct
+	if(dn_handles)
 	{
-		PGXCNodeHandle *handles;
-		int num_handle;
-	}handle_points[]={
-		 {co_handles, NumCoords}
-		,{dn_handles, NumDataNodes}
-	},*info;
-
-	for(i=0;i<lengthof(handle_points);++i)
-	{
-		info = &(handle_points[i]);
-
-		if(info && info->handles)
+		Assert(NumDataNodes > 0);
+		while(NumDataNodes > 0)
 		{
-			for (j = 0; j < info->num_handle; j++)
-				pgxc_node_free(&(info->handles[j]));
-			pfree(info->handles);
+			--NumDataNodes;
+			pgxc_node_free(&dn_handles[NumDataNodes]);
 		}
+		pfree(dn_handles);
+		dn_handles = NULL;
 	}
-
-	co_handles = NULL;
-	dn_handles = NULL;
+	if(co_handles)
+	{
+		Assert(NumCoords > 0);
+		while(NumCoords > 0)
+		{
+			--NumCoords;
+			pgxc_node_free(&co_handles[NumCoords]);
+		}
+		pfree(co_handles);
+		co_handles = NULL;
+	}
 }
 
 /*
