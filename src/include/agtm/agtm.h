@@ -5,6 +5,7 @@
 #include "miscadmin.h"
 
 #include "access/clog.h"
+#include "agtm/agtm_msg.h"
 #include "agtm/agtm_protocol.h"
 #include "catalog/pg_database.h"
 #include "datatype/timestamp.h"

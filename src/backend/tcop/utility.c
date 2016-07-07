@@ -1475,6 +1475,10 @@ ProcessUtilitySlow(Node *parsetree,
 	bool		isTopLevel = (context == PROCESS_UTILITY_TOPLEVEL);
 	bool		isCompleteQuery = (context <= PROCESS_UTILITY_QUERY);
 	bool		needCleanup;
+#ifdef ADB
+	StringInfoData	buf;
+	initStringInfo(&buf);
+#endif
 
 	/* All event trigger calls are done only when isCompleteQuery is true */
 	needCleanup = isCompleteQuery && EventTriggerBeginCompleteQuery();
@@ -2173,6 +2177,12 @@ ProcessUtilitySlow(Node *parsetree,
 				 * K.Suzuki, Sep.2nd, 2013
 				 * Moved from sgtandard_ProcessUtility().
 				 */
+#ifdef ADB				
+				resetStringInfo(&buf);
+				appendStringInfoString(&buf,"CREATE SEQUENCE ");
+				ParseSequenceOpition2Sql(((CreateSeqStmt *) parsetree)->options,
+					((CreateSeqStmt *) parsetree)->sequence->relname, buf, T_CreateSeqStmt);
+#endif
 				DefineSequence((CreateSeqStmt *) parsetree);
 #ifdef PGXC
 				if (IS_PGXC_COORDINATOR)
@@ -2193,7 +2203,10 @@ ProcessUtilitySlow(Node *parsetree,
 
 					/* execute create sequence on agtm */
 					if(!IsConnFromCoord())
-						agtm_sequence(queryString);
+						//agtm_sequence(queryString);
+						agtm_sequence(buf.data);
+					
+					pfree(buf.data);
 				}
 #endif
 				break;
@@ -2204,6 +2217,12 @@ ProcessUtilitySlow(Node *parsetree,
 				 * Moved from sgtandard_ProcessUtility().
 				 */
 				AlterSequence((AlterSeqStmt *) parsetree);
+#ifdef ADB
+				resetStringInfo(&buf);
+				appendStringInfoString(&buf,"ALTER SEQUENCE ");
+				ParseSequenceOpition2Sql(((AlterSeqStmt *) parsetree)->options,
+					((AlterSeqStmt *) parsetree)->sequence->relname, buf, T_AlterSeqStmt);
+#endif
 #ifdef PGXC
 				if (IS_PGXC_COORDINATOR)
 				{
@@ -2228,7 +2247,10 @@ ProcessUtilitySlow(Node *parsetree,
 					
 					/* execute alter sequence(increment/minvalue/maxvalue/restart/cache/cycle) on agtm */
 					if(!IsConnFromCoord())
-						agtm_sequence(queryString);
+//						agtm_sequence(queryString);
+						agtm_sequence(buf.data);
+					
+					pfree(buf.data);
 				}
 #endif
 				break;

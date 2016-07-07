@@ -70,6 +70,9 @@ extern Datum lastval(PG_FUNCTION_ARGS);
 
 extern Datum pg_sequence_parameters(PG_FUNCTION_ARGS);
 
+#ifdef ADB
+extern void ParseSequenceOpition2Sql(List *options, char *seq_name, StringInfoData buf, NodeTag tag);
+#endif
 extern Oid	DefineSequence(CreateSeqStmt *stmt);
 extern Oid	AlterSequence(AlterSeqStmt *stmt);
 extern void ResetSequence(Oid seq_relid);

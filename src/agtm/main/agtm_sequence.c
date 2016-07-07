@@ -47,21 +47,22 @@ ProcessNextSeqCommand(StringInfo message, StringInfo output)
 	Datum seq_val_datum;
 	int64 seq_val;
 	Datum seq_name_to_oid;
-	
+
 	GetSeqKey(message,&seq_key);
 	pq_getmsgend(message);
-	
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
-	
+
+//	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
+
 	seq_name_to_oid = GetSeqKeyToDatumOid(seq_key);	
 	seq_val_datum = DirectFunctionCall1(nextval_oid, seq_name_to_oid);
 	seq_val = DatumGetInt64(seq_val_datum);
-	
+
+/*	
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
 	CurrentResourceOwner = NULL;
-	
+*/	
 	/* Respond to the client */
 	RespondSeqToClient(seq_val, AGTM_SEQUENCE_GET_NEXT_RESULT, output);
 
@@ -79,21 +80,21 @@ ProcessCurSeqCommand(StringInfo message, StringInfo output)
 
 	GetSeqKey(message,&seq_key);
 	pq_getmsgend(message);
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
-	
+//	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
+
 	seq_name_to_oid = GetSeqKeyToDatumOid(seq_key);
-		
+
 	/*if nextval function never called in this session and before currval function called,
 	 *curral_oid fuction will ereport(error) 
 	 */
 	seq_val_datum = DirectFunctionCall1(currval_oid, seq_name_to_oid);
 	seq_val = DatumGetInt64(seq_val_datum);
 
-	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
+/*	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
 	CurrentResourceOwner = NULL;
-	
+*/	
 	/* Respond to the client */
 	RespondSeqToClient(seq_val, AGTM_MSG_SEQUENCE_GET_CUR_RESULT, output);
 
@@ -110,22 +111,22 @@ PorcessLastSeqCommand(StringInfo message, StringInfo output)
 
 	GetSeqKey(message,&seq_key);
 	pq_getmsgend(message);
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
+//	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
 
 	/*if nextval function never called in this session and before currval function called,
 	 *curral_oid fuction will ereport(error) 
 	 */
 	seq_val_datum = DirectFunctionCall1(lastval, (Datum)0);
 	seq_val = DatumGetInt64(seq_val_datum);
-	
-	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
+
+/*	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
 	CurrentResourceOwner = NULL;
-	
+*/	
 	/* Respond to the client */
 	RespondSeqToClient(seq_val, AGTM_SEQUENCE_GET_LAST_RESULT, output);
-	
+
 	pfree(seq_key);
 	return output;
 }
@@ -145,19 +146,19 @@ ProcessSetSeqCommand(StringInfo message, StringInfo output)
 		sizeof (seq_nextval));	
 	iscalled = pq_getmsgbyte(message);
 	pq_getmsgend(message);
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
-	
+//	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForAGTM");
+
 	seq_name_to_oid = GetSeqKeyToDatumOid(seq_key);
 	seq_val_datum = DirectFunctionCall3(setval3_oid,
 		seq_name_to_oid, seq_nextval, iscalled);
-	
+
 	seq_val = DatumGetInt64(seq_val_datum);
 
-	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
+/*	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
 	CurrentResourceOwner = NULL;
-	
+*/	
 	/* Respond to the client */
 	RespondSeqToClient(seq_val,AGTM_SEQUENCE_SET_VAL_RESULT, output);
 

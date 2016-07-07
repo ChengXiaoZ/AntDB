@@ -33,7 +33,6 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 	msg_name = gtm_util_message_name(mtype);
 	set_ps_display(msg_name, true);
 	BeginCommand(msg_name, dest);
-
 	ereport(DEBUG1, 
 		(errmsg("[ pid=%d] Process Command mtype = %s (%d).",
 		MyProcPid, msg_name, (int)mtype)));
@@ -67,7 +66,7 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 			break;
 
 		case AGTM_MSG_SEQUENCE_SET_VAL:
-			StartTransactionCommand();
+		//	StartTransactionCommand();
 			PG_TRY();
 			{
 				output = ProcessSetSeqCommand(input_message, &buf);
@@ -76,11 +75,11 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				CommitTransactionCommand();
 				PG_RE_THROW();
 			} PG_END_TRY();
-			CommitTransactionCommand();
+		//	CommitTransactionCommand();
 			break;
 
 		case AGTM_MSG_SEQUENCE_GET_NEXT:
-			StartTransactionCommand();
+		//	StartTransactionCommand();
 			PG_TRY();
 			{
 				output = ProcessNextSeqCommand(input_message, &buf);
@@ -89,7 +88,7 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				CommitTransactionCommand();
 				PG_RE_THROW();
 			} PG_END_TRY();
-			CommitTransactionCommand();
+		//	CommitTransactionCommand();
 			break;
 			
 		case AGTM_MSG_SEQUENCE_GET_CUR:

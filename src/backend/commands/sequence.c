@@ -239,6 +239,72 @@ DefineSequence(CreateSeqStmt *seq)
 	return seqoid;
 }
 
+#ifdef ADB
+void
+ParseSequenceOpition2Sql(List *options, char *seq_name, StringInfoData buf, NodeTag tag)
+{
+	FormData_pg_sequence new;
+	List	   *owned_by;
+	int			i;
+	char		seq_buf[10];
+	/* Check and set all option values */
+	init_params(options, true, &new, &owned_by);
+
+	/*
+	 * Create relation (and fill value[] and null[] for the tuple)
+	 */
+	for (i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
+	{
+		switch (i)
+		{
+			case SEQ_COL_NAME:
+				appendStringInfoString(&buf, seq_name);
+				break;
+			case SEQ_COL_STARTVAL:
+				MemSet(seq_buf,0,10);
+				sprintf(seq_buf, "%ld", new.start_value);
+				if (tag == T_CreateSeqStmt)				
+					appendStringInfoString(&buf, " START WITH ");
+				else if (tag == T_AlterSeqStmt)
+					appendStringInfoString(&buf, " RESTART WITH ");
+				
+				appendStringInfoString(&buf, seq_buf);
+				break;
+			case SEQ_COL_INCBY:
+				MemSet(seq_buf,0,10);
+				sprintf(seq_buf, "%ld", new.increment_by);
+				appendStringInfoString(&buf, " INCREMENT BY ");
+				appendStringInfoString(&buf, seq_buf);
+				break;
+			case SEQ_COL_MAXVALUE:
+				MemSet(seq_buf,0,10);
+				sprintf(seq_buf, "%ld", new.max_value);
+				appendStringInfoString(&buf, " MAXVALUE ");
+				appendStringInfoString(&buf, seq_buf);
+				break;
+			case SEQ_COL_MINVALUE:
+				MemSet(seq_buf,0,10);
+				sprintf(seq_buf, "%ld", new.min_value);
+				appendStringInfoString(&buf, " MINVALUE ");
+				appendStringInfoString(&buf, seq_buf);
+				break;
+			case SEQ_COL_CACHE:
+				MemSet(seq_buf,0,10);
+				sprintf(seq_buf, "%ld", new.cache_value);
+				appendStringInfoString(&buf, " CACHE ");
+				appendStringInfoString(&buf, seq_buf);	
+				break;
+			case SEQ_COL_CYCLE:
+				if(new.is_cycled)					
+					appendStringInfoString(&buf, " CYCLE ");
+				else
+					appendStringInfoString(&buf, " NO CYCLE ");
+				break;
+		}
+	}	
+}
+#endif
+
 /*
  * Reset a sequence to its initial value.
  *

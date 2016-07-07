@@ -208,8 +208,8 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 			"AGTM_MSG_SEQUENCE_SET_VAL")));
 
 	len = strlen(seqname);
-	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL, "%d%d %p%d %c"
-		, len, 4, seqname, len, iscalled);
+	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL, "%d%d %p%d" INT64_FORMAT "%c"
+		, len, 4, seqname, len, nextval, iscalled);
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_SET_VAL);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_SEQUENCE_SET_VAL_RESULT);
@@ -305,7 +305,24 @@ static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 			len = va_arg(args, int);
 			if(pqPutInt(val, len, conn) < 0)
 				goto put_error_;
-		}else
+		}else if(c == 'l')
+		{
+			if(fmt[0] == 'd')
+			{
+				long val = va_arg(args, long);
+				fmt += 1;
+				if(pqPutnchar((char*)&val, sizeof(val), conn) < 0)
+					goto put_error_;
+			}
+			else if(fmt[0] == 'l' && fmt[1] == 'd')
+			{
+				long long val = va_arg(args, long long);
+				fmt += 2;
+				if(pqPutnchar((char*)&val, sizeof(val), conn) < 0)
+					goto put_error_;
+			}
+		}
+		else
 		{
 			goto format_error_;
 		}
