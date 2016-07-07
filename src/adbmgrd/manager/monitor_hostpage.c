@@ -17,6 +17,8 @@
 #include "catalog/monitor_mem.h"
 #include "catalog/monitor_net.h"
 #include "catalog/monitor_disk.h"
+#include "catalog/monitor_alarm.h"
+#include "catalog/monitor_host_threshlod.h"
 #include "commands/defrem.h"
 #include "fmgr.h"
 #include "mgr/mgr_cmds.h"
@@ -94,23 +96,47 @@ typedef struct Monitor_Disk
     int64           disk_io_write_time;
 }Monitor_Disk;
 
+/* for table: monitor_alarm */
+typedef struct Monitor_Alarm
+{
+    int16           alarm_level;
+    int16           alarm_type;
+    StringInfoData  alarm_timetz;
+    int16           alarm_status;
+    StringInfoData  alarm_source;
+    StringInfoData  alarm_text;
+}Monitor_Alarm;
+
+/* for table: monitor_alarm */
+typedef struct Monitor_Threshold
+{
+    int16           threshold_warning;
+    int16           threshold_critical;
+    int16           threshold_emergency;
+}Monitor_Threshold;
+
 static void init_Monitor_Host(Monitor_Host *monitor_host);
 static void init_Monitor_Cpu(Monitor_Cpu *Monitor_cpu);
 static void init_Monitor_Mem(Monitor_Mem *Monitor_mem);
 static void init_Monitor_Net(Monitor_Net *Monitor_net);
 static void init_Monitor_Disk(Monitor_Disk *Monitor_disk);
+static void init_Monitor_Alarm(Monitor_Alarm *Monitor_alarm);
 
 static void pfree_Monitor_Host(Monitor_Host *monitor_host);
 static void pfree_Monitor_Cpu(Monitor_Cpu *Monitor_cpu);
 static void pfree_Monitor_Mem(Monitor_Mem *Monitor_mem);
 static void pfree_Monitor_Net(Monitor_Net *Monitor_net);
 static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk);
+static void pfree_Monitor_Alarm(Monitor_Alarm *Monitor_alarm);
 
 static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu);
 static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
 static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
 static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net);
 static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host);
+static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
+static void insert_into_monotor_alarm(Monitor_Alarm *monitor_alarm);
+
 
 /*
  *  get the host info(host base info, cpu, disk, mem, net)
@@ -130,14 +156,18 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     StringInfoData agentRstStr;
     ManagerAgent *ma;
     bool execok = false;
-    //char *ptmp;
     Oid host_oid;
+    Datum datum;
+    bool isNull;
+    char *host_addr;
     
     Monitor_Host monitor_host;
     Monitor_Cpu monitor_cpu;
     Monitor_Mem monitor_mem;
     Monitor_Disk monitor_disk;
     Monitor_Net monitor_net;
+    Monitor_Alarm monitor_alarm;
+    Monitor_Threshold monitor_threshold;
 
     initStringInfo(&agentRstStr);
     init_Monitor_Host(&monitor_host);
@@ -145,6 +175,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     init_Monitor_Mem(&monitor_mem);
     init_Monitor_Disk(&monitor_disk);
     init_Monitor_Net(&monitor_net);
+    init_Monitor_Alarm(&monitor_alarm);
 
     if (SRF_IS_FIRSTCALL())
     {
@@ -181,7 +212,16 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 
     mgr_host = (Form_mgr_host)GETSTRUCT(tup);
     Assert(mgr_host);
+
+    datum = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+    if(isNull)
+        host_addr = NameStr(mgr_host->hostname);
+    else
+        host_addr = TextDatumGetCString(datum);
     
+    resetStringInfo(&monitor_alarm.alarm_source);
+    appendStringInfoString(&monitor_alarm.alarm_source, host_addr);
+
     host_oid = HeapTupleGetOid(tup);
     
     ma = ma_connect_hostoid(HeapTupleGetOid(tup));
@@ -319,11 +359,47 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     insert_into_monotor_net(host_oid, &monitor_net);
     insert_into_monotor_host(host_oid, &monitor_host);
 
+    appendStringInfoString(&monitor_alarm.alarm_timetz, monitor_cpu.cpu_timestamp.data);
+    monitor_alarm.alarm_type = 1;
+    monitor_alarm.alarm_status = 1;
+
+    /* for cpu alarm*/
+    get_threshold(1, &monitor_threshold);
+    if (monitor_cpu.cpu_usage >= monitor_threshold.threshold_warning)
+    {
+        if (monitor_cpu.cpu_usage < monitor_threshold.threshold_critical)
+        {
+            resetStringInfo(&monitor_alarm.alarm_text);
+            appendStringInfo(&monitor_alarm.alarm_text, "cpu usage over %d%%",
+                                    monitor_threshold.threshold_warning);
+            monitor_alarm.alarm_level = 1;
+        }
+        else if (monitor_cpu.cpu_usage >= monitor_threshold.threshold_critical
+                && monitor_cpu.cpu_usage < monitor_threshold.threshold_emergency)
+        {
+            resetStringInfo(&monitor_alarm.alarm_text);
+            appendStringInfo(&monitor_alarm.alarm_text, "cpu usage over %d%%",
+                                    monitor_threshold.threshold_critical);
+            monitor_alarm.alarm_level = 2;
+
+        }
+        else
+        {
+            resetStringInfo(&monitor_alarm.alarm_text);
+            appendStringInfo(&monitor_alarm.alarm_text, "cpu usage over %d%%",
+                                    monitor_threshold.threshold_emergency);
+            monitor_alarm.alarm_level = 3;
+        }
+
+        insert_into_monotor_alarm(&monitor_alarm);
+    }
+
     pfree_Monitor_Host(&monitor_host);
     pfree_Monitor_Cpu(&monitor_cpu);
     pfree_Monitor_Mem(&monitor_mem);
     pfree_Monitor_Net(&monitor_net);
     pfree_Monitor_Disk(&monitor_disk);
+    pfree_Monitor_Alarm(&monitor_alarm);
     pfree(agentRstStr.data);
 
     ma_close(ma);
@@ -453,6 +529,58 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
     heap_freetuple(newtuple);
     heap_close(monitorhost, RowExclusiveLock);
 }
+static void insert_into_monotor_alarm(Monitor_Alarm *monitor_alarm)
+{
+    Relation monitoralarm;
+    HeapTuple newtuple;
+    Datum datum[Natts_monitor_alarm];
+    bool isnull[Natts_monitor_alarm];
+
+    datum[Anum_monitor_alarm_ma_alarm_level - 1] = Int16GetDatum(monitor_alarm->alarm_level);
+    datum[Anum_monitor_alarm_ma_alarm_type - 1] = Int16GetDatum(monitor_alarm->alarm_type);
+    datum[Anum_monitor_alarm_ma_alarm_timetz - 1] = 
+        DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_alarm->alarm_timetz.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
+    datum[Anum_monitor_alarm_ma_alarm_status - 1] = Int16GetDatum(monitor_alarm->alarm_status);
+    datum[Anum_monitor_alarm_ma_alarm_source - 1] = CStringGetTextDatum(monitor_alarm->alarm_source.data);
+    datum[Anum_monitor_alarm_ma_alarm_text - 1] = CStringGetTextDatum(monitor_alarm->alarm_text.data);
+
+    memset(isnull, 0, sizeof(isnull));
+
+    monitoralarm = heap_open(MonitorAlarmRelationId, RowExclusiveLock);
+    newtuple = heap_form_tuple(RelationGetDescr(monitoralarm), datum, isnull);
+    simple_heap_insert(monitoralarm, newtuple);
+
+    heap_freetuple(newtuple);
+    heap_close(monitoralarm, RowExclusiveLock);
+}
+
+static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
+{
+    Relation rel;
+    HeapScanDesc scan;
+	HeapTuple tuple;
+	ScanKeyData key[1];
+    Form_monitor_host_threshold monitor_host_threshold;
+
+	ScanKeyInit(&key[0]
+		,Anum_monitor_host_threshold_mt_type
+		,BTEqualStrategyNumber, F_INT2EQ
+		,Int16GetDatum(type));
+    
+	rel = heap_open(MonitorHostThresholdRelationId, RowExclusiveLock);
+	scan = heap_beginscan(rel, SnapshotNow, 1, key);
+    
+    tuple = heap_getnext(scan, ForwardScanDirection);
+    monitor_host_threshold = (Form_monitor_host_threshold)GETSTRUCT(tuple);
+
+    monitor_threshold->threshold_warning = monitor_host_threshold->mt_warning_threshold;
+    monitor_threshold->threshold_critical = monitor_host_threshold->mt_critical_threshold;
+    monitor_threshold->threshold_emergency = monitor_host_threshold->mt_emergency_threshold;
+
+    heap_endscan(scan);
+    heap_close(rel, RowExclusiveLock);
+
+}
 
 static void init_Monitor_Host(Monitor_Host *monitor_host)
 {
@@ -506,4 +634,18 @@ static void init_Monitor_Disk(Monitor_Disk *Monitor_disk)
 static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk)
 {
     pfree(Monitor_disk->disk_timestamptz.data);
+}
+
+static void init_Monitor_Alarm(Monitor_Alarm *Monitor_alarm)
+{
+    initStringInfo(&Monitor_alarm->alarm_source);
+    initStringInfo(&Monitor_alarm->alarm_text);
+    initStringInfo(&Monitor_alarm->alarm_timetz);
+}
+
+static void pfree_Monitor_Alarm(Monitor_Alarm *Monitor_alarm)
+{
+    pfree(Monitor_alarm->alarm_source.data);
+    pfree(Monitor_alarm->alarm_text.data);
+    pfree(Monitor_alarm->alarm_timetz.data);
 }
