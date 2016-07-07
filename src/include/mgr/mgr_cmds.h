@@ -158,7 +158,7 @@ extern void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
 /*monitor_databaseitem.c*/
 extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
 extern int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype);
-extern int monitor_get_result_every_node_master_one_database(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
+extern int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
 			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum
