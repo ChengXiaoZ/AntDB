@@ -101,6 +101,11 @@ typedef FormData_pg_authid *Form_pg_authid;
  * ----------------
  */
 DATA(insert OID = 10 ( "POSTGRES" t t t t t t t -1 _null_ _null_ ));
+#if defined(ADB) || defined(AGTM)
+DATA(insert OID = 88 ( "RXACTADMIN" t t t t t t t -1 _null_ _null_ ));
+
+#define RXACTMGR_SUPERUSERID 88
+#endif
 
 #define BOOTSTRAP_SUPERUSERID 10
 

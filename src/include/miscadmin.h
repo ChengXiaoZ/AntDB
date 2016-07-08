@@ -407,6 +407,10 @@ typedef enum
 	PoolerProcess,
 #endif
 
+#ifdef ADB
+	RemoteXactMgrProcess,
+#endif
+
 	NUM_AUXPROCTYPES			/* Must be last! */
 } AuxProcType;
 
@@ -418,7 +422,9 @@ extern AuxProcType MyAuxProcType;
 #define AmCheckpointerProcess()		(MyAuxProcType == CheckpointerProcess)
 #define AmWalWriterProcess()		(MyAuxProcType == WalWriterProcess)
 #define AmWalReceiverProcess()		(MyAuxProcType == WalReceiverProcess)
-
+#ifdef ADB
+#define AmRemoteXactMgrProcess()	(MyAuxProcType == RemoteXactMgrProcess)
+#endif
 
 /*****************************************************************************
  *	  pinit.h --															 *

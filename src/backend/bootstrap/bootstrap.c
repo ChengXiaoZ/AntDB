@@ -52,6 +52,10 @@
 #include "pgxc/poolmgr.h"
 #endif
 
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif
+
 extern int	optind;
 extern char *optarg;
 
@@ -324,6 +328,11 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				statmsg = "pooler process";
 				break;
 #endif
+#ifdef ADB
+			case RemoteXactMgrProcess:
+				statmsg = "remote xact manager process";
+				break;
+#endif
 			case StartupProcess:
 				statmsg = "startup process";
 				break;
@@ -384,7 +393,7 @@ AuxiliaryProcessMain(int argc, char *argv[])
 #ifdef PGXC
 		/* Initialize pooler flag before creating PGPROC structure */
 		if (MyAuxProcType == PoolerProcess)
-				PGXCPoolerProcessIam();			
+			PGXCPoolerProcessIam();			
 #endif
 
 		/*
@@ -427,6 +436,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			/* don't set signals, pool manager has its own agenda */
 			PoolManagerInit();
 			proc_exit(1);		/* should never return */
+#endif
+
+#ifdef ADB
+		case RemoteXactMgrProcess:
+			RemoteXactMgrMain();
+			proc_exit(1);
 #endif
 
 		case CheckerProcess:

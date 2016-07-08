@@ -280,6 +280,9 @@ static pid_t StartupPID = 0,
 #ifdef PGXC /* PGXC_COORD */
 			PgPoolerPID = 0,
 #endif /* PGXC_COORD */
+#ifdef ADB
+			RemoteXactMgrPID = 0,
+#endif /* ADB */
 			BgWriterPID = 0,
 			CheckpointerPID = 0,
 			WalWriterPID = 0,
@@ -606,6 +609,10 @@ Datum xc_lockForBackupKey1;
 Datum xc_lockForBackupKey2;
 
 #define StartPoolManager()		StartChildProcess(PoolerProcess)
+#endif
+
+#ifdef ADB
+#define StartRemoteXactMgr()	StartChildProcess(RemoteXactMgrProcess)
 #endif
 
 #define StartupDataBase()		StartChildProcess(StartupProcess)
@@ -1430,6 +1437,7 @@ PostmasterMain(int argc, char *argv[])
 		MemoryContextSwitchTo(oldcontext);
 	}
 #endif
+
 	/* Some workers may be scheduled to start now */
 	maybe_start_bgworker();
 
@@ -1875,6 +1883,11 @@ ServerLoop(void)
 		/* If we have lost the pooler, try to start a new one */
 		if (IS_PGXC_COORDINATOR && PgPoolerPID == 0 && pmState == PM_RUN)
 			PgPoolerPID = StartPoolManager();
+#endif
+
+#ifdef ADB
+		if (IS_PGXC_COORDINATOR && RemoteXactMgrPID == 0 && pmState == PM_RUN)
+			RemoteXactMgrPID = StartRemoteXactMgr();
 #endif
 		/* If we need to signal the autovacuum launcher, do so now */
 		if (avlauncher_needs_signal)
@@ -2569,6 +2582,10 @@ SIGHUP_handler(SIGNAL_ARGS)
 		if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
 			signal_child(PgPoolerPID, SIGHUP);
 #endif
+#ifdef ADB
+		if (IS_PGXC_COORDINATOR && RemoteXactMgrPID != 0)
+			signal_child(RemoteXactMgrPID, SIGHUP);
+#endif
 		if (BgWriterPID != 0)
 			signal_child(BgWriterPID, SIGHUP);
 		if (CheckpointerPID != 0)
@@ -2660,6 +2677,11 @@ pmdie(SIGNAL_ARGS)
 					signal_child(PgPoolerPID, SIGTERM);
 #endif
 
+#ifdef ADB
+				if (IS_PGXC_COORDINATOR && RemoteXactMgrPID != 0)
+					signal_child(RemoteXactMgrPID, SIGTERM);
+#endif
+
 				/*
 				 * If we're in recovery, we can't kill the startup process
 				 * right away, because at present doing so does not release
@@ -2735,6 +2757,10 @@ pmdie(SIGNAL_ARGS)
 				if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
 					signal_child(PgPoolerPID, SIGTERM);
 #endif
+#ifdef ADB
+				if (IS_PGXC_COORDINATOR && RemoteXactMgrPID != 0)
+					signal_child(RemoteXactMgrPID, SIGTERM);
+#endif
 				pmState = PM_WAIT_BACKENDS;
 			}
 
@@ -2762,6 +2788,10 @@ pmdie(SIGNAL_ARGS)
 			if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
 				signal_child(PgPoolerPID, SIGQUIT);
 
+#endif
+#ifdef ADB
+			if (IS_PGXC_COORDINATOR && RemoteXactMgrPID != 0)
+				signal_child(RemoteXactMgrPID, SIGQUIT);
 #endif
 			if (BgWriterPID != 0)
 				signal_child(BgWriterPID, SIGQUIT);
@@ -2891,6 +2921,10 @@ reaper(SIGNAL_ARGS)
 #ifdef PGXC /* PGXC_COORD */
 			if (IS_PGXC_COORDINATOR && PgPoolerPID == 0)
 				PgPoolerPID = StartPoolManager();
+#endif
+#ifdef ADB
+			if (IS_PGXC_COORDINATOR && RemoteXactMgrPID == 0)
+				RemoteXactMgrPID = StartRemoteXactMgr();
 #endif
 
 			/* some workers may be scheduled to start now */
@@ -3082,6 +3116,18 @@ reaper(SIGNAL_ARGS)
 			continue;
 		}
 #endif
+
+#ifdef ADB
+		if (IS_PGXC_COORDINATOR && pid == RemoteXactMgrPID)
+		{
+			RemoteXactMgrPID = 0;
+			if (!EXIT_STATUS_0(exitstatus))
+				HandleChildCrash(pid, exitstatus,
+								 _("remote xact manager process"));
+			continue;
+		}
+#endif /* ADB */
+
 		/* Was it one of our background workers? */
 		if (CleanupBackgroundWorker(pid, exitstatus))
 		{
@@ -3483,6 +3529,23 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) PgPoolerPID)));
 			signal_child(PgPoolerPID, (SendStop ? SIGSTOP : SIGQUIT));
+		}
+	}
+#endif
+
+#ifdef ADB
+	/* Take care of the remote xact manager too */
+	if (IS_PGXC_COORDINATOR)
+	{
+		if (pid == RemoteXactMgrPID)
+			RemoteXactMgrPID = 0;
+		else if (RemoteXactMgrPID != 0 && !FatalError)
+		{
+			ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) RemoteXactMgrPID)));
+			signal_child(RemoteXactMgrPID, (SendStop ? SIGSTOP : SIGQUIT));
 		}
 	}
 #endif
@@ -5371,6 +5434,13 @@ StartChildProcess(AuxProcType type)
 			case PoolerProcess:
 				ereport(LOG,
 						(errmsg("could not fork pool manager process: %m")));
+				break;
+#endif
+
+#ifdef ADB
+			case RemoteXactMgrProcess:
+				ereport(LOG,
+						(errmsg("could not fork remote xact manager process: %m")));
 				break;
 #endif
 			case StartupProcess:
