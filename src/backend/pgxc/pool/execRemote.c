@@ -3219,8 +3219,10 @@ do_query(RemoteQueryState *node)
 
 		if (!pgxc_start_command_on_connection(primaryconnection, node))
 		{
+#ifndef ADB
 			pfree(connections);
 			pfree(primaryconnection);
+#endif /* ADB */
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Failed to send command to Datanodes")));
@@ -3282,9 +3284,11 @@ do_query(RemoteQueryState *node)
 
 		if (!pgxc_start_command_on_connection(connections[i], node))
 		{
+#ifndef ADB
 			pfree(connections);
 			if (primaryconnection)
 				pfree(primaryconnection);
+#endif /* ADB */
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Failed to send command to Datanodes")));
@@ -3309,11 +3313,19 @@ do_query(RemoteQueryState *node)
 
 		if (pgxc_node_receive(regular_conn_count, connections, NULL))
 		{
+#ifndef ADB
 			pfree(connections);
 			if (primaryconnection)
 				pfree(primaryconnection);
 			if (node->cursor_connections)
 				pfree(node->cursor_connections);
+#else /* ADB */
+			if (node->cursor_connections)
+			{
+				pfree(node->cursor_connections);
+				node->cursor_connections = NULL;
+			}
+#endif /* ADB */
 
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
