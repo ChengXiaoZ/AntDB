@@ -263,35 +263,27 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
     $$
     
     select c.mc_timestamptz as recordtimes,
-       round(c.mc_cpu_usage::numeric, 1) as cpuuseds,
-       round(m.mm_usage::numeric, 1) as memuseds,
-       round((d.md_io_read_bytes/1024.0/1024.0)/(d.md_io_read_time/1000.0), 1) as ioreadps,
-       round((d.md_io_write_bytes/1024.0/1024.0)/(d.md_io_write_time/1000.0), 1) as iowriteps,
-       round(n.mn_recv/1024.0,1) as netinps,
-       round(n.mn_sent/1024.0,1) as netoutps
-    from  monitor_cpu c,
-        monitor_mem m,
-        monitor_disk d,
-        monitor_net n,
-        monitor_host h,
-        mgr_host mgr
-    where c.host_oid = m.host_oid and
-        c.host_oid = d.host_oid and
-        c.host_oid = n.host_oid and 
-        c.host_oid = h.host_oid and
-        c.host_oid = h.host_oid and
-        c.host_oid = mgr.oid and
-        c.mc_timestamptz = m.mm_timestamptz and
-        c.mc_timestamptz = d.md_timestamptz and
-        c.mc_timestamptz = n.mn_timestamptz and
-        c.mc_timestamptz = h.mh_current_time and
-        c.mc_timestamptz  >  h.mh_current_time - case $2 
-                                                 when 0 then interval '1 hour'
-                                                 when 1 then interval '1 day'
-                                                 when 2 then interval '7 day'
-                                                 end and
-        mgr.hostname = $1;
-        
+           round(c.mc_cpu_usage::numeric, 1) as cpuuseds,
+           round(m.mm_usage::numeric, 1) as memuseds,
+           round((d.md_io_read_bytes/1024.0/1024.0)/(d.md_io_read_time/1000.0), 1) as ioreadps,
+           round((d.md_io_write_bytes/1024.0/1024.0)/(d.md_io_write_time/1000.0), 1) as iowriteps,
+           round(n.mn_recv/1024.0,1) as netinps,
+           round(n.mn_sent/1024.0,1) as netoutps
+    from monitor_cpu c left join monitor_mem  m on(c.host_oid = m.host_oid and c.mc_timestamptz = m.mm_timestamptz)
+                       left join monitor_disk d on(c.host_oid = d.host_oid and c.mc_timestamptz = d.md_timestamptz)
+                       left join monitor_net  n on(c.host_oid = n.host_oid and c.mc_timestamptz = n.mn_timestamptz)
+                       left join monitor_host h on(c.host_oid = h.host_oid and c.mc_timestamptz = h.mh_current_time)
+                       left join mgr_host   mgr on(c.host_oid = mgr.oid)
+                       left join (select mh.host_oid, mh.mh_current_time 
+                                  from monitor_host mh 
+                                  order by mh.mh_current_time desc 
+                                  limit 1) temp on(c.host_oid = temp.host_oid)
+    where c.mc_timestamptz  >  temp.mh_current_time - case $2 
+                                                      when 0 then interval '1 hour'
+                                                      when 1 then interval '1 day'
+                                                      when 2 then interval '7 day'
+                                                      end and
+          mgr.hostname = $1;
     $$
     LANGUAGE SQL
     IMMUTABLE
