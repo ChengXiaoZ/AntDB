@@ -115,19 +115,19 @@ typedef struct Monitor_Threshold
     int16           threshold_emergency;
 }Monitor_Threshold;
 
-static void init_Monitor_Host(Monitor_Host *monitor_host);
-static void init_Monitor_Cpu(Monitor_Cpu *Monitor_cpu);
-static void init_Monitor_Mem(Monitor_Mem *Monitor_mem);
-static void init_Monitor_Net(Monitor_Net *Monitor_net);
-static void init_Monitor_Disk(Monitor_Disk *Monitor_disk);
-static void init_Monitor_Alarm(Monitor_Alarm *Monitor_alarm);
+static void init_all_table(Monitor_Host *monitor_host,
+                           Monitor_Cpu *Monitor_cpu,
+                           Monitor_Mem *Monitor_mem,
+                           Monitor_Net *Monitor_net,
+                           Monitor_Disk *Monitor_disk,
+                           Monitor_Alarm *Monitor_alarm);
 
-static void pfree_Monitor_Host(Monitor_Host *monitor_host);
-static void pfree_Monitor_Cpu(Monitor_Cpu *Monitor_cpu);
-static void pfree_Monitor_Mem(Monitor_Mem *Monitor_mem);
-static void pfree_Monitor_Net(Monitor_Net *Monitor_net);
-static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk);
-static void pfree_Monitor_Alarm(Monitor_Alarm *Monitor_alarm);
+static void pfree_all_table(Monitor_Host *monitor_host,
+                            Monitor_Cpu *Monitor_cpu,
+                            Monitor_Mem *Monitor_mem,
+                            Monitor_Net *Monitor_net,
+                            Monitor_Disk *Monitor_disk,
+                            Monitor_Alarm *Monitor_alarm);
 
 static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu);
 static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
@@ -135,8 +135,8 @@ static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
 static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net);
 static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host);
 static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
-static void insert_into_monotor_alarm(Monitor_Alarm *monitor_alarm);
-
+static void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
+static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm);
 
 /*
  *  get the host info(host base info, cpu, disk, mem, net)
@@ -167,15 +167,14 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     Monitor_Disk monitor_disk;
     Monitor_Net monitor_net;
     Monitor_Alarm monitor_alarm;
-    Monitor_Threshold monitor_threshold;
 
     initStringInfo(&agentRstStr);
-    init_Monitor_Host(&monitor_host);
-    init_Monitor_Cpu(&monitor_cpu);
-    init_Monitor_Mem(&monitor_mem);
-    init_Monitor_Disk(&monitor_disk);
-    init_Monitor_Net(&monitor_net);
-    init_Monitor_Alarm(&monitor_alarm);
+    init_all_table(&monitor_host,
+                   &monitor_cpu,
+                   &monitor_mem,
+                   &monitor_net,
+                   &monitor_disk,
+                   &monitor_alarm);
 
     if (SRF_IS_FIRSTCALL())
     {
@@ -343,16 +342,16 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     //}
 
     monitor_host.run_state = 1;
-    
+
     resetStringInfo(&monitor_mem.mem_timestamp);
     resetStringInfo(&monitor_disk.disk_timestamptz);
     resetStringInfo(&monitor_net.net_timestamp);
-    
+
     appendStringInfoString(&monitor_mem.mem_timestamp, monitor_cpu.cpu_timestamp.data);
     appendStringInfoString(&monitor_disk.disk_timestamptz, monitor_cpu.cpu_timestamp.data);
     appendStringInfoString(&monitor_net.net_timestamp, monitor_cpu.cpu_timestamp.data);
     appendStringInfoString(&monitor_host.current_time, monitor_cpu.cpu_timestamp.data);
-    
+
     insert_into_monotor_cpu(host_oid, &monitor_cpu);
     insert_into_monotor_mem(host_oid, &monitor_mem);
     insert_into_monotor_disk(host_oid, &monitor_disk);
@@ -363,44 +362,16 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     monitor_alarm.alarm_type = 1;
     monitor_alarm.alarm_status = 1;
 
-    /* for cpu alarm*/
-    get_threshold(1, &monitor_threshold);
-    if (monitor_cpu.cpu_usage >= monitor_threshold.threshold_warning)
-    {
-        if (monitor_cpu.cpu_usage < monitor_threshold.threshold_critical)
-        {
-            resetStringInfo(&monitor_alarm.alarm_text);
-            appendStringInfo(&monitor_alarm.alarm_text, "cpu usage over %d%%",
-                                    monitor_threshold.threshold_warning);
-            monitor_alarm.alarm_level = 1;
-        }
-        else if (monitor_cpu.cpu_usage >= monitor_threshold.threshold_critical
-                && monitor_cpu.cpu_usage < monitor_threshold.threshold_emergency)
-        {
-            resetStringInfo(&monitor_alarm.alarm_text);
-            appendStringInfo(&monitor_alarm.alarm_text, "cpu usage over %d%%",
-                                    monitor_threshold.threshold_critical);
-            monitor_alarm.alarm_level = 2;
+    get_cpu_usage_alarm(monitor_cpu.cpu_usage, &monitor_alarm);
 
-        }
-        else
-        {
-            resetStringInfo(&monitor_alarm.alarm_text);
-            appendStringInfo(&monitor_alarm.alarm_text, "cpu usage over %d%%",
-                                    monitor_threshold.threshold_emergency);
-            monitor_alarm.alarm_level = 3;
-        }
 
-        insert_into_monotor_alarm(&monitor_alarm);
-    }
-
-    pfree_Monitor_Host(&monitor_host);
-    pfree_Monitor_Cpu(&monitor_cpu);
-    pfree_Monitor_Mem(&monitor_mem);
-    pfree_Monitor_Net(&monitor_net);
-    pfree_Monitor_Disk(&monitor_disk);
-    pfree_Monitor_Alarm(&monitor_alarm);
     pfree(agentRstStr.data);
+    pfree_all_table(&monitor_host,
+                   &monitor_cpu,
+                   &monitor_mem,
+                   &monitor_net,
+                   &monitor_disk,
+                   &monitor_alarm);
 
     ma_close(ma);
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -529,7 +500,7 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
     heap_freetuple(newtuple);
     heap_close(monitorhost, RowExclusiveLock);
 }
-static void insert_into_monotor_alarm(Monitor_Alarm *monitor_alarm)
+static void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm)
 {
     Relation monitoralarm;
     HeapTuple newtuple;
@@ -582,69 +553,97 @@ static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
 
 }
 
-static void init_Monitor_Host(Monitor_Host *monitor_host)
+static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm)
 {
+     Monitor_Threshold monitor_threshold;
+     /* for cpu alarm*/
+     get_threshold(1, &monitor_threshold);
+     if (cpu_usage >= monitor_threshold.threshold_warning)
+     {
+         if (cpu_usage < monitor_threshold.threshold_critical)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "cpu usage over %d%%",
+                                     monitor_threshold.threshold_warning);
+             monitor_alarm->alarm_level = 1;
+         }
+         else if (cpu_usage >= monitor_threshold.threshold_critical
+                 && cpu_usage < monitor_threshold.threshold_emergency)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "cpu usage over %d%%",
+                                     monitor_threshold.threshold_critical);
+             monitor_alarm->alarm_level = 2;
+    
+         }
+         else
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "cpu usage over %d%%",
+                                     monitor_threshold.threshold_emergency);
+             monitor_alarm->alarm_level = 3;
+         }
+    
+         insert_into_monitor_alarm(monitor_alarm);
+     }
+
+}
+
+static void init_all_table(Monitor_Host *monitor_host,
+                           Monitor_Cpu *Monitor_cpu,
+                           Monitor_Mem *Monitor_mem,
+                           Monitor_Net *Monitor_net,
+                           Monitor_Disk *Monitor_disk,
+                           Monitor_Alarm *Monitor_alarm)
+{
+    /* for table : monitor host */
     initStringInfo(&monitor_host->current_time);
     initStringInfo(&monitor_host->system);
     initStringInfo(&monitor_host->platform_type);
-}
 
-static void pfree_Monitor_Host(Monitor_Host *monitor_host)
-{
-    pfree(monitor_host->current_time.data);
-    pfree(monitor_host->system.data);
-    pfree(monitor_host->platform_type.data);
-}
-
-static void init_Monitor_Cpu(Monitor_Cpu *Monitor_cpu)
-{
+    /* for table : monitor cpu */
     initStringInfo(&Monitor_cpu->cpu_timestamp);
-}
 
-static void pfree_Monitor_Cpu(Monitor_Cpu *Monitor_cpu)
-{
-    pfree(Monitor_cpu->cpu_timestamp.data);
-}
-
-static void init_Monitor_Mem(Monitor_Mem *Monitor_mem)
-{
+    /* for table : monitor mem */
     initStringInfo(&Monitor_mem->mem_timestamp);
-}
 
-static void pfree_Monitor_Mem(Monitor_Mem *Monitor_mem)
-{
-    pfree(Monitor_mem->mem_timestamp.data);
-}
-
-static void init_Monitor_Net(Monitor_Net *Monitor_net)
-{
+    /* for table : monitor net */
     initStringInfo(&Monitor_net->net_timestamp);
-}
 
-static void pfree_Monitor_Net(Monitor_Net *Monitor_net)
-{
-    pfree(Monitor_net->net_timestamp.data);
-}
-
-static void init_Monitor_Disk(Monitor_Disk *Monitor_disk)
-{
+    /* for table : monitor disk */
     initStringInfo(&Monitor_disk->disk_timestamptz);
-}
 
-static void pfree_Monitor_Disk(Monitor_Disk *Monitor_disk)
-{
-    pfree(Monitor_disk->disk_timestamptz.data);
-}
-
-static void init_Monitor_Alarm(Monitor_Alarm *Monitor_alarm)
-{
+    /* for table : monitor alarm */
     initStringInfo(&Monitor_alarm->alarm_source);
     initStringInfo(&Monitor_alarm->alarm_text);
     initStringInfo(&Monitor_alarm->alarm_timetz);
 }
 
-static void pfree_Monitor_Alarm(Monitor_Alarm *Monitor_alarm)
+static void pfree_all_table(Monitor_Host *monitor_host,
+                            Monitor_Cpu *Monitor_cpu,
+                            Monitor_Mem *Monitor_mem,
+                            Monitor_Net *Monitor_net,
+                            Monitor_Disk *Monitor_disk,
+                            Monitor_Alarm *Monitor_alarm)
 {
+    /* for table : monitor host */
+    pfree(monitor_host->current_time.data);
+    pfree(monitor_host->system.data);
+    pfree(monitor_host->platform_type.data);
+
+    /* for table : monitor cpu */
+    pfree(Monitor_cpu->cpu_timestamp.data);
+
+    /* for table : monitor mem */
+    pfree(Monitor_mem->mem_timestamp.data);
+
+    /* for table : monitor net */
+    pfree(Monitor_net->net_timestamp.data);
+
+    /* for table : monitor disk */
+    pfree(Monitor_disk->disk_timestamptz.data);
+
+    /* for table : monitor alarm */
     pfree(Monitor_alarm->alarm_source.data);
     pfree(Monitor_alarm->alarm_text.data);
     pfree(Monitor_alarm->alarm_timetz.data);
