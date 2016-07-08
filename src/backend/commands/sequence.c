@@ -89,6 +89,15 @@ typedef SeqTableData *SeqTable;
 
 static SeqTable seqtab = NULL;	/* Head of list of SeqTable items */
 
+#ifdef ADB
+typedef struct drop_sequence_callback_arg
+{
+	char *seqname;
+	AGTM_SequenceDropType type;
+	AGTM_SequenceKeyType key;
+} drop_sequence_callback_arg;
+#endif
+
 /*
  * last_used_seq is updated by nextval() to point to the last used
  * sequence.
@@ -245,64 +254,126 @@ ParseSequenceOpition2Sql(List *options, char *seq_name, StringInfoData buf, Node
 {
 	FormData_pg_sequence new;
 	List	   *owned_by;
-	int			i;
-	char		seq_buf[10];
+
 	/* Check and set all option values */
 	init_params(options, true, &new, &owned_by);
 
 	/*
 	 * Create relation (and fill value[] and null[] for the tuple)
 	 */
-	for (i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
-	{
-		switch (i)
-		{
-			case SEQ_COL_NAME:
-				appendStringInfoString(&buf, seq_name);
-				break;
-			case SEQ_COL_STARTVAL:
-				MemSet(seq_buf,0,10);
-				sprintf(seq_buf, "%ld", new.start_value);
-				if (tag == T_CreateSeqStmt)				
-					appendStringInfoString(&buf, " START WITH ");
-				else if (tag == T_AlterSeqStmt)
-					appendStringInfoString(&buf, " RESTART WITH ");
-				
-				appendStringInfoString(&buf, seq_buf);
-				break;
-			case SEQ_COL_INCBY:
-				MemSet(seq_buf,0,10);
-				sprintf(seq_buf, "%ld", new.increment_by);
-				appendStringInfoString(&buf, " INCREMENT BY ");
-				appendStringInfoString(&buf, seq_buf);
-				break;
-			case SEQ_COL_MAXVALUE:
-				MemSet(seq_buf,0,10);
-				sprintf(seq_buf, "%ld", new.max_value);
-				appendStringInfoString(&buf, " MAXVALUE ");
-				appendStringInfoString(&buf, seq_buf);
-				break;
-			case SEQ_COL_MINVALUE:
-				MemSet(seq_buf,0,10);
-				sprintf(seq_buf, "%ld", new.min_value);
-				appendStringInfoString(&buf, " MINVALUE ");
-				appendStringInfoString(&buf, seq_buf);
-				break;
-			case SEQ_COL_CACHE:
-				MemSet(seq_buf,0,10);
-				sprintf(seq_buf, "%ld", new.cache_value);
-				appendStringInfoString(&buf, " CACHE ");
-				appendStringInfoString(&buf, seq_buf);	
-				break;
-			case SEQ_COL_CYCLE:
-				if(new.is_cycled)					
-					appendStringInfoString(&buf, " CYCLE ");
-				else
-					appendStringInfoString(&buf, " NO CYCLE ");
-				break;
-		}
-	}	
+
+	appendStringInfoString(&buf, seq_name);
+	
+	if (tag == T_CreateSeqStmt)				
+		appendStringInfoString(&buf, " START WITH ");
+	else if (tag == T_AlterSeqStmt)
+		appendStringInfoString(&buf, " RESTART WITH ");
+	appendStringInfo(&buf, INT64_FORMAT, new.start_value);
+
+	appendStringInfoString(&buf, " INCREMENT BY ");
+	appendStringInfo(&buf, INT64_FORMAT, new.increment_by);
+
+	appendStringInfoString(&buf, " MAXVALUE ");
+	appendStringInfo(&buf, INT64_FORMAT, new.max_value);
+
+	appendStringInfoString(&buf, " MINVALUE ");
+	appendStringInfo(&buf, INT64_FORMAT, new.min_value);
+
+	appendStringInfoString(&buf, " CACHE ");
+	appendStringInfo(&buf, INT64_FORMAT, new.cache_value);
+
+	if(new.is_cycled)					
+		appendStringInfoString(&buf, " CYCLE ");
+	else
+		appendStringInfoString(&buf, " NO CYCLE ");
+
 }
+
+/*
+ * IsTempSequence
+ *
+ * Determine if given sequence is temporary or not.
+ */
+bool
+IsTempSequence(Oid relid)
+{
+	Relation seqrel;
+	bool res;
+	SeqTable	elm;
+
+	/* open and AccessShareLock sequence */
+	init_sequence(relid, &elm, &seqrel);
+
+	res = seqrel->rd_backend == MyBackendId;
+	relation_close(seqrel, NoLock);
+	return res;
+}
+
+/*
+ * GetGlobalSeqName
+ *
+ * Returns a global sequence name adapted to AGTM
+ * Name format is dbname.schemaname.seqname
+ * so as to identify in a unique way in the whole cluster each sequence
+ */
+char *
+GetGlobalSeqName(Relation seqrel, const char *new_seqname, const char *new_schemaname)
+{
+	char *seqname, *dbname, *schemaname, *relname;
+	int charlen;
+
+	/* Get all the necessary relation names */
+	dbname = get_database_name(seqrel->rd_node.dbNode);
+
+	if (new_seqname)
+		relname = (char *) new_seqname;
+	else
+		relname = RelationGetRelationName(seqrel);
+
+	if (new_schemaname)
+		schemaname = (char *) new_schemaname;
+	else
+		schemaname = get_namespace_name(RelationGetNamespace(seqrel));
+
+	/* Calculate the global name size including the dots and \0 */
+	charlen = strlen(dbname) + strlen(schemaname) + strlen(relname) + 3;
+	seqname = (char *) palloc(charlen);
+
+	/* Form a unique sequence name with schema and database name for GTM */
+	snprintf(seqname,
+			 charlen,
+			 "%s.%s.%s",
+			 dbname,
+			 schemaname,
+			 relname);
+
+	if (dbname)
+		pfree(dbname);
+	if (schemaname)
+		pfree(schemaname);
+
+	return seqname;
+}
+
+void
+register_sequence_cb(char *seqname, AGTM_SequenceKeyType key, AGTM_SequenceDropType type)
+{
+	drop_sequence_callback_arg *args;
+	char *seqnamearg = NULL;
+	
+	/* All the arguments are transaction-dependent, so save them in TopTransactionContext */
+/*	args = (drop_sequence_callback_arg *)
+		MemoryContextAlloc(TopTransactionContext, sizeof(drop_sequence_callback_arg));
+	
+	seqnamearg = MemoryContextAlloc(TopTransactionContext, strlen(seqname) + 1);
+	sprintf(seqnamearg, "%s", seqname);
+	args->seqname = seqnamearg;
+	args->key = key;
+	args->type = type;
+*/
+
+}
+
 #endif
 
 /*

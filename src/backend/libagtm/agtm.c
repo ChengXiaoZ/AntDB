@@ -321,6 +321,10 @@ static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 				if(pqPutnchar((char*)&val, sizeof(val), conn) < 0)
 					goto put_error_;
 			}
+			else
+			{
+				goto put_error_;
+			}
 		}
 		else
 		{

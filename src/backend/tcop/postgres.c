@@ -102,7 +102,6 @@
 #include "catalog/adb_ha_sync_log.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
-#include "agtm/agtm_msg.h"
 #endif /* ADB */
 #ifdef ADBMGRD
 #	include "mgr/mgr_agent.h"
@@ -4924,10 +4923,9 @@ PostgresMain(int argc, char *argv[],
 			case 'A':
 				{
 					/* process agtm command */
-					start_xact_command();				
+					start_xact_command();
 					ProcessAGtmCommand(&input_message, whereToSendOutput);
 					finish_xact_command();
-
 					send_ready_for_query = true;
 				}
 				break;

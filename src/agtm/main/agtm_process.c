@@ -66,7 +66,6 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 			break;
 
 		case AGTM_MSG_SEQUENCE_SET_VAL:
-		//	StartTransactionCommand();
 			PG_TRY();
 			{
 				output = ProcessSetSeqCommand(input_message, &buf);
@@ -75,11 +74,9 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				CommitTransactionCommand();
 				PG_RE_THROW();
 			} PG_END_TRY();
-		//	CommitTransactionCommand();
 			break;
 
 		case AGTM_MSG_SEQUENCE_GET_NEXT:
-		//	StartTransactionCommand();
 			PG_TRY();
 			{
 				output = ProcessNextSeqCommand(input_message, &buf);
@@ -88,7 +85,6 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				CommitTransactionCommand();
 				PG_RE_THROW();
 			} PG_END_TRY();
-		//	CommitTransactionCommand();
 			break;
 			
 		case AGTM_MSG_SEQUENCE_GET_CUR:

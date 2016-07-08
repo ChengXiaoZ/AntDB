@@ -1475,10 +1475,6 @@ ProcessUtilitySlow(Node *parsetree,
 	bool		isTopLevel = (context == PROCESS_UTILITY_TOPLEVEL);
 	bool		isCompleteQuery = (context <= PROCESS_UTILITY_QUERY);
 	bool		needCleanup;
-#ifdef ADB
-	StringInfoData	buf;
-	initStringInfo(&buf);
-#endif
 
 	/* All event trigger calls are done only when isCompleteQuery is true */
 	needCleanup = isCompleteQuery && EventTriggerBeginCompleteQuery();
@@ -2173,88 +2169,94 @@ ProcessUtilitySlow(Node *parsetree,
 				break;
 
 			case T_CreateSeqStmt:
-				/*
-				 * K.Suzuki, Sep.2nd, 2013
-				 * Moved from sgtandard_ProcessUtility().
-				 */
-#ifdef ADB				
-				resetStringInfo(&buf);
-				appendStringInfoString(&buf,"CREATE SEQUENCE ");
-				ParseSequenceOpition2Sql(((CreateSeqStmt *) parsetree)->options,
-					((CreateSeqStmt *) parsetree)->sequence->relname, buf, T_CreateSeqStmt);
-#endif
-				DefineSequence((CreateSeqStmt *) parsetree);
-#ifdef PGXC
-				if (IS_PGXC_COORDINATOR)
 				{
-					CreateSeqStmt *stmt = (CreateSeqStmt *) parsetree;
-
-					/* In case this query is related to a SERIAL execution, just bypass */
-					if (!stmt->is_serial)
-					{
-						bool is_temp = stmt->sequence->relpersistence == RELPERSISTENCE_TEMP;
-
-						/* Set temporary object flag in pooler */
-						if (is_temp)
-							PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
-
-						ExecUtilityStmtOnNodes2((Node*)stmt, queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, is_temp);
-					}
-
-					/* execute create sequence on agtm */
-					if(!IsConnFromCoord())
-						//agtm_sequence(queryString);
-						agtm_sequence(buf.data);
-					
-					pfree(buf.data);
-				}
+					/*
+					 * K.Suzuki, Sep.2nd, 2013
+					 * Moved from sgtandard_ProcessUtility().
+					 */
+#ifdef ADB			
+					StringInfoData	buf;
+					initStringInfo(&buf);
+					appendStringInfoString(&buf,"CREATE SEQUENCE ");
+					ParseSequenceOpition2Sql(((CreateSeqStmt *) parsetree)->options,
+						((CreateSeqStmt *) parsetree)->sequence->relname, buf, T_CreateSeqStmt);
 #endif
-				break;
+					DefineSequence((CreateSeqStmt *) parsetree);
+#ifdef PGXC
+					if (IS_PGXC_COORDINATOR)
+					{
+						CreateSeqStmt *stmt = (CreateSeqStmt *) parsetree;
 
+						/* In case this query is related to a SERIAL execution, just bypass */
+						if (!stmt->is_serial)
+						{
+							bool is_temp = stmt->sequence->relpersistence == RELPERSISTENCE_TEMP;
+
+							/* Set temporary object flag in pooler */
+							if (is_temp)
+								PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
+
+							ExecUtilityStmtOnNodes2((Node*)stmt, queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, is_temp);
+						}
+
+						/* execute create sequence on agtm */
+						if(!IsConnFromCoord())						
+							agtm_sequence(buf.data);
+#ifdef ADB	
+						pfree(buf.data);
+#endif
+					}
+#endif
+					break;
+				}
+			
 			case T_AlterSeqStmt:
-				/*
-				 * K.Suzuki, Sep.2nd, 2013
-				 * Moved from sgtandard_ProcessUtility().
-				 */
-				AlterSequence((AlterSeqStmt *) parsetree);
-#ifdef ADB
-				resetStringInfo(&buf);
-				appendStringInfoString(&buf,"ALTER SEQUENCE ");
-				ParseSequenceOpition2Sql(((AlterSeqStmt *) parsetree)->options,
-					((AlterSeqStmt *) parsetree)->sequence->relname, buf, T_AlterSeqStmt);
-#endif
-#ifdef PGXC
-				if (IS_PGXC_COORDINATOR)
 				{
-					AlterSeqStmt *stmt = (AlterSeqStmt *) parsetree;
-
-					/* In case this query is related to a SERIAL execution, just bypass */
-					if (!stmt->is_serial)
-					{
-						bool		  is_temp;
-						RemoteQueryExecType exec_type;
-						Oid					relid = RangeVarGetRelid(stmt->sequence, NoLock, true);
-
-						if (!OidIsValid(relid))
-							break;
-
-						exec_type = ExecUtilityFindNodes(OBJECT_SEQUENCE,
-														 relid,
-														 &is_temp);
-
-						ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, exec_type, is_temp);
-					}
-					
-					/* execute alter sequence(increment/minvalue/maxvalue/restart/cache/cycle) on agtm */
-					if(!IsConnFromCoord())
-//						agtm_sequence(queryString);
-						agtm_sequence(buf.data);
-					
-					pfree(buf.data);
-				}
+					/*
+					 * K.Suzuki, Sep.2nd, 2013
+					 * Moved from sgtandard_ProcessUtility().
+					 */					
+#ifdef ADB
+					StringInfoData	buf;
+					initStringInfo(&buf);
+					appendStringInfoString(&buf,"ALTER SEQUENCE ");
+					ParseSequenceOpition2Sql(((AlterSeqStmt *) parsetree)->options,
+						((AlterSeqStmt *) parsetree)->sequence->relname, buf, T_AlterSeqStmt);
 #endif
-				break;
+					AlterSequence((AlterSeqStmt *) parsetree);
+#ifdef PGXC
+					if (IS_PGXC_COORDINATOR)
+					{
+						AlterSeqStmt *stmt = (AlterSeqStmt *) parsetree;
 
+						/* In case this query is related to a SERIAL execution, just bypass */
+						if (!stmt->is_serial)
+						{
+							bool		  is_temp;
+							RemoteQueryExecType exec_type;
+							Oid					relid = RangeVarGetRelid(stmt->sequence, NoLock, true);
+
+							if (!OidIsValid(relid))
+								break;
+
+							exec_type = ExecUtilityFindNodes(OBJECT_SEQUENCE,
+															 relid,
+															 &is_temp);
+
+							ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, exec_type, is_temp);
+						}
+						
+						/* execute alter sequence(increment/minvalue/maxvalue/restart/cache/cycle) on agtm */
+						if(!IsConnFromCoord())						
+							agtm_sequence(buf.data);
+#ifdef ADB	
+						pfree(buf.data);
+#endif
+					}
+#endif
+					break;
+				}
+			
 			case T_CreateTableAsStmt:
 				ExecCreateTableAs((CreateTableAsStmt *) parsetree,
 								  queryString, params, completionTag);

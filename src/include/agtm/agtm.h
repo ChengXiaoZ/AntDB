@@ -26,6 +26,13 @@
 							  IsUnderPostmaster &&						\
 							  IsNormalDatabase() &&						\
 							  IsNormalProcessingMode())
+							  
+/* Type of sequence name used when dropping it */
+typedef enum AGTM_SequenceKeyType
+{
+	AGTM_SEQ_FULL_NAME,	/* Full sequence key */
+	AGTM_SEQ_DB_NAME 	/* DB name part of sequence key */
+} AGTM_SequenceKeyType;
 
 /*
  * get gixd from AGTM

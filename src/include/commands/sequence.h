@@ -18,6 +18,10 @@
 #include "nodes/parsenodes.h"
 #include "storage/relfilenode.h"
 
+#ifdef ADB
+#include "agtm/agtm.h"
+#endif
+
 typedef struct FormData_pg_sequence
 {
 	NameData	sequence_name;
@@ -71,8 +75,20 @@ extern Datum lastval(PG_FUNCTION_ARGS);
 extern Datum pg_sequence_parameters(PG_FUNCTION_ARGS);
 
 #ifdef ADB
+
+typedef enum
+{
+	AGTM_CREATE_SEQ,
+	AGTM_DROP_SEQ
+} AGTM_SequenceDropType;
+
 extern void ParseSequenceOpition2Sql(List *options, char *seq_name, StringInfoData buf, NodeTag tag);
+extern bool IsTempSequence(Oid relid);
+extern char *GetGlobalSeqName(Relation seqrel, const char *new_seqname, const char *new_schemaname);
+extern void register_sequence_cb(char *seqname, AGTM_SequenceKeyType key, AGTM_SequenceDropType type);
+
 #endif
+
 extern Oid	DefineSequence(CreateSeqStmt *stmt);
 extern Oid	AlterSequence(AlterSeqStmt *stmt);
 extern void ResetSequence(Oid seq_relid);

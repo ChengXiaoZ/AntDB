@@ -1154,6 +1154,62 @@ doDeletion(const ObjectAddress *object, int flags)
 					else
 						heap_drop_with_catalog(object->objectId);
 				}
+#ifdef ADB
+				/*
+				 * Do not do extra process if this session is connected to a remote
+				 * Coordinator.
+				 */
+				if (IsConnFromCoord())
+					break;
+				
+				/*
+				 * This session is connected directly to application, so extra
+				 * process related to remote nodes and GTM is needed.
+				 */
+				 switch (relKind)
+			 	{
+			 		case RELKIND_SEQUENCE:
+						/*
+						 * Drop the sequence on AGTM.
+						 * Sequence is dropped on AGTM by a remote Coordinator only
+						 * for a non temporary sequence.
+						 */
+						 if (!IsTempSequence(object->objectId))
+						 {
+						 	/*
+							 * The sequence has already been removed from Coordinator,
+							 * finish the stuff on AGTM too
+							 */
+							 Relation relseq;
+							 char *seqname;
+							 /*
+							 * A relation is opened to get the schema and database name as
+							 * such data is not available before when dropping a function.
+							 */
+							 relseq = relation_open(object->objectId, AccessShareLock);
+							 seqname = GetGlobalSeqName(relseq, NULL, NULL);
+
+							/*
+							 * Sequence is not immediately removed on AGTM, but at the end
+							 * of the transaction block. In case this transaction fails,
+							 * all the data remains intact on AGTM.
+							 */
+							 register_sequence_cb(seqname, AGTM_SEQ_FULL_NAME, AGTM_DROP_SEQ);
+							
+							 pfree(seqname);
+							 /* Then close the relation opened previously */
+							 relation_close(relseq, AccessShareLock);
+						 }
+						break;
+						
+					case RELKIND_RELATION:
+					case RELKIND_VIEW:
+						break;
+						
+					default:
+						break;
+				}
+#endif
 				break;
 			}
 
