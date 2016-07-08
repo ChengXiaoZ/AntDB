@@ -137,6 +137,10 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host);
 static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
 static void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
 static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm);
+static void get_mem_usage_alarm(float mem_usage, Monitor_Alarm *monitor_alarm);
+static void get_disk_usage_alarm(float disk_usage, Monitor_Alarm *monitor_alarm);
+static void get_sent_speed_alarm(float sent_speed, Monitor_Alarm *monitor_alarm);
+static void get_recv_speed_alarm(float recv_speed, Monitor_Alarm *monitor_alarm);
 
 /*
  *  get the host info(host base info, cpu, disk, mem, net)
@@ -160,6 +164,9 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     Datum datum;
     bool isNull;
     char *host_addr;
+    float disk_usage;
+    float sent_speed;
+    float recv_speed;
     
     Monitor_Host monitor_host;
     Monitor_Cpu monitor_cpu;
@@ -363,6 +370,17 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     monitor_alarm.alarm_status = 1;
 
     get_cpu_usage_alarm(monitor_cpu.cpu_usage, &monitor_alarm);
+    get_mem_usage_alarm(monitor_mem.mem_usage, &monitor_alarm);
+    
+    disk_usage = ((monitor_disk.disk_used/monitor_disk.disk_total)*100);
+    get_disk_usage_alarm(disk_usage, &monitor_alarm);
+
+    sent_speed = monitor_net.net_sent/1024/1024;
+    get_sent_speed_alarm(sent_speed, &monitor_alarm);
+
+    recv_speed = monitor_net.net_recv/1024/1024;
+    get_recv_speed_alarm(sent_speed, &monitor_alarm);
+
 
 
     pfree(agentRstStr.data);
@@ -556,7 +574,7 @@ static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
 static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm)
 {
      Monitor_Threshold monitor_threshold;
-     /* for cpu alarm*/
+
      get_threshold(1, &monitor_threshold);
      if (cpu_usage >= monitor_threshold.threshold_warning)
      {
@@ -586,7 +604,146 @@ static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm)
     
          insert_into_monitor_alarm(monitor_alarm);
      }
+}
 
+static void get_mem_usage_alarm(float mem_usage, Monitor_Alarm *monitor_alarm)
+{
+     Monitor_Threshold monitor_threshold;
+
+     get_threshold(2, &monitor_threshold);
+     if (mem_usage >= monitor_threshold.threshold_warning)
+     {
+         if (mem_usage < monitor_threshold.threshold_critical)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "mem usage over %d%%",
+                                     monitor_threshold.threshold_warning);
+             monitor_alarm->alarm_level = 1;
+         }
+         else if (mem_usage >= monitor_threshold.threshold_critical
+                 && mem_usage < monitor_threshold.threshold_emergency)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "mem usage over %d%%",
+                                     monitor_threshold.threshold_critical);
+             monitor_alarm->alarm_level = 2;
+    
+         }
+         else
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "mem usage over %d%%",
+                                     monitor_threshold.threshold_emergency);
+             monitor_alarm->alarm_level = 3;
+         }
+    
+         insert_into_monitor_alarm(monitor_alarm);
+     }
+}
+
+static void get_disk_usage_alarm(float disk_usage, Monitor_Alarm *monitor_alarm)
+{
+     Monitor_Threshold monitor_threshold;
+
+     get_threshold(3, &monitor_threshold);
+     if (disk_usage >= monitor_threshold.threshold_warning)
+     {
+         if (disk_usage < monitor_threshold.threshold_critical)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "disk usage over %d%%",
+                                     monitor_threshold.threshold_warning);
+             monitor_alarm->alarm_level = 1;
+         }
+         else if (disk_usage >= monitor_threshold.threshold_critical
+                 && disk_usage < monitor_threshold.threshold_emergency)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "disk usage over %d%%",
+                                     monitor_threshold.threshold_critical);
+             monitor_alarm->alarm_level = 2;
+    
+         }
+         else
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "disk usage over %d%%",
+                                     monitor_threshold.threshold_emergency);
+             monitor_alarm->alarm_level = 3;
+         }
+    
+         insert_into_monitor_alarm(monitor_alarm);
+     }
+}
+
+static void get_sent_speed_alarm(float sent_speed, Monitor_Alarm *monitor_alarm)
+{
+     Monitor_Threshold monitor_threshold;
+
+     get_threshold(4, &monitor_threshold);
+     if (sent_speed >= monitor_threshold.threshold_warning)
+     {
+         if (sent_speed < monitor_threshold.threshold_critical)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "network sent speed over %d%%",
+                                     monitor_threshold.threshold_warning);
+             monitor_alarm->alarm_level = 1;
+         }
+         else if (sent_speed >= monitor_threshold.threshold_critical
+                 && sent_speed < monitor_threshold.threshold_emergency)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "network sent speed over %d%%",
+                                     monitor_threshold.threshold_critical);
+             monitor_alarm->alarm_level = 2;
+    
+         }
+         else
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "network sent speed over %d%%",
+                                     monitor_threshold.threshold_emergency);
+             monitor_alarm->alarm_level = 3;
+         }
+    
+         insert_into_monitor_alarm(monitor_alarm);
+     }
+}
+
+static void get_recv_speed_alarm(float recv_speed, Monitor_Alarm *monitor_alarm)
+{
+     Monitor_Threshold monitor_threshold;
+
+     get_threshold(5, &monitor_threshold);
+     if (recv_speed >= monitor_threshold.threshold_warning)
+     {
+         if (recv_speed < monitor_threshold.threshold_critical)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "network recv speed over %d%%",
+                                     monitor_threshold.threshold_warning);
+             monitor_alarm->alarm_level = 1;
+         }
+         else if (recv_speed >= monitor_threshold.threshold_critical
+                 && recv_speed < monitor_threshold.threshold_emergency)
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "network recv speed over %d%%",
+                                     monitor_threshold.threshold_critical);
+             monitor_alarm->alarm_level = 2;
+    
+         }
+         else
+         {
+             resetStringInfo(&monitor_alarm->alarm_text);
+             appendStringInfo(&monitor_alarm->alarm_text, "network recv speed over %d%%",
+                                     monitor_threshold.threshold_emergency);
+             monitor_alarm->alarm_level = 3;
+         }
+    
+         insert_into_monitor_alarm(monitor_alarm);
+     }
 }
 
 static void init_all_table(Monitor_Host *monitor_host,

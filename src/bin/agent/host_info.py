@@ -6,11 +6,11 @@ import time
 import sys
 import platform
 
-# set timeformat. (e.g. 2016-06-16 16:49:51 HKT)
-ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'
+# set timeformat. (e.g. 2016-06-16 16:49:51 GMT)
+ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S'
 
 def get_cpu_info():
-	time_stamp = time.strftime(ISOTIMEFORMAT, time.localtime())
+	time_stamp = time.strftime(ISOTIMEFORMAT, time.gmtime()) + " GMT"
 	cpu_usage = psutil.cpu_percent(interval=1)
 	#print "%s %.2f" % (time_stamp, cpu_usage)
 	return (time_stamp, cpu_usage)
@@ -19,13 +19,13 @@ def get_mem_info():
 	memTotal = psutil.virtual_memory().total
 	memUsed = psutil.virtual_memory().used
 	memUsage = psutil.virtual_memory().percent
-	time_stamp = time.strftime(ISOTIMEFORMAT, time.localtime())
+	time_stamp = time.strftime(ISOTIMEFORMAT, time.gmtime()) + " GMT"
 	#print "%s %d %d %.2f" % (time_stamp, memTotal, memUsed, memUsage)
 	return (time_stamp, memTotal, memUsed, memUsage)
 
 
 def get_disk_info():
-	time_stamp = time.strftime(ISOTIMEFORMAT, time.localtime())
+	time_stamp = time.strftime(ISOTIMEFORMAT, time.gmtime()) + " GMT"
 	disk_read_bytes = psutil.disk_io_counters().read_bytes
 	disk_read_time = psutil.disk_io_counters().read_time
 	disk_write_bytes = psutil.disk_io_counters().write_bytes
@@ -40,7 +40,7 @@ def get_net_info():
 	net_bytes_sent1 = psutil.net_io_counters().bytes_sent
 	net_bytes_recv1 = psutil.net_io_counters().bytes_recv
 	time.sleep(3)
-	time_stamp = time.strftime(ISOTIMEFORMAT, time.localtime())
+	time_stamp = time.strftime(ISOTIMEFORMAT, time.gmtime()) + " GMT"
 	net_bytes_sent2 = psutil.net_io_counters().bytes_sent
 	net_bytes_recv2 = psutil.net_io_counters().bytes_recv
 	sent = (net_bytes_sent2 - net_bytes_sent1)/3

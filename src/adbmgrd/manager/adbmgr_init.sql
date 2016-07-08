@@ -567,7 +567,9 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
 CREATE VIEW adbmgr.get_coordinator_node_topology AS
     select row_to_json(t) as coordinator_result
     from(      
-        select n.nodename, n.nodeport, h.hostaddr
+        select n.nodename AS node_name,
+               n.nodeport AS node_port,
+               h.hostaddr AS node_ip
         from mgr_node n, mgr_host h
         where n.nodeincluster = true and
               n.nodeinited = true and
