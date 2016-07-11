@@ -11,7 +11,6 @@
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
 #include "catalog/mgr_cndnnode.h"
-#include "catalog/monitor_dbthreshold.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "fmgr.h"
@@ -40,13 +39,20 @@
 /*see the content of insert into mgr.dbthreshold of adbmgr_init.sql*/
 typedef enum DbthresholdObject
 {
-	OBJECT_HEAPHIT = 1,
-	OBJECT_COMMITRATE,
-	OBJECT_STANDBYDELAY,
-	OBJECT_LOCKS,
-	OBJECT_CONNECT,
-	OBJECT_LONGTRANS,
-	OBJECT_UNUSEDINDEX
+	OBJECT_NODE_HEAPHIT = 11,
+	OBJECT_NODE_COMMITRATE,
+	OBJECT_NODE_STANDBYDELAY,
+	OBJECT_NODE_LOCKS,
+	OBJECT_NODE_CONNECT,
+	OBJECT_NODE_LONGTRANS,
+	OBJECT_NODE_UNUSEDINDEX,
+	OBJECT_CLUSTER_HEAPHIT = 21,
+	OBJECT_CLUSTER_COMMITRATE,
+	OBJECT_CLUSTER_STANDBYDELAY,
+	OBJECT_CLUSTER_LOCKS,
+	OBJECT_CLUSTER_CONNECT,
+	OBJECT_CLUSTER_LONGTRANS,
+	OBJECT_CLUSTER_UNUSEDINDEX
 }DbthresholdObject;
 
 typedef enum AlarmLevel
@@ -57,20 +63,8 @@ typedef enum AlarmLevel
 }AlarmLevel;
 
 
-/* for table: monitor_dbthreshold */
-typedef struct Monitor_dbThreshold
-{
-		int32						node_warning;
-		int32						node_critical;
-		int32						node_emergency;
-		int32						cluster_warning;
-		int32						cluster_critical;
-		int32						cluster_emergency;
-}Monitor_dbThreshold;
-
-static void monitor_dbthreshold_check_warn_start_small(DbthresholdObject objectype, char *address, char *time, int unusedindex, bool bcluster, char *descp);
-static void monitor_dbthreshold_check_warn_start_large(DbthresholdObject objectype, char *address, char * time, int heaphitrate, bool bcluster, char *descp);
-static void get_threshold_phynode_cluster(int16 type, Monitor_dbThreshold *dbthreshold);
+static void monitor_dbthreshold_check_warn_start_small(DbthresholdObject objectype, char *address, char *time, int unusedindex, char *descp);
+static void monitor_dbthreshold_check_warn_start_large(DbthresholdObject objectype, char *address, char * time, int heaphitrate, char *descp);
 static void  monitor_dbthreshold_standbydelay();
 
 
@@ -341,7 +335,7 @@ void  monitor_dbthreshold_heaphitrate_unusedindex()
 		if (getnode)
 		{
 			nodetime = monitor_get_timestamptz_one_node(ndatauser.data, address, port);
-			monitor_dbthreshold_check_warn_start_large(OBJECT_HEAPHIT, address, nodetime, phyheaphitrate, false, "heaphit rate");
+			monitor_dbthreshold_check_warn_start_large(OBJECT_NODE_HEAPHIT, address, nodetime, phyheaphitrate, "heaphit rate");
 			pfree(nodetime);
 		}
 		
@@ -355,8 +349,8 @@ void  monitor_dbthreshold_heaphitrate_unusedindex()
 	if (clusterheaphit+clusterheapread != 0)
 		clusterheaphitrate = clusterheaphit*100/(clusterheaphit+clusterheapread);
 	clustertime = timestamptz_to_str(GetCurrentTimestamp());
-	monitor_dbthreshold_check_warn_start_large(OBJECT_HEAPHIT, "cluster", clustertime, clusterheaphitrate, true, "heaphit rate");
-	monitor_dbthreshold_check_warn_start_small(OBJECT_UNUSEDINDEX, "cluster", clustertime, clusterunusedindex, true, "unused index");
+	monitor_dbthreshold_check_warn_start_large(OBJECT_CLUSTER_HEAPHIT, "cluster", clustertime, clusterheaphitrate, "heaphit rate");
+	monitor_dbthreshold_check_warn_start_small(OBJECT_CLUSTER_UNUSEDINDEX, "cluster", clustertime, clusterunusedindex, "unused index");
 
 }
 
@@ -466,11 +460,11 @@ void  monitor_dbthreshold_commitrate_locks_longtrans_idletrans_connect()
 		if (getnode)
 		{
 			nodetime = monitor_get_timestamptz_one_node(ndatauser.data, address, port);
-			monitor_dbthreshold_check_warn_start_large(OBJECT_COMMITRATE, address, nodetime, phynodecommitrate, false, "commit rate");
-			monitor_dbthreshold_check_warn_start_small(OBJECT_LOCKS, address, nodetime, phynodelocks, false, "locks");
-			monitor_dbthreshold_check_warn_start_small(OBJECT_LONGTRANS, address, nodetime, phynodelongtrans, false, "long transactions");
-			monitor_dbthreshold_check_warn_start_small(OBJECT_LONGTRANS, address, nodetime, phynodeidletrans, false, "idle transactions");
-			monitor_dbthreshold_check_warn_start_small(OBJECT_CONNECT, address, nodetime, phynodeconnect, false, "connect");
+			monitor_dbthreshold_check_warn_start_large(OBJECT_NODE_COMMITRATE, address, nodetime, phynodecommitrate,  "commit rate");
+			monitor_dbthreshold_check_warn_start_small(OBJECT_NODE_LOCKS, address, nodetime, phynodelocks, "locks");
+			monitor_dbthreshold_check_warn_start_small(OBJECT_NODE_LONGTRANS, address, nodetime, phynodelongtrans, "long transactions");
+			monitor_dbthreshold_check_warn_start_small(OBJECT_NODE_LONGTRANS, address, nodetime, phynodeidletrans, "idle transactions");
+			monitor_dbthreshold_check_warn_start_small(OBJECT_NODE_CONNECT, address, nodetime, phynodeconnect, "connect");
 			pfree(nodetime);
 		}		
 	}
@@ -481,11 +475,11 @@ void  monitor_dbthreshold_commitrate_locks_longtrans_idletrans_connect()
 	if(clustercommit+clusterrollback != 0)
 		clustercommitrate = clustercommit*100/(clustercommit+clusterrollback);
 	clustertime = timestamptz_to_str(GetCurrentTimestamp());
-	monitor_dbthreshold_check_warn_start_large(OBJECT_COMMITRATE, "cluster", clustertime, clustercommitrate, true, "commit rate");
-	monitor_dbthreshold_check_warn_start_small(OBJECT_LOCKS, "cluster", clustertime, clusterlocks, true, "locks");
-	monitor_dbthreshold_check_warn_start_small(OBJECT_LONGTRANS, "cluster", clustertime, clusterlongtrans, true, "long transactions");
-	monitor_dbthreshold_check_warn_start_small(OBJECT_LONGTRANS, "cluster", clustertime, clusteridletrans, true, "idle transactions");
-	monitor_dbthreshold_check_warn_start_small(OBJECT_CONNECT, "cluster", clustertime, clusterconnect, true, "connect");
+	monitor_dbthreshold_check_warn_start_large(OBJECT_CLUSTER_COMMITRATE, "cluster", clustertime, clustercommitrate, "commit rate");
+	monitor_dbthreshold_check_warn_start_small(OBJECT_CLUSTER_LOCKS, "cluster", clustertime, clusterlocks, "locks");
+	monitor_dbthreshold_check_warn_start_small(OBJECT_CLUSTER_LONGTRANS, "cluster", clustertime, clusterlongtrans, "long transactions");
+	monitor_dbthreshold_check_warn_start_small(OBJECT_CLUSTER_LONGTRANS, "cluster", clustertime, clusteridletrans, "idle transactions");
+	monitor_dbthreshold_check_warn_start_small(OBJECT_CLUSTER_CONNECT, "cluster", clustertime, clusterconnect, "connect");
 }
 
 /*
@@ -559,7 +553,7 @@ static void  monitor_dbthreshold_standbydelay()
 		if (getnode)
 		{
 			nodetime = monitor_get_timestamptz_one_node(ndatauser.data, address, port);
-			monitor_dbthreshold_check_warn_start_small(OBJECT_STANDBYDELAY, address, nodetime, phynodestandbydelay, false, "standby delay");
+			monitor_dbthreshold_check_warn_start_small(OBJECT_NODE_STANDBYDELAY, address, nodetime, phynodestandbydelay, "standby delay");
 			pfree(nodetime);
 		}
 		
@@ -569,62 +563,21 @@ static void  monitor_dbthreshold_standbydelay()
 	heap_close(noderel, RowExclusiveLock);
   /*check cluster*/
 	clustertime = timestamptz_to_str(GetCurrentTimestamp());
-	monitor_dbthreshold_check_warn_start_small(OBJECT_STANDBYDELAY, "cluaster", clustertime, clusterstandbydelay, true, "standby delay");
-
-}
-
-
-/*
-* given warning object, then return the threshold for phynode and cluster
-*/
-static void get_threshold_phynode_cluster(int16 type, Monitor_dbThreshold *dbthreshold)
-{
-	Relation rel;
-	HeapScanDesc scan;
-	HeapTuple tuple = NULL;
-	ScanKeyData key[1];
-	Form_monitor_dbthreshold monitor_dbthreshold;
-
-	ScanKeyInit(&key[0]
-		,Anum_monitor_dbthreshold_type
-		,BTEqualStrategyNumber, F_INT2EQ
-		,Int16GetDatum(type));
-	rel = heap_open(MonitorDbThresholdRelationId, RowExclusiveLock);
-	scan = heap_beginscan(rel, SnapshotNow, 1, key);
-    
-	tuple = heap_getnext(scan, ForwardScanDirection);
-	Assert(tuple != NULL);
-	monitor_dbthreshold = (Form_monitor_dbthreshold)GETSTRUCT(tuple);
-
-	dbthreshold->node_warning = monitor_dbthreshold->dbthresholdnodewarning;
-	dbthreshold->node_critical = monitor_dbthreshold->dbthresholdnodecritical;
-	dbthreshold->node_emergency = monitor_dbthreshold->dbthresholdnodeemergency;
-	dbthreshold->cluster_warning = monitor_dbthreshold->dbthresholdclusterwarning;
-	dbthreshold->cluster_critical = monitor_dbthreshold->dbthresholdclustercritical;
-	dbthreshold->cluster_emergency = monitor_dbthreshold->dbthresholdclusteremergency;
-	heap_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
+	monitor_dbthreshold_check_warn_start_small(OBJECT_NODE_STANDBYDELAY, "cluaster", clustertime, clusterstandbydelay, "standby delay");
 
 }
 
 /*
 * check heaphit rate, commit rate
 */
-static void monitor_dbthreshold_check_warn_start_large(DbthresholdObject objectype, char *address, char * time, int heaphitrate, bool bcluster, char *descp)
+static void monitor_dbthreshold_check_warn_start_large(DbthresholdObject objectype, char *address, char * time, int heaphitrate, char *descp)
 {
 	Monitor_Alarm Monitor_Alarm;
-	Monitor_dbThreshold dbthreshold;
+	Monitor_Threshold dbthreshold;
 	
-	get_threshold_phynode_cluster(objectype, &dbthreshold);
+	get_threshold(objectype, &dbthreshold);
 	/*type=0 is phynode*/
-	if (heaphitrate > dbthreshold.node_warning  && !bcluster)
-	{
-		/*do nothing*/
-		return;
-	}
-	
-	/*type=1 is cluster*/
-	if (heaphitrate > dbthreshold.node_warning  && bcluster)
+	if (heaphitrate > dbthreshold.threshold_warning)
 	{
 		/*do nothing*/
 		return;
@@ -632,50 +585,26 @@ static void monitor_dbthreshold_check_warn_start_large(DbthresholdObject objecty
 	initStringInfo(&(Monitor_Alarm.alarm_text));
 	initStringInfo(&(Monitor_Alarm.alarm_source));
 	initStringInfo(&(Monitor_Alarm.alarm_timetz));
-	if (!bcluster)
-	{
-		if (heaphitrate<=dbthreshold.node_warning && heaphitrate>dbthreshold.node_critical)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
-				heaphitrate, dbthreshold.node_warning);
-			Monitor_Alarm.alarm_level = ALARM_WARNING;
-		}
-		else if (heaphitrate<=dbthreshold.node_critical && heaphitrate>dbthreshold.node_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
-				heaphitrate, dbthreshold.node_critical);
-			Monitor_Alarm.alarm_level = ALARM_CRITICAL;
-		}
-		else if (heaphitrate<=dbthreshold.node_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
-				heaphitrate, dbthreshold.node_emergency);
-			Monitor_Alarm.alarm_level = ALARM_EMERGENCY;
-		}
-	}
-	/*check for cluster*/
-	else
-	{
-		if (heaphitrate<=dbthreshold.cluster_warning && heaphitrate>dbthreshold.cluster_critical)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
-				heaphitrate, dbthreshold.cluster_warning);
-			Monitor_Alarm.alarm_level = ALARM_WARNING;
-		}
-		else if (heaphitrate<=dbthreshold.cluster_critical && heaphitrate > dbthreshold.cluster_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
-				heaphitrate, dbthreshold.cluster_critical);
-			Monitor_Alarm.alarm_level = ALARM_CRITICAL;
-		}
-		else if (heaphitrate <= dbthreshold.cluster_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
-				heaphitrate, dbthreshold.cluster_emergency);
-			Monitor_Alarm.alarm_level = ALARM_EMERGENCY;
-		}
-	}
 
+	if (heaphitrate <= dbthreshold.threshold_warning && heaphitrate > dbthreshold.threshold_critical)
+	{
+		appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
+			heaphitrate, dbthreshold.threshold_warning);
+		Monitor_Alarm.alarm_level = ALARM_WARNING;
+	}
+	else if (heaphitrate <= dbthreshold.threshold_critical && heaphitrate > dbthreshold.threshold_emergency)
+	{
+		appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
+			heaphitrate, dbthreshold.threshold_critical);
+		Monitor_Alarm.alarm_level = ALARM_CRITICAL;
+	}
+	else if (heaphitrate <= dbthreshold.threshold_emergency)
+	{
+		appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d%%, under %d%%", descp,
+			heaphitrate, dbthreshold.threshold_emergency);
+		Monitor_Alarm.alarm_level = ALARM_EMERGENCY;
+	}
+		
 	appendStringInfo(&(Monitor_Alarm.alarm_source), "%s",address);
 	appendStringInfo(&(Monitor_Alarm.alarm_timetz), "%s", time);
 	Monitor_Alarm.alarm_type = 2;
@@ -689,70 +618,40 @@ static void monitor_dbthreshold_check_warn_start_large(DbthresholdObject objecty
 
 /*for check standby_delay, locks, unused_index, connectnums, longtrans, idletrans, unused_index
 */
-static void monitor_dbthreshold_check_warn_start_small(DbthresholdObject objectype, char *address, char *time, int unusedindex, bool bcluster, char *descp)
+static void monitor_dbthreshold_check_warn_start_small(DbthresholdObject objectype, char *address, char *time, int unusedindex, char *descp)
 {
 	Monitor_Alarm Monitor_Alarm;
-	Monitor_dbThreshold dbthreshold;
+	Monitor_Threshold dbthreshold;
 	
-	get_threshold_phynode_cluster(objectype, &dbthreshold);
+	get_threshold(objectype, &dbthreshold);
 	/*type=0 is phynode*/
-	if (unusedindex < dbthreshold.node_warning  && !bcluster)
+	if (unusedindex < dbthreshold.threshold_warning)
 	{
 		/*do nothing*/
 		return;
 	}
 	
-	/*type=1 is cluster*/
-	if (unusedindex < dbthreshold.cluster_warning  && bcluster)
-	{
-		/*do nothing*/
-		return;
-	}
 	initStringInfo(&(Monitor_Alarm.alarm_text));
 	initStringInfo(&(Monitor_Alarm.alarm_source));
 	initStringInfo(&(Monitor_Alarm.alarm_timetz));
-	if (!bcluster)
+
+	if (unusedindex>=dbthreshold.threshold_warning && unusedindex < dbthreshold.threshold_critical)
 	{
-		if (unusedindex>=dbthreshold.node_warning && unusedindex < dbthreshold.node_critical)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, under %d", descp,
-				unusedindex, dbthreshold.node_warning);
-			Monitor_Alarm.alarm_level = ALARM_WARNING;
-		}
-		else if (unusedindex>=dbthreshold.node_critical && unusedindex < dbthreshold.node_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, under %d", descp,
-				unusedindex, dbthreshold.node_critical);
-			Monitor_Alarm.alarm_level = ALARM_CRITICAL;
-		}
-		else if (unusedindex>=dbthreshold.node_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, under %d", descp,
-				unusedindex, dbthreshold.node_emergency);
-			Monitor_Alarm.alarm_level = ALARM_EMERGENCY;
-		}
+		appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, over %d", descp,
+			unusedindex, dbthreshold.threshold_warning);
+		Monitor_Alarm.alarm_level = ALARM_WARNING;
 	}
-	/*check for cluster*/
-	else
+	else if (unusedindex>=dbthreshold.threshold_critical && unusedindex < dbthreshold.threshold_emergency)
 	{
-		if (unusedindex>=dbthreshold.cluster_warning && unusedindex < dbthreshold.cluster_critical)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, under %d", descp,
-				unusedindex, dbthreshold.cluster_warning);
-			Monitor_Alarm.alarm_level = ALARM_WARNING;
-		}
-		else if (unusedindex >= dbthreshold.cluster_critical && unusedindex < dbthreshold.cluster_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, under %d", descp,
-				unusedindex, dbthreshold.cluster_critical);
-			Monitor_Alarm.alarm_level = ALARM_CRITICAL;
-		}
-		else if (unusedindex >= dbthreshold.cluster_emergency)
-		{
-			appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, under %d", descp,
-				unusedindex, dbthreshold.cluster_emergency);
-			Monitor_Alarm.alarm_level = ALARM_EMERGENCY;
-		}
+		appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, over %d", descp,
+			unusedindex, dbthreshold.threshold_critical);
+		Monitor_Alarm.alarm_level = ALARM_CRITICAL;
+	}
+	else if (unusedindex>=dbthreshold.threshold_emergency)
+	{
+		appendStringInfo(&(Monitor_Alarm.alarm_text), "%s = %d, over %d", descp,
+			unusedindex, dbthreshold.threshold_emergency);
+		Monitor_Alarm.alarm_level = ALARM_EMERGENCY;
 	}
 
 	appendStringInfo(&(Monitor_Alarm.alarm_source), "%s", address);

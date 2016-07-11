@@ -96,14 +96,6 @@ typedef struct Monitor_Disk
     int64           disk_io_write_time;
 }Monitor_Disk;
 
-/* for table: monitor_alarm */
-typedef struct Monitor_Threshold
-{
-    int16           threshold_warning;
-    int16           threshold_critical;
-    int16           threshold_emergency;
-}Monitor_Threshold;
-
 static void init_all_table(Monitor_Host *monitor_host,
                            Monitor_Cpu *Monitor_cpu,
                            Monitor_Mem *Monitor_mem,
@@ -123,7 +115,6 @@ static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
 static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
 static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net);
 static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host);
-static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
 static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm);
 static void get_mem_usage_alarm(float mem_usage, Monitor_Alarm *monitor_alarm);
 static void get_disk_usage_alarm(float disk_usage, Monitor_Alarm *monitor_alarm);
@@ -536,7 +527,7 @@ void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm)
     heap_close(monitoralarm, RowExclusiveLock);
 }
 
-static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
+void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
 {
     Relation rel;
     HeapScanDesc scan;

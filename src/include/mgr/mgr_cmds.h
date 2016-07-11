@@ -32,6 +32,14 @@ typedef struct Monitor_Alarm
 	StringInfoData	alarm_text;
 }Monitor_Alarm;
 
+/* for table: monitor_alarm */
+typedef struct Monitor_Threshold
+{
+	int16			threshold_warning;
+	int16			threshold_critical;
+	int16			threshold_emergency;
+}Monitor_Threshold;
+
 /* host commands, in cmd_host.c */
 extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
@@ -145,6 +153,7 @@ extern void monitor_get_one_node_user_address_port(Relation rel_node, char **use
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
 bool get_cpu_info(StringInfo hostinfostring);
 extern void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
+extern void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
 
 /*monitor_databaseitem.c*/
 extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);

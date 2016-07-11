@@ -513,19 +513,26 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func_page(in name, in time
 --for cluster warning, monitor_dbthreshold systbl, see "typedef enum DbthresholdObject" 
 --  in monitor_dbthreshold.c
 --heaphitrate
-insert into pg_catalog.monitor_dbthreshold values(1, 98, 95, 90, 98, 95, 90);
+insert into pg_catalog.monitor_host_threshold values(11, 98, 95, 90);
+insert into pg_catalog.monitor_host_threshold values(21, 98, 95, 90);
 --commitrate
-insert into pg_catalog.monitor_dbthreshold values(2, 85, 90, 95, 85, 90, 95);
+insert into pg_catalog.monitor_host_threshold values(12, 85, 90, 95);
+insert into pg_catalog.monitor_host_threshold values(22, 85, 90, 95);
 --standbydelay
-insert into pg_catalog.monitor_dbthreshold values(3, 200, 250, 300, 200, 250, 300);
+insert into pg_catalog.monitor_host_threshold values(13, 200, 250, 300);
+insert into pg_catalog.monitor_host_threshold values(23, 200, 250, 300);
 --locks num
-insert into pg_catalog.monitor_dbthreshold values(4, 40, 50, 60, 150, 200, 250);
+insert into pg_catalog.monitor_host_threshold values(14, 40, 50, 60);
+insert into pg_catalog.monitor_host_threshold values(24, 150, 200, 250);
 --connect num
-insert into pg_catalog.monitor_dbthreshold values(5, 450, 500, 550, 1500, 2000, 2500);
+insert into pg_catalog.monitor_host_threshold values(15, 450, 500, 550);
+insert into pg_catalog.monitor_host_threshold values(25, 1500, 2000, 2500);
 --long transaction, idle transaction
-insert into pg_catalog.monitor_dbthreshold values(6, 25, 30, 50, 100, 200, 300);
+insert into pg_catalog.monitor_host_threshold values(16, 25, 30, 50);
+insert into pg_catalog.monitor_host_threshold values(26, 100, 200, 300);
 --unused index num
-insert into pg_catalog.monitor_dbthreshold values(7, 0, 0, 0, 100, 200, 300);
+insert into pg_catalog.monitor_host_threshold values(17, 0, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(27, 100, 200, 300);
 
 -- for ADB monitor the topology in home page : get datanode node topology
 CREATE VIEW adbmgr.get_datanode_node_topology AS

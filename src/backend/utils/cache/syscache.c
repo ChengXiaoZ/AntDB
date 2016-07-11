@@ -72,7 +72,6 @@
 #include "catalog/monitor_databasetps.h"
 #include "catalog/monitor_databaseitem.h"
 #include "catalog/monitor_slowlog.h"
-#include "catalog/monitor_dbthreshold.h"
 #endif /* ADBMGRD */
 #include "utils/rel.h"
 #include "utils/catcache.h"
@@ -957,17 +956,6 @@ static const struct cachedesc cacheinfo[] = {
 	}
 	,{MslowlogRelationId,		/* MONTIORSLOWLOGOID */
 		MonitorslowlogOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0
-		},
-		32
-	}
-	,{MonitorDbThresholdRelationId,		/* MONITORDBTHRESHOLDOID */
-		MonitordbthresholdOidIndexId,
 		1,
 		{
 			ObjectIdAttributeNumber,

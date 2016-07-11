@@ -399,9 +399,6 @@ DECLARE_UNIQUE_INDEX(monitor_alarm_oid_index, 3177, on monitor_alarm using btree
 DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using btree(oid oid_ops));
 #define MonitorResolveOidIndexId 5022
 
-DECLARE_UNIQUE_INDEX(monitor_dbthreshold_oid_index, 4964, on monitor_dbthreshold using btree(oid oid_ops));
-#define MonitordbthresholdOidIndexId 4964
-
 
 #endif /* ADBMGRD */
 
