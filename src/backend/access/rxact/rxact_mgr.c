@@ -246,7 +246,7 @@ DestroyRemoteConnHashTab(void)
 	RemoteConnHashTab = NULL;
 }
 
-int
+void
 RemoteXactMgrMain(void)
 {
 	MemoryContext	rxact_mgr_context;
@@ -532,31 +532,14 @@ RxactManagerCloseHandle(RxactHandle *handle)
 }
 
 /* ----------- interface for remote xact message -------- */
-int
-RecordRemoteXact(TransactionId xid,		/* xid for a key */
-				 const char *gid,		/* gid for a key */
-				 uint8 info,			/* info for rxact kind */
-				 StringInfo rbinary)	/* binary string of rxact */
+void RecordRemoteXact(const char *gid, Oid *nodes, int count, RemoteXactType type)
 {
-	/* TODO: */
-	return 0;
 }
 
-int
-RecordRemoteXactSuccess(TransactionId xid,	/* xid for a key */
-						const char *gid,	/* gid for a key */
-						uint8 info)			/* info for rxact kind */
+void RecordRemoteXactSuccess(const char *gid, RemoteXactType type)
 {
-	/* TODO: */
-	return 0;
 }
 
-int
-RecordRemoteXactCancel(TransactionId xid,	/* xid for a key */
-					   const char *gid,		/* gid for a key */
-					   uint8 info)			/* info for rxact kind */
+void RecordRemoteXactFailed(const char *gid, RemoteXactType type)
 {
-	/* TODO: */
-	return 0;
 }
-

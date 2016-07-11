@@ -3,6 +3,13 @@
 
 #include "lib/stringinfo.h"
 
+typedef enum RemoteXactType
+{
+	RX_PREPARE = 1
+	,RX_COMMIT
+	,RX_ROLLBACK
+}RemoteXactType;
+
 #define RXACT_BUFFER_SIZE 1024
 #define SOCKET(port) 		((RxactPort *)(port))->fdsock
 
@@ -39,22 +46,13 @@ extern int	rxact_sendpids(RxactPort *port, int *pids, int count);
 extern int	rxact_recvpids(RxactPort *port, int **pids);
 extern const char* rxact_get_sock_path(void);
 
-extern int RemoteXactMgrMain(void);
+extern void RemoteXactMgrMain(void) __attribute__((noreturn));
 
 extern RxactHandle *GetRxactManagerHandle(void);
 extern void RxactManagerCloseHandle(RxactHandle *handle);
 
-extern int RecordRemoteXact(TransactionId xid,
-							const char *gid,
-							uint8 info,
-							StringInfo rbinary);
-
-extern int RecordRemoteXactSuccess(TransactionId xid,
-								   const char *gid,
-								   uint8 info);
-
-extern int RecordRemoteXactCancel(TransactionId xid,
-								  const char *gid,
-								  uint8 info);
+extern void RecordRemoteXact(const char *gid, Oid *node_oids, int count, RemoteXactType type);
+extern void RecordRemoteXactSuccess(const char *gid, RemoteXactType type);
+extern void RecordRemoteXactFailed(const char *gid, RemoteXactType type);
 
 #endif /* RXACT_MGR_H */
