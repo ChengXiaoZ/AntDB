@@ -764,15 +764,6 @@ Datum
 nextval_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-#ifdef ADB
-	Datum		class_name;
-	char		*seq_key;
-	int64		seq_val;
-	class_name = DirectFunctionCall1(regclassout, relid);
-	seq_key = DatumGetCString(class_name);
-	seq_val = agtm_GetSeqNextVal(seq_key);
-	PG_RETURN_INT64(seq_val);
-#endif
 	PG_RETURN_INT64(nextval_internal(relid));
 }
 
@@ -796,6 +787,10 @@ nextval_internal(Oid relid)
 				next = 0,
 				rescnt = 0;
 	bool		logit = false;
+
+#ifdef ADB
+	bool		is_temp;
+#endif
 
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
@@ -824,14 +819,40 @@ nextval_internal(Oid relid)
 	/* lock page' buffer and read tuple */
 	seq = read_seq_tuple(elm, seqrel, &buf, &seqtuple);
 	page = BufferGetPage(buf);
+	
+#ifdef ADB
+	is_temp = seqrel->rd_backend == MyBackendId;
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && !is_temp)
+	{
+		char *seqname = GetGlobalSeqName(seqrel, NULL, NULL);
+		result = agtm_GetSeqNextVal(seqname);
+		pfree(seqname);
 
+		/* Update the on-disk data */
+		seq->last_value = result; /* last fetched number */
+		seq->is_called = true;
+
+		/* save info in local cache */
+		elm->last = result;			/* last returned number */
+		elm->cached = result;		/* last fetched number */
+		elm->last_valid = true;
+
+		last_used_seq = elm;
+	}
+	else
+	{
+#endif
 	last = next = result = seq->last_value;
 	incby = seq->increment_by;
 	maxv = seq->max_value;
-	minv = seq->min_value;
+	minv = seq->min_value;	
+#ifdef ADB
+	}
+#endif
+
 	fetch = cache = seq->cache_value;
 	log = seq->log_cnt;
-
+	
 	if (!seq->is_called)
 	{
 		rescnt++;				/* return last_value if not is_called */
@@ -872,6 +893,11 @@ nextval_internal(Oid relid)
 		 * Check MAXVALUE for ascending sequences and MINVALUE for descending
 		 * sequences
 		 */
+#ifdef ADB
+		/* Temporary sequences go through normal process */
+		if (is_temp)
+		{
+#endif
 		if (incby > 0)
 		{
 			/* ascending sequence */
@@ -918,20 +944,36 @@ nextval_internal(Oid relid)
 			else
 				next += incby;
 		}
+#ifdef ADB
+		}
+#endif
 		fetch--;
 		if (rescnt < cache)
 		{
 			log--;
 			rescnt++;
+#ifdef ADB
+			/* Temporary sequences can go through normal process */
+			if (is_temp)
+			{
+#endif
 			last = next;
 			if (rescnt == 1)	/* if it's first result - */
 				result = next;	/* it's what to return */
+#ifdef ADB
+			}
+#endif
 		}
 	}
 
 	log -= fetch;				/* adjust for any unfetched numbers */
 	Assert(log >= 0);
 
+#ifdef ADB
+	/* Temporary sequences go through normal process */
+	if (is_temp)
+	{
+#endif
 	/* Result has been received from GTM */
 	/* save info in local cache */
 	elm->last = result;			/* last returned number */
@@ -1005,7 +1047,13 @@ nextval_internal(Oid relid)
 	seq->log_cnt = log;			/* how much is logged */
 
 	END_CRIT_SECTION();
-
+#ifdef ADB
+	}
+	else
+	{
+		seq->log_cnt = log;
+	}
+#endif
 	UnlockReleaseBuffer(buf);
 
 	relation_close(seqrel, NoLock);
