@@ -1159,7 +1159,7 @@ doDeletion(const ObjectAddress *object, int flags)
 				 * Do not do extra process if this session is connected to a remote
 				 * Coordinator.
 				 */
-				if (IsConnFromCoord())
+				if (!(IS_PGXC_COORDINATOR && !IsConnFromCoord()))
 					break;
 				
 				/*
@@ -1204,6 +1204,7 @@ doDeletion(const ObjectAddress *object, int flags)
 						
 					case RELKIND_RELATION:
 					case RELKIND_VIEW:
+						/* reserve  two case  */
 						break;
 						
 					default:

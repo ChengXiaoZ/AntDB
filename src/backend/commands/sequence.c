@@ -89,15 +89,6 @@ typedef SeqTableData *SeqTable;
 
 static SeqTable seqtab = NULL;	/* Head of list of SeqTable items */
 
-#ifdef ADB
-typedef struct drop_sequence_callback_arg
-{
-	char *seqname;
-	AGTM_SequenceDropType type;
-	AGTM_SequenceKeyType key;
-} drop_sequence_callback_arg;
-#endif
-
 /*
  * last_used_seq is updated by nextval() to point to the last used
  * sequence.
@@ -358,20 +349,26 @@ GetGlobalSeqName(Relation seqrel, const char *new_seqname, const char *new_schem
 void
 register_sequence_cb(char *seqname, AGTM_SequenceKeyType key, AGTM_SequenceDropType type)
 {
-	drop_sequence_callback_arg *args;
-	char *seqnamearg = NULL;
-	
-	/* All the arguments are transaction-dependent, so save them in TopTransactionContext */
-/*	args = (drop_sequence_callback_arg *)
-		MemoryContextAlloc(TopTransactionContext, sizeof(drop_sequence_callback_arg));
-	
-	seqnamearg = MemoryContextAlloc(TopTransactionContext, strlen(seqname) + 1);
-	sprintf(seqnamearg, "%s", seqname);
-	args->seqname = seqnamearg;
-	args->key = key;
-	args->type = type;
-*/
+	StringInfoData	buf;
 
+	switch(type)
+	{
+		case AGTM_DROP_SEQ:
+			{
+				/* drop sequence on agtm */
+				initStringInfo(&buf);
+				appendStringInfoString(&buf, "DROP SEQUENCE ");
+				appendStringInfo(&buf, "%s", seqname);
+				agtm_sequence(buf.data);
+				pfree(buf.data);
+				break;
+			}
+		case AGTM_CREATE_SEQ:
+			break;
+		default:
+			break;
+	}
+	
 }
 
 #endif
