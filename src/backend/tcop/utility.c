@@ -1241,9 +1241,6 @@ standard_ProcessUtility(Node *parsetree,
 					/* execute create schema on agtm */
 					if (stmt->removeType == OBJECT_SCHEMA)
 						agtm_Schema(queryString);
-
-					else if (stmt->removeType == OBJECT_SEQUENCE)
-						agtm_sequence(queryString);
 				}
 #else
 					ExecDropStmt(stmt, isTopLevel);
