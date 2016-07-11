@@ -2675,6 +2675,29 @@ RenameRelationInternal(Oid myrelid, const char *newrelname, bool is_internal)
 			RenameConstraintById(constraintId, newrelname);
 	}
 
+#ifdef ADB
+	if (IS_PGXC_COORDINATOR &&
+		!IsConnFromCoord() &&
+		(targetrelation->rd_rel->reltype == OBJECT_SEQUENCE ||
+		 targetrelation->rd_rel->relkind == RELKIND_SEQUENCE) &&
+		!IsTempSequence(myrelid)) /* It is possible to rename a sequence with ALTER TABLE */
+		{
+			StringInfoData	buf;
+			char *seqname = GetGlobalSeqName(targetrelation, NULL, NULL);
+
+			initStringInfo(&buf);
+			appendStringInfoString(&buf,"ALTER SEQUENCE ");
+			appendStringInfo(&buf, "%s", seqname);
+			appendStringInfoString(&buf," RENAME TO ");
+			appendStringInfo(&buf, "%s", newrelname);			
+			/* rename sequence on agtm */
+			agtm_sequence(buf.data);
+
+			pfree(seqname);
+			pfree(buf.data);
+		}
+#endif
+
 	/*
 	 * Close rel, but keep exclusive lock!
 	 */
