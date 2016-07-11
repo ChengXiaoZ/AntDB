@@ -21,6 +21,17 @@ typedef struct GetAgentCmdRst
 	StringInfoData description;
 }GetAgentCmdRst;
 
+/* for table: monitor_alarm */
+typedef struct Monitor_Alarm
+{
+	int16			alarm_level;
+	int16			alarm_type;
+	StringInfoData	alarm_timetz;
+	int16			alarm_status;
+	StringInfoData	alarm_source;
+	StringInfoData	alarm_text;
+}Monitor_Alarm;
+
 /* host commands, in cmd_host.c */
 extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
@@ -133,6 +144,7 @@ extern void monitor_get_one_node_user_address_port(Relation rel_node, char **use
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
 bool get_cpu_info(StringInfo hostinfostring);
+extern void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
 
 /*monitor_databaseitem.c*/
 extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
@@ -152,5 +164,13 @@ extern HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, cha
 extern Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsyestd, bool *gettoday, bool *getyesdt, char *query, char *user, char *dbname, pg_time_t ptimenow);
 extern void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port);
+
+/*monitor_dbthreshold.c*/
+extern char *monitor_get_timestamptz_one_node(char *user, char *address, int port);
+extern bool monitor_get_threesqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int *firstvalue, int *secondvalue, int *thirdvalue);
+extern bool monitor_get_sixsqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int *firstvalue, int *secondvalue, int *thirdvalue, int *fourthvalue, int *fivthvalue, int *sixthvalue);
+extern Datum get_dbthreshold(PG_FUNCTION_ARGS);
+extern void  monitor_dbthreshold_heaphitrate_unusedindex();
+extern void  monitor_dbthreshold_commitrate_locks_longtrans_idletrans_connect();
 
 #endif /* MGR_CMDS_H */

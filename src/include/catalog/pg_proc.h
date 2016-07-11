@@ -5198,6 +5198,9 @@ DESCR("monitor_databaseitem_insert_data");
 DATA(insert OID = 3226 ( monitor_slowlog_insert_data      PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ monitor_slowlog_insert_data _null_ _null_ _null_ ));
 DESCR("monitor_slowlog_insert_data");
 
+DATA(insert OID = 3227 ( get_dbthreshold      PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ get_dbthreshold _null_ _null_ _null_ ));
+DESCR("get_dbthreshold");
+
 #endif
 
 /*

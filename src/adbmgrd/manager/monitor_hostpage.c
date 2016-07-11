@@ -97,17 +97,6 @@ typedef struct Monitor_Disk
 }Monitor_Disk;
 
 /* for table: monitor_alarm */
-typedef struct Monitor_Alarm
-{
-    int16           alarm_level;
-    int16           alarm_type;
-    StringInfoData  alarm_timetz;
-    int16           alarm_status;
-    StringInfoData  alarm_source;
-    StringInfoData  alarm_text;
-}Monitor_Alarm;
-
-/* for table: monitor_alarm */
 typedef struct Monitor_Threshold
 {
     int16           threshold_warning;
@@ -135,7 +124,6 @@ static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
 static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net);
 static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host);
 static void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
-static void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
 static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm);
 static void get_mem_usage_alarm(float mem_usage, Monitor_Alarm *monitor_alarm);
 static void get_disk_usage_alarm(float disk_usage, Monitor_Alarm *monitor_alarm);
@@ -523,7 +511,7 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
     heap_freetuple(newtuple);
     heap_close(monitorhost, RowExclusiveLock);
 }
-static void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm)
+void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm)
 {
     Relation monitoralarm;
     HeapTuple newtuple;
