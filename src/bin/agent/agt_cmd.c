@@ -41,6 +41,7 @@ extern bool get_mem_info(StringInfo hostinfostring);
 extern bool get_disk_info(StringInfo hostinfostring);
 extern bool get_net_info(StringInfo hostinfostring);
 extern bool get_host_info(StringInfo hostinfostring);
+extern bool get_disk_iops_info(StringInfo hostinfostring);
 
 void do_agent_command(StringInfo buf)
 {
@@ -745,6 +746,7 @@ static void cmd_monitor_gets_hostinfo(void)
 	get_disk_info(&hostinfostring);
 	get_net_info(&hostinfostring);
 	get_host_info(&hostinfostring);
+    get_disk_iops_info(&hostinfostring);
 	appendStringInfoCharMacro(&hostinfostring, '\0');
 	
 	agt_put_msg(AGT_MSG_RESULT, hostinfostring.data, hostinfostring.len);

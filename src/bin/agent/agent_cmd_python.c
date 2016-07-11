@@ -34,6 +34,7 @@ bool get_mem_info(StringInfo hostinfostring);
 bool get_disk_info(StringInfo hostinfostring);
 bool get_net_info(StringInfo hostinfostring);
 bool get_host_info(StringInfo hostinfostring);
+bool get_disk_iops_info(StringInfo hostinfostring);
 
 static void monitor_append_str(StringInfo hostinfostring, char *str);
 static void monitor_append_int64(StringInfo hostinfostring, int64 i);
@@ -385,6 +386,31 @@ bool get_host_info(StringInfo hostinfostring)
     Py_DECREF(pFunc);
     Py_Finalize();
 
+    return true;
+}
+bool get_disk_iops_info(StringInfo hostinfostring)
+{
+    FILE *fstream=NULL;
+    char cmd[MAXPGPATH],
+         cmd_output[MAXPGPATH];
+
+    memset(cmd,0,sizeof(cmd));
+    snprintf(cmd,sizeof(cmd),"iostat  -x -d | grep -v -i -E \"linux|device|^$\"|awk '{sum += $4+$5 } END {print sum}'");
+    if(NULL == (fstream=popen(cmd,"r")))
+    {
+        ereport(ERROR, (errmsg("execute command failed: %s", strerror(errno))));
+        return false;
+    }
+    if(NULL != fgets(cmd_output, sizeof(cmd_output), fstream))
+    {
+        monitor_append_float(hostinfostring,(float)atof(cmd_output));
+    }
+    else
+    {
+        pclose(fstream);
+        return false;
+    }
+    pclose(fstream);
     return true;
 }
 

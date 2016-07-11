@@ -141,6 +141,7 @@ static void get_mem_usage_alarm(float mem_usage, Monitor_Alarm *monitor_alarm);
 static void get_disk_usage_alarm(float disk_usage, Monitor_Alarm *monitor_alarm);
 static void get_sent_speed_alarm(float sent_speed, Monitor_Alarm *monitor_alarm);
 static void get_recv_speed_alarm(float recv_speed, Monitor_Alarm *monitor_alarm);
+static void get_disk_iops_alarm(float disk_iops, Monitor_Alarm *monitor_alarm);
 
 /*
  *  get the host info(host base info, cpu, disk, mem, net)
@@ -167,6 +168,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     float disk_usage;
     float sent_speed;
     float recv_speed;
+    float disk_iops;
     
     Monitor_Host monitor_host;
     Monitor_Cpu monitor_cpu;
@@ -345,7 +347,10 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
         
         /* host seconds since boot */
         monitor_host.seconds_since_boot = strtoull(&agentRstStr.data[agentRstStr.cursor]);
-        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;  
+        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
+
+        disk_iops = atof(&agentRstStr.data[agentRstStr.cursor]);
+        agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
     //}
 
     monitor_host.run_state = 1;
@@ -379,9 +384,9 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     get_sent_speed_alarm(sent_speed, &monitor_alarm);
 
     recv_speed = monitor_net.net_recv/1024/1024;
-    get_recv_speed_alarm(sent_speed, &monitor_alarm);
+    get_recv_speed_alarm(recv_speed, &monitor_alarm);
 
-
+    get_disk_iops_alarm(disk_iops, &monitor_alarm);
 
     pfree(agentRstStr.data);
     pfree_all_table(&monitor_host,
@@ -744,6 +749,40 @@ static void get_recv_speed_alarm(float recv_speed, Monitor_Alarm *monitor_alarm)
     
          insert_into_monitor_alarm(monitor_alarm);
      }
+}
+static void get_disk_iops_alarm(float disk_iops, Monitor_Alarm *monitor_alarm)
+{
+    Monitor_Threshold monitor_threshold;
+
+    get_threshold(6, &monitor_threshold);
+    if (disk_iops >= monitor_threshold.threshold_warning)
+    {
+        if (disk_iops < monitor_threshold.threshold_critical)
+        {
+            resetStringInfo(&monitor_alarm->alarm_text);
+            appendStringInfo(&monitor_alarm->alarm_text, "disk IOPS over %d%%",
+                                    monitor_threshold.threshold_warning);
+            monitor_alarm->alarm_level = 1;
+        }
+        else if (disk_iops >= monitor_threshold.threshold_critical
+                && disk_iops < monitor_threshold.threshold_emergency)
+        {
+            resetStringInfo(&monitor_alarm->alarm_text);
+            appendStringInfo(&monitor_alarm->alarm_text, "disk IOPS over %d%%",
+                                    monitor_threshold.threshold_critical);
+            monitor_alarm->alarm_level = 2;
+    
+        }
+        else
+        {
+            resetStringInfo(&monitor_alarm->alarm_text);
+            appendStringInfo(&monitor_alarm->alarm_text, "disk IOPS over %d%%",
+                                    monitor_threshold.threshold_emergency);
+            monitor_alarm->alarm_level = 3;
+        }
+
+        insert_into_monitor_alarm(monitor_alarm);
+    }
 }
 
 static void init_all_table(Monitor_Host *monitor_host,
