@@ -42,6 +42,7 @@
 
 #ifdef ADB
 #include "agtm/agtm.h"
+#include "pgxc/pgxc.h"
 #endif
 
 /*
@@ -101,8 +102,14 @@ static Relation open_share_lock(SeqTable seq);
 static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
 static Form_pg_sequence read_seq_tuple(SeqTable elm, Relation rel,
 			   Buffer *buf, HeapTuple seqtuple);
+#ifdef ADB
+static void init_params(List *options, bool isInit,
+						Form_pg_sequence new, List **owned_by, bool *is_restart);
+
+#else
 static void init_params(List *options, bool isInit,
 						Form_pg_sequence new, List **owned_by);
+#endif
 static void do_setval(Oid relid, int64 next, bool iscalled);
 static void process_owned_by(Relation seqrel, List *owned_by);
 
@@ -124,7 +131,10 @@ DefineSequence(CreateSeqStmt *seq)
 	bool		null[SEQ_COL_LASTCOL];
 	int			i;
 	NameData	name;
-
+	
+#ifdef ADB
+	bool			is_restart;
+#endif
 	/* Unlogged sequences are not implemented -- not clear if useful. */
 	if (seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED)
 		ereport(ERROR,
@@ -132,7 +142,11 @@ DefineSequence(CreateSeqStmt *seq)
 				 errmsg("unlogged sequences are not supported")));
 
 	/* Check and set all option values */
+#ifdef ADB
+	init_params(seq->options, true, &new, &owned_by, &is_restart);
+#else
 	init_params(seq->options, true, &new, &owned_by);
+#endif
 
 	/*
 	 * Create relation (and fill value[] and null[] for the tuple)
@@ -235,51 +249,56 @@ DefineSequence(CreateSeqStmt *seq)
 		process_owned_by(rel, owned_by);
 
 	heap_close(rel, NoLock);
+	
+#ifdef ADB
+		/*
+	 * Remote Coordinator is in charge of creating sequence in AGTM.
+	 * If sequence is temporary, it is not necessary to create it on AGTM.
+	 */
+	if (IS_PGXC_COORDINATOR &&
+		!IsConnFromCoord() &&
+		(seq->sequence->relpersistence == RELPERSISTENCE_PERMANENT ||
+		 seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED))
+	{
+		StringInfoData	buf;
+		char *seqname = GetGlobalSeqName(rel, NULL, NULL);
+
+		initStringInfo(&buf);
+		appendStringInfoString(&buf,"CREATE SEQUENCE ");
+
+		appendStringInfoString(&buf, seqname);
+
+		appendStringInfoString(&buf, " INCREMENT BY ");
+		appendStringInfo(&buf, INT64_FORMAT, new.increment_by);
+
+		appendStringInfoString(&buf, " MAXVALUE ");
+		appendStringInfo(&buf, INT64_FORMAT, new.max_value);
+
+		appendStringInfoString(&buf, " MINVALUE ");
+		appendStringInfo(&buf, INT64_FORMAT, new.min_value);
+
+		appendStringInfoString(&buf, " CACHE ");
+		appendStringInfo(&buf, INT64_FORMAT, new.cache_value);
+
+		if(new.is_cycled)					
+			appendStringInfoString(&buf, " CYCLE ");
+		else
+			appendStringInfoString(&buf, " NO CYCLE ");
+
+		appendStringInfoString(&buf, " START WITH ");
+		appendStringInfo(&buf, INT64_FORMAT, new.start_value);
+
+		/* create sequence on agtm */
+		agtm_sequence(buf.data);
+
+		pfree(buf.data);
+	}
+#endif
 
 	return seqoid;
 }
 
 #ifdef ADB
-void
-ParseSequenceOpition2Sql(List *options, char *seq_name, StringInfoData buf, NodeTag tag)
-{
-	FormData_pg_sequence new;
-	List	   *owned_by;
-
-	/* Check and set all option values */
-	init_params(options, true, &new, &owned_by);
-
-	/*
-	 * Create relation (and fill value[] and null[] for the tuple)
-	 */
-
-	appendStringInfoString(&buf, seq_name);
-	
-	if (tag == T_CreateSeqStmt)				
-		appendStringInfoString(&buf, " START WITH ");
-	else if (tag == T_AlterSeqStmt)
-		appendStringInfoString(&buf, " RESTART WITH ");
-	appendStringInfo(&buf, INT64_FORMAT, new.start_value);
-
-	appendStringInfoString(&buf, " INCREMENT BY ");
-	appendStringInfo(&buf, INT64_FORMAT, new.increment_by);
-
-	appendStringInfoString(&buf, " MAXVALUE ");
-	appendStringInfo(&buf, INT64_FORMAT, new.max_value);
-
-	appendStringInfoString(&buf, " MINVALUE ");
-	appendStringInfo(&buf, INT64_FORMAT, new.min_value);
-
-	appendStringInfoString(&buf, " CACHE ");
-	appendStringInfo(&buf, INT64_FORMAT, new.cache_value);
-
-	if(new.is_cycled)					
-		appendStringInfoString(&buf, " CYCLE ");
-	else
-		appendStringInfoString(&buf, " NO CYCLE ");
-
-}
-
 /*
  * IsTempSequence
  *
@@ -560,6 +579,16 @@ AlterSequence(AlterSeqStmt *stmt)
 	FormData_pg_sequence new;
 	List	   *owned_by;
 
+#ifdef ADB
+	AGTM_Sequence	start_value;
+	AGTM_Sequence	last_value;
+	AGTM_Sequence	min_value;
+	AGTM_Sequence	max_value;
+	AGTM_Sequence	increment;
+	bool			cycle;
+	bool			is_restart;
+#endif
+
 	/* Open and lock sequence. */
 	relid = RangeVarGetRelid(stmt->sequence, AccessShareLock, stmt->missing_ok);
 	if (relid == InvalidOid)
@@ -584,7 +613,11 @@ AlterSequence(AlterSeqStmt *stmt)
 	memcpy(&new, seq, sizeof(FormData_pg_sequence));
 
 	/* Check and set new values */
+#ifdef ADB
+	init_params(stmt->options, false, &new, &owned_by, &is_restart);
+#else
 	init_params(stmt->options, false, &new, &owned_by);
+#endif
 
 	/* Clear local cache so that we don't think we have cached numbers */
 	/* Note that we do not change the currval() state */
@@ -598,6 +631,15 @@ AlterSequence(AlterSeqStmt *stmt)
 	START_CRIT_SECTION();
 
 	memcpy(seq, &new, sizeof(FormData_pg_sequence));
+
+#ifdef ADB
+	increment = new.increment_by;
+	min_value = new.min_value;
+	max_value = new.max_value;
+	start_value = new.start_value;
+	last_value = new.last_value;
+	cycle = new.is_cycled;
+#endif
 
 	MarkBufferDirty(buf);
 
@@ -636,6 +678,56 @@ AlterSequence(AlterSeqStmt *stmt)
 	InvokeObjectPostAlterHook(RelationRelationId, relid, 0);
 
 	relation_close(seqrel, NoLock);
+
+#ifdef ADB
+	/*
+	 * Remote Coordinator is in charge of create sequence in AGTM
+	 * If sequence is temporary, no need to go through GTM.
+	 */
+	 if (IS_PGXC_COORDINATOR &&
+		!IsConnFromCoord() &&
+		seqrel->rd_backend != MyBackendId)
+	{
+		StringInfoData	buf;
+		char *seqname = GetGlobalSeqName(seqrel, NULL, NULL);
+
+		initStringInfo(&buf);
+		appendStringInfoString(&buf,"ALTER SEQUENCE ");
+
+		appendStringInfoString(&buf, seqname);
+
+		appendStringInfoString(&buf, " INCREMENT BY ");
+		appendStringInfo(&buf, INT64_FORMAT, increment);
+
+		appendStringInfoString(&buf, " MAXVALUE ");
+		appendStringInfo(&buf, INT64_FORMAT, max_value);
+
+		appendStringInfoString(&buf, " MINVALUE ");
+		appendStringInfo(&buf, INT64_FORMAT, min_value);
+
+		appendStringInfoString(&buf, " CACHE ");
+		appendStringInfo(&buf, INT64_FORMAT, new.cache_value);
+
+		if(cycle)					
+			appendStringInfoString(&buf, " CYCLE ");
+		else
+			appendStringInfoString(&buf, " NO CYCLE ");
+
+		appendStringInfoString(&buf, " START WITH ");
+		appendStringInfo(&buf, INT64_FORMAT, start_value);
+
+		if(is_restart)
+		{
+			appendStringInfoString(&buf, " RESTART WITH ");
+			appendStringInfo(&buf, INT64_FORMAT, last_value);
+		}
+
+		/* alter sequence on agtm */
+		agtm_sequence(buf.data);
+
+		pfree(buf.data);
+	}
+#endif
 
 	return relid;
 }
@@ -1342,9 +1434,14 @@ read_seq_tuple(SeqTable elm, Relation rel, Buffer *buf, HeapTuple seqtuple)
  * If isInit is true, fill any unspecified options with default values;
  * otherwise, do not change existing options that aren't explicitly overridden.
  */
+#ifdef ADB
+void init_params(List *options, bool isInit,
+						Form_pg_sequence new, List **owned_by, bool *is_restart)
+#else
 static void
 init_params(List *options, bool isInit,
 			Form_pg_sequence new, List **owned_by)
+#endif
 {
 	DefElem    *start_value = NULL;
 	DefElem    *restart_value = NULL;
@@ -1354,6 +1451,10 @@ init_params(List *options, bool isInit,
 	DefElem    *cache_value = NULL;
 	DefElem    *is_cycled = NULL;
 	ListCell   *option;
+	
+#ifdef ADB
+	*is_restart = false;
+#endif
 
 	*owned_by = NIL;
 
@@ -1548,6 +1649,9 @@ init_params(List *options, bool isInit,
 			new->last_value = defGetInt64(restart_value);
 		else
 			new->last_value = new->start_value;
+#ifdef ADB
+		*is_restart = true;
+#endif
 		new->is_called = false;
 		new->log_cnt = 0;
 	}

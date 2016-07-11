@@ -2174,13 +2174,6 @@ ProcessUtilitySlow(Node *parsetree,
 					 * K.Suzuki, Sep.2nd, 2013
 					 * Moved from sgtandard_ProcessUtility().
 					 */
-#ifdef ADB			
-					StringInfoData	buf;
-					initStringInfo(&buf);
-					appendStringInfoString(&buf,"CREATE SEQUENCE ");
-					ParseSequenceOpition2Sql(((CreateSeqStmt *) parsetree)->options,
-						((CreateSeqStmt *) parsetree)->sequence->relname, buf, T_CreateSeqStmt);
-#endif
 					DefineSequence((CreateSeqStmt *) parsetree);
 #ifdef PGXC
 					if (IS_PGXC_COORDINATOR)
@@ -2199,12 +2192,6 @@ ProcessUtilitySlow(Node *parsetree,
 							ExecUtilityStmtOnNodes2((Node*)stmt, queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, is_temp);
 						}
 
-						/* execute create sequence on agtm */
-						if(!IsConnFromCoord())						
-							agtm_sequence(buf.data);
-#ifdef ADB	
-						pfree(buf.data);
-#endif
 					}
 #endif
 					break;
@@ -2216,13 +2203,6 @@ ProcessUtilitySlow(Node *parsetree,
 					 * K.Suzuki, Sep.2nd, 2013
 					 * Moved from sgtandard_ProcessUtility().
 					 */					
-#ifdef ADB
-					StringInfoData	buf;
-					initStringInfo(&buf);
-					appendStringInfoString(&buf,"ALTER SEQUENCE ");
-					ParseSequenceOpition2Sql(((AlterSeqStmt *) parsetree)->options,
-						((AlterSeqStmt *) parsetree)->sequence->relname, buf, T_AlterSeqStmt);
-#endif
 					AlterSequence((AlterSeqStmt *) parsetree);
 #ifdef PGXC
 					if (IS_PGXC_COORDINATOR)
@@ -2246,12 +2226,6 @@ ProcessUtilitySlow(Node *parsetree,
 							ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, exec_type, is_temp);
 						}
 						
-						/* execute alter sequence(increment/minvalue/maxvalue/restart/cache/cycle) on agtm */
-						if(!IsConnFromCoord())						
-							agtm_sequence(buf.data);
-#ifdef ADB	
-						pfree(buf.data);
-#endif
 					}
 #endif
 					break;
