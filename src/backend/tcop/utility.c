@@ -1495,10 +1495,6 @@ ProcessUtilitySlow(Node *parsetree,
 #ifdef PGXC
 				CreateSchemaCommand((CreateSchemaStmt *) parsetree,
 									queryString, sentToRemote);
-
-				/* create schema on agtm */
-				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-					agtm_Schema(queryString);
 #else
 				CreateSchemaCommand((CreateSchemaStmt *) parsetree,
 									queryString);

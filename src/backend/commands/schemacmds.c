@@ -38,6 +38,10 @@
 #include "optimizer/pgxcplan.h"
 #endif
 
+#ifdef ADB
+#include "agtm/agtm.h"
+#endif
+
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
 
 /*
@@ -126,6 +130,20 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
+
+#ifdef ADB
+	/* create schema on agtm */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		StringInfoData	buf;
+		initStringInfo(&buf);
+		appendStringInfoString(&buf,"CREATE SCHEMA ");
+		appendStringInfo(&buf, "%s", schemaName);
+		agtm_Schema(buf.data);
+
+		pfree(buf.data);
+	}
+#endif
 
 	/*
 	 * Temporarily make the new namespace be the front of the search path, as
