@@ -588,17 +588,14 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
 
 -- for ADB monitor the topology in home page : get coordinator node topology 
 CREATE VIEW adbmgr.get_coordinator_node_topology AS
-    select row_to_json(t) as coordinator_result
-    from(      
-        select n.nodename AS node_name,
-               n.nodeport AS node_port,
-               h.hostaddr AS node_ip
-        from mgr_node n, mgr_host h
-        where n.nodeincluster = true and
-              n.nodeinited = true and
-              n.nodehost = h.oid and
-              n.nodetype = 'c'
-        ) t;
+    select n.nodename AS node_name,
+        n.nodeport AS node_port,
+        h.hostaddr AS node_ip
+    from mgr_node n, mgr_host h
+    where n.nodeincluster = true and
+        n.nodeinited = true and
+        n.nodehost = h.oid and
+        n.nodetype = 'c';
 
 -- for ADB monitor the topology in home page : get agtm node topology 
 CREATE VIEW adbmgr.get_agtm_node_topology AS
