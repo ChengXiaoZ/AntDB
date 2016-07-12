@@ -533,6 +533,14 @@ insert into pg_catalog.monitor_host_threshold values(26, 30, 60, 80);
 --unused index num
 insert into pg_catalog.monitor_host_threshold values(17, 0, 0, 0);
 insert into pg_catalog.monitor_host_threshold values(27, 100, 150, 200);
+--tps timeinterval
+insert into pg_catalog.monitor_host_threshold values(31, 3, 0, 0);
+--long transactions min time
+insert into pg_catalog.monitor_host_threshold values(32, 100, 0, 0);
+--slow query min time
+insert into pg_catalog.monitor_host_threshold values(33, 2, 0, 0);
+--get limit num slowlog from database cluster once time
+insert into pg_catalog.monitor_host_threshold values(34, 5, 0, 0);
 
 -- for ADB monitor the topology in home page : get datanode node topology
 CREATE VIEW adbmgr.get_datanode_node_topology AS

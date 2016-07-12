@@ -38,7 +38,6 @@
 #include "utils/date.h"
 
 #define DEFAULT_DB "postgres"
-#define sleepTime 3
 
 typedef enum ResultChoice
 {
@@ -47,6 +46,14 @@ typedef enum ResultChoice
 	GET_SUM
 }ResultChoice;
 
+/*see the content of adbmgr_init.sql: "insert into pg_catalog.monitor_host_threshold"
+* the values are the same in adbmgr_init.sql for given items
+*/
+typedef enum ThresholdItem
+{
+	TPS_TIMEINTERVAL = 31,
+	LONGTRANS_MINTIME = 32
+}ThresholdItem;
 /*
 * get one value from the given sql
 */
@@ -192,6 +199,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	int dbage = 0;
 	int standbydelay = 0;
 	int indexsize = 0;
+	int longtransmintime = 100;
 	float heaphitrate = 0;
 	float commitrate = 0;
 	List *dbnamelist = NIL;
@@ -216,7 +224,8 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	char *sqlarchive = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'archive_mode\'";
 	char *sqlstrstandbydelay = "select CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0  ELSE round(EXTRACT (EPOCH FROM now() - pg_last_xact_replay_timestamp())) end;";
 	char *sqlstrindexsize = "select round(sum(pg_relation_size(indexrelid)::numeric(18,4)/1024/1024)) from pg_stat_user_indexes;";
-
+	Monitor_Threshold monitor_threshold;
+	
 	rel = heap_open(MdatabaseitemRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	/*get database list*/
@@ -236,6 +245,10 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	dbnum = list_length(dbnamelist);
 	Assert(dbnum > 0);
 	time = GetCurrentTimestamp();
+	/*get long transaction min time from table: MonitorHostThresholdRelationId*/
+	get_threshold(LONGTRANS_MINTIME, &monitor_threshold);
+	if (monitor_threshold.threshold_warning !=0)
+		longtransmintime = monitor_threshold.threshold_warning;
 	foreach(cell, dbnamelist)
 	{
 		dbname = (char *)(lfirst(cell));
@@ -283,7 +296,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		/*get long query num on coordinator*/
 		initStringInfo(&sqllongqueryStrData);
 		initStringInfo(&sqlidlequeryStrData);
-		appendStringInfo(&sqllongqueryStrData, "select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > 200 and datname=\'%s\';", dbname);
+		appendStringInfo(&sqllongqueryStrData, "select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > %d and datname=\'%s\';", longtransmintime, dbname);
 		appendStringInfo(&sqlidlequeryStrData, "select count(*) from pg_stat_activity where state='idle' and datname = \'%s\'", dbname);
 		longquerynum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqllongqueryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 		
@@ -420,6 +433,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	int coordport = 0;
 	int iloop = 0;
 	int idex = 0;
+	int sleepTime = 3;
 	const int ncol = 2;
 	char *user = NULL;
 	char *hostaddress = NULL;
@@ -427,6 +441,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	StringInfoData sqltpsStrData;
 	StringInfoData sqlqpsStrData;
 	StringInfoData sqldbruntimeStrData;
+	Monitor_Threshold monitor_threshold;
 	
 	rel = heap_open(MdatabasetpsRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
@@ -463,6 +478,10 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	time = GetCurrentTimestamp();
 
 	iloop = 0;
+	/*get tps timeinterval from table:MonitorHostThresholdRelationId*/
+	get_threshold(TPS_TIMEINTERVAL, &monitor_threshold);
+	if(monitor_threshold.threshold_warning != 0)
+		sleepTime = monitor_threshold.threshold_warning;
 	while(iloop<ncol)
 	{
 		idex = 0;

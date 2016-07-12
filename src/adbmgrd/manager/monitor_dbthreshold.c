@@ -273,6 +273,11 @@ void  mthreshold_sqlvaluesfrom_dnmaster()
 		if (getnode)
 		{
 			nodetime = monitor_get_timestamptz_onenode(ndatauser.data, address, port);
+			if(nodetime == NULL)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+					,errmsg("get time from node error,")));
+			}
 			mthreshold_levelvalue_impositiveseq(OBJECT_NODE_HEAPHIT, address, nodetime, phyheaphitrate, "heaphit rate");
 			pfree(nodetime);
 		}
@@ -397,6 +402,11 @@ void  mthreshold_sqlvaluesfrom_coord()
 		if (getnode)
 		{
 			nodetime = monitor_get_timestamptz_onenode(ndatauser.data, address, port);
+			if(nodetime == NULL)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+					,errmsg("get time from node error,")));
+			}
 			mthreshold_levelvalue_impositiveseq(OBJECT_NODE_COMMITRATE, address, nodetime, phynodecommitrate,  "commit rate");
 			mthreshold_levelvalue_positiveseq(OBJECT_NODE_LOCKS, address, nodetime, phynodelocks, "locks");
 			mthreshold_levelvalue_positiveseq(OBJECT_NODE_LONGTRANS, address, nodetime, phynodelongtrans, "long transactions");
@@ -492,6 +502,11 @@ static void  mthreshold_standbydelay()
 		if (getnode)
 		{
 			nodetime = monitor_get_timestamptz_onenode(ndatauser.data, address, port);
+			if(nodetime == NULL)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+					,errmsg("get time from node error,")));
+			}
 			mthreshold_levelvalue_positiveseq(OBJECT_NODE_STANDBYDELAY, address, nodetime, phynodestandbydelay, "standby delay");
 			pfree(nodetime);
 		}

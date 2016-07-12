@@ -34,12 +34,19 @@
 #include "access/xact.h"
 #include "utils/date.h"
 
-
-#define GETMAXROWNUM 5
-#define QUERYMINTIME 2
 #define GETTODAYSTARTTIME(time) ((time+8*3600)/(3600*24)*(3600*24)-8*3600)
 #define GETLASTDAYSTARTTIME(time) ((time+8*3600)/(3600*24)*(3600*24)-8*3600-24*3600)
 #define GETTOMARROWSTARTTIME(time) ((time+8*3600)/(3600*24)*(3600*24)-8*3600+24*3600)
+
+/*see the content of adbmgr_init.sql: "insert into pg_catalog.monitor_host_threshold"
+* the values are the same in adbmgr_init.sql for given items
+*/
+typedef enum ThresholdItem
+{
+	SLOWQUERY_MINTIME = 33,
+	SLOWLOG_GETNUMONCE = 34
+}ThresholdItem;
+
 
 /*given one sqlstr, return the result*/
 char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname)
@@ -117,10 +124,13 @@ void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, 
 	int callstoday = 0;
 	int callsyestd = 0;
 	int callstmp = 0;
+	int slowlogmintime = 2;
+	int slowlognumoncetime = 5;
 	bool gettoday = false;
 	bool getyesdt = false;	
 	Form_monitor_slowlog monitor_slowlog;	
 	pg_time_t ptimenow;
+	Monitor_Threshold monitor_threshold;
 	
 	initStringInfo(&constr);
 	initStringInfo(&sqlslowlogStrData);
@@ -136,7 +146,14 @@ void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, 
 		ereport(ERROR,
 		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
 	}
-	appendStringInfo(&sqlslowlogStrData, "select usename, calls, total_time/1000 as totaltime, query  from pg_stat_statements, pg_user, pg_database where ( total_time/calls/1000) > %d and userid=usesysid and pg_database.oid = dbid and datname=\'%s\' limit %d;", QUERYMINTIME, dbname, GETMAXROWNUM);
+	/*get slowlog min time threshold in MonitorHostThresholdRelationId*/
+	get_threshold(SLOWQUERY_MINTIME, &monitor_threshold);
+	if (monitor_threshold.threshold_warning != 0)
+		slowlogmintime = monitor_threshold.threshold_warning;
+	get_threshold(SLOWLOG_GETNUMONCE, &monitor_threshold);
+	if (monitor_threshold.threshold_warning != 0)
+		slowlognumoncetime = monitor_threshold.threshold_warning;
+	appendStringInfo(&sqlslowlogStrData, "select usename, calls, total_time/1000 as totaltime, query  from pg_stat_statements, pg_user, pg_database where ( total_time/calls/1000) > %d and userid=usesysid and pg_database.oid = dbid and datname=\'%s\' limit %d;", slowlogmintime, dbname, slowlognumoncetime);
 	res = PQexec(conn, sqlslowlogStrData.data);
 	if(PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
