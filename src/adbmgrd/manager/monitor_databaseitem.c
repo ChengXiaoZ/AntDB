@@ -115,7 +115,7 @@ int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, c
 	return ret;	
 }
 
-int monitor_get_result_every_node_master_one_database(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype)
+int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype)
 {
 	/*get datanode master user, port*/
 	HeapScanDesc rel_scan;
@@ -246,8 +246,8 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		dbsize = monitor_get_result_one_node(rel_node, sqldbsizeStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 
 		/*get heap hit rate on datanode master*/
-		heaphit = monitor_get_result_every_node_master_one_database(rel_node, sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
-		heapread = monitor_get_result_every_node_master_one_database(rel_node, sqlheapread, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		heaphit = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		heapread = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlheapread, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
 		if((heaphit + heapread) == 0)
 			heaphitrate = 1;
 		else
@@ -258,8 +258,8 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		initStringInfo(&sqlrollbackStrData);
 		appendStringInfo(&sqlcommitStrData, "select xact_commit from pg_stat_database where datname = \'%s\'", dbname);
 		appendStringInfo(&sqlrollbackStrData, "select xact_rollback from pg_stat_database where datname = \'%s\'", dbname);
-		commit = monitor_get_result_every_node_master_one_database(rel_node, sqlcommitStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		rollback = monitor_get_result_every_node_master_one_database(rel_node, sqlrollbackStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		commit = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlcommitStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		rollback = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlrollbackStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 		if((commit + rollback) == 0)
 			commitrate = 1;
 		else
@@ -268,27 +268,27 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		/*prepare query num on coordinator*/
 		initStringInfo(&sqlprepareStrData);
 		appendStringInfo(&sqlprepareStrData, "select count(*) from pg_prepared_xacts where database=\'%s\'", dbname);
-		preparenum = monitor_get_result_every_node_master_one_database(rel_node, sqlprepareStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		preparenum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlprepareStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 		
 		/*unused index on datanode master, get min
 		* " select count(*) from  pg_stat_user_indexes where idx_scan = 0"  on one database, get min on every dn master
 		*/
-		unusedindexnum = monitor_get_result_every_node_master_one_database(rel_node, sqlunusedindex, dbname, CNDN_TYPE_DATANODE_MASTER, GET_MIN);
+		unusedindexnum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlunusedindex, dbname, CNDN_TYPE_DATANODE_MASTER, GET_MIN);
 		
 		/*get locks on coordinator, get max*/
 		initStringInfo(&sqllocksStrData);
 		appendStringInfo(&sqllocksStrData, "select count(*) from pg_locks ,pg_database where pg_database.Oid = pg_locks.database and pg_database.datname=\'%s\';", dbname);
-		locksnum = monitor_get_result_every_node_master_one_database(rel_node, sqllocksStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_MAX);
+		locksnum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqllocksStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_MAX);
 		
 		/*get long query num on coordinator*/
 		initStringInfo(&sqllongqueryStrData);
 		initStringInfo(&sqlidlequeryStrData);
 		appendStringInfo(&sqllongqueryStrData, "select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > 200 and datname=\'%s\';", dbname);
 		appendStringInfo(&sqlidlequeryStrData, "select count(*) from pg_stat_activity where state='idle' and datname = \'%s\'", dbname);
-		longquerynum = monitor_get_result_every_node_master_one_database(rel_node, sqllongqueryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		longquerynum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqllongqueryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 		
 		/*get idle query num on coordinator*/
-		idlequerynum = monitor_get_result_every_node_master_one_database(rel_node, sqlidlequeryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		idlequerynum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlidlequeryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 		
 		/*autovacuum*/
 		if(bfrist)
@@ -301,14 +301,14 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 			dbage = monitor_get_result_one_node(rel_node, sqlstrgetdbage, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
 		
 			/*standby delay*/
-			standbydelay = monitor_get_result_every_node_master_one_database(rel_node, sqlstrstandbydelay, DEFAULT_DB, CNDN_TYPE_DATANODE_SLAVE, GET_MAX);
+			standbydelay = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlstrstandbydelay, DEFAULT_DB, CNDN_TYPE_DATANODE_SLAVE, GET_MAX);
 		}
 		/*connect num*/
 		initStringInfo(&sqlconnectnumStrData);
 		appendStringInfo(&sqlconnectnumStrData, "select numbackends from pg_stat_database where datname = \'%s\'", dbname);
 		connectnum = monitor_get_result_one_node(rel_node, sqlconnectnumStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER);
 		/*the database index size, unit: MB */
-		indexsize = monitor_get_result_every_node_master_one_database(rel_node, sqlstrindexsize, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		indexsize = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlstrindexsize, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
 		/*build tuple*/
 		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, barchive, bautovacuum, heaphitrate, commitrate, dbage, connectnum, standbydelay, locksnum, longquerynum, idlequerynum, preparenum, unusedindexnum, indexsize);
 		simple_heap_insert(rel, tuple);
@@ -472,9 +472,9 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 			appendStringInfo(&sqltpsStrData, "select xact_commit+xact_rollback from pg_stat_database where datname = \'%s\';",  dbname);
 			appendStringInfo(&sqlqpsStrData, "select sum(calls)from pg_stat_statements, pg_database where dbid = pg_database.oid and pg_database.datname=\'%s\';",  dbname);
 			/*get given database tps first*/
-			dbtps[idex][iloop] = monitor_get_result_every_node_master_one_database(rel_node, sqltpsStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+			dbtps[idex][iloop] = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqltpsStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 			/*get given database qps first*/
-			dbqps[idex][iloop] = monitor_get_result_every_node_master_one_database(rel_node, sqlqpsStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+			dbqps[idex][iloop] = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlqpsStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 			resetStringInfo(&sqltpsStrData);
 			resetStringInfo(&sqlqpsStrData);
 			idex++;

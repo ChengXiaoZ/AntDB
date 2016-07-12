@@ -175,11 +175,10 @@ extern HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int 
 extern void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port);
 
 /*monitor_dbthreshold.c*/
-extern char *monitor_get_timestamptz_one_node(char *user, char *address, int port);
-extern bool monitor_get_threesqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int *firstvalue, int *secondvalue, int *thirdvalue);
-extern bool monitor_get_sixsqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int *firstvalue, int *secondvalue, int *thirdvalue, int *fourthvalue, int *fivthvalue, int *sixthvalue);
 extern Datum get_dbthreshold(PG_FUNCTION_ARGS);
-extern void  monitor_dbthreshold_heaphitrate_unusedindex();
-extern void  monitor_dbthreshold_commitrate_locks_longtrans_idletrans_connect();
+extern char *monitor_get_timestamptz_onenode(char *user, char *address, int port);
+extern bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len);
+extern void  mthreshold_sqlvaluesfrom_dnmaster();
+extern void  mthreshold_sqlvaluesfrom_coord();
 
 #endif /* MGR_CMDS_H */
