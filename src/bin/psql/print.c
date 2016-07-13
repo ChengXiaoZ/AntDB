@@ -600,17 +600,16 @@ print_aligned_text(const printTableContent *cont, FILE *fout)
 	extra_output_lines += extra_row_output_lines;
 	extra_row_output_lines = 0;
 
-#ifdef ADB
-	/* fix:Division by zero */
-	Assert(col_count > 0);
-#endif
-
 	/* scan all cells, find maximum width, compute cell_count */
 	for (i = 0, ptr = cont->cells; *ptr; ptr++, i++, cell_count++)
 	{
 		int			width,
 					nl_lines,
 					bytes_required;
+#ifdef ADB
+		/* fix:Division by zero */
+		Assert(col_count > 0);
+#endif
 
 		pg_wcssize((const unsigned char *) *ptr, strlen(*ptr), encoding,
 				   &width, &nl_lines, &bytes_required);
