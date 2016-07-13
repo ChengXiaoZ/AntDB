@@ -1662,8 +1662,8 @@ pgxc_node_begin(int conn_count,
 			{
 				ereport(WARNING,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("Fail to send BEGIN TRANSACTION command to the node %u",
-						 	connections[i]->nodeoid),
+						 errmsg("Fail to send BEGIN TRANSACTION command to the node %s",
+						 	NameStr(connections[i]->name)),
 						 errhint("Error: %s", connections[i]->error)));
 
 				return EOF;
