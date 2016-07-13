@@ -146,7 +146,7 @@ extern char *defGetString(DefElem *def);
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG
 				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE
 				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE
-				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC
+				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM SHOW_RESOLVE_LOG
 %%
 /*
  *	The target production for the whole parse.
@@ -233,6 +233,23 @@ Get_alarm_info:
 			args = lappend(args, makeIntConst($17, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("get_alarm_info_desc", args));
+			$$ = (Node*)stmt;
+		} 
+		|RESOLVE_ALARM '(' SignedIconst ',' Ident ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = lappend(args,makeStringConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("resolve_alarm", args));
+			$$ = (Node*)stmt;
+		}
+		| SHOW_RESOLVE_LOG '(' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("show_resolve_log", args));
 			$$ = (Node*)stmt;
 		};
 
@@ -1489,6 +1506,8 @@ unreserved_keyword:
 	| GET_SLOWLOG
 	| GET_THRESHOLD_TYPE
 	| GET_THRESHOLD_ALL_TYPE
+	| RESOLVE_ALARM
+	| SHOW_RESOLVE_LOG
 	| GTM
 	| HOST
 	| I

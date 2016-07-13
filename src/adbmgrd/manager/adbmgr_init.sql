@@ -810,6 +810,34 @@ $$ LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
+-- save resolve alarm log
+create or replace function pg_catalog.resolve_alarm(alarm_id int,resolve_text text)
+returns void as
+$$
+    insert into monitor_resolve (mr_alarm_oid, mr_resolve_timetz, mr_solution)
+    values ($1, current_timestamp(0), $2);
+    update monitor_alarm set ma_alarm_status = 2 where oideq(oid,$1)
+$$
+LANGUAGE SQL
+VOLATILE
+RETURNS NULL ON NULL INPUT;
+
+--show resolve log
+create or replace function pg_catalog.show_resolve_log(alarm_id int)
+returns TABLE (
+                alarm_text text,
+                alarm_solution text,
+                resolve_time timestamptz)
+as
+$$
+    select ma.ma_alarm_text,mr.mr_solution,mr.mr_resolve_timetz 
+    from monitor_alarm ma left join monitor_resolve mr on (pg_catalog.oideq(ma.oid, mr.mr_alarm_oid)) 
+    where pg_catalog.oideq(ma.oid, $1)
+$$
+LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+
 --insert data into mgr.parm
 
 --insert gtm parameters
