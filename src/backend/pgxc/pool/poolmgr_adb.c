@@ -1270,7 +1270,8 @@ static void agent_handle_input(PoolAgent * agent, StringInfo s)
 					pq_copymsgbytes(s, (char*)&idx, sizeof(idx));
 					if((Size)idx > agent->num_coord_connections)
 						ereport(ERROR, (errmsg("invalid index for clean connection from backend")));
-					Assert(agent->coord_connections&& agent->coord_connections[idx]);
+					if(agent->coord_connections == NULL || agent->coord_connections[idx] == NULL)
+						continue;
 					slot = agent->coord_connections[idx];
 					Assert(slot->parent);
 					nodelist = lappend_oid(nodelist, slot->parent->nodeoid);
