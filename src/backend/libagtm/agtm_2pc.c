@@ -100,17 +100,15 @@ AcceptAgtmResult(const PGresult *result)
 			default:
 				OK = false;
 				ereport(WARNING,
-					(errmsg("unexpected PQresultStatus: %d\n",
+					(errmsg("unexpected PQresultStatus: %d",
 						PQresultStatus(result))));
 				break;
 		}
 
 	if (!OK)
 	{
-		const char *error = PQerrorMessage(getAgtmConnection());
-		if(error && error[0] != '\0')
-			ereport(WARNING, (errmsg("%s from AGTM", error)));
-		
+		ereport(WARNING,
+			(errmsg("[From AGTM] %s", PQresultErrorMessage(result))));
 		CheckAgtmConnection();			
 	}	
 	return OK;
@@ -153,7 +151,7 @@ AgtmProcessResult(PGresult **results)
 				break;
 			default:
 				is_copy = false;
-				ereport(WARNING,(errmsg("unexpected PQresultStatus: %d\n", 
+				ereport(WARNING,(errmsg("unexpected PQresultStatus: %d", 
 					result_status)));
 				break;
 		}
