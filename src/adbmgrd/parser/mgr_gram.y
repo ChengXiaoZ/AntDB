@@ -112,7 +112,7 @@ extern char *defGetString(DefElem *def);
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
-				Get_host_threshold
+				Get_host_threshold Get_alarm_info
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -146,6 +146,7 @@ extern char *defGetString(DefElem *def);
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG
 				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE
 				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE
+				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC
 %%
 /*
  *	The target production for the whole parse.
@@ -199,9 +200,41 @@ stmt :
 	| Gettopologyparm /* for ADB monitor home page */
 	| Update_host_config_value
 	| Get_host_threshold
+	| Get_alarm_info
 	| /* empty */
 		{ $$ = NULL; }
 	;
+Get_alarm_info:
+		GET_ALARM_INFO_ASC '(' Ident ',' Ident ',' Ident ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args,makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			args = lappend(args, makeIntConst($9, -1));
+			args = lappend(args, makeIntConst($11, -1));
+			args = lappend(args, makeIntConst($13, -1));
+			args = lappend(args, makeIntConst($15, -1));
+			args = lappend(args, makeIntConst($17, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("get_alarm_info_asc", args));
+			$$ = (Node*)stmt;
+		}
+		| GET_ALARM_INFO_DESC '(' Ident ',' Ident ',' Ident ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args,makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			args = lappend(args, makeIntConst($9, -1));
+			args = lappend(args, makeIntConst($11, -1));
+			args = lappend(args, makeIntConst($13, -1));
+			args = lappend(args, makeIntConst($15, -1));
+			args = lappend(args, makeIntConst($17, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("get_alarm_info_desc", args));
+			$$ = (Node*)stmt;
+		};
 
 Gettopologyparm:
         GET_AGTM_NODE_TOPOLOGY
@@ -1447,6 +1480,8 @@ unreserved_keyword:
 	| GET_HOST_LIST_ALL
 	| GET_HOST_LIST_SPEC
 	| GET_HOST_HISTORY_USAGE
+	| GET_ALARM_INFO_ASC
+	| GET_ALARM_INFO_DESC
 	| GET_ALL_NODENAME_IN_SPEC_HOST
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_COORDINATOR_NODE_TOPOLOGY

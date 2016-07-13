@@ -736,6 +736,80 @@ from(
                             )
     ) r;
 
+-- get all alarm info (host and DB)
+create or replace FUNCTION pg_catalog.get_alarm_info_asc(starttime timestamp ,
+                                                        endtime timestamp ,
+                                                        search_text text default '',
+                                                        alarm_level int default 0,
+                                                        alarm_type int default 0,
+                                                        alarm_status int default 0,
+                                                        alarm_limit int default 20,
+                                                        alarm_offset int default 0)
+returns TABLE (
+                alarm_level smallint,
+                alarm_text text,
+                alarm_type smallint,
+                alarm_id oid,
+                alarm_source text,
+                alarm_time timestamptz,
+                alarm_status smallint)
+as $$
+select ma_alarm_level AS alarm_level,
+       ma_alarm_text AS alarm_text,
+       ma_alarm_type AS alarm_type,
+       oid AS alarm_id,
+       ma_alarm_source AS alarm_source,
+       ma_alarm_timetz AS alarm_time,
+       ma_alarm_status AS alarm_status
+from monitor_alarm
+where case $4 when 0 then 1::boolean else ma_alarm_level = $4 end and
+      case $5 when 0 then 1::boolean else ma_alarm_type = $5 end and
+      case $6 when 0 then 1::boolean else ma_alarm_status = $6 end and
+      ma_alarm_text ~ $3 and
+      ma_alarm_timetz between $1 and $2
+    order by ma_alarm_timetz asc limit $7 offset $8
+
+$$ LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+
+-- get all alarm info (host and DB)
+create or replace FUNCTION pg_catalog.get_alarm_info_desc(starttime timestamp ,
+                                                        endtime timestamp ,
+                                                        search_text text default '',
+                                                        alarm_level int default 0,
+                                                        alarm_type int default 0,
+                                                        alarm_status int default 0,
+                                                        alarm_limit int default 20,
+                                                        alarm_offset int default 0)
+returns TABLE (
+                alarm_level smallint,
+                alarm_text text,
+                alarm_type smallint,
+                alarm_id oid,
+                alarm_source text,
+                alarm_time timestamptz,
+                alarm_status smallint)
+as $$
+select ma_alarm_level AS alarm_level,
+       ma_alarm_text AS alarm_text,
+       ma_alarm_type AS alarm_type,
+       oid AS alarm_id,
+       ma_alarm_source AS alarm_source,
+       ma_alarm_timetz AS alarm_time,
+       ma_alarm_status AS alarm_status
+from monitor_alarm
+where case $4 when 0 then 1::boolean else ma_alarm_level = $4 end and
+      case $5 when 0 then 1::boolean else ma_alarm_type = $5 end and
+      case $6 when 0 then 1::boolean else ma_alarm_status = $6 end and
+      ma_alarm_text ~ $3 and
+      ma_alarm_timetz between $1 and $2
+    order by ma_alarm_timetz desc limit $7 offset $8
+
+$$ LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+
 --insert data into mgr.parm
 
 --insert gtm parameters
