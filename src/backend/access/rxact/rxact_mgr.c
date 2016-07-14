@@ -154,9 +154,10 @@ static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count);
 static uint32 hash_DbAndNodeOid(const void *key, Size keysize);
 static int match_DbAndNodeOid(const void *key1, const void *key2,
 											Size keysize);
+static int match_oid(const void *key1, const void *key2, Size keysize);
 static void rxact_insert_database(Oid db_oid, const char *dbname, const char *owner);
 static void
-rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type);
+rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid);
 static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success);
 static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool update, bool is_redo);
 
@@ -180,7 +181,7 @@ CreateRxactAgent(pgsocket agent_fd)
 	}
 
 	agent = NULL;
-	for(i=0;i<agentCount;++i)
+	for(i=0;i<MaxBackends;++i)
 	{
 		if(allRxactAgent[i].index == INVALID_INDEX)
 		{
@@ -247,7 +248,7 @@ static void RxactLoop(void)
 		if (!PostmasterIsAlive())
 			exit(0);
 
-		for (i = 0; i < agentCount; i++)
+		for (i = agentCount; i--;)
 		{
 			index = indexRxactAgent[i];
 			Assert(index >= 0 && index < (Index)MaxBackends);
@@ -256,9 +257,9 @@ static void RxactLoop(void)
 
 			pollfds[i+1].fd = agent->sock;
 			if(agent->out_buf.len > agent->out_buf.cursor)
-				pollfds[i].events = POLLOUT;
+				pollfds[i+1].events = POLLOUT;
 			else
-				pollfds[i].events = POLLIN;
+				pollfds[i+1].events = POLLIN;
 		}
 
 re_poll_:
@@ -388,9 +389,10 @@ static void RemoteXactMgrInit(void)
 	hctl.keysize = sizeof(Oid);
 	hctl.entrysize = sizeof(RemoteNode);
 	hctl.hash = oid_hash;
+	hctl.match = match_oid;
 	hctl.hcxt = TopMemoryContext;
 	htab_remote_node = hash_create("RemoteNode"
-		, 64, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+		, 64, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 
 	/* create HTAB for DatabaseNode */
 	Assert(htab_db_node == NULL);
@@ -488,7 +490,7 @@ on_exit_rxact_mgr(int code, Datum arg)
 static void
 rxact_agent_destroy(RxactAgent *agent)
 {
-	unsigned int i,n;
+	unsigned int i;
 	AssertArg(agent && agent->index != INVALID_INDEX);
 	for(i=0;i<agentCount;++i)
 	{
@@ -497,8 +499,8 @@ rxact_agent_destroy(RxactAgent *agent)
 	}
 
 	Assert(i<agentCount);
-	n = agentCount-1;
-	for(;i<n;++i)
+	--agentCount;
+	for(;i<agentCount;++i)
 		indexRxactAgent[i] = indexRxactAgent[i+1];
 	closesocket(agent->sock);
 	agent->sock = PGINVALID_SOCKET;
@@ -789,7 +791,7 @@ static void rxact_agent_do(RxactAgent *agent, StringInfo msg)
 	oids = rxact_get_bytes(msg, sizeof(Oid)*count);
 	gid = rxact_get_string(msg);
 
-	rxact_insert_gid(gid, oids, count, type);
+	rxact_insert_gid(gid, oids, count, type, agent->dboid);
 	strncpy(agent->last_gid, gid, sizeof(agent->last_gid)-1);
 
 	/*
@@ -847,7 +849,7 @@ static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count)
 		if(hash_search(htab_remote_node, &oid[i], HASH_FIND, NULL) == NULL)
 			break;
 	}
-	if(i<count)
+	if(i>=count)
 		return false; /* all known */
 
 	rxact_begin_msg(&buf, RXACT_MSG_NODE_INFO);
@@ -898,6 +900,20 @@ static int match_DbAndNodeOid(const void *key1, const void *key2,
 	return 0;
 }
 
+static int match_oid(const void *key1, const void *key2, Size keysize)
+{
+	Oid l,r;
+	AssertArg(keysize == sizeof(Oid));
+
+	l = *(Oid*)key1;
+	r = *(Oid*)key2;
+	if(l<r)
+		return -1;
+	else if(l > r)
+		return 1;
+	return 0;
+}
+
 static void rxact_insert_database(Oid db_oid, const char *dbname, const char *owner)
 {
 	DatabaseNode *db;
@@ -909,14 +925,13 @@ static void rxact_insert_database(Oid db_oid, const char *dbname, const char *ow
 		return;
 	}
 
-	db->dbOid = db_oid;
 	strcpy(db->dbname, dbname);
 	strcpy(db->owner, owner);
 	/* TODO insert into log file */
 }
 
 static void
-rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type)
+rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid)
 {
 	GlobalTransactionInfo *ginfo;
 	bool found;
@@ -942,8 +957,8 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 		ginfo->count_nodes = count+1;
 
 		ginfo->type = type;
-		strncpy(ginfo->gid, gid, lengthof(ginfo->gid)-1);
 		ginfo->failed = false;
+		ginfo->db_oid = db_oid;
 	}PG_CATCH();
 	{
 		hash_search(htab_rxid, gid, HASH_REMOVE, NULL);
@@ -987,14 +1002,13 @@ static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool u
 
 	RemoteNode *rnode;
 	bool found;
-	rnode = hash_search(htab_db_node, &oid, HASH_ENTER, &found);
+	rnode = hash_search(htab_remote_node, &oid, HASH_ENTER, &found);
 	if(!found)
 	{
 		if(!is_redo)
 		{
 			/* TODO insert log file */
 		}
-		rnode->nodeOid = oid;
 		rnode->nodePort = (uint16)port;
 		strncpy(rnode->nodeHost, addr, sizeof(rnode->nodeHost)-1);
 	}else if(update)
@@ -1098,7 +1112,6 @@ static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 	conn = hash_search(htab_node_conn, &key, HASH_ENTER, &found);
 	if(!found)
 	{
-		conn->oids = key;
 		conn->conn = NULL;
 		conn->last_use = cur_time;
 		conn->conn_interval = 0;
