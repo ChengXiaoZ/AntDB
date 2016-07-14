@@ -392,9 +392,6 @@ static void RemoteXactMgrInit(void)
 	htab_remote_node = hash_create("RemoteNode"
 		, 64, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 
-	/* insert AGTM info */
-	rxact_insert_node_info(AGTM_OID, (short)AGtmPort, AGtmHost, false, true);
-
 	/* create HTAB for DatabaseNode */
 	Assert(htab_db_node == NULL);
 	MemSet(&hctl, 0, sizeof(hctl));
@@ -405,6 +402,9 @@ static void RemoteXactMgrInit(void)
 	htab_db_node = hash_create("DatabaseNode"
 		, 64, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 
+	/* insert AGTM info */
+	rxact_insert_node_info(AGTM_OID, (short)AGtmPort, AGtmHost, false, true);
+
 	/* create HTAB for NodeConn */
 	Assert(htab_node_conn == NULL);
 	MemSet(&hctl, 0, sizeof(hctl));
@@ -413,7 +413,7 @@ static void RemoteXactMgrInit(void)
 	hctl.hash = hash_DbAndNodeOid;
 	hctl.match = match_DbAndNodeOid;
 	hctl.hcxt = TopMemoryContext;
-	htab_db_node = hash_create("DatabaseNode"
+	htab_node_conn = hash_create("DatabaseNode"
 		, 64
 		, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 
