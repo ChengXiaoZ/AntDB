@@ -1382,7 +1382,6 @@ GetGlobalSnapshot(Snapshot snapshot)
 			agtm_GetGlobalSnapShot(snapshot);
 		return snapshot;
 	}*/
-	GetCurrentTransactionId();
 	OutputGlobalSnapshot(GlobalSnapshot);
 
 	return GlobalSnapshot;
