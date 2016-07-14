@@ -13,71 +13,65 @@
 
 #include "postgres.h"
 
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/uio.h>
-#include <sys/stat.h>
-#include <sys/un.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <stddef.h>
-#include <netinet/in.h>
 
+#include "access/rxact_comm.h"
 #include "access/rxact_mgr.h"
-#include "storage/ipc.h"
-#include "utils/elog.h"
-#include "utils/memutils.h"
 #include "miscadmin.h"
+#include "storage/ipc.h"
 
-static int	rxact_recvbuf(RxactPort *port);
-static int	rxact_discardbytes(RxactPort *port, size_t len);
+#include <unistd.h>
+#include <sys/socket.h>
 
 #ifdef HAVE_UNIX_SOCKETS
+#include <sys/un.h>
 
-static const char sock_path[] = {".s.PGRXACT"};
+static const char rxact_sock_path[] = {".s.PGRXACT"};
 
-static void StreamDoUnlink(int code, Datum arg);
-
-static int	Lock_AF_UNIX(void);
+static void RxactStreamDoUnlink(int code, Datum arg);
 #endif
 
 /*
  * Open server socket on specified port to accept connection from sessions
  */
-int
-rxact_listen()
+pgsocket
+rxact_listen(void)
 {
 #ifdef HAVE_UNIX_SOCKETS
 	int			fd,
 				len;
+	int maxconn;
 	struct sockaddr_un unix_addr;
 
-	if (Lock_AF_UNIX() < 0)
-		return -1;
+	CreateSocketLockFile(rxact_sock_path, true, "");
+	unlink(rxact_sock_path);
 
 	/* create a Unix domain stream socket */
 	if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0)
-		return -1;
+		return PGINVALID_SOCKET;
 
 	/* fill in socket address structure */
 	memset(&unix_addr, 0, sizeof(unix_addr));
 	unix_addr.sun_family = AF_UNIX;
-	strcpy(unix_addr.sun_path, sock_path);
+	strcpy(unix_addr.sun_path, rxact_sock_path);
 	len = sizeof(unix_addr.sun_family) +
 		strlen(unix_addr.sun_path) + 1;
 
-	/* bind the name to the descriptor */
-	if (bind(fd, (struct sockaddr *) & unix_addr, len) < 0)
-		return -1;
-
-	/* tell kernel we're a server */
-	if (listen(fd, 5) < 0)
-		return -1;
+	/*
+	 * bind the name to the descriptor
+	 * and tell kernel we're a server
+	 */
+	maxconn = MaxBackends * 2;
+	if(maxconn > PG_SOMAXCONN)
+		maxconn = PG_SOMAXCONN;
+	if (bind(fd, (struct sockaddr *) & unix_addr, len) < 0
+		|| listen(fd, maxconn) < 0)
+	{
+		closesocket(fd);
+		return PGINVALID_SOCKET;
+	}
 
 	/* Arrange to unlink the socket file at exit */
-	on_proc_exit(StreamDoUnlink, 0);
+	on_proc_exit(RxactStreamDoUnlink, 0);
 
 	return fd;
 #else
@@ -95,29 +89,17 @@ rxact_listen()
  */
 #ifdef HAVE_UNIX_SOCKETS
 static void
-StreamDoUnlink(int code, Datum arg)
+RxactStreamDoUnlink(int code, Datum arg)
 {
-	Assert(sock_path[0]);
-	unlink(sock_path);
+	Assert(rxact_sock_path[0]);
+	unlink(rxact_sock_path);
 }
 #endif   /* HAVE_UNIX_SOCKETS */
-
-#ifdef HAVE_UNIX_SOCKETS
-static int
-Lock_AF_UNIX(void)
-{
-	CreateSocketLockFile(sock_path, true, "");
-
-	unlink(sock_path);
-
-	return 0;
-}
-#endif
 
 /*
  * Connect to pooler listening on specified port
  */
-int
+pgsocket
 rxact_connect(void)
 {
 	int			fd,
@@ -131,7 +113,7 @@ rxact_connect(void)
 
 	memset(&unix_addr, 0, sizeof(unix_addr));
 	unix_addr.sun_family = AF_UNIX;
-	strcpy(unix_addr.sun_path, sock_path);
+	strcpy(unix_addr.sun_path, rxact_sock_path);
 	len = sizeof(unix_addr.sun_family) +
 		strlen(unix_addr.sun_path) + 1;
 
@@ -148,689 +130,124 @@ rxact_connect(void)
 #endif
 }
 
-
-/*
- * Get one byte from the buffer, read data from the connection if buffer is empty
- */
-int
-rxact_getbyte(RxactPort *port)
-{
-	while (port->RecvPointer >= port->RecvLength)
-	{
-		if (rxact_recvbuf(port)) /* If nothing in buffer, then recv some */
-			return EOF;			/* Failed to recv data */
-	}
-	return (unsigned char) port->RecvBuffer[port->RecvPointer++];
-}
-
-
-/*
- * Get one byte from the buffer if it is not empty
- */
-int
-rxact_pollbyte(RxactPort *port)
-{
-	if (port->RecvPointer >= port->RecvLength)
-	{
-		return EOF;				/* Empty buffer */
-	}
-	return (unsigned char) port->RecvBuffer[port->RecvPointer++];
-}
-
-
-/*
- * Read remote xact protocol message from the buffer.
- */
-int
-rxact_getmessage(RxactPort *port, StringInfo s, int maxlen)
-{
-	int32		len;
-
-	resetStringInfo(s);
-
-	/* Read message length word */
-	if (rxact_getbytes(port, (char *) &len, 4) == EOF)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("unexpected EOF within message length word")));
-		return EOF;
-	}
-
-	len = ntohl(len);
-
-	if (len < 4 ||
-		(maxlen > 0 && len > maxlen))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("invalid message length")));
-		return EOF;
-	}
-
-	len -= 4;					/* discount length itself */
-
-	if (len > 0)
-	{
-		/*
-		 * Allocate space for message.	If we run out of room (ridiculously
-		 * large message), we will elog(ERROR)
-		 */
-		PG_TRY();
-		{
-			enlargeStringInfo(s, len);
-		}
-		PG_CATCH();
-		{
-			if (rxact_discardbytes(port, len) == EOF)
-				ereport(ERROR,
-						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("incomplete message from client")));
-			PG_RE_THROW();
-		}
-		PG_END_TRY();
-
-		/* And grab the message */
-		if (rxact_getbytes(port, s->data, len) == EOF)
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					 errmsg("incomplete message from client")));
-			return EOF;
-		}
-		s->len = len;
-		/* Place a trailing null per StringInfo convention */
-		s->data[len] = '\0';
-	}
-
-	return 0;
-}
-
-
-/* --------------------------------
- * rxact_getbytes - get a known number of bytes from connection
- *
- * returns 0 if OK, EOF if trouble
- * --------------------------------
- */
-int
-rxact_getbytes(RxactPort *port, char *s, size_t len)
-{
-	size_t		amount;
-
-	while (len > 0)
-	{
-		while (port->RecvPointer >= port->RecvLength)
-		{
-			if (rxact_recvbuf(port))		/* If nothing in buffer, then recv
-										 * some */
-				return EOF;		/* Failed to recv data */
-		}
-		amount = port->RecvLength - port->RecvPointer;
-		if (amount > len)
-			amount = len;
-		memcpy(s, port->RecvBuffer + port->RecvPointer, amount);
-		port->RecvPointer += amount;
-		s += amount;
-		len -= amount;
-	}
-	return 0;
-}
-
-
-/* --------------------------------
- * rxact_discardbytes - discard a known number of bytes from connection
- *
- * returns 0 if OK, EOF if trouble
- * --------------------------------
- */
-static int
-rxact_discardbytes(RxactPort *port, size_t len)
-{
-	size_t		amount;
-
-	while (len > 0)
-	{
-		while (port->RecvPointer >= port->RecvLength)
-		{
-			if (rxact_recvbuf(port))		/* If nothing in buffer, then recv
-										 * some */
-				return EOF;		/* Failed to recv data */
-		}
-		amount = port->RecvLength - port->RecvPointer;
-		if (amount > len)
-			amount = len;
-		port->RecvPointer += amount;
-		len -= amount;
-	}
-	return 0;
-}
-
-
-/* --------------------------------
- * rxact_recvbuf - load some bytes into the input buffer
- *
- * returns 0 if OK, EOF if trouble
- * --------------------------------
- */
-static int
-rxact_recvbuf(RxactPort *port)
-{
-	if (port->RecvPointer > 0)
-	{
-		if (port->RecvLength > port->RecvPointer)
-		{
-			/* still some unread data, left-justify it in the buffer */
-			memmove(port->RecvBuffer, port->RecvBuffer + port->RecvPointer,
-					port->RecvLength - port->RecvPointer);
-			port->RecvLength -= port->RecvPointer;
-			port->RecvPointer = 0;
-		}
-		else
-			port->RecvLength = port->RecvPointer = 0;
-	}
-
-	/* Can fill buffer from PqRecvLength and upwards */
-	for (;;)
-	{
-		int			r;
-
-		r = recv(SOCKET(port), port->RecvBuffer + port->RecvLength,
-				 RXACT_BUFFER_SIZE - port->RecvLength, 0);
-
-		if (r < 0)
-		{
-			if (errno == EINTR)
-				continue;		/* Ok if interrupted */
-
-			/*
-			 * Report broken connection
-			 */
-			ereport(LOG,
-					(errcode_for_socket_access(),
-					 errmsg("could not receive data from client: %m")));
-			return EOF;
-		}
-		if (r == 0)
-		{
-			/*
-			 * EOF detected.  We used to write a log message here, but it's
-			 * better to expect the ultimate caller to do that.
-			 */
-			return EOF;
-		}
-		/* r contains number of bytes read, so just incr length */
-		port->RecvLength += r;
-		return 0;
-	}
-}
-
-
-/*
- * Put a known number of bytes into the connection buffer
- */
-int
-rxact_putbytes(RxactPort *port, const char *s, size_t len)
-{
-	size_t		amount;
-
-	while (len > 0)
-	{
-		/* If buffer is full, then flush it out */
-		if (port->SendPointer >= RXACT_BUFFER_SIZE)
-			if (rxact_flush(port))
-				return EOF;
-		amount = RXACT_BUFFER_SIZE - port->SendPointer;
-		if (amount > len)
-			amount = len;
-		memcpy(port->SendBuffer + port->SendPointer, s, amount);
-		port->SendPointer += amount;
-		s += amount;
-		len -= amount;
-	}
-	return 0;
-}
-
-
-/* --------------------------------
- *		rxact_flush		- flush pending output
- *
- *		returns 0 if OK, EOF if trouble
- * --------------------------------
- */
-int
-rxact_flush(RxactPort *port)
-{
-	static int	last_reported_send_errno = 0;
-
-	char	   *bufptr = port->SendBuffer;
-	char	   *bufend = port->SendBuffer + port->SendPointer;
-
-	while (bufptr < bufend)
-	{
-		int			r;
-
-		r = send(SOCKET(port), bufptr, bufend - bufptr, 0);
-
-		if (r <= 0)
-		{
-			if (errno == EINTR)
-				continue;		/* Ok if we were interrupted */
-
-			if (errno != last_reported_send_errno)
-			{
-				last_reported_send_errno = errno;
-
-				/*
-				 * Handle a seg fault that may later occur in proc array
-				 * when this fails when we are already shutting down
-				 * If shutting down already, do not call.
-				 */
-				if (!proc_exit_inprogress)
-					return 0;
-			}
-
-			/*
-			 * We drop the buffered data anyway so that processing can
-			 * continue, even though we'll probably quit soon.
-			 */
-			port->SendPointer = 0;
-			return EOF;
-		}
-
-		last_reported_send_errno = 0;	/* reset after any successful send */
-		bufptr += r;
-	}
-
-	port->SendPointer = 0;
-	return 0;
-}
-
-
-/*
- * Put the pooler protocol message into the connection buffer
- */
-int
-rxact_putmessage(RxactPort *port, char msgtype, const char *s, size_t len)
-{
-	uint		n32;
-
-	if (rxact_putbytes(port, &msgtype, 1))
-		return EOF;
-
-	n32 = htonl((uint32) (len + 4));
-	if (rxact_putbytes(port, (char *) &n32, 4))
-		return EOF;
-
-	if (rxact_putbytes(port, s, len))
-		return EOF;
-
-	return 0;
-}
-
-/* message code('f'), size(8), node_count */
-#define SEND_MSG_BUFFER_SIZE 9
-/* message code('s'), result */
-#define SEND_RES_BUFFER_SIZE 5
-#define SEND_PID_BUFFER_SIZE (5 + (MaxConnections - 1) * 4)
-
-#ifndef CMSG_LEN
-#       define CMSG_LEN(l)      (sizeof(struct cmsghdr) + (l))
-#endif /* CMSG_LEN */
-
-/*
- * Build up a message carrying file descriptors or process numbers and send them over specified
- * connection
- */
-int
-rxact_sendfds(RxactPort *port, int *fds, int count)
-{
-	struct iovec iov[1];
-	struct msghdr msg;
-	char		buf[SEND_MSG_BUFFER_SIZE];
-	uint		n32;
-	int			controllen = CMSG_LEN(count * sizeof(int));
-	struct cmsghdr *cmptr = NULL;
-
-	buf[0] = 'f';
-	n32 = 8;//htonl((uint32) 8);
-	memcpy(buf + 1, &n32, 4);
-	n32 = count;//htonl((uint32) count);
-	memcpy(buf + 5, &n32, 4);
-
-	iov[0].iov_base = buf;
-	iov[0].iov_len = SEND_MSG_BUFFER_SIZE;
-	msg.msg_iov = iov;
-	msg.msg_iovlen = 1;
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
-	if (count == 0)
-	{
-		msg.msg_control = NULL;
-		msg.msg_controllen = 0;
-	}
-	else
-	{
-		if ((cmptr = malloc(controllen)) == NULL)
-			return EOF;
-		cmptr->cmsg_level = SOL_SOCKET;
-		cmptr->cmsg_type = SCM_RIGHTS;
-		cmptr->cmsg_len = controllen;
-		msg.msg_control = (caddr_t) cmptr;
-		msg.msg_controllen = controllen;
-		/* the fd to pass */
-		memcpy(CMSG_DATA(cmptr), fds, count * sizeof(int));
-	}
-
-	if (sendmsg(SOCKET(port), &msg, 0) != SEND_MSG_BUFFER_SIZE)
-	{
-		if (cmptr)
-			free(cmptr);
-		return EOF;
-	}
-
-	if (cmptr)
-		free(cmptr);
-
-	return 0;
-}
-
-
-/*
- * Read a message from the specified connection carrying file descriptors
- */
-int
-rxact_recvfds(RxactPort *port, pgsocket *fds, int count)
-{
-	struct iovec iov[1];
-	struct msghdr msg;
-	char buf[SEND_MSG_BUFFER_SIZE];
-	static Size controllen = 0;
-	static struct cmsghdr *cmptr = NULL;
-	Size need_size;
-	int rval;
-
-	AssertArg(port && fds && count>0);
-	need_size = CMSG_LEN(count * sizeof(int));
-	if(controllen < need_size)
-	{
-		volatile bool has_error = false;
-		PG_TRY();
-		{
-			if(cmptr == NULL)
-			{
-				cmptr = MemoryContextAlloc(TopMemoryContext, need_size);
-			}else
-			{
-				cmptr = repalloc(cmptr, need_size);
-			}
-		}PG_CATCH();
-		{
-			has_error = true;
-		}PG_END_TRY();
-		if(has_error)
-			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("out of memory for get connect")));
-		controllen = need_size;
-	}
-
-	HOLD_CANCEL_INTERRUPTS();
-retry_recvmsg_:
-	iov[0].iov_base = buf;
-	iov[0].iov_len = SEND_MSG_BUFFER_SIZE;
-	msg.msg_iov = iov;
-	msg.msg_iovlen = lengthof(iov);
-	msg.msg_name = NULL;
-	msg.msg_namelen = 0;
-	msg.msg_control = (caddr_t)cmptr;
-	msg.msg_controllen = need_size;
-
-	rval = recvmsg(SOCKET(port), &msg, 0);
-	if(rval < 0)
-	{
-		if(errno == EAGAIN
-#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
-			|| errno == EWOULDBLOCK
-#endif
-			)
-		{
-			CHECK_FOR_INTERRUPTS();
-			goto retry_recvmsg_;
-		}
-		ereport(FATAL, (errcode_for_socket_access(),
-			errmsg("could not receive rxact data from client: %m")));
-	}else if (rval == 0)
-	{
-		RESUME_CANCEL_INTERRUPTS();
-		return EOF;
-	}else if (rval != SEND_MSG_BUFFER_SIZE)
-	{
-#ifdef ADB
-		if(buf[0] == 'E')
-			ereport(ERROR, (errmsg("got an error from rxact process")));
-#endif /* ADB */
-		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-			errmsg("incomplete message pooler process")));
-	}
-
-	RESUME_CANCEL_INTERRUPTS();
-
-	/* Verify response */
-	if(buf[0] != 'f')
-	{
-		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-			errmsg("unexpected message code from pooler process")));
-	}
-
-	memcpy(&rval, buf + 1, 4);
-	if(rval != 8)
-	{
-		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-			errmsg("invalid message size from pooler process")));
-	}
-
-	memcpy(&rval, buf + 5, 4);
-	if(rval == 0)
-	{
-		ereport(LOG,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("failed to acquire connections")));
-		return EOF;
-	}
-
-	if(rval != count)
-	{
-		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-			errmsg("unexpected connection count from pooler process")));
-	}
-
-	memcpy(fds, CMSG_DATA(cmptr), count * sizeof(pgsocket));
-	return 0;
-}
-
-/*
- * Send result to specified connection
- */
-int
-rxact_sendres(RxactPort *port, int res)
-{
-	char		buf[SEND_RES_BUFFER_SIZE];
-	uint		n32;
-
-	/* Header */
-	buf[0] = 's';
-	/* Result */
-	n32 = htonl(res);
-	memcpy(buf + 1, &n32, 4);
-
-	if (send(SOCKET(port), &buf, SEND_RES_BUFFER_SIZE, 0) != SEND_RES_BUFFER_SIZE)
-		return EOF;
-
-	return 0;
-}
-
-/*
- * Read result from specified connection.
- * Return 0 at success or EOF at error.
- */
-int
-rxact_recvres(RxactPort *port)
-{
-	int			r;
-	int			res = 0;
-	uint		n32;
-	char		buf[SEND_RES_BUFFER_SIZE];
-
-	r = recv(SOCKET(port), &buf, SEND_RES_BUFFER_SIZE, 0);
-	if (r < 0)
-	{
-		/*
-		 * Report broken connection
-		 */
-		ereport(ERROR,
-				(errcode_for_socket_access(),
-				 errmsg("could not receive data from client: %m")));
-		goto failure;
-	}
-	else if (r == 0)
-	{
-		goto failure;
-	}
-	else if (r != SEND_RES_BUFFER_SIZE)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("incomplete message from client")));
-		goto failure;
-	}
-
-	/* Verify response */
-#ifdef ADB
-	if (buf[0] == 'E')
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			errmsg("rxact process report an error")));
-	}else
-#endif /* ADB */
-	if (buf[0] != 's')
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("unexpected message code")));
-		goto failure;
-	}
-
-	memcpy(&n32, buf + 1, 4);
-	n32 = ntohl(n32);
-	if (n32 != 0)
-		return EOF;
-
-	return res;
-
-failure:
-	return EOF;
-}
-
-/*
- * Read a message from the specified connection carrying pid numbers
- * of transactions interacting with pooler
- */
-int
-rxact_recvpids(RxactPort *port, int **pids)
-{
-	int			r, i;
-	uint		n32;
-	char		buf[SEND_PID_BUFFER_SIZE];
-
-	/*
-	 * Buffer size is upper bounded by the maximum number of connections,
-	 * as in the pooler each connection has one Pooler Agent.
-	 */
-
-	r = recv(SOCKET(port), &buf, SEND_PID_BUFFER_SIZE, 0);
-	if (r < 0)
-	{
-		/*
-		 * Report broken connection
-		 */
-		ereport(ERROR,
-				(errcode_for_socket_access(),
-				 errmsg("could not receive data from client: %m")));
-		goto failure;
-	}
-	else if (r == 0)
-	{
-		goto failure;
-	}
-	else if (r != SEND_PID_BUFFER_SIZE)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("incomplete message from client")));
-		goto failure;
-	}
-
-	/* Verify response */
-	if (buf[0] != 'p')
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("unexpected message code")));
-		goto failure;
-	}
-
-	memcpy(&n32, buf + 1, 4);
-	n32 = ntohl(n32);
-	if (n32 == 0)
-	{
-		elog(WARNING, "No transaction to abort");
-		return n32;
-	}
-
-	*pids = (int *) palloc(sizeof(int) * n32);
-
-	for (i = 0; i < n32; i++)
-	{
-		int n;
-		memcpy(&n, buf + 5 + i * sizeof(int), sizeof(int));
-		(*pids)[i] = ntohl(n);
-	}
-	return n32;
-
-failure:
-	return 0;
-}
-
-/*
- * Send a message containing pid numbers to the specified connection
- */
-int
-rxact_sendpids(RxactPort *port, int *pids, int count)
-{
-	int res = 0;
-	int i;
-	char		buf[SEND_PID_BUFFER_SIZE];
-	uint		n32;
-
-	buf[0] = 'p';
-	n32 = htonl((uint32) count);
-	memcpy(buf + 1, &n32, 4);
-	for (i = 0; i < count; i++)
-	{
-		int n;
-		n = htonl((uint32) pids[i]);
-		memcpy(buf + 5 + i * sizeof(int), &n, 4);
-	}
-
-	if (send(SOCKET(port), &buf, SEND_PID_BUFFER_SIZE,0) != SEND_PID_BUFFER_SIZE)
-	{
-		res = EOF;
-	}
-
-	return res;
-}
-
 const char* rxact_get_sock_path(void)
 {
-	return sock_path;
+	return rxact_sock_path;
+}
+
+void rxact_begin_msg(StringInfo msg, char type)
+{
+	AssertArg(msg && type);
+	initStringInfo(msg);
+	rxact_reset_msg(msg, type);
+}
+
+void rxact_reset_msg(StringInfo msg, char type)
+{
+	AssertArg(msg && msg->data && type);
+	resetStringInfo(msg);
+	enlargeStringInfo(msg, 5);
+	msg->len = 5;
+	msg->data[4] = type;
+}
+
+void rxact_put_short(StringInfo msg, short n)
+{
+	AssertArg(msg);
+	appendBinaryStringInfo(msg, (char*)&n, 2);
+}
+
+void rxact_put_int(StringInfo msg, int n)
+{
+	AssertArg(msg);
+	appendBinaryStringInfo(msg, (char*)&n, 4);
+}
+
+void rxact_put_bytes(StringInfo msg, const void *s, int len)
+{
+	AssertArg(msg && s && len>0);
+	appendBinaryStringInfo(msg, s, len);
+}
+
+void rxact_put_string(StringInfo msg, const char *s)
+{
+	int len;
+	AssertArg(msg && s);
+
+	len = strlen(s);
+	appendBinaryStringInfo(msg, s, len+1);
+}
+
+void rxact_put_finsh(StringInfo msg)
+{
+	AssertArg(msg && msg->data && msg->len >= 5);
+
+	memcpy(msg->data, &(msg->len), 4);
+}
+
+short rxact_get_short(StringInfo msg)
+{
+	short s;
+	rxact_copy_bytes(msg, &s, 2);
+	return s;
+}
+
+int rxact_get_int(StringInfo msg)
+{
+	int i;
+	rxact_copy_bytes(msg, &i, 4);
+	return i;
+}
+
+char* rxact_get_string(StringInfo msg)
+{
+	char *str;
+	int len;
+	AssertArg(msg && msg->data);
+
+	str = (msg->data + msg->cursor);
+	len = strlen(str);
+	if(msg->cursor + len >= msg->len)
+		ereport(ERROR,
+			(errcode(ERRCODE_PROTOCOL_VIOLATION),
+			errmsg("invalid string in message")));
+	msg->cursor += (len+1);
+	return str;
+}
+
+void rxact_copy_bytes(StringInfo msg, void *s, int len)
+{
+	AssertArg(msg && msg->data && s);
+
+	if(len < 0 || msg->cursor + len > msg->len)
+		ereport(ERROR,
+			(errcode(ERRCODE_PROTOCOL_VIOLATION),
+			errmsg("insufficient data left in message")));
+
+	memcpy(s, msg->data + msg->cursor, len);
+	msg->cursor += len;
+}
+
+void* rxact_get_bytes(StringInfo msg, int len)
+{
+	void *p;
+	AssertArg(msg && msg->data);
+
+	if(len < 0 || msg->cursor + len > msg->len)
+		ereport(ERROR,
+			(errcode(ERRCODE_PROTOCOL_VIOLATION),
+			errmsg("insufficient data left in message")));
+
+	p = msg->data + msg->cursor;
+	msg->cursor += len;
+	return p;
+}
+
+void rxact_get_msg_end(StringInfo msg)
+{
+	AssertArg(msg);
+	if(msg->cursor != msg->len)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("invalid message format")));
 }
