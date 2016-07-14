@@ -178,7 +178,5 @@ extern void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, 
 extern Datum get_dbthreshold(PG_FUNCTION_ARGS);
 extern char *monitor_get_timestamptz_onenode(char *user, char *address, int port);
 extern bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len);
-extern void  mthreshold_sqlvaluesfrom_dnmaster();
-extern void  mthreshold_sqlvaluesfrom_coord();
 
 #endif /* MGR_CMDS_H */

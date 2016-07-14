@@ -63,9 +63,11 @@ typedef enum AlarmLevel
 	ALARM_EMERGENCY
 }AlarmLevel;
 
-static void mthreshold_levelvalue_positiveseq(DbthresholdObject objectype, char *address, char *time, int value, char *descp);
-static void mthreshold_levelvalue_impositiveseq(DbthresholdObject objectype, char *address, char * time, int value, char *descp);
-static void  mthreshold_standbydelay();
+static void  mthreshold_sqlvaluesfrom_dnmaster(void);
+static void  mthreshold_sqlvaluesfrom_coord(void);
+static void  mthreshold_standbydelay(void);
+static void mthreshold_levelvalue_impositiveseq(DbthresholdObject objectype, char *address, const char * time, int value, char *descp);
+static void mthreshold_levelvalue_positiveseq(DbthresholdObject objectype, char *address, const char *time, int value, char *descp);
 
 
 Datum get_dbthreshold(PG_FUNCTION_ARGS)
@@ -177,7 +179,7 @@ bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int
 * the monitor values of heaphitrate and unusedindexs from datanode masters, if the monitor values 
 * larger then item threshold, record the data to monitor_alarm table
 */
-void  mthreshold_sqlvaluesfrom_dnmaster()
+static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 {
 	Relation hostrel;
 	Relation noderel;
@@ -211,7 +213,7 @@ void  mthreshold_sqlvaluesfrom_dnmaster()
 	char *sqlstr = "select  case sum(heap_blks_hit) is null when true then 0 else  sum(heap_blks_hit) end from pg_statio_user_tables union all select case sum(heap_blks_read) is null when true then 0 else  sum(heap_blks_hit) end from pg_statio_user_tables union all select count(*) from  pg_stat_user_indexes where idx_scan = 0;";
 	bool getnode = false;
 	char *nodetime;
-	char *clustertime;
+	const char *clustertime;
 	
 	hostrel = heap_open(HostRelationId, RowExclusiveLock);
 	hostrel_scan = heap_beginscan(hostrel, SnapshotNow, 0, NULL);
@@ -303,7 +305,7 @@ void  mthreshold_sqlvaluesfrom_dnmaster()
 * record the data to monitor_alarm table
 */
 
-void  mthreshold_sqlvaluesfrom_coord()
+static void  mthreshold_sqlvaluesfrom_coord(void)
 {
 	Relation hostrel;
 	Relation noderel;
@@ -339,7 +341,7 @@ void  mthreshold_sqlvaluesfrom_coord()
 	char *sqlstr = "select sum(xact_commit)  from pg_stat_database union all select sum(xact_rollback) from pg_stat_database union all select count(1) from pg_locks where database is not null union all select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > 200 union all select count(*) from pg_stat_activity where state='idle' union all select sum(numbackends) from pg_stat_database;";
 	bool getnode = false;	
 	char *nodetime;
-	char *clustertime;
+	const char *clustertime;
 	
 	hostrel = heap_open(HostRelationId, RowExclusiveLock);
 	hostrel_scan = heap_beginscan(hostrel, SnapshotNow, 0, NULL);
@@ -435,7 +437,7 @@ void  mthreshold_sqlvaluesfrom_coord()
 * threshold, record the data to monitor_alarm table
 */
 
-static void  mthreshold_standbydelay()
+static void  mthreshold_standbydelay(void)
 {
 	Relation hostrel;
 	Relation noderel;
@@ -457,7 +459,7 @@ static void  mthreshold_standbydelay()
 	char *sqlstandbydelay = "select CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0  ELSE abs(round(EXTRACT (EPOCH FROM now() - pg_last_xact_replay_timestamp()))) end;";
 	bool getnode = false;
 	char *nodetime;
-	char *clustertime;
+	const char *clustertime;
 	
 	hostrel = heap_open(HostRelationId, RowExclusiveLock);
 	hostrel_scan = heap_beginscan(hostrel, SnapshotNow, 0, NULL);
@@ -525,7 +527,7 @@ static void  mthreshold_standbydelay()
 * check the monitor value, the threshold include: warning, critical, emergency, the threshold value is large to small
 * for example: heaphitrate, commitrate
 */
-static void mthreshold_levelvalue_impositiveseq(DbthresholdObject objectype, char *address, char * time, int value, char *descp)
+static void mthreshold_levelvalue_impositiveseq(DbthresholdObject objectype, char *address, const char * time, int value, char *descp)
 {
 	Monitor_Alarm Monitor_Alarm;
 	Monitor_Threshold dbthreshold;
@@ -574,7 +576,7 @@ static void mthreshold_levelvalue_impositiveseq(DbthresholdObject objectype, cha
 * check the monitor value, the threshold include: warning, critical, emergency, the threshold value is small to large
 * for example: locks, unused_index, connectnums, longtrans, idletrans, unused_index
 */
-static void mthreshold_levelvalue_positiveseq(DbthresholdObject objectype, char *address, char *time, int value, char *descp)
+static void mthreshold_levelvalue_positiveseq(DbthresholdObject objectype, char *address, const char *time, int value, char *descp)
 {
 	Monitor_Alarm Monitor_Alarm;
 	Monitor_Threshold dbthreshold;
