@@ -752,22 +752,26 @@ returns TABLE (
                 alarm_id oid,
                 alarm_source text,
                 alarm_time timestamptz,
-                alarm_status smallint)
+                alarm_status smallint,
+                alarm_resolve_timetz timestamptz,
+                alarm_solution text)
 as $$
-select ma_alarm_level AS alarm_level,
-       ma_alarm_text AS alarm_text,
-       ma_alarm_type AS alarm_type,
-       oid AS alarm_id,
-       ma_alarm_source AS alarm_source,
-       ma_alarm_timetz AS alarm_time,
-       ma_alarm_status AS alarm_status
-from monitor_alarm
-where case $4 when 0 then 1::boolean else ma_alarm_level = $4 end and
-      case $5 when 0 then 1::boolean else ma_alarm_type = $5 end and
-      case $6 when 0 then 1::boolean else ma_alarm_status = $6 end and
-      ma_alarm_text ~ $3 and
-      ma_alarm_timetz between $1 and $2
-    order by ma_alarm_timetz asc limit $7 offset $8
+select a.ma_alarm_level AS alarm_level,
+       a.ma_alarm_text AS alarm_text,
+       a.ma_alarm_type AS alarm_type,
+       a.oid AS alarm_id,
+       a.ma_alarm_source AS alarm_source,
+       a.ma_alarm_timetz AS alarm_time,
+       a.ma_alarm_status AS alarm_status,
+       r.mr_resolve_timetz AS alarm_resolve_timetz,
+       r.mr_solution AS alarm_solution
+from monitor_alarm a left join monitor_resolve r on(a.oid = r.mr_alarm_oid)
+where case $4 when 0 then 1::boolean else a.ma_alarm_level = $4 end and
+      case $5 when 0 then 1::boolean else a.ma_alarm_type = $5 end and
+      case $6 when 0 then 1::boolean else a.ma_alarm_status = $6 end and
+      a.ma_alarm_text ~ $3 and
+      a.ma_alarm_timetz between $1 and $2
+    order by a.ma_alarm_timetz asc limit $7 offset $8
 
 $$ LANGUAGE SQL
 IMMUTABLE
@@ -789,53 +793,41 @@ returns TABLE (
                 alarm_id oid,
                 alarm_source text,
                 alarm_time timestamptz,
-                alarm_status smallint)
+                alarm_status smallint,
+                alarm_resolve_timetz timestamptz,
+                alarm_solution text)
 as $$
-select ma_alarm_level AS alarm_level,
-       ma_alarm_text AS alarm_text,
-       ma_alarm_type AS alarm_type,
-       oid AS alarm_id,
-       ma_alarm_source AS alarm_source,
-       ma_alarm_timetz AS alarm_time,
-       ma_alarm_status AS alarm_status
-from monitor_alarm
-where case $4 when 0 then 1::boolean else ma_alarm_level = $4 end and
-      case $5 when 0 then 1::boolean else ma_alarm_type = $5 end and
-      case $6 when 0 then 1::boolean else ma_alarm_status = $6 end and
-      ma_alarm_text ~ $3 and
-      ma_alarm_timetz between $1 and $2
-    order by ma_alarm_timetz desc limit $7 offset $8
+select a.ma_alarm_level AS alarm_level,
+       a.ma_alarm_text AS alarm_text,
+       a.ma_alarm_type AS alarm_type,
+       a.oid AS alarm_id,
+       a.ma_alarm_source AS alarm_source,
+       a.ma_alarm_timetz AS alarm_time,
+       a.ma_alarm_status AS alarm_status,
+       r.mr_resolve_timetz AS alarm_resolve_timetz,
+       r.mr_solution AS alarm_solution
+from monitor_alarm a left join monitor_resolve r on(a.oid = r.mr_alarm_oid)
+where case $4 when 0 then 1::boolean else a.ma_alarm_level = $4 end and
+      case $5 when 0 then 1::boolean else a.ma_alarm_type = $5 end and
+      case $6 when 0 then 1::boolean else a.ma_alarm_status = $6 end and
+      a.ma_alarm_text ~ $3 and
+      a.ma_alarm_timetz between $1 and $2
+    order by a.ma_alarm_timetz desc limit $7 offset $8
 
 $$ LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
 -- save resolve alarm log
-create or replace function pg_catalog.resolve_alarm(alarm_id int,resolve_text text)
+create or replace function pg_catalog.resolve_alarm(alarm_id int, resolve_time timestamp, resolve_text text)
 returns void as
 $$
     insert into monitor_resolve (mr_alarm_oid, mr_resolve_timetz, mr_solution)
-    values ($1, current_timestamp(0), $2);
+    values ($1, $2, $3);
     update monitor_alarm set ma_alarm_status = 2 where oideq(oid,$1)
 $$
 LANGUAGE SQL
 VOLATILE
-RETURNS NULL ON NULL INPUT;
-
---show resolve log
-create or replace function pg_catalog.show_resolve_log(alarm_id int)
-returns TABLE (
-                alarm_text text,
-                alarm_solution text,
-                resolve_time timestamptz)
-as
-$$
-    select ma.ma_alarm_text,mr.mr_solution,mr.mr_resolve_timetz 
-    from monitor_alarm ma left join monitor_resolve mr on (pg_catalog.oideq(ma.oid, mr.mr_alarm_oid)) 
-    where pg_catalog.oideq(ma.oid, $1)
-$$
-LANGUAGE SQL
-IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
 --insert data into mgr.parm
