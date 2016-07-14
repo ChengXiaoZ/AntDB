@@ -2752,6 +2752,19 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 			 * unique reference names for each, but that results in missing
 			 * alias in the generated query.
 			 */
+#ifdef ADB
+			if (rte->alias && rte->alias->colnames)
+			{
+				char *aliasname = pstrdup(refname);
+				pfree(rte->alias->aliasname);
+				refname = rte->alias->aliasname = aliasname;
+			} else
+			{
+				alias = makeAlias(refname, NIL);
+				rte->alias = alias;
+				refname = alias->aliasname;
+			}
+#else
 			if (rte->alias && rte->alias->colnames)
 			{
 				alias = makeAlias(refname, list_copy(rte->alias->colnames));
@@ -2766,6 +2779,7 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 			}
 			rte->alias = alias;
 			refname = alias->aliasname;
+#endif
 			#endif
 		}
 
