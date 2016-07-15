@@ -253,27 +253,17 @@ CREATE VIEW adbmgr.get_spec_host_parm AS
         md.host_oid = mn.host_oid;
 
 -- for ADB monitor host page: get cpu, memory, i/o and net info for specific time period.
-create table temp_table
-(
-recordtimes timestamptz,
-cpuuseds numeric,
-memuseds numeric,
-ioreadps numeric,
-iowriteps numeric,
-netinps numeric,
-netoutps numeric
-);
 CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i int)
     RETURNS table 
-                (
-                recordtimes timestamptz,
-                cpuuseds numeric,
-                memuseds numeric,
-                ioreadps numeric,
-                iowriteps numeric,
-                netinps numeric,
-                netoutps numeric
-                )
+    (
+        recordtimes timestamptz,
+        cpuuseds numeric,
+        memuseds numeric,
+        ioreadps numeric,
+        iowriteps numeric,
+        netinps numeric,
+        netoutps numeric
+    )
     AS 
     $$
     
@@ -338,19 +328,17 @@ JOIN
 GROUP BY monitor_databaseitem_time ) AS b on a.row_number = b.row_number;
 
 
-CREATE table adbmgr.monitor_cluster_fouritem_tb
-(
-	time timestamptz(0),
-	tps  bigint,
-	qps  bigint,
-	connectnum bigint,
-	dbsize numeric(18,2),
-	indexsize numeric(18,2)
-);
-
 --make function for 12 hours data for tps qps connectnum dbsize indexsize
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
-	RETURNS setof adbmgr.monitor_cluster_fouritem_tb
+	RETURNS TABLE
+	(
+		timetmp timestamptz(0),
+		tps  bigint,
+		qps  bigint,
+		connectnum bigint,
+		dbsize numeric(18,2),
+		indexsize numeric(18,2)
+	)
 	AS 
 	$$
 	SELECT time, tps, qps, connectnum, dbsize, indexsize
@@ -391,15 +379,14 @@ AS
 	on 1=1;
 
 
-CREATE table adbmgr.monitor_databasetps_content_tb
-(
-time timestamptz(0),
-tps int,
-qps int
-);
 --make function to get tps and qps for given dbname time and time interval
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in timestamptz, in int)
-		RETURNS setof adbmgr.monitor_databasetps_content_tb
+		RETURNS TABLE
+	(
+		timetmp timestamptz(0),
+		tps int,
+		qps int
+	)
 	AS 
 		$$
 	SELECT monitor_databasetps_time::timestamptz(0) AS time,
@@ -443,24 +430,23 @@ SELECT (SUM(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize,
 	SUM(monitor_databaseitem_unusedindexnum) AS unusedindexnum
 from (SELECT * from monitor_databaseitem where monitor_databaseitem_time=(SELECT MAX(monitor_databaseitem_time) from monitor_databaseitem)) AS a;
 --show database summary at current_time for given name
-CREATE table adbmgr.monitor_databasesummary_tb
-(
-	dbsize 			numeric(18,2),
-	archivemode		bool,
-	autovacuum		bool,
-	heaphitrate		numeric(18,2),
-	commitrate		numeric(18,2),
-	dbage			int,
-	connectnum		int,
-	standbydelay	int,
-	locksnum		int,
-	longtransnum	int,
-	idletransnum	int,
-	preparenum		int,
-	unusedindexnum	int
-);
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
-	RETURNS setof adbmgr.monitor_databasesummary_tb
+	RETURNS TABLE
+	(
+		dbsize 			numeric(18,2),
+		archivemode		bool,
+		autovacuum		bool,
+		heaphitrate		numeric(18,2),
+		commitrate		numeric(18,2),
+		dbage			int,
+		connectnum		int,
+		standbydelay	int,
+		locksnum		int,
+		longtransnum	int,
+		idletransnum	int,
+		preparenum		int,
+		unusedindexnum	int
+	)
 	AS 
 		$$
 	SELECT (monitor_databaseitem_dbsize/1024.0)::numeric(18,2) AS dbsize,
@@ -483,16 +469,15 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
 	IMMUTABLE
 	RETURNS NULL ON NULL INPUT;
 
-CREATE table adbmgr.monitor_slowlog_tb
-(
-	query text,
-	dbuser name,
-	singletime float4,
-	totalnum int,
-	queryplan text
-);
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func(in name, in timestamptz, in timestamptz)
-		RETURNS setof adbmgr.monitor_slowlog_tb
+		RETURNS TABLE
+		(
+			query text,
+			dbuser name,
+			singletime float4,
+			totalnum int,
+			queryplan text
+		)
 	AS 
 		$$
 	SELECT slowlogquery AS query,
@@ -509,7 +494,14 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func(in name, in timestamp
 	RETURNS NULL ON NULL INPUT;
 	
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func_page(in name, in timestamptz, in timestamptz, in int, in int)
-		RETURNS setof adbmgr.monitor_slowlog_tb
+		RETURNS TABLE
+		(
+			query text,
+			dbuser name,
+			singletime float4,
+			totalnum int,
+			queryplan text
+		)
 	AS 
 		$$
 	SELECT slowlogquery AS query,
@@ -847,39 +839,70 @@ RETURNS NULL ON NULL INPUT;
 --insert into monitor_user, as default value
 insert into monitor_user values('数据库DBA', '系统用户', '2016-01-01','2050-01-01', '12345678901', 
 'userdba@asiainfo.com', '亚信', '数据库', '数据库研发工程师', '21232f297a57a5a743894a0e4a801fc3','系统管理员');
+--check user name/password
+CREATE OR REPLACE  FUNCTION  pg_catalog.monitor_checkuser_func(in Name, in Name)
+RETURNS oid AS $$
+  select oid from pg_catalog.monitor_user where username=$1 and userpassword=$2;
+
+$$  LANGUAGE sql IMMUTABLE STRICT;
+	
 --show user info
-create or replace function pg_catalog.monitor_getuserinfo_func(in Name)
-returns setof pg_catalog.monitor_user
+ create or replace function pg_catalog.monitor_getuserinfo_func(in int)
+returns TABLE 
+	(
+		username			Name,				/*the user name*/
+		userroletype		Name, 
+		userstarttime		timestamptz,
+		userendtime			timestamptz,
+		usertel				Name,
+		useremail			Name,
+		usercompany			Name,
+		userdepart			Name,
+		usertitle			Name,
+		userdesc			text
+	)
 as
 $$
     select username, userroletype, userstarttime, userendtime, usertel, useremail
-		, usercompany, userdepart, usertitle, userpassword, userdesc from pg_catalog.monitor_user where username=$1
+		, usercompany, userdepart, usertitle, userdesc from pg_catalog.monitor_user where oid=$1;
 $$
 LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
+
 --update user info
-create or replace function pg_catalog.monitor_updateuserinfo_func(in Name, in Name, in Name, in Name, in Name, in text)
-returns void
+create or replace function pg_catalog.monitor_updateuserinfo_func(in int, in Name, in Name, in Name, in Name, in Name, in text)
+returns int
 as
 $$
-    update pg_catalog.monitor_user set usertel=$2, useremail=$3, usertitle=$4, usercompany=$5, userdesc=$6 where username=$1
+    update pg_catalog.monitor_user set username=$2, usertel=$3, useremail=$4, usertitle=$5, usercompany=$6, userdesc=$7 where oid=$1 returning 0;
+ 
+$$
+LANGUAGE SQL
+VOLATILE
+RETURNS NULL ON NULL INPUT;
+
+--check user oldpassword
+create or replace function pg_catalog.monitor_checkuserpassword_func(in int, in Name)
+returns bigint
+as
+$$
+  select count(*) -1 from pg_catalog.monitor_user where oid=$1 and userpassword=$2;
 $$
 LANGUAGE SQL
 VOLATILE
 RETURNS NULL ON NULL INPUT;
 
 --update user password
-create or replace function pg_catalog.monitor_updateuserpassword_func(in Name, in Name, in Name)
-returns void
+create or replace function  pg_catalog.monitor_updateuserpassword_func(in int, in Name)
+returns int
 as
 $$
-    update pg_catalog.monitor_user set userpassword=$3 where username=$1 and userpassword=$2
+    update pg_catalog.monitor_user set userpassword=$2 where oid=$1  returning 0;
 $$
 LANGUAGE SQL
 VOLATILE
 RETURNS NULL ON NULL INPUT;
-
 
 
 --insert data into mgr.parm

@@ -144,8 +144,8 @@ extern char *defGetString(DefElem *def);
 				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER
-				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE UPDATE_PASSWORD
-				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE
+				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE UPDATE_PASSWORD CHECK_USER
+				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD
 				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM
 %%
 /*
@@ -1465,33 +1465,51 @@ ListMonitor:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_slowlog_func", args));
 			$$ = (Node*)stmt;
 		}
-	| GET_USER_INFO '(' Ident ')'
+	| CHECK_USER '(' Ident ',' Ident ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_checkuser_func", args));
+			$$ = (Node*)stmt;
+		}
+	| GET_USER_INFO  SignedIconst
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($2, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_getuserinfo_func", args));
 			$$ = (Node*)stmt;
 		}
-	| UPDATE_USER Ident '(' Ident ',' Ident ',' Ident ',' Ident ',' Ident ')'
+	| UPDATE_USER SignedIconst '(' Ident ',' Ident ',' Ident ',' Ident ',' Ident ',' Ident ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($2, -1));
+			List *args = list_make1(makeIntConst($2, -1));
 			args = lappend(args, makeStringConst($4, -1));
 			args = lappend(args, makeStringConst($6, -1));
 			args = lappend(args, makeStringConst($8, -1));
 			args = lappend(args, makeStringConst($10, -1));
 			args = lappend(args, makeStringConst($12, -1));
+			args = lappend(args, makeStringConst($14, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_updateuserinfo_func", args));
 			$$ = (Node*)stmt;
 		}
-	| UPDATE_PASSWORD Ident '(' Ident ',' Ident')'
+	| CHECK_PASSWORD '(' SignedIconst ',' Ident ')'
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_checkuserpassword_func", args));
+			$$ = (Node*)stmt;
+	}
+	| UPDATE_PASSWORD SignedIconst '(' Ident ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($2, -1));
+			List *args = list_make1(makeIntConst($2, -1));
 			args = lappend(args, makeStringConst($4, -1));
-			args = lappend(args, makeStringConst($6, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_updateuserpassword_func", args));
 			$$ = (Node*)stmt;
@@ -1503,6 +1521,8 @@ unreserved_keyword:
 	| AGENT
 	| ALTER
 	| APPEND
+	| CHECK_PASSWORD
+	| CHECK_USER
 	| CONFIG
 	| COORDINATOR
 	| DATANODE
