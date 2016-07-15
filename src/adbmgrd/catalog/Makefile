@@ -43,7 +43,7 @@ POSTGRES_BKI_SRCS = pg_proc.h pg_type.h pg_attribute.h pg_class.h \
 	mgr_host.h mgr_parm.h mgr_cndnnode.h \
 	monitor_host.h monitor_cpu.h monitor_mem.h monitor_net.h monitor_disk.h \
 	monitor_varparm.h monitor_host_threshlod.h monitor_databasetps.h monitor_databaseitem.h \
-	monitor_slowlog.h monitor_alarm.h monitor_resolve.h \
+	monitor_slowlog.h monitor_alarm.h monitor_resolve.h monitor_user.h \
 	toasting.h indexing.h 
 
 $(POSTGRES_BKI_SRCS): % : $(top_srcdir)/src/include/catalog/%

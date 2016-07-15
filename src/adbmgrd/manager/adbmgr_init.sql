@@ -830,6 +830,44 @@ LANGUAGE SQL
 VOLATILE
 RETURNS NULL ON NULL INPUT;
 
+--insert into monitor_user, as default value
+insert into monitor_user values('数据库DBA', '系统用户', '2016-01-01','2050-01-01', '12345678901', 
+'userdba@asiainfo.com', '亚信', '数据库', '数据库研发工程师', '21232f297a57a5a743894a0e4a801fc3','系统管理员');
+--show user info
+create or replace function pg_catalog.monitor_getuserinfo_func(in Name)
+returns setof pg_catalog.monitor_user
+as
+$$
+    select username, userroletype, userstarttime, userendtime, usertel, useremail
+		, usercompany, userdepart, usertitle, userpassword, userdesc from pg_catalog.monitor_user where username=$1
+$$
+LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+--update user info
+create or replace function pg_catalog.monitor_updateuserinfo_func(in Name, in Name, in Name, in Name, in Name, in text)
+returns void
+as
+$$
+    update pg_catalog.monitor_user set usertel=$2, useremail=$3, usertitle=$4, usercompany=$5, userdesc=$6 where username=$1
+$$
+LANGUAGE SQL
+VOLATILE
+RETURNS NULL ON NULL INPUT;
+
+--update user password
+create or replace function pg_catalog.monitor_updateuserpassword_func(in Name, in Name, in Name)
+returns void
+as
+$$
+    update pg_catalog.monitor_user set userpassword=$3 where username=$1 and userpassword=$2
+$$
+LANGUAGE SQL
+VOLATILE
+RETURNS NULL ON NULL INPUT;
+
+
+
 --insert data into mgr.parm
 
 --insert gtm parameters
