@@ -3120,10 +3120,10 @@ reaper(SIGNAL_ARGS)
 #ifdef ADB
 		if (IS_PGXC_COORDINATOR && pid == RemoteXactMgrPID)
 		{
-			RemoteXactMgrPID = 0;
+			RemoteXactMgrPID = StartRemoteXactMgr();
 			if (!EXIT_STATUS_0(exitstatus))
-				HandleChildCrash(pid, exitstatus,
-								 _("remote xact manager process"));
+				LogChildExit(LOG, _("remote xact manager process"),
+							 pid, exitstatus);
 			continue;
 		}
 #endif /* ADB */
@@ -3529,23 +3529,6 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
 								 (int) PgPoolerPID)));
 			signal_child(PgPoolerPID, (SendStop ? SIGSTOP : SIGQUIT));
-		}
-	}
-#endif
-
-#ifdef ADB
-	/* Take care of the remote xact manager too */
-	if (IS_PGXC_COORDINATOR)
-	{
-		if (pid == RemoteXactMgrPID)
-			RemoteXactMgrPID = 0;
-		else if (RemoteXactMgrPID != 0 && !FatalError)
-		{
-			ereport(DEBUG2,
-				(errmsg_internal("sending %s to process %d",
-								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
-								 (int) RemoteXactMgrPID)));
-			signal_child(RemoteXactMgrPID, (SendStop ? SIGSTOP : SIGQUIT));
 		}
 	}
 #endif
