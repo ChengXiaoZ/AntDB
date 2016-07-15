@@ -96,8 +96,13 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 	const char *err;
 	bool		errkind;
 #ifdef PGXC
+#ifndef ADB
+	/*
+	 * Since bug #15046, we skip this code while under ADB develop environment.
+	 */
 	HeapTuple	aggTuple;
 	Form_pg_aggregate aggform;
+#endif
 #endif /* PGXC */
 
 	/*
@@ -188,7 +193,10 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 	 * on the Coordinator.
 	 * Look up the aggregate definition and replace agg->aggtype
 	 */
-
+#ifndef ADB
+	/*
+	 * Since bug #15046, we skip this code while under ADB develop environment.
+	 */
 	aggTuple = SearchSysCache(AGGFNOID,
 					  ObjectIdGetDatum(agg->aggfnoid),
 					  0, 0, 0);
@@ -202,6 +210,7 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 		agg->aggtype = agg->aggtrantype;
 
 	ReleaseSysCache(aggTuple);
+#endif
 #endif
 
 	/*
