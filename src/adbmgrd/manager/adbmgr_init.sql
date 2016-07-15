@@ -131,10 +131,6 @@ CREATE VIEW adbmgr.stopall_i AS
     UNION ALL
     SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_i(NULL);
 
--- insert the cpu, memory and disk threshold, default cpu is 99, memory is 90, disk is 85.
-insert into monitor_varparm (mv_cpu_threshold, mv_mem_threshold, mv_disk_threshold)
-    values (99, 90, 85);
-
 -- for ADB monitor host page: get all host various parameters.
 CREATE VIEW adbmgr.get_all_host_parm AS
     select 
@@ -146,9 +142,9 @@ CREATE VIEW adbmgr.get_all_host_parm AS
         round(m.mm_usage::numeric, 1) AS memRate,
         round((d.md_total/1024.0/1024.0/1024.0)::numeric, 1) AS disk,
         round(((d.md_used/d.md_total::float) * 100)::numeric, 1) AS diskRate,
-        mv.mv_cpu_threshold AS cpu_threshold,
-        mv.mv_mem_threshold AS mem_threshold,
-        mv.mv_disk_threshold AS disk_threshold
+        mtc.mt_emergency_threshold AS cpu_threshold,
+        mtm.mt_emergency_threshold AS mem_threshold,
+        mtd.mt_emergency_threshold AS disk_threshold
     from 
         mgr_host mgh,
         
@@ -180,7 +176,17 @@ CREATE VIEW adbmgr.get_all_host_parm AS
                            ) tt where tt.rm = 1
         ) nh,
         
-        monitor_varparm mv
+        (
+            select * from monitor_host_threshold where mt_type = 1
+        ) mtc,
+        
+        (
+            select * from monitor_host_threshold where mt_type = 2
+        ) mtm,
+        
+        (
+            select * from monitor_host_threshold where mt_type = 3
+        )mtd
     where mgh.oid = c.host_oid and
         c.host_oid = m.host_oid and
         m.host_oid = d.host_oid and
@@ -258,7 +264,16 @@ netinps numeric,
 netoutps numeric
 );
 CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i int)
-    RETURNS setof temp_table
+    RETURNS table 
+                (
+                recordtimes timestamptz,
+                cpuuseds numeric,
+                memuseds numeric,
+                ioreadps numeric,
+                iowriteps numeric,
+                netinps numeric,
+                netoutps numeric
+                )
     AS 
     $$
     
@@ -290,9 +305,8 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
     RETURNS NULL ON NULL INPUT;
 
 -- for ADB monitor host page: The names of all the nodes on a host
-create table pg_catalog.get_all_nodename_in_spec_host_temp_table(all_nodename name);
 CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname text)
-    RETURNS setof get_all_nodename_in_spec_host_temp_table
+    RETURNS table (all_nodename name)
     AS 
     $$
 
