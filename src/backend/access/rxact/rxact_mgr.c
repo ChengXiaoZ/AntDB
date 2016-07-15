@@ -1073,7 +1073,17 @@ static void rxact_2pc_do(void)
 			/* do not run one more second */
 			node_conn->last_use = cur_time = time(NULL);
 			if(cur_time != start_time)
+			{
+				for(i++;gid_finish && i<ginfo->count_nodes;++i)
+				{
+					if(ginfo->remote_success[i] == false)
+					{
+						gid_finish = false;
+						break;
+					}
+				}
 				break;
+			}
 		}
 
 		if(gid_finish)
