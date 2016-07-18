@@ -2321,6 +2321,7 @@ get_typename(Oid typid)
 	Form_pg_type	typeForm;
 	char		   *result;
 #ifdef ADB
+	char		   *nspname;
 	StringInfoData	buf;
 #endif
 
@@ -2331,12 +2332,23 @@ get_typename(Oid typid)
 
 	typeForm = (Form_pg_type) GETSTRUCT(tuple);
 #ifdef ADB
-	initStringInfo(&buf);
-	appendStringInfo(&buf, "%s.%s",
-					 get_namespace_name(typeForm->typnamespace),
-					 NameStr(typeForm->typname));
-	result = pstrdup(buf.data);
-	pfree(buf.data);
+	nspname = get_namespace_name(typeForm->typnamespace);
+	if (!nspname ||
+		(strncmp(nspname, "pg_temp_", 8) == 0) ||
+		(strncmp(nspname, "pg_toast_temp_", 14) == 0))
+	{
+		result = pstrdup(NameStr(typeForm->typname));
+	} else
+	{
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "%s.%s",
+						 nspname,
+						 NameStr(typeForm->typname));
+		result = pstrdup(buf.data);
+		pfree(buf.data);
+	}
+	if (nspname)
+		pfree(nspname);
 #else
 	result = pstrdup(NameStr(typeForm->typname));
 #endif
