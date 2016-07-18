@@ -32,6 +32,9 @@ typedef struct
 	MemoryContext cxt;			/* context containing tstore */
 	bool		detoast;		/* were we told to detoast? */
 	/* workspace: */
+#ifdef ADB
+	int			natts;			/* keep length of array as below */
+#endif
 	Datum	   *outvalues;		/* values array for result tuple */
 	Datum	   *tofree;			/* temp values to be pfree'd */
 } TStoreState;
@@ -77,6 +80,9 @@ tstoreStartupReceiver(DestReceiver *self, int operation, TupleDesc typeinfo)
 			MemoryContextAlloc(myState->cxt, natts * sizeof(Datum));
 		myState->tofree = (Datum *)
 			MemoryContextAlloc(myState->cxt, natts * sizeof(Datum));
+#ifdef ADB
+		myState->natts = natts;
+#endif
 	}
 	else
 	{
@@ -112,6 +118,24 @@ tstoreReceiveSlot_detoast(TupleTableSlot *slot, DestReceiver *self)
 	int			nfree;
 	int			i;
 	MemoryContext oldcxt;
+
+#ifdef ADB
+	/*
+	 * Sometime, the number of attribute of "slot" is larger than
+	 * "self" which will keep values from "slot". see fetch_ctid_of().
+	 *
+	 * So we "repalloc" these pointers to avoid memory overread. see
+	 * codes as below.
+	 */
+	if (natts > myState->natts)
+	{
+		myState->outvalues = (Datum *)
+			repalloc(myState->outvalues, natts * sizeof(Datum));
+		myState->tofree = (Datum *)
+			repalloc(myState->tofree, natts * sizeof(Datum));
+		myState->natts = natts;
+	}
+#endif
 
 	/* Make sure the tuple is fully deconstructed */
 	slot_getallattrs(slot);
