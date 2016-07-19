@@ -824,6 +824,25 @@ $$ LANGUAGE SQL
 IMMUTABLE
 RETURNS NULL ON NULL INPUT;
 
+create or replace FUNCTION pg_catalog.get_alarm_info_count(starttime timestamp ,
+                                                        endtime timestamp ,
+                                                        search_text text default '',
+                                                        alarm_level int default 0,
+                                                        alarm_type int default 0,
+                                                        alarm_status int default 0)
+returns bigint
+as $$
+select count(*)
+from monitor_alarm a left join monitor_resolve r on(a.oid = r.mr_alarm_oid)
+where case $4 when 0 then 1::boolean else a.ma_alarm_level = $4 end and
+      case $5 when 0 then 1::boolean else a.ma_alarm_type = $5 end and
+      case $6 when 0 then 1::boolean else a.ma_alarm_status = $6 end and
+      a.ma_alarm_text ~ $3 and
+      a.ma_alarm_timetz between $1 and $2
+$$ LANGUAGE SQL
+IMMUTABLE
+RETURNS NULL ON NULL INPUT;
+
 -- save resolve alarm log
 create or replace function pg_catalog.resolve_alarm(alarm_id int, resolve_time timestamp, resolve_text text)
 returns void as
