@@ -469,25 +469,14 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
 	IMMUTABLE
 	RETURNS NULL ON NULL INPUT;
 
-CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func(in name, in timestamptz, in timestamptz)
-		RETURNS TABLE
-		(
-			query text,
-			dbuser name,
-			singletime float4,
-			totalnum int,
-			queryplan text
-		)
+CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_count_func(in name, in timestamptz, in timestamptz)
+		RETURNS bigint
 	AS 
 		$$
-	SELECT slowlogquery AS query,
-				slowloguser   AS dbuser,
-				slowlogsingletime AS singletime,
-				slowlogtotalnum   AS totalnum,
-				slowlogqueryplan  AS queryplan
+	SELECT count(*)
 	FROM 
 				monitor_slowlog
-	WHERE slowlogdbname = $1 and slowlogtime >= $2 and slowlogtime < $3 order by slowlogtime desc;
+	WHERE slowlogdbname = $1 and slowlogtime >= $2 and slowlogtime < $3;
 	$$
 		LANGUAGE SQL
 	IMMUTABLE
@@ -693,6 +682,19 @@ as $$
                   when 4 then '"sent_net"'
                   when 5 then '"recv_net"'
                   when 6 then '"IOPS"'
+                  when 11 then '"node_heaphit_rate"'
+                  when 21 then '"cluster_heaphit_rate"'
+                  when 12 then '"node_commit/rollback_rate"'
+                  when 22 then '"cluster_commit/rollback_rate"'
+                  when 13 then '"node_standy_delay"'
+                  when 23 then '"cluster_standy_delay"'
+                  when 14 then '"node_wait_locks"'
+                  when 24 then '"cluster_wait_locks"'
+                  when 15 then '"node_connect"'
+                  when 25 then '"cluster_connect"'
+                  when 16 then '"node_longtrnas/idletrans"'
+                  when 26 then '"cluster_longtrnas/idletrans"'
+                  when 27 then '"cluster_unused_indexs"'
                   END
                   || ':' || row_to_json as row_string
            from (
@@ -726,6 +728,19 @@ from(
                         when 4 then '"sent_net"'
                         when 5 then '"recv_net"'
                         when 6 then '"IOPS"'
+                        when 11 then '"node_heaphit_rate"'
+                        when 21 then '"cluster_heaphit_rate"'
+                        when 12 then '"node_commit/rollback_rate"'
+                        when 22 then '"cluster_commit/rollback_rate"'
+                        when 13 then '"node_standy_delay"'
+                        when 23 then '"cluster_standy_delay"'
+                        when 14 then '"node_wait_locks"'
+                        when 24 then '"cluster_wait_locks"'
+                        when 15 then '"node_connect"'
+                        when 25 then '"cluster_connect"'
+                        when 16 then '"node_longtrnas/idletrans"'
+                        when 26 then '"cluster_longtrnas/idletrans"'
+                        when 27 then '"cluster_unused_indexs"'
                         END
                         || ':' || '{' || '"warning"'   || ':' || f.warning   || ',' 
                                       || '"critical"'  || ':' || f.critical  || ','
@@ -736,7 +751,7 @@ from(
                                mt_warning_threshold AS "warning",
                                mt_critical_threshold AS "critical",
                                mt_emergency_threshold AS "emergency"
-                        from monitor_host_threshold
+                        from monitor_host_threshold order by 1 asc
                     )f
             ), ','
                             )
@@ -870,7 +885,7 @@ $$  LANGUAGE sql IMMUTABLE STRICT;
 returns TABLE 
 	(
 		username			Name,				/*the user name*/
-		userroletype		Name, 
+		usertype			Name, 
 		userstarttime		timestamptz,
 		userendtime			timestamptz,
 		usertel				Name,
@@ -882,7 +897,7 @@ returns TABLE
 	)
 as
 $$
-    select username, userroletype, userstarttime, userendtime, usertel, useremail
+    select username, usertype, userstarttime, userendtime, usertel, useremail
 		, usercompany, userdepart, usertitle, userdesc from pg_catalog.monitor_user where oid=$1;
 $$
 LANGUAGE SQL
