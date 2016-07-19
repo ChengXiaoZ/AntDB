@@ -15,7 +15,7 @@
 CATALOG(monitor_user,4931)
 {
 	NameData				username;				/*the user name*/
-	NameData				usertype;
+	int32					usertype;				/*1: ordinary users, 2: db manager*/
 	timestamptz				userstarttime;
 	timestamptz				userendtime;
 	NameData				usertel;
