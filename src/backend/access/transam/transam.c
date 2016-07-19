@@ -478,7 +478,7 @@ TransactionIdGetCommitLSN(TransactionId xid)
 #if defined(ADB) || defined(AGTM)
 Datum pg_xact_status(PG_FUNCTION_ARGS)
 {
-	TransactionId	tid = (TransactionId) PG_GETARG_UINT32(0);
+	TransactionId	tid = (TransactionId) PG_GETARG_INT64(0);
 	XidStatus		xidstatus;
 
 	xidstatus = TransactionLogFetch(tid);

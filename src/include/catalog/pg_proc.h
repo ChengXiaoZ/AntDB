@@ -4779,7 +4779,7 @@ DESCR("lock the cluster for taking backup");
 #endif
 
 #if defined(ADB) || defined(AGTM)
-DATA(insert OID = 3184 (  pg_xact_status	PGNSP PGUID 12 1 1 0 0 f f f f t t s 1 0 2275 "28" _null_ _null_ _null_ _null_ pg_xact_status _null_ _null_ _null_ ));
+DATA(insert OID = 3184 (  pg_xact_status	PGNSP PGUID 12 1 1 0 0 f f f f t t s 1 0 2275 "20" _null_ _null_ _null_ _null_ pg_xact_status _null_ _null_ _null_ ));
 DESCR("transaction status of specifical xid");
 #endif
 

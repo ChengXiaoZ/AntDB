@@ -1801,8 +1801,14 @@ calc_non_nestloop_required_outer(Path *outer_path, Path *inner_path)
 	Relids		required_outer;
 
 	/* neither path can require rels from the other */
+#ifdef ADB
+	if (bms_overlap(outer_paramrels, inner_path->parent->relids) ||
+		bms_overlap(inner_paramrels, outer_path->parent->relids))
+		return NULL;
+#else
 	Assert(!bms_overlap(outer_paramrels, inner_path->parent->relids));
 	Assert(!bms_overlap(inner_paramrels, outer_path->parent->relids));
+#endif
 	/* form the union ... */
 	required_outer = bms_union(outer_paramrels, inner_paramrels);
 	/* we do not need an explicit test for empty; bms_union gets it right */
