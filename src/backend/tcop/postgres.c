@@ -1098,14 +1098,11 @@ segment_query_string(const char *query_string, List *parsetree_list)
 	Node		*parsetree;
 	List		*sql_list = NIL;
 	char		*sql_item;
-	char		*query_str;
 	int			 save_endpos;
 	int			 curr_endpos;
 
 	if (!query_string || !parsetree_list)
 		return NIL;
-
-	query_str = pstrdup(query_string);
 
 	save_endpos = 0;
 	foreach (parsetree_item, parsetree_list)
@@ -1117,24 +1114,22 @@ segment_query_string(const char *query_string, List *parsetree_list)
 		/*
 		 * trim space character from the head of current sql
 		 */
-		while (query_str[save_endpos] && isspace(query_str[save_endpos]))
+		while (query_string[save_endpos] && isspace(query_string[save_endpos]))
 			save_endpos++;
 
 		if (curr_endpos != 0)
 		{
 			Assert(curr_endpos >= save_endpos);
-			sql_item = pnstrdup(query_str + save_endpos,
+			sql_item = pnstrdup(query_string + save_endpos,
 								curr_endpos - save_endpos + 1);
 			save_endpos = curr_endpos + 1;
 		} else
 		{
 			Assert(lnext(parsetree_item) == NULL);
-			sql_item = pstrdup(query_str + save_endpos);
+			sql_item = pstrdup(query_string + save_endpos);
 		}
 		sql_list = lappend(sql_list, sql_item);
 	}
-
-	pfree(query_str);
 
 	Assert(list_length(sql_list) == list_length(parsetree_list));
 
