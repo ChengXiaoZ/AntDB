@@ -407,10 +407,6 @@ typedef enum
 	PoolerProcess,
 #endif
 
-#ifdef ADB
-	RemoteXactMgrProcess,
-#endif
-
 	NUM_AUXPROCTYPES			/* Must be last! */
 } AuxProcType;
 

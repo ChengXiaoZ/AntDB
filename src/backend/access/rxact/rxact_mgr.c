@@ -11,14 +11,20 @@
 #include "libpq/libpq-fe.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "postmaster/fork_process.h"
+#include "postmaster/postmaster.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
+#include "storage/pg_shmem.h"
 #include "tcop/tcopprot.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
+#include "utils/ps_status.h"
 #include "utils/syscache.h"
 
 #include <unistd.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <time.h>
@@ -108,14 +114,27 @@ typedef struct GlobalTransactionInfo
 	bool failed;			/* backend do it failed ? */
 }GlobalTransactionInfo;
 
+typedef bool (*rxact_log_worker)(void *data, const char *file_name);
+
 extern char	*AGtmHost;
 extern int	AGtmPort;
 extern int MaxBackends;
+extern bool enableFsync;
 
 static HTAB *htab_remote_node = NULL;	/* RemoteNode */
 static HTAB *htab_db_node = NULL;		/* DatabaseNode */
 static HTAB *htab_node_conn = NULL;		/* NodeConn */
 static HTAB *htab_rxid = NULL;			/* GlobalTransactionInfo */
+
+/* remote xact log files */
+static File rxlf_remote_node = -1;
+static File rxlf_db_node = -1;
+static File rxlf_rxid = -1;
+static volatile unsigned int rxlf_last_rxid_num = 0;
+static const char rxlf_remote_node_filename[] = {"remote_node"};
+static const char rxlf_db_node_filename[] = {"db_node"};
+static const char rxlf_directory[] = {"pg_rxlog"};
+#define MAX_RLOG_FILE_NAME 24
 
 static pgsocket rxact_server_fd = PGINVALID_SOCKET;
 static RxactAgent *allRxactAgent = NULL;
@@ -133,6 +152,7 @@ static void RemoteXactMgrInit(void);
 static void DestroyRemoteConnHashTab(void);
 static void RxactLoadLog(void);
 static void on_exit_rxact_mgr(int code, Datum arg);
+static void RemoteXactMgrMain(void) __attribute__((noreturn));
 
 static bool rxact_agent_recv_data(RxactAgent *agent);
 static void rxact_agent_input(RxactAgent *agent);
@@ -155,10 +175,10 @@ static uint32 hash_DbAndNodeOid(const void *key, Size keysize);
 static int match_DbAndNodeOid(const void *key1, const void *key2,
 											Size keysize);
 static int match_oid(const void *key1, const void *key2, Size keysize);
-static void rxact_insert_database(Oid db_oid, const char *dbname, const char *owner);
+static void rxact_insert_database(Oid db_oid, const char *dbname, const char *owner, bool is_redo);
 static void
-rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid);
-static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success);
+rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid, bool is_redo);
+static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, bool is_redo);
 static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool update, bool is_redo);
 
 /* 2pc redo functions */
@@ -166,6 +186,15 @@ static void rxact_2pc_do(void);
 static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time);
 static void rxact_build_2pc_cmd(StringInfo cmd, const char *gid, RemoteXactType type);
 static void rxact_close_timeout_remote_conn(time_t cur_time);
+static bool rxact_enum_log_file(void* context, rxact_log_worker walker);
+static bool rxact_redo_rid(void *context, const char *name);
+static bool rxact_rm_old_rlog(void *context, const char *name);
+static bool rxact_left_rlog_file(void *context, const char *name);
+static bool rxact_get_last_rlog(void *context, const char *name);
+static File rxact_log_open_rlog(unsigned int log_num);
+static File rxact_log_open_file(const char *log_name, int fileFlags, int fileMode);
+static void rxact_check_update_rlog(void);
+static bool oids_is_valid(const Oid *oids, int count);
 
 static void
 CreateRxactAgent(pgsocket agent_fd)
@@ -365,6 +394,8 @@ static void RemoteXactBaseInit(void)
 	 * Unblock signals (they were blocked when the postmaster forked us)
 	 */
 	PG_SETMASK(&UnBlockSig);
+
+	init_ps_display("remote xact manager process", "", "", "");
 }
 
 static void RemoteXactMgrInit(void)
@@ -454,7 +485,32 @@ DestroyRemoteConnHashTab(void)
 {
 }
 
-void
+pid_t StartRemoteXactMgr(void)
+{
+	pid_t pid = fork_process();
+	if(pid == 0)
+	{
+		IsUnderPostmaster = true;
+		/* in postmaster child ... */
+		/* Close the postmaster's sockets */
+		ClosePostmasterPorts(true);
+
+		/* Lose the postmaster's on-exit routines */
+		on_exit_reset();
+
+		/* Drop our connection to postmaster's shared memory, as well */
+		PGSharedMemoryDetach();
+
+		RemoteXactMgrMain();
+		proc_exit(1);
+	}
+
+	if(pid < 0)
+		ereport(LOG, (errmsg("could not fork system rxmgr: %m")));
+	return pid;
+}
+
+static void
 RemoteXactMgrMain(void)
 {
 	PG_exception_stack = NULL;
@@ -464,7 +520,10 @@ RemoteXactMgrMain(void)
 	/* Initinalize something */
 	RemoteXactMgrInit();
 
+	InitFileAccess();
 	RxactLoadLog();
+
+	enableFsync = true; /* force enable it */
 
 	/* Server loop */
 	RxactLoop();
@@ -474,6 +533,85 @@ RemoteXactMgrMain(void)
 
 static void RxactLoadLog(void)
 {
+	RXactLog rlog;
+	int res;
+	bool bval;
+
+	/* mkdir rxlog directory if not exists */
+	res = mkdir(rxlf_directory, S_IRWXU);
+	if(res < 0)
+	{
+		if(errno != EEXIST)
+		{
+			ereport(FATAL,
+				(errcode_for_file_access(),
+				errmsg("could not create directory \"%s\":%m", rxlf_directory)));
+		}
+	}
+
+	/* open database node file */
+	Assert(rxlf_db_node== -1);
+	rxlf_db_node = rxact_log_open_file(rxlf_db_node_filename, O_RDWR | O_CREAT | PG_BINARY, 0600);
+	{
+		/* read saved database node */
+		DatabaseNode db_node;
+		rlog = rxact_begin_read_log(rxlf_db_node);
+		for(;;)
+		{
+			rxact_log_reset(rlog);
+			if(rxact_log_is_eof(rlog))
+				break;
+
+			rxact_log_read_bytes(rlog, &db_node, sizeof(db_node));
+
+			if(db_node.dbOid == InvalidOid)
+			{
+				/* deleted */
+				continue;
+			}
+			rxact_insert_database(db_node.dbOid,
+				db_node.dbname, db_node.owner, true);
+		}
+		rxact_end_read_log(rlog);
+	}
+
+	/* open remote node */
+	Assert(rxlf_remote_node == -1);
+	rxlf_remote_node = rxact_log_open_file(rxlf_remote_node_filename, O_RDWR | O_CREAT | PG_BINARY, 0600);
+	{
+		/* read remote node */
+		RemoteNode rnode;
+		rlog = rxact_begin_read_log(rxlf_db_node);
+		for(;;)
+		{
+			rxact_log_reset(rlog);
+			if(rxact_log_is_eof(rlog))
+				break;
+
+			rxact_log_read_bytes(rlog, &rnode, sizeof(rnode));
+
+			if(rnode.nodeOid == InvalidOid)
+			{
+				/* deleted */
+				continue;
+			}
+			rxact_insert_node_info(rnode.nodeOid, rnode.nodePort
+				, rnode.nodeHost, false, true);
+		}
+		rxact_end_read_log(rlog);
+	}
+
+	rxact_enum_log_file(NULL, rxact_redo_rid);
+	bval = false;
+	rxact_enum_log_file(&bval, rxact_rm_old_rlog);
+	if(bval)
+	{
+		unsigned int uval = 0;
+		rxact_enum_log_file(&uval, rxact_left_rlog_file);
+	}
+	rxact_enum_log_file(NULL, rxact_get_last_rlog);
+	Assert(rxlf_rxid == -1);
+	rxlf_rxid = rxact_log_open_rlog(rxlf_last_rxid_num);
 }
 
 static void
@@ -518,7 +656,7 @@ rxact_agent_destroy(RxactAgent *agent)
 		}else
 		{
 			Assert(ginfo && ginfo->failed == false);
-			rxact_mark_gid(ginfo->gid, ginfo->type, false);
+			rxact_mark_gid(ginfo->gid, ginfo->type, false, false);
 		}
 		agent->last_gid[0] = '\0';
 	}
@@ -766,7 +904,7 @@ static void rxact_agent_connect(RxactAgent *agent, StringInfo msg)
 	agent->dboid = (Oid)rxact_get_int(msg);
 	dbname = rxact_get_string(msg);
 	owner = rxact_get_string(msg);
-	rxact_insert_database(agent->dboid, dbname, owner);
+	rxact_insert_database(agent->dboid, dbname, owner, false);
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
 }
 
@@ -791,7 +929,7 @@ static void rxact_agent_do(RxactAgent *agent, StringInfo msg)
 	oids = rxact_get_bytes(msg, sizeof(Oid)*count);
 	gid = rxact_get_string(msg);
 
-	rxact_insert_gid(gid, oids, count, type, agent->dboid);
+	rxact_insert_gid(gid, oids, count, type, agent->dboid, false);
 	strncpy(agent->last_gid, gid, sizeof(agent->last_gid)-1);
 
 	/*
@@ -810,7 +948,7 @@ static void rxact_agent_mark(RxactAgent *agent, StringInfo msg, bool success)
 
 	type = (RemoteXactType)rxact_get_int(msg);
 	gid = rxact_get_string(msg);
-	rxact_mark_gid(gid, type, success);
+	rxact_mark_gid(gid, type, success, false);
 	agent->last_gid[0] = '\0';
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
 }
@@ -831,6 +969,7 @@ static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg)
 		address = rxact_get_string(msg);
 		rxact_insert_node_info(oid, port, address, false, false);
 	}
+	FileSync(rxlf_remote_node);
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
 }
 
@@ -914,7 +1053,7 @@ static int match_oid(const void *key1, const void *key2, Size keysize)
 	return 0;
 }
 
-static void rxact_insert_database(Oid db_oid, const char *dbname, const char *owner)
+static void rxact_insert_database(Oid db_oid, const char *dbname, const char *owner, bool is_redo)
 {
 	DatabaseNode *db;
 	bool found;
@@ -923,15 +1062,25 @@ static void rxact_insert_database(Oid db_oid, const char *dbname, const char *ow
 	{
 		Assert(db->dbOid == db_oid);
 		return;
-	}
+	}else
+	{
+		MemSet(db->dbname, 0, sizeof(db->dbname));
+		MemSet(db->owner, 0, sizeof(db->owner));
+		strcpy(db->dbname, dbname);
+		strcpy(db->owner, owner);
 
-	strcpy(db->dbname, dbname);
-	strcpy(db->owner, owner);
-	/* TODO insert into log file */
+		/* insert into log file */
+		if(!is_redo)
+		{
+			Assert(rxlf_db_node != -1);
+			rxact_log_simple_write(rxlf_db_node, db, sizeof(*db));
+			FileSync(rxlf_db_node);
+		}
+	}
 }
 
 static void
-rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid)
+rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid, bool is_redo)
 {
 	GlobalTransactionInfo *ginfo;
 	bool found;
@@ -945,7 +1094,22 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 
 	PG_TRY();
 	{
-		/* TODO insert into log file */
+		/* insert into log file */
+		if(!is_redo)
+		{
+			RXactLog rlog;
+			rxact_check_update_rlog();
+			Assert(rxlf_rxid != -1);
+			rlog = rxact_begin_write_log(rxlf_rxid);
+			rxact_log_write_byte(rlog, RXACT_MSG_DO);
+			rxact_log_write_int(rlog, (int)db_oid);
+			rxact_log_write_int(rlog, (int)type);
+			rxact_log_write_int(rlog, count);
+			rxact_log_write_bytes(rlog, oids, sizeof(Oid)*count);
+			rxact_log_write_string(rlog, gid);
+			rxact_end_write_log(rlog);
+			FileSync(rxlf_rxid);
+		}
 
 		ginfo->remote_nodes
 			= MemoryContextAllocZero(TopMemoryContext
@@ -967,13 +1131,25 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 
 }
 
-static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success)
+static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, bool is_redo)
 {
 	GlobalTransactionInfo *ginfo;
 	bool found;
 	AssertArg(gid && gid[0]);
 
-	/* TODO save to log file */
+	/* save to log file */
+	if(!is_redo)
+	{
+		RXactLog rlog;
+		rxact_check_update_rlog();
+		Assert(rxlf_rxid != -1);
+		rlog = rxact_begin_write_log(rxlf_rxid);
+		rxact_log_write_byte(rlog, success ? RXACT_MSG_SUCCESS : RXACT_MSG_FAILED);
+		rxact_log_write_int(rlog, (int)type);
+		rxact_log_write_string(rlog, gid);
+		rxact_end_write_log(rlog);
+		FileSync(rxlf_rxid);
+	}
 
 	ginfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
 	if(success)
@@ -981,7 +1157,8 @@ static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success)
 		if(!found)
 		{
 			/* ignore error */
-			ereport(WARNING, (errmsg("gid '%s' not exists", gid)));
+			if(!is_redo)
+				ereport(WARNING, (errmsg("gid '%s' not exists", gid)));
 		}else
 		{
 			Assert(ginfo->type == type);
@@ -1005,14 +1182,18 @@ static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool u
 	rnode = hash_search(htab_remote_node, &oid, HASH_ENTER, &found);
 	if(!found)
 	{
+		rnode->nodePort = (uint16)port;
+		MemSet(rnode->nodeHost, 0, sizeof(rnode->nodeHost));
+		strncpy(rnode->nodeHost, addr, sizeof(rnode->nodeHost)-1);
 		if(!is_redo)
 		{
-			/* TODO insert log file */
+			/* insert log file */
+			Assert(rxlf_remote_node != -1);
+			rxact_log_simple_write(rxlf_remote_node, rnode, sizeof(*rnode));
 		}
-		rnode->nodePort = (uint16)port;
-		strncpy(rnode->nodeHost, addr, sizeof(rnode->nodeHost)-1);
 	}else if(update)
 	{
+		ereport(ERROR, (errmsg("not support yet!")));
 		/* TODO update log file */
 		Assert(rnode && rnode->nodeOid == oid);
 		rnode->nodePort = (uint16)port;
@@ -1092,7 +1273,7 @@ static void rxact_2pc_do(void)
 			for(i=0;i<ginfo->count_nodes;++i)
 				Assert(ginfo->remote_success[i] == true);
 #endif /* USE_ASSERT_CHECKING */
-			rxact_mark_gid(ginfo->gid, ginfo->type, true);
+			rxact_mark_gid(ginfo->gid, ginfo->type, true, false);
 		}/*else
 		{
 			all_finish = false;
@@ -1220,6 +1401,300 @@ static void rxact_close_timeout_remote_conn(time_t cur_time)
 	}
 }
 
+/*
+ * first open directory get all rxid log file
+ * second sort by name
+ * at last call walker
+ */
+static bool rxact_enum_log_file(void* context, rxact_log_worker walker)
+{
+	DIR * volatile rdir;
+	struct dirent *item;
+
+	char **ppstr;
+	int max_len;
+	int cursor;
+	int i;
+	bool result;
+
+	rdir = AllocateDir(rxlf_directory);
+	if(rdir == NULL)
+	{
+		ereport(FATAL, (errcode_for_file_access(),
+			errmsg("could not open directory \"%s\": %m", rxlf_directory)));
+	}
+
+	max_len = 8;
+	ppstr = palloc(max_len*sizeof(char*));
+	cursor = 0;
+
+	PG_TRY();
+	{
+		while((item = ReadDir(rdir, rxlf_directory)) != NULL)
+		{
+			/* Ignore files that are not RXACT segments */
+			if(strlen(item->d_name) != 8
+				|| strspn(item->d_name, "0123456789ABCDEF") != 8)
+				continue;
+			if(cursor == max_len)
+			{
+				max_len += 8;
+				ppstr = repalloc(ppstr, max_len*sizeof(char*));
+			}
+			ppstr[cursor] = pstrdup(item->d_name);
+			++cursor;
+		}
+	}PG_CATCH();
+	{
+		FreeDir(rdir);
+		PG_RE_THROW();
+	}PG_END_TRY();
+	FreeDir(rdir);
+
+	/* sort file name(s) */
+	qsort(ppstr, cursor, sizeof(char*), pg_qsort_strcmp);
+
+	/* call walker function */
+	for(i=0;i<cursor;++i)
+	{
+		result = (*walker)(context, ppstr[i]);
+		pfree(ppstr[i]);
+		if(result)
+			break;
+	}
+
+	/* clean unused resources */
+	for(;i<cursor;++i)
+		pfree(ppstr[i]);
+	pfree(ppstr);
+
+	return result;
+}
+
+static bool rxact_redo_rid(void *context, const char *name)
+{
+	RXactLog rlog;
+	Oid *oids;
+	const char *gid;
+	RemoteXactType type;
+	File rfile;
+	int count;
+	Oid dbOid;
+	char c;
+	AssertArg(name && name[0]);
+
+	rfile = rxact_log_open_file(name, O_RDONLY | PG_BINARY, 0);
+	rlog = rxact_begin_read_log(rfile);
+	for(;;)
+	{
+		rxact_log_reset(rlog);
+		if(rxact_log_is_eof(rlog))
+			break;
+
+		rxact_log_read_bytes(rlog, &c, 1);
+		if(c == RXACT_MSG_DO)
+		{
+			dbOid = (Oid)rxact_log_get_int(rlog);
+			type = (RemoteXactType)rxact_log_get_int(rlog);
+			count = rxact_log_get_int(rlog);
+			oids = palloc(sizeof(Oid)*count);
+			rxact_log_read_bytes(rlog, oids, (sizeof(Oid)*count));
+			gid = rxact_log_get_string(rlog);
+			if(!OidIsValid(dbOid)
+				|| !RXACT_TYPE_IS_VALID(type)
+				|| !oids_is_valid(oids, count)
+				|| gid[0] == '\0')
+			{
+				rxact_report_log_error(rfile, FATAL);
+			}
+			rxact_insert_gid(gid, oids, count, type, dbOid, true);
+			pfree(oids);
+		}else if(c == RXACT_MSG_SUCCESS
+			|| c == RXACT_MSG_FAILED)
+		{
+			type = (RemoteXactType)rxact_log_get_int(rlog);
+			gid = rxact_log_get_string(rlog);
+			if(!RXACT_TYPE_IS_VALID(type) || gid[0] == '\0')
+				rxact_report_log_error(rfile, FATAL);
+
+			rxact_mark_gid(gid, type, c == RXACT_MSG_SUCCESS ? true:false, true);
+		}
+	}
+
+	rxact_end_read_log(rlog);
+	FileClose(rfile);
+	return false;
+}
+
+static bool rxact_rm_old_rlog(void *context, const char *name)
+{
+	RXactLog rlog;
+	const char *gid;
+	int count;
+	File rfile;
+	char c;
+	bool file_in_use;
+	AssertArg(name && name[0]);
+
+	/* is last log file ? */
+	if(rxlf_rxid != -1)
+	{
+		const char *last_name = FilePathName(rxlf_rxid);
+		if(strstr(last_name, name) != NULL)
+		{
+			return true;
+		}
+	}
+
+	rfile = rxact_log_open_file(name,  O_RDONLY | PG_BINARY, 0);
+	rlog = rxact_begin_read_log(rfile);
+	file_in_use = false;
+	for(;;)
+	{
+		rxact_log_reset(rlog);
+		if(rxact_log_is_eof(rlog))
+			break;
+
+		rxact_log_read_bytes(rlog, &c, 1);
+		if(c == RXACT_MSG_DO)
+		{
+			rxact_log_seek_bytes(rlog
+				, sizeof(int) /* database Oid */
+				 +sizeof(int) /* RemoteXactType */
+				);
+			count = rxact_log_get_int(rlog);
+			/* skeep node Oid(s) */
+			rxact_log_seek_bytes(rlog, (sizeof(Oid)*count));
+			gid = rxact_log_get_string(rlog);
+			if(gid[0] == '\0')
+			{
+				rxact_report_log_error(rfile, FATAL);
+			}
+			if(hash_search(htab_rxid, gid, HASH_FIND, NULL) != NULL)
+			{
+				file_in_use = true;
+				break;
+			}
+		}else if(c == RXACT_MSG_SUCCESS
+			|| c == RXACT_MSG_FAILED)
+		{
+			rxact_log_seek_bytes(rlog, sizeof(int)); /* RemoteXactType */
+			gid = rxact_log_get_string(rlog);
+			if(gid[0] == '\0')
+				rxact_report_log_error(rfile, FATAL);
+			/* nothing todo */
+		}
+	}
+
+	if(file_in_use == false)
+	{
+		char *name = FilePathName(rfile);
+		FileClose(rfile);
+		unlink(name);
+		pfree(name);
+		if(context)
+			*(bool*)context = true;
+		return false;
+	}else
+	{
+		FileClose(rfile);
+		return true;
+	}
+}
+
+static bool rxact_left_rlog_file(void *context, const char *name)
+{
+	unsigned int *n;
+	char old_name[MAX_RLOG_FILE_NAME];
+	char new_name[MAX_RLOG_FILE_NAME];
+	AssertArg(context && name && name[0]);
+
+	n = (unsigned int*)context;
+	snprintf(old_name, sizeof(old_name), "%s/%s", rxlf_directory, name);
+	snprintf(new_name, sizeof(new_name), "%s/%08X", rxlf_directory, *n);
+	if(strcmp(old_name, new_name) == 0)
+		return false;
+
+	durable_rename(old_name, new_name, FATAL);
+	++(*n);
+	return false;
+}
+
+static bool rxact_get_last_rlog(void *context, const char *name)
+{
+	char *endptr;
+	unsigned long lval;
+	errno = 0;
+	lval = strtol(name, &endptr, 16);
+	if(errno != 0 || endptr[0] != '\0'
+#ifdef HAVE_LONG_INT_64
+		|| lval != (unsigned long) ((uint32) lval)
+#endif
+		)
+	{
+		ereport(FATAL, (errmsg("invalid rlog file name \"%s\"", name)));
+	}
+
+	rxlf_last_rxid_num = (unsigned int)lval;
+	return false;
+}
+
+static File rxact_log_open_rlog(unsigned int log_num)
+{
+	char file_name[MAX_RLOG_FILE_NAME];
+
+	snprintf(file_name, sizeof(file_name), "%08X", log_num);
+	return rxact_log_open_file(file_name, O_RDWR | O_CREAT | PG_BINARY, 0600);
+}
+
+static File rxact_log_open_file(const char *log_name, int fileFlags, int fileMode)
+{
+	File rfile;
+	char file_name[MAX_RLOG_FILE_NAME];
+	AssertArg(log_name);
+
+	snprintf(file_name, sizeof(file_name), "%s/%s", rxlf_directory, log_name);
+	rfile = PathNameOpenFile(file_name, fileFlags, fileMode);
+	if(rfile == -1)
+	{
+		const char *tmp = (fileFlags & O_CREAT) == O_CREAT ? " or create" : "";
+		ereport(FATAL,
+			(errcode_for_file_access(),
+			errmsg("could not open%s file \"%s\":%m", tmp, file_name)));
+	}
+	return rfile;
+}
+
+/* check rlog file size, change file if need */
+static void rxact_check_update_rlog(void)
+{
+	off_t offset;
+	Assert(rxlf_rxid != -1);
+
+	/* get file current size */
+	offset = FileSeek(rxlf_rxid, SEEK_CUR, 0);
+	if(offset >= XLOG_BLCKSZ)
+	{
+		START_CRIT_SECTION();
+		++rxlf_last_rxid_num;
+		FileClose(rxlf_rxid);
+		rxlf_rxid = rxact_log_open_rlog(rxlf_last_rxid_num);
+		END_CRIT_SECTION();
+	}
+}
+
+static bool oids_is_valid(const Oid *oids, int count)
+{
+	AssertArg(oids);
+	while(count > 0)
+	{
+		--count;
+		if(!OidIsValid(oids[count]))
+			return false;
+	}
+	return true;
+}
+
 /* ---------------------- interface for xact client --------------------------*/
 static void record_rxact_status(const char *gid, RemoteXactType type, bool success);
 static void send_msg_to_rxact(StringInfo buf);
@@ -1227,7 +1702,6 @@ static void recv_msg_from_rxact(StringInfo buf);
 static void wait_socket(pgsocket sock, bool wait_send);
 static void recv_socket(pgsocket sock, StringInfo buf, int max_recv);
 static void connect_rxact(void);
-static void disconnect_rxact(void);
 
 void RecordRemoteXact(const char *gid, Oid *nodes, int count, RemoteXactType type)
 {
@@ -1391,7 +1865,7 @@ re_recv_msg_:
 			}
 		}PG_CATCH();
 		{
-			disconnect_rxact();
+			DisconnectRemoteXact();
 			PG_RE_THROW();
 		}PG_END_TRY();
 		pfree(oids);
@@ -1501,7 +1975,7 @@ static void connect_rxact(void)
 	pfree(buf.data);
 }
 
-static void disconnect_rxact(void)
+void DisconnectRemoteXact(void)
 {
 	if(rxact_client_fd != PGINVALID_SOCKET)
 	{

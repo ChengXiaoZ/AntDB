@@ -22,6 +22,12 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
+struct RXactLogData
+{
+	StringInfoData buf;
+	File fd;
+};
+
 #ifdef HAVE_UNIX_SOCKETS
 #include <sys/un.h>
 
@@ -250,4 +256,227 @@ void rxact_get_msg_end(StringInfo msg)
 		ereport(ERROR,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("invalid message format")));
+}
+
+/* ---------------------------rlog--------------------------------- */
+static bool rxact_log_read_internal(RXactLog rlog);
+
+RXactLog rxact_begin_read_log(File fd)
+{
+	RXactLog rlog;
+	AssertArg(fd != -1);
+
+	rlog = palloc(sizeof(*rlog));
+	initStringInfo(&(rlog->buf));
+	rlog->fd = fd;
+	return rlog;
+}
+
+void rxact_end_read_log(RXactLog rlog)
+{
+	AssertArg(rlog);
+	if(!rxact_log_is_eof(rlog))
+		rxact_report_log_error(rlog->fd, ERROR);
+	pfree(rlog->buf.data);
+	pfree(rlog);
+}
+
+bool rxact_log_is_eof(RXactLog rlog)
+{
+	AssertArg(rlog);
+	Assert(rlog->buf.cursor <= rlog->buf.len);
+	if(rlog->buf.cursor == rlog->buf.len)
+		rxact_log_read_internal(rlog);
+	return rlog->buf.cursor == rlog->buf.len;
+}
+
+int rxact_log_get_int(RXactLog rlog)
+{
+	int n;
+	rxact_log_read_bytes(rlog, &n, sizeof(n));
+	return n;
+}
+
+short rxact_log_get_short(RXactLog rlog)
+{
+	short n;
+	rxact_log_read_bytes(rlog, &n, sizeof(n));
+	return n;
+}
+
+/*
+ * return a string, and maybe invalid at call next read
+ */
+const char* rxact_log_get_string(RXactLog rlog)
+{
+	char *str;
+	int len;
+	AssertArg(rlog);
+
+	for(len=0;;)
+	{
+		Assert(rlog->buf.cursor <= rlog->buf.len);
+		if(rlog->buf.cursor == rlog->buf.len)
+			rxact_log_read_internal(rlog);
+		if(rlog->buf.cursor == rlog->buf.len)
+			rxact_report_log_error(rlog->fd, ERROR);
+		if(rlog->buf.data[len++] == '\0')
+			break;
+	}
+
+	str = rlog->buf.data + rlog->buf.cursor;
+	rlog->buf.cursor += len;
+	return str;
+}
+
+static bool rxact_log_read_internal(RXactLog rlog)
+{
+	int read_res;
+	AssertArg(rlog);
+	if(rlog->buf.len == rlog->buf.maxlen)
+	{
+		rlog->buf.maxlen += 1024;
+		rlog->buf.data = repalloc(rlog->buf.data, rlog->buf.maxlen);
+	}
+
+	read_res = FileRead(rlog->fd, rlog->buf.data + rlog->buf.len
+		, rlog->buf.maxlen - rlog->buf.len);
+	if(read_res < 0)
+	{
+		ereport(FATAL,
+			(errcode_for_file_access(),
+			errmsg("Can not read file \"%s\":%m", FilePathName(rlog->fd))));
+	}else if(read_res == 0)
+	{
+		return false;
+	}
+	rlog->buf.len += read_res;
+	return true;
+}
+
+void rxact_log_reset(RXactLog rlog)
+{
+	AssertArg(rlog);
+	if(rlog->buf.cursor)
+	{
+		memmove(rlog->buf.data, rlog->buf.data + rlog->buf.cursor
+			, rlog->buf.len - rlog->buf.cursor);
+		rlog->buf.len -= rlog->buf.cursor;
+		rlog->buf.cursor = 0;
+	}
+}
+
+void rxact_log_read_bytes(RXactLog rlog, void *p, int n)
+{
+	AssertArg(rlog && p && n >= 0);
+
+	while(rlog->buf.len - rlog->buf.cursor < n)
+	{
+		if(rxact_log_read_internal(rlog) == false)
+			rxact_report_log_error(rlog->fd, ERROR);
+	}
+	memcpy(p, rlog->buf.data + rlog->buf.cursor, n);
+	rlog->buf.cursor += n;
+}
+
+void rxact_log_seek_bytes(RXactLog rlog, int n)
+{
+	AssertArg(rlog);
+	if(n < 0)
+	{
+		ExceptionalCondition("RXACT seek bytes", "BadArgument"
+			, __FILE__, __LINE__);
+	}else if(n == 0)
+	{
+		return;
+	}
+
+	if(rlog->buf.cursor != rlog->buf.len)
+	{
+		Assert(rlog->buf.cursor < rlog->buf.len);
+		if(rlog->buf.len - rlog->buf.cursor >= n)
+		{
+			rlog->buf.cursor += n;
+			return;
+		}
+		n -= (rlog->buf.len - rlog->buf.cursor);
+		rlog->buf.cursor = rlog->buf.len;
+	}
+	Assert(rlog->buf.cursor == rlog->buf.len);
+	if(FileSeek(rlog->fd, n, SEEK_CUR) < 0)
+		rxact_report_log_error(rlog->fd, ERROR);
+}
+
+RXactLog rxact_begin_write_log(File fd)
+{
+	return rxact_begin_read_log(fd);
+}
+
+void rxact_end_write_log(RXactLog rlog)
+{
+	rxact_log_simple_write(rlog->fd, rlog->buf.data, rlog->buf.len);
+	pfree(rlog->buf.data);
+	pfree(rlog);
+}
+
+void rxact_log_write_byte(RXactLog rlog, char c)
+{
+	rxact_log_write_bytes(rlog, &c, 1);
+}
+
+void rxact_log_write_int(RXactLog rlog, int n)
+{
+	rxact_log_write_bytes(rlog, &n, sizeof(n));
+}
+
+void rxact_log_write_bytes(RXactLog rlog, const void *p, int n)
+{
+	AssertArg(rlog && p);
+	if(rlog->buf.maxlen - rlog->buf.len < n)
+	{
+		int new_size = rlog->buf.maxlen;
+		while(new_size - rlog->buf.len < n)
+			new_size += 1024;
+		rlog->buf.data = repalloc(rlog->buf.data, new_size);
+		rlog->buf.maxlen = new_size;
+	}
+	Assert(rlog->buf.maxlen - rlog->buf.len >= n);
+	memcpy(rlog->buf.data + rlog->buf.len, p, n);
+	rlog->buf.len += n;
+}
+
+void rxact_log_write_string(RXactLog rlog, const char *str)
+{
+	int len;
+	AssertArg(rlog && str);
+	len = strlen(str);
+	rxact_log_write_bytes(rlog, str, len+1);
+}
+
+void rxact_log_simple_write(File fd, const void *p, int n)
+{
+	volatile off_t cur;
+	int res;
+	AssertArg(fd != -1 && p && n > 0);
+	cur = FileSeek(fd, 0, SEEK_END);
+	PG_TRY();
+	{
+		res = FileWrite(fd, (char*)p, n);
+		if(res != n)
+		{
+			ereport(ERROR, (errcode_for_file_access(),
+				errmsg("could not write rlog to file \"%s\":%m", FilePathName(fd))));
+		}
+	}PG_CATCH();
+	{
+		FileTruncate(fd, cur);
+		PG_RE_THROW();
+	}PG_END_TRY();
+}
+
+void rxact_report_log_error(File fd, int elevel)
+{
+	const char *name = FilePathName(fd);
+	ereport(elevel,
+		(errmsg("invalid format rxact log file \"%s\"", name)));
 }

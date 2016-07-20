@@ -96,6 +96,9 @@
 #include <pthread.h>
 #endif
 
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif /* ADB */
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "bootstrap/bootstrap.h"
@@ -609,10 +612,6 @@ Datum xc_lockForBackupKey1;
 Datum xc_lockForBackupKey2;
 
 #define StartPoolManager()		StartChildProcess(PoolerProcess)
-#endif
-
-#ifdef ADB
-#define StartRemoteXactMgr()	StartChildProcess(RemoteXactMgrProcess)
 #endif
 
 #define StartupDataBase()		StartChildProcess(StartupProcess)
@@ -5420,12 +5419,6 @@ StartChildProcess(AuxProcType type)
 				break;
 #endif
 
-#ifdef ADB
-			case RemoteXactMgrProcess:
-				ereport(LOG,
-						(errmsg("could not fork remote xact manager process: %m")));
-				break;
-#endif
 			case StartupProcess:
 				ereport(LOG,
 						(errmsg("could not fork startup process: %m")));
