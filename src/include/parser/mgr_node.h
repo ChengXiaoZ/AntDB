@@ -45,9 +45,8 @@ typedef struct MGRAddNode
 {
 	NodeTag		type;
 	bool		if_not_exists;
-	bool		is_gtm;		/*check gtm or not*/
-	bool		is_coordinator; /*check coordinator or datanode*/
-	bool		is_master;		/*check master or slave*/
+	int			nodetype;  /*0 gtm/1 coordinator/2 datanode*/
+	int			innertype; /*0 master/1 slave/2 extern*/
 	char		*name;			/* node name */
 	char		*mastername;	/*master name*/
 	List		*options;		/* list of DefElem */
@@ -57,9 +56,8 @@ typedef struct MGRAlterNode
 {
 	NodeTag		type;
 	bool		if_not_exists;
-	bool		is_gtm;  /*check gtm or not*/
-	bool		is_coordinator;	/*check coordinator or datanode*/
-	bool		is_master;		/*check master or slave*/
+	int			nodetype;  /*0 gtm/1 coordinator/2 datanode*/
+	int			innertype; /*0 master/1 slave/2 extern*/
 	char		*name;			/* node name */
 	char		*mastername;	/*master name*/
 	List		*options;		/* list of DefElem */
@@ -69,9 +67,8 @@ typedef struct MGRDropNode
 {
 	NodeTag		type;
 	bool		if_exists;
-	bool		is_gtm;  /*check gtm or not*/
-	bool		is_coordinator;	/*check coordinator or datanode*/
-	bool		is_master;		/*check master or slave*/
+	int			nodetype;  /*0 gtm/1 coordinator/2 datanode*/
+	int			innertype; /*0 master/1 slave/2 extern*/
 	List		*hosts;		/* list of A_Const(String) */
 }MGRDropNode;
 
