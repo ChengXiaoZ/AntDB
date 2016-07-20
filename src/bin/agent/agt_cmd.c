@@ -56,6 +56,7 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_CNDN_CNDN_INIT:
 	 	cmd_node_init(buf, "initdb", INITDB_VERSION);
 		break;
+	case AGT_CMD_GTM_SLAVE_INIT:
 	case AGT_CMD_CNDN_SLAVE_INIT:
 		cmd_node_init(buf, "pg_basebackup", PG_BASEBACKUP_VERSION);
 		break;
