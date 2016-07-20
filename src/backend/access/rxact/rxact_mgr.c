@@ -646,6 +646,7 @@ rxact_agent_destroy(RxactAgent *agent)
 	closesocket(agent->sock);
 	agent->sock = PGINVALID_SOCKET;
 	agent->dboid = InvalidOid;
+	agent->index = INVALID_INDEX;
 
 	if(agent->last_gid[0] != '\0')
 	{

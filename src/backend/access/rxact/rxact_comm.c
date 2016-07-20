@@ -316,11 +316,11 @@ const char* rxact_log_get_string(RXactLog rlog)
 	for(len=0;;)
 	{
 		Assert(rlog->buf.cursor <= rlog->buf.len);
-		if(rlog->buf.cursor == rlog->buf.len)
+		if(rlog->buf.cursor+len >= rlog->buf.len)
 			rxact_log_read_internal(rlog);
-		if(rlog->buf.cursor == rlog->buf.len)
+		if(rlog->buf.cursor+len == rlog->buf.len)
 			rxact_report_log_error(rlog->fd, ERROR);
-		if(rlog->buf.data[len++] == '\0')
+		if(rlog->buf.data[rlog->buf.cursor+len++] == '\0')
 			break;
 	}
 
