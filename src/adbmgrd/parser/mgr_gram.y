@@ -145,7 +145,7 @@ extern char *defGetString(DefElem *def);
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER GET_SLOWLOG_COUNT
 				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE UPDATE_PASSWORD CHECK_USER
-				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD
+				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD GET_DB_THRESHOLD_ALL_TYPE
 				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM GET_ALARM_INFO_COUNT
 %%
 /*
@@ -360,7 +360,15 @@ Get_host_threshold:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_threshold_all_type"), -1));
 			$$ = (Node*)stmt;
-		};
+		}
+		|	GET_DB_THRESHOLD_ALL_TYPE
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("get_db_threshold_all_type"), -1));
+			$$ = (Node*)stmt;
+		}
+		;
 
 ConfigAllStmt:
 		CONFIG ALL
@@ -1679,6 +1687,7 @@ unreserved_keyword:
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_COORDINATOR_NODE_TOPOLOGY
 	| GET_DATANODE_NODE_TOPOLOGY
+	| GET_DB_THRESHOLD_ALL_TYPE
 	| GET_SLOWLOG
 	| GET_SLOWLOG_COUNT
 	| GET_THRESHOLD_TYPE

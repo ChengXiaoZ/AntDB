@@ -753,19 +753,6 @@ from(
                         when 4 then '"sent_net"'
                         when 5 then '"recv_net"'
                         when 6 then '"IOPS"'
-                        when 11 then '"node_heaphit_rate"'
-                        when 21 then '"cluster_heaphit_rate"'
-                        when 12 then '"node_commit/rollback_rate"'
-                        when 22 then '"cluster_commit/rollback_rate"'
-                        when 13 then '"node_standy_delay"'
-                        when 23 then '"cluster_standy_delay"'
-                        when 14 then '"node_wait_locks"'
-                        when 24 then '"cluster_wait_locks"'
-                        when 15 then '"node_connect"'
-                        when 25 then '"cluster_connect"'
-                        when 16 then '"node_longtrnas/idletrans"'
-                        when 26 then '"cluster_longtrnas/idletrans"'
-                        when 27 then '"cluster_unused_indexs"'
                         END
                         || ':' || '{' || '"warning"'   || ':' || f.warning   || ',' 
                                       || '"critical"'  || ':' || f.critical  || ','
@@ -781,6 +768,16 @@ from(
             ), ','
                             )
     ) r;
+
+--get the threshlod for all type
+CREATE VIEW adbmgr.get_db_threshold_all_type
+as 
+ select tt1.mt_type, tt1.mt_warning_threshold as node_warning, tt1.mt_critical_threshold as node_critical, 
+     tt1.mt_emergency_threshold as node_emergency,tt2.mt_warning_threshold as cluster_warning, 
+     tt2.mt_critical_threshold as cluster_critical, tt2.mt_emergency_threshold as cluster_emergency 
+from (select * from monitor_host_threshold where mt_type in (11,12,13,14,15,16,17))as tt1  
+   join  (select * from monitor_host_threshold where mt_type in (21,22,23,24,25,26,27)) tt2 on tt1.mt_type +10 =tt2.mt_type 
+    order by 1 asc;
 
 -- get all alarm info (host and DB)
 create or replace FUNCTION pg_catalog.get_alarm_info_asc(starttime timestamp ,
