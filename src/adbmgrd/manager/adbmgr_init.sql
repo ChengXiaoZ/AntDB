@@ -661,34 +661,12 @@ insert into pg_catalog.monitor_host_threshold values (4, 2000, 3000, 4000);
 insert into pg_catalog.monitor_host_threshold values (5, 2000, 3000, 4000);
 insert into pg_catalog.monitor_host_threshold values (6, 3000, 4000, 5000);
 
--- update waring value by type
-create or replace function pg_catalog.update_warning_value(type int, value int)
+-- update threshold value by type
+create or replace function pg_catalog.update_threshold_value(type int, value1 int, value2 int, value3 int)
 returns  void
 as $$
 update pg_catalog.monitor_host_threshold
-set mt_warning_threshold = $2
-where mt_type = $1;
-$$ language sql
-VOLATILE
-returns null on null input;
-
--- update critical value by type
-create or replace function pg_catalog.update_critical_value(type int, value int)
-returns  void
-as $$
-update pg_catalog.monitor_host_threshold
-set mt_critical_threshold = $2
-where mt_type = $1;
-$$ language sql
-VOLATILE
-returns null on null input;
-
--- update emergency value by type
-create or replace function pg_catalog.update_emergency_value(type int, value int)
-returns  void
-as $$
-update pg_catalog.monitor_host_threshold
-set mt_emergency_threshold = $2
+set mt_warning_threshold = $2, mt_critical_threshold = $3, mt_emergency_threshold = $4
 where mt_type = $1;
 $$ language sql
 VOLATILE
@@ -773,11 +751,11 @@ from(
 CREATE VIEW adbmgr.get_db_threshold_all_type
 as 
  select tt1.mt_type, tt1.mt_warning_threshold as node_warning, tt1.mt_critical_threshold as node_critical, 
-     tt1.mt_emergency_threshold as node_emergency,tt2.mt_warning_threshold as cluster_warning, 
-     tt2.mt_critical_threshold as cluster_critical, tt2.mt_emergency_threshold as cluster_emergency 
+			  tt1.mt_emergency_threshold as node_emergency,tt2.mt_warning_threshold as cluster_warning, 
+				tt2.mt_critical_threshold as cluster_critical, tt2.mt_emergency_threshold as cluster_emergency 
 from (select * from monitor_host_threshold where mt_type in (11,12,13,14,15,16,17))as tt1  
    join  (select * from monitor_host_threshold where mt_type in (21,22,23,24,25,26,27)) tt2 on tt1.mt_type +10 =tt2.mt_type 
-    order by 1 asc;
+	 order by 1 asc;
 
 -- get all alarm info (host and DB)
 create or replace FUNCTION pg_catalog.get_alarm_info_asc(starttime timestamp ,

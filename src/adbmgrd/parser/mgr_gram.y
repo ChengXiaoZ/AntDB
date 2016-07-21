@@ -144,7 +144,7 @@ extern char *defGetString(DefElem *def);
 				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER GET_SLOWLOG_COUNT
-				UPDATE_WARNING_VALUE UPDATE_CRITICAL_VALUE UPDATE_EMERGENCY_VALUE UPDATE_PASSWORD CHECK_USER
+				UPDATE_THRESHOLD_VALUE UPDATE_PASSWORD CHECK_USER
 				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD GET_DB_THRESHOLD_ALL_TYPE
 				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM GET_ALARM_INFO_COUNT
 %%
@@ -317,31 +317,15 @@ Gethostparm:
         };
 
 Update_host_config_value:
-		UPDATE_WARNING_VALUE '(' SignedIconst ',' SignedIconst ')'
+		UPDATE_THRESHOLD_VALUE '(' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeIntConst($3, -1));
 			args = lappend(args, makeIntConst($5, -1));
+			args = lappend(args, makeIntConst($7, -1));
+			args = lappend(args, makeIntConst($9, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("update_warning_value", args));
-			$$ = (Node*)stmt;
-		}
-		| UPDATE_CRITICAL_VALUE '(' SignedIconst ',' SignedIconst ')'
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeIntConst($3, -1));
-			args = lappend(args, makeIntConst($5, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("update_critical_value", args));
-			$$ = (Node*)stmt;
-		}
-		| UPDATE_EMERGENCY_VALUE '(' SignedIconst ',' SignedIconst ')'
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeIntConst($3, -1));
-			args = lappend(args, makeIntConst($5, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("update_emergency_value", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("update_threshold_value", args));
 			$$ = (Node*)stmt;
 		};
 
@@ -1715,9 +1699,7 @@ unreserved_keyword:
 	| START
 	| STOP
 	| TO
-	| UPDATE_WARNING_VALUE
-	| UPDATE_CRITICAL_VALUE
-	| UPDATE_EMERGENCY_VALUE
+	| UPDATE_THRESHOLD_VALUE
 	| UPDATE_USER
 	| UPDATE_PASSWORD
 	;
