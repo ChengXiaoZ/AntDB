@@ -266,6 +266,9 @@ static void RxactLoop(void)
 	if(sigsetjmp(local_sigjmp_buf, 1) != 0)
 	{
 		/* Cleanup something */
+		EmitErrorReport();
+		FlushErrorState();
+		error_context_stack = NULL;
 	}
 	PG_exception_stack = &local_sigjmp_buf;
 	(void)MemoryContextSwitchTo(MessageContext);
@@ -827,6 +830,7 @@ rxact_agent_input(RxactAgent *agent)
 	initStringInfo(&s);
 	while(agent_has_completion_msg(agent, &s, &qtype))
 	{
+		agent->in_error = false;
 		switch(qtype)
 		{
 		case RXACT_MSG_CONNECT:
@@ -867,8 +871,9 @@ static void agent_error_hook(void *arg)
 		&& err->elevel >= ERROR)
 	{
 		StringInfoData msg;
+		agent->in_error = true;
 		rxact_begin_msg(&msg, RXACT_MSG_ERROR);
-		rxact_put_string(&msg, err->context ? err->context : "miss error message");
+		rxact_put_string(&msg, err->message ? err->message : "miss error message");
 		rxact_agent_end_msg(arg, &msg);
 	}
 }
@@ -1192,24 +1197,22 @@ static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, b
 	}
 
 	ginfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
-	if(success)
+	if(found)
 	{
-		if(!found)
+		Assert(ginfo->type == type);
+		if(success)
 		{
-			/* ignore error */
-			if(!is_redo)
-				ereport(WARNING, (errmsg("gid '%s' not exists", gid)));
-		}else
-		{
-			Assert(ginfo->type == type);
 			pfree(ginfo->remote_nodes);
 			hash_search(htab_rxid, gid, HASH_REMOVE, NULL);
+		}else
+		{
+			ginfo->failed = true;
+			/*rxact_has_filed_gid = true;*/
 		}
 	}else
 	{
-		Assert(ginfo->type == type);
-		ginfo->failed = true;
-		/*rxact_has_filed_gid = true;*/
+		if(!is_redo)
+			ereport(ERROR, (errmsg("gid '%s' not exists", gid)));
 	}
 }
 
@@ -1776,7 +1779,7 @@ static void rxact_check_update_rlog(void)
 	Assert(rxlf_rxid != -1);
 
 	/* get file current size */
-	offset = FileSeek(rxlf_rxid, SEEK_CUR, 0);
+	offset = FileSeek(rxlf_rxid, 0, SEEK_CUR);
 	if(offset >= XLOG_BLCKSZ)
 	{
 		START_CRIT_SECTION();
