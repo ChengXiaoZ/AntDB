@@ -522,6 +522,7 @@ RemoteXactMgrMain(void)
 
 	/* Initinalize something */
 	RemoteXactMgrInit();
+	(void)MemoryContextSwitchTo(MessageContext);
 
 	InitFileAccess();
 	RxactLoadLog();
@@ -933,7 +934,15 @@ static void rxact_agent_do(RxactAgent *agent, StringInfo msg)
 	if(!RXACT_TYPE_IS_VALID(type))
 		ereport(ERROR, (errmsg("Unknown remote xact type %d", type)));
 	count = rxact_get_int(msg);
-	oids = rxact_get_bytes(msg, sizeof(Oid)*count);
+	if(count < 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+			errmsg("insufficient data left in message")));
+	}
+	if(count > 0)
+		oids = rxact_get_bytes(msg, sizeof(Oid)*count);
+	else
+		oids = NULL;
 	gid = rxact_get_string(msg);
 
 	rxact_insert_gid(gid, oids, count, type, agent->dboid, false);
@@ -1004,6 +1013,8 @@ static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count)
 	int i;
 	int unknown_offset;
 	int unknown_count;
+	if(count == 0)
+		return false;
 
 	AssertArg(agent && oid && count > 0);
 
@@ -1108,7 +1119,7 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 {
 	GlobalTransactionInfo *ginfo;
 	bool found;
-	AssertArg(gid && gid[0] && oids && count > 0);
+	AssertArg(gid && gid[0] && count >= 0);
 	if(!RXACT_TYPE_IS_VALID(type))
 		ereport(ERROR, (errmsg("Unknown remote xact type %d", type)));
 
@@ -1129,7 +1140,11 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 			rxact_log_write_int(rlog, (int)db_oid);
 			rxact_log_write_int(rlog, (int)type);
 			rxact_log_write_int(rlog, count);
-			rxact_log_write_bytes(rlog, oids, sizeof(Oid)*count);
+			if(count > 0)
+			{
+				AssertArg(oids);
+				rxact_log_write_bytes(rlog, oids, sizeof(Oid)*count);
+			}
 			rxact_log_write_string(rlog, gid);
 			rxact_end_write_log(rlog);
 			FileSync(rxlf_rxid);
@@ -1138,7 +1153,8 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 		ginfo->remote_nodes
 			= MemoryContextAllocZero(TopMemoryContext
 				, (sizeof(Oid)+sizeof(bool))*(count+1));
-		memcpy(ginfo->remote_nodes, oids, sizeof(Oid)*(count));
+		if(count > 0)
+			memcpy(ginfo->remote_nodes, oids, sizeof(Oid)*(count));
 		ginfo->remote_nodes[count] = AGTM_OID;
 
 		ginfo->remote_success = (bool*)(&ginfo->remote_nodes[count+1]);
@@ -1528,7 +1544,7 @@ static bool rxact_enum_log_file(void* context, rxact_log_worker walker)
 	}
 
 	/* clean unused resources */
-	for(;i<cursor;++i)
+	for(++i;i<cursor;++i)
 		pfree(ppstr[i]);
 	pfree(ppstr);
 
@@ -1676,7 +1692,7 @@ static bool rxact_rm_old_rlog(void *context, const char *name)
 
 	if(file_in_use == false)
 	{
-		char *name = FilePathName(rfile);
+		char *name = pstrdup(FilePathName(rfile));
 		FileClose(rfile);
 		unlink(name);
 		pfree(name);
@@ -1794,7 +1810,7 @@ static void connect_rxact(void);
 void RecordRemoteXact(const char *gid, Oid *nodes, int count, RemoteXactType type)
 {
 	StringInfoData buf;
-	AssertArg(gid && gid[0] && nodes && count > 0);
+	AssertArg(gid && gid[0] && count >= 0);
 	AssertArg(RXACT_TYPE_IS_VALID(type));
 	if(rxact_client_fd == PGINVALID_SOCKET)
 		connect_rxact();
@@ -1802,7 +1818,11 @@ void RecordRemoteXact(const char *gid, Oid *nodes, int count, RemoteXactType typ
 	rxact_begin_msg(&buf, RXACT_MSG_DO);
 	rxact_put_int(&buf, (int)type);
 	rxact_put_int(&buf, count);
-	rxact_put_bytes(&buf, nodes, sizeof(nodes[0]) * count);
+	if(count > 0)
+	{
+		AssertArg(nodes);
+		rxact_put_bytes(&buf, nodes, sizeof(nodes[0]) * count);
+	}
 	rxact_put_string(&buf, gid);
 	send_msg_to_rxact(&buf);
 
