@@ -26,8 +26,9 @@ typedef enum
 	REMOTE_CONN_APP,
 	REMOTE_CONN_COORD,
 	REMOTE_CONN_DATANODE,
-	REMOTE_CONN_GTM,
-	REMOTE_CONN_GTM_PROXY
+#ifdef ADB
+	REMOTE_CONN_RXACTMGR,
+#endif
 } RemoteConnTypes;
 
 /* Determine remote connection type for a PGXC backend */
@@ -48,11 +49,12 @@ extern Datum xc_lockForBackupKey2;
 #define IS_PGXC_DATANODE isPGXCDataNode
 #define REMOTE_CONN_TYPE remoteConnType
 
-#define IsConnFromApp() (remoteConnType == REMOTE_CONN_APP)
-#define IsConnFromCoord() (remoteConnType == REMOTE_CONN_COORD)
-#define IsConnFromDatanode() (remoteConnType == REMOTE_CONN_DATANODE)
-#define IsConnFromGtm() (remoteConnType == REMOTE_CONN_GTM)
-#define IsConnFromGtmProxy() (remoteConnType == REMOTE_CONN_GTM_PROXY)
+#define IsConnFromApp()         (remoteConnType == REMOTE_CONN_APP)
+#define IsConnFromCoord()       (remoteConnType == REMOTE_CONN_COORD)
+#define IsConnFromDatanode()    (remoteConnType == REMOTE_CONN_DATANODE)
+#ifdef ADB
+#define IsConnFromRxactMgr()    (remoteConnType == REMOTE_CONN_RXACTMGR)
+#endif
 
 /* key pair to be used as object id while using advisory lock for backup */
 #define XC_LOCK_FOR_BACKUP_KEY_1	0xFFFF

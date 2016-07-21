@@ -2549,9 +2549,9 @@ PrepareTransaction(void)
 	 */
 #ifdef ADB
 	/*
-	 * Get all involved remote nodes,
+	 * Get all involved remote nodes, also include local node.
 	 */
-	nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
+	nodecnt = pgxcGetInvolvedNodes(true, &nodeIds);
 
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId,

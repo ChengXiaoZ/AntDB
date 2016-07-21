@@ -1258,10 +1258,10 @@ static void rxact_change_gid(const char *gid, RemoteXactType type, bool is_redo)
 
 static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool update, bool is_redo)
 {
-	AssertArg(addr && addr[0]);
-
 	RemoteNode *rnode;
 	bool found;
+
+	AssertArg(addr && addr[0]);
 	rnode = hash_search(htab_remote_node, &oid, HASH_ENTER, &found);
 	if(!found)
 	{
@@ -1406,6 +1406,7 @@ static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 		/* connection to remote node */
 		RemoteNode *rnode;
 		DatabaseNode *dnode;
+		const char *pgoptions = "-c remotetype=rxactmgr";
 		char port[15];
 		if(conn->conn)
 		{
@@ -1418,7 +1419,8 @@ static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 		{
 			sprintf(port, "%u", rnode->nodePort);
 			conn->conn = PQsetdbLogin(rnode->nodeHost, port
-				, NULL, NULL
+				, (key.node_oid == AGTM_OID ? NULL : pgoptions)
+				, NULL
 				, dnode->dbname, dnode->owner, NULL);
 			if(PQstatus(conn->conn) != CONNECTION_OK)
 			{

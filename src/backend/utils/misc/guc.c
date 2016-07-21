@@ -393,8 +393,9 @@ static const struct config_enum_entry pgxc_conn_types[] = {
 	{"application", REMOTE_CONN_APP, false},
 	{"coordinator", REMOTE_CONN_COORD, false},
 	{"datanode", REMOTE_CONN_DATANODE, false},
-	{"gtm", REMOTE_CONN_GTM, false},
-	{"gtmproxy", REMOTE_CONN_GTM_PROXY, false},
+#ifdef ADB
+	{"rxactmgr", REMOTE_CONN_RXACTMGR, false},
+#endif
 	{NULL, 0, false}
 };
 #endif
