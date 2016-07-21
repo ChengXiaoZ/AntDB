@@ -1145,7 +1145,7 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 		ginfo->count_nodes = count+1;
 
 		ginfo->type = type;
-		ginfo->failed = false;
+		ginfo->failed = is_redo;
 		ginfo->db_oid = db_oid;
 	}PG_CATCH();
 	{
