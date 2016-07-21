@@ -533,34 +533,34 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_slowlog_func_page(in name, in time
 --for cluster warning, monitor_dbthreshold systbl, see "typedef enum DbthresholdObject" 
 --  in monitor_dbthreshold.c
 --heaphitrate
-insert into pg_catalog.monitor_host_threshold values(11, 98, 95, 90);
-insert into pg_catalog.monitor_host_threshold values(21, 98, 95, 90);
+insert into pg_catalog.monitor_host_threshold values(11, 0, 98, 95, 90);
+insert into pg_catalog.monitor_host_threshold values(21, 0, 98, 95, 90);
 --commitrate
-insert into pg_catalog.monitor_host_threshold values(12, 95, 90, 85);
-insert into pg_catalog.monitor_host_threshold values(22, 95, 90, 85);
+insert into pg_catalog.monitor_host_threshold values(12, 0, 95, 90, 85);
+insert into pg_catalog.monitor_host_threshold values(22, 0, 95, 90, 85);
 --standbydelay
-insert into pg_catalog.monitor_host_threshold values(13, 200, 250, 300);
-insert into pg_catalog.monitor_host_threshold values(23, 1000, 2000, 3000);
+insert into pg_catalog.monitor_host_threshold values(13, 1, 200, 250, 300);
+insert into pg_catalog.monitor_host_threshold values(23, 1, 1000, 2000, 3000);
 --locks num
-insert into pg_catalog.monitor_host_threshold values(14, 40, 50, 60);
-insert into pg_catalog.monitor_host_threshold values(24, 50, 80, 120);
+insert into pg_catalog.monitor_host_threshold values(14, 1, 40, 50, 60);
+insert into pg_catalog.monitor_host_threshold values(24, 1, 50, 80, 120);
 --connect num
-insert into pg_catalog.monitor_host_threshold values(15, 400, 500, 800);
-insert into pg_catalog.monitor_host_threshold values(25, 500, 800, 1500);
+insert into pg_catalog.monitor_host_threshold values(15, 1, 400, 500, 800);
+insert into pg_catalog.monitor_host_threshold values(25, 1, 500, 800, 1500);
 --long transaction, idle transaction
-insert into pg_catalog.monitor_host_threshold values(16, 25, 30, 50);
-insert into pg_catalog.monitor_host_threshold values(26, 30, 60, 80);
+insert into pg_catalog.monitor_host_threshold values(16, 1, 25, 30, 50);
+insert into pg_catalog.monitor_host_threshold values(26, 1, 30, 60, 80);
 --unused index num
-insert into pg_catalog.monitor_host_threshold values(17, 0, 0, 0);
-insert into pg_catalog.monitor_host_threshold values(27, 100, 150, 200);
+insert into pg_catalog.monitor_host_threshold values(17, 1, 0, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(27, 1, 100, 150, 200);
 --tps timeinterval
-insert into pg_catalog.monitor_host_threshold values(31, 3, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(31, 1, 3, 0, 0);
 --long transactions min time
-insert into pg_catalog.monitor_host_threshold values(32, 100, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(32, 1, 100, 0, 0);
 --slow query min time
-insert into pg_catalog.monitor_host_threshold values(33, 2, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(33, 1, 2, 0, 0);
 --get limit num slowlog from database cluster once time
-insert into pg_catalog.monitor_host_threshold values(34, 5, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(34, 1, 5, 0, 0);
 
 -- for ADB monitor the topology in home page : get datanode node topology
 CREATE VIEW adbmgr.get_datanode_node_topology AS
@@ -654,12 +654,12 @@ CREATE VIEW adbmgr.get_agtm_node_topology AS
         ) r;
 
 -- insert default values into monitor_host_threthold.
-insert into pg_catalog.monitor_host_threshold values (1, 90, 95, 99);
-insert into pg_catalog.monitor_host_threshold values (2, 85, 90, 95);
-insert into pg_catalog.monitor_host_threshold values (3, 80, 85, 90);
-insert into pg_catalog.monitor_host_threshold values (4, 2000, 3000, 4000);
-insert into pg_catalog.monitor_host_threshold values (5, 2000, 3000, 4000);
-insert into pg_catalog.monitor_host_threshold values (6, 3000, 4000, 5000);
+insert into pg_catalog.monitor_host_threshold values (1, 1, 90, 95, 99);
+insert into pg_catalog.monitor_host_threshold values (2, 1, 85, 90, 95);
+insert into pg_catalog.monitor_host_threshold values (3, 1, 80, 85, 90);
+insert into pg_catalog.monitor_host_threshold values (4, 1, 2000, 3000, 4000);
+insert into pg_catalog.monitor_host_threshold values (5, 1, 2000, 3000, 4000);
+insert into pg_catalog.monitor_host_threshold values (6, 1, 3000, 4000, 5000);
 
 -- update threshold value by type
 create or replace function pg_catalog.update_threshold_value(type int, value1 int, value2 int, value3 int)
@@ -720,41 +720,19 @@ RETURNS NULL ON NULL INPUT;
 
 --get the threshlod for all type
 CREATE VIEW adbmgr.get_threshold_all_type AS
-select '{'|| ARRAY_TO_STRING || '}' as show_threshold
-from(
-        select ARRAY_TO_STRING(
-        array(
-                select  case f.type
-                        when 1 then '"cpu_thresh"'
-                        when 2 then '"mem_usage"'
-                        when 3 then '"disk_usage"'
-                        when 4 then '"sent_net"'
-                        when 5 then '"recv_net"'
-                        when 6 then '"IOPS"'
-                        END
-                        || ':' || '{' || '"warning"'   || ':' || f.warning   || ',' 
-                                      || '"critical"'  || ':' || f.critical  || ','
-                                      || '"emergency"' || ':' || f.emergency ||
-                                   '}'
-                from(
-                        select mt_type AS type,
-                               mt_warning_threshold AS "warning",
-                               mt_critical_threshold AS "critical",
-                               mt_emergency_threshold AS "emergency"
-                        from monitor_host_threshold order by 1 asc
-                    )f
-            ), ','
-                            )
-    ) r;
+select mt_type as type, mt_warning_threshold as warning, mt_critical_threshold as critical, mt_emergency_threshold as emergency
+  from pg_catalog.monitor_host_threshold 
+	where mt_type in (1,2,3,4,5,6) 
+	   order by 1 asc;
 
 --get the threshlod for all type
 CREATE VIEW adbmgr.get_db_threshold_all_type
 as 
- select tt1.mt_type, tt1.mt_warning_threshold as node_warning, tt1.mt_critical_threshold as node_critical, 
+ select tt1.mt_type as type, tt1.mt_warning_threshold as node_warning, tt1.mt_critical_threshold as node_critical, 
 			  tt1.mt_emergency_threshold as node_emergency,tt2.mt_warning_threshold as cluster_warning, 
 				tt2.mt_critical_threshold as cluster_critical, tt2.mt_emergency_threshold as cluster_emergency 
-from (select * from monitor_host_threshold where mt_type in (11,12,13,14,15,16,17))as tt1  
-   join  (select * from monitor_host_threshold where mt_type in (21,22,23,24,25,26,27)) tt2 on tt1.mt_type +10 =tt2.mt_type 
+from (select * from pg_catalog.monitor_host_threshold where mt_type in (11,12,13,14,15,16,17))as tt1  
+   join  (select * from pg_catalog.monitor_host_threshold where mt_type in (21,22,23,24,25,26,27)) tt2 on tt1.mt_type +10 =tt2.mt_type 
 	 order by 1 asc;
 
 -- get all alarm info (host and DB)
