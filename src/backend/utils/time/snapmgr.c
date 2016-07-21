@@ -1260,54 +1260,13 @@ ThereAreNoPriorRegisteredSnapshots(void)
 void
 UnsetGlobalSnapshot(void)
 {
-	/*
-	if (IS_PGXC_DATANODE || IsConnFromCoord())
-	{
-		MemoryContext oldCtx;
-		if (GlobalSnapshot)
-		{
-			oldCtx = MemoryContextSwitchTo(TopMemoryContext);
-			if (GlobalSnapshot->xcnt > 0)
-				pfree(GlobalSnapshot->xip);
-			if (GlobalSnapshot->subxcnt > 0)
-				pfree(GlobalSnapshot->subxip);
-			pfree(GlobalSnapshot);
-			MemoryContextSwitchTo(oldCtx);
-		}
-	}
-	*/
 	GlobalSnapshot = NULL;
 }
 
 void
 SetGlobalSnapshot(StringInfo input_message)
 {
-	int i;
-	Assert(IS_PGXC_DATANODE || IsConnFromCoord());
-
-	UnsetGlobalSnapshot();
-
-	GlobalSnapshot = MemoryContextAllocZero(TopMemoryContext, sizeof(SnapshotData));
-	GlobalSnapshot->satisfies = HeapTupleSatisfiesMVCC;
-	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
-	GlobalSnapshot->xmax = pq_getmsgint(input_message, sizeof(TransactionId));
-	GlobalSnapshot->xcnt = pq_getmsgint(input_message, sizeof(uint32));
-	GlobalSnapshot->xip = MemoryContextAllocZero(TopMemoryContext,
-												  GlobalSnapshot->xcnt * sizeof(TransactionId));
-	for (i = 0; i < GlobalSnapshot->xcnt; i++)
-		GlobalSnapshot->xip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
-	GlobalSnapshot->subxcnt = pq_getmsgint(input_message, sizeof(int32));
-	GlobalSnapshot->subxip = MemoryContextAllocZero(TopMemoryContext,
-												  GlobalSnapshot->subxcnt * sizeof(TransactionId));
-	for (i = 0; i < GlobalSnapshot->subxcnt; i++)
-		GlobalSnapshot->subxip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
-	GlobalSnapshot->suboverflowed = pq_getmsgint(input_message, sizeof(bool));
-	GlobalSnapshot->takenDuringRecovery = pq_getmsgint(input_message, sizeof(bool));
-	GlobalSnapshot->copied = pq_getmsgint(input_message, sizeof(bool));
-	GlobalSnapshot->curcid = pq_getmsgint(input_message, sizeof(CommandId));
-	GlobalSnapshot->active_count = pq_getmsgint(input_message, sizeof(uint32));
-	GlobalSnapshot->regd_count = pq_getmsgint(input_message, sizeof(uint32));
-	pq_getmsgend(input_message);
+	/* TODO */
 }
 
 static void
@@ -1340,48 +1299,17 @@ OutputGlobalSnapshot(Snapshot snapshot)
 		(errmsg("%s", buf.data)));
 }
 
-static void
-CopyGlobalSnapshot(Snapshot from, Snapshot to)
-{
-	Assert(from && to);
-	to->xmin = from->xmin;
-	to->xmax = from->xmax;
-	to->xcnt = from->xcnt;
-	if (from->xcnt > 0)
-		memcpy(to->xip, from->xip, from->xcnt * sizeof(TransactionId));
-	to->subxcnt = from->subxcnt;
-	if (from->subxcnt > 0)
-		memcpy(to->subxip, from->subxip, from->subxcnt * sizeof(TransactionId));
-	to->suboverflowed = from->suboverflowed;
-	to->takenDuringRecovery = from->takenDuringRecovery;
-	to->copied = from->copied;
-	to->curcid = from->curcid;
-	to->active_count = from->active_count;
-	to->regd_count = from->regd_count;
-}
-
 /*
  * Entry of snapshot obtention for Postgres-XC node
  */
 Snapshot
 GetGlobalSnapshot(Snapshot snapshot)
 {
-	/*if ((IS_PGXC_COORDINATOR && !IsConnFromCoord()) ||
-		IsPGXCNodeXactDatanodeDirect())
-	{*/
-		if (GlobalSnapshot == InvalidSnapshot ||
-			GlobalSnapshot != snapshot)
-		{
-			GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
-		}
-	/*} else
+	if (GlobalSnapshot == InvalidSnapshot ||
+		GlobalSnapshot != snapshot)
 	{
-		if (GlobalSnapshot)
-			CopyGlobalSnapshot(GlobalSnapshot, snapshot);
-		else
-			agtm_GetGlobalSnapShot(snapshot);
-		return snapshot;
-	}*/
+		GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
+	}
 	OutputGlobalSnapshot(GlobalSnapshot);
 
 	return GlobalSnapshot;

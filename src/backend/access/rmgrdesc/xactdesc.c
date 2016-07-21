@@ -20,107 +20,6 @@
 #include "storage/sinval.h"
 #include "utils/timestamp.h"
 
-#ifdef ADB
-#include "access/remote_xact.h"
-
-/*
- * remote_xact_desc_prepare
- *
- * Note: deparse each attribute with the same order of MakeUpRemoteXactBinary
- */
-static void
-remote_xact_desc_prepare(StringInfo buf, xl_remote_binary *rbinary)
-{
-	TransactionId	xid;
-	TimestampTz		xact_time;
-	uint8			xinfo;
-	bool			implicit;
-	bool			missing_ok;
-	int				nnodes;
-	Oid				nodeId;
-	int				nodePort;
-	int				i;
-	char			*nodeHost;
-	char			*gid;
-	char			*dbname;
-	char			*user;
-
-	/* xid */
-	xid = *(TransactionId *) rbinary;
-	rbinary += sizeof(xid);
-	/* nnodes */
-	nnodes = *(int *) rbinary;
-	rbinary += sizeof(nnodes);
-	/* xact_time */
-	xact_time = *(TimestampTz *) rbinary;
-	rbinary += sizeof(xact_time);
-	/* xinfo */
-	xinfo = *(uint8 *) rbinary;
-	rbinary += sizeof(xinfo);
-	/* implicit */
-	implicit = *(bool *) rbinary;
-	rbinary += sizeof(implicit);
-	/* missing_ok */
-	missing_ok = *(bool *) rbinary;
-	rbinary += sizeof(missing_ok);
-	/* gid */
-	gid = (char *) rbinary;
-	rbinary += strlen(gid) + 1;
-	/* dbname */
-	dbname = (char *) rbinary;
-	rbinary += strlen(dbname) + 1;
-	/* user */
-	user = (char *) rbinary;
-	rbinary += strlen(user) + 1;
-
-	appendStringInfo(buf, "remote prepare: xid: %u", xid);
-	appendStringInfo(buf, "; prepared gid: '%s'", gid);
-	appendStringInfo(buf, "; implicit: %s", implicit ? "yes" : "no");
-	appendStringInfo(buf, "; missing ok: %s", missing_ok? "yes" : "no");
-	appendStringInfo(buf, "; xact time: %s", timestamptz_to_str(xact_time));
-	appendStringInfo(buf, "; database: %s", dbname);
-	appendStringInfo(buf, "; user: %s", user);
-	appendStringInfo(buf, "; involved remote nodes: %d", nnodes);
-	/* rnodes */
-	for (i = 0; i < nnodes; i++)
-	{
-		/* nodeId */
-		nodeId = *(Oid *) rbinary;
-		rbinary += sizeof(nodeId);
-		/* nodePort */
-		nodePort = *(int *) rbinary;
-		rbinary += sizeof(nodePort);
-		/* nodeHost */
-		nodeHost = (char *) rbinary;
-		rbinary += strlen(nodeHost) + 1;
-
-		appendStringInfo(buf, " {%u@%s:%d}", nodeId, nodeHost, nodePort);
-	}
-}
-
-static void
-remote_xact_desc_success(StringInfo buf, uint8 xl_info, xl_remote_success *xlres)
-{
-	switch (xl_info)
-	{
-		case XLOG_RXACT_PREPARE_SUCCESS:
-			appendStringInfo(buf, "remote prepare success");
-			break;
-		case XLOG_RXACT_COMMIT_PREPARED_SUCCESS:
-			appendStringInfo(buf, "remote commit prepared success");
-			break;
-		case XLOG_RXACT_ABORT_PREPARED_SUCCESS:
-			appendStringInfo(buf, "remote abort prepared success");
-			break;
-		default:
-			Assert(0);
-			break;
-	}
-	appendStringInfo(buf, ": xid: %u", xlres->xid);
-	appendStringInfo(buf, "; prepared gid: '%s'", xlres->gid);
-}
-#endif
-
 static void
 xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
 {
@@ -290,20 +189,6 @@ xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "xid assignment xtop %u: ", xlrec->xtop);
 		xact_desc_assignment(buf, xlrec);
 	}
-#ifdef ADB
-	else if (info == XLOG_RXACT_PREPARE)
-	{
-		xl_remote_binary *rbinary = (xl_remote_binary *) rec;
-		remote_xact_desc_prepare(buf, rbinary);
-	}
-	else if (info == XLOG_RXACT_PREPARE_SUCCESS ||
-			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
-			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
-	{
-		xl_remote_success *xlres = (xl_remote_success *) rec;
-		remote_xact_desc_success(buf, info, xlres);
-	}
-#endif
 	else
 		appendStringInfo(buf, "UNKNOWN");
 }

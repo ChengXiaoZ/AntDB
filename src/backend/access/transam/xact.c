@@ -2081,7 +2081,7 @@ CommitTransaction(void)
 	 * First save the current top transaction ID before it may get overwritten
 	 * by PrepareTransaction below.
 	 */
-	if (isimplicit && IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	if (isimplicit && IsUnderRemoteXact())
 	{
 		SafeFreeSaveGID();
 
@@ -2196,7 +2196,7 @@ CommitTransaction(void)
 	PreCommit_Notify();
 
 #ifdef ADB
-	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	if (IsUnderRemoteXact())
 	{
 		/*
 		 * Now that all the remote nodes have successfully prepared and
@@ -2211,7 +2211,7 @@ CommitTransaction(void)
 
 			PG_TRY();
 			{
-				FinishPreparedTransaction(savePrepareGID, true);
+				FinishPreparedTransactionExt(savePrepareGID, true, false, false);
 			} PG_CATCH();
 			{
 				SafeFreeSaveGID();
@@ -2560,8 +2560,7 @@ PrepareTransaction(void)
 	/*
 	 * Here is where we truly prepare remote nodes(include AGTM).
 	 */
-	RecordRemoteXactPrepare(xid, prepared_at, isimplicit,
-							prepareGID, nodecnt, nodeIds);
+	RecordRemoteXactPrepare(prepareGID, nodecnt, nodeIds, isimplicit);
 #else
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);
@@ -2742,7 +2741,7 @@ AbortTransaction(void)
 
 		PG_TRY();
 		{
-			FinishPreparedTransaction(savePrepareGID, false);
+			FinishPreparedTransactionExt(savePrepareGID, false, false, false);
 		} PG_CATCH();
 		{
 			SafeFreeSaveGID();
@@ -3497,7 +3496,7 @@ PreventTransactionChain(bool isTopLevel, const char *stmtType)
  *	is presumably an error).  DECLARE CURSOR is an example.
  *
  *	If we appear to be running inside a user-defined function, we do not
- *	issue an error, since the function could issue more commands that make
+ *	issue error, since the function could issue more commands that make
  *	use of the current statement's results.  Likewise subtransactions.
  *	Thus this is an inverse for PreventTransactionChain.
  *
@@ -5439,29 +5438,15 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 	{
 		xl_xact_commit_prepared *xlrec = (xl_xact_commit_prepared *) XLogRecGetData(record);
 
-#ifdef ADB
-		if (xlrec->crec.can_redo_rxact == true)
-			rxact_redo_commit_prepared(&xlrec->crec, xlrec->xid, lsn);
-		else
-			xact_redo_commit_prepared(&xlrec->crec, xlrec->xid, lsn);
-#else
 		xact_redo_commit(&xlrec->crec, xlrec->xid, lsn);
 		RemoveTwoPhaseFile(xlrec->xid, false);
-#endif
 	}
 	else if (info == XLOG_XACT_ABORT_PREPARED)
 	{
 		xl_xact_abort_prepared *xlrec = (xl_xact_abort_prepared *) XLogRecGetData(record);
 
-#ifdef ADB
-		if (xlrec->arec.can_redo_rxact == true)
-			rxact_redo_abort_prepared(&xlrec->arec, xlrec->xid);
-		else
-			xact_redo_abort_prepared(&xlrec->arec, xlrec->xid);
-#else
 		xact_redo_abort(&xlrec->arec, xlrec->xid);
 		RemoveTwoPhaseFile(xlrec->xid, false);
-#endif
 	}
 	else if (info == XLOG_XACT_ASSIGNMENT)
 	{
@@ -5471,41 +5456,9 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 			ProcArrayApplyXidAssignment(xlrec->xtop,
 										xlrec->nsubxacts, xlrec->xsub);
 	}
-#ifdef ADB
-	else if (info == XLOG_RXACT_PREPARE)
-	{
-		xl_remote_binary *rbinary = (xl_remote_binary *) XLogRecGetData(record);
-		rxact_redo_prepare(rbinary);
-	}
-	else if (info == XLOG_RXACT_PREPARE_SUCCESS ||
-			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
-			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
-	{
-		xl_remote_success *xlres = (xl_remote_success *) XLogRecGetData(record);
-		rxact_redo_success(info, xlres);
-	}
-#endif
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
-
-#ifdef ADB
-void
-xact_redo_commit_prepared(xl_xact_commit *xlrec,
-						  TransactionId xid,
-						  XLogRecPtr lsn)
-{
-	xact_redo_commit(xlrec, xid, lsn);
-	RemoveTwoPhaseFile(xid, false);
-}
-
-void
-xact_redo_abort_prepared(xl_xact_abort * xlrec, TransactionId xid)
-{
-	xact_redo_abort(xlrec, xid);
-	RemoveTwoPhaseFile(xid, false);
-}
-#endif
 
 #ifdef PGXC
 /*

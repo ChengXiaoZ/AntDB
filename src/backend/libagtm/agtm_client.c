@@ -178,8 +178,8 @@ void agtm_Close(void)
 		}
 
 		pfree(agtm_conn);
-		agtm_conn = NULL;
 	}
+	agtm_conn = NULL;
 }
 
 void agtm_Reset(void)

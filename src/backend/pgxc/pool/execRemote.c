@@ -4628,7 +4628,6 @@ PreCommit_Remote(const char *gid, bool missing_ok)
 		   remoteXactState.status == RXACT_NONE);
 
 	clear_RemoteXactState();
-
 	ForgetTransactionNodes();
 
 	/*
@@ -4683,7 +4682,6 @@ PreAbort_Remote(const char *gid, bool missing_ok)
 	} PG_END_TRY();
 
 	clear_RemoteXactState();
-
 	ForgetTransactionNodes();
 
 	if (!PersistentConnections)
@@ -4712,8 +4710,17 @@ PrePrepare_Remote(const char *gid)
 	 * local node. Any errors will be reported via ereport and the transaction
 	 * will be aborted accordingly.
 	 */
-	pgxc_node_remote_prepare(gid);
+	PG_TRY();
+	{
+		pgxc_node_remote_prepare(gid);
+	} PG_CATCH();
+	{
+		clear_RemoteXactState();
+		ForgetTransactionNodes();
+		PG_RE_THROW();
+	} PG_END_TRY();
 
+	clear_RemoteXactState();
 	ForgetTransactionNodes();
 
 	Assert(remoteXactState.status == RXACT_PREPARED ||

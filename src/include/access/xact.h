@@ -138,18 +138,12 @@ typedef struct xl_xact_commit
 	int			nrels;			/* number of RelFileNodes */
 	int			nsubxacts;		/* number of subtransaction XIDs */
 	int			nmsgs;			/* number of shared inval msgs */
-#ifdef ADB
-	bool		can_redo_rxact;	/* value = IsUnderRemoteXact() */
-#endif
 	Oid			dbId;			/* MyDatabaseId */
 	Oid			tsId;			/* MyDatabaseTableSpace */
 	/* Array of RelFileNode(s) to drop at commit */
 	RelFileNode xnodes[1];		/* VARIABLE LENGTH ARRAY */
 	/* ARRAY OF COMMITTED SUBTRANSACTION XIDs FOLLOWS */
 	/* ARRAY OF SHARED INVALIDATION MESSAGES FOLLOWS */
-#ifdef ADB
-	/* xl_remote_xact */
-#endif
 } xl_xact_commit;
 
 #define MinSizeOfXactCommit offsetof(xl_xact_commit, xnodes)
@@ -174,15 +168,9 @@ typedef struct xl_xact_abort
 	TimestampTz xact_time;		/* time of abort */
 	int			nrels;			/* number of RelFileNodes */
 	int			nsubxacts;		/* number of subtransaction XIDs */
-#ifdef ADB
-	bool		can_redo_rxact; /* value = IsUnderRemoteXact() */
-#endif
 	/* Array of RelFileNode(s) to drop at abort */
 	RelFileNode xnodes[1];		/* VARIABLE LENGTH ARRAY */
 	/* ARRAY OF ABORTED SUBTRANSACTION XIDs FOLLOWS */
-#ifdef ADB
-	/* xl_remote_xact */
-#endif
 } xl_xact_abort;
 
 /* Note the intentional lack of an invalidation message array c.f. commit */

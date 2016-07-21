@@ -98,10 +98,11 @@
 #include "access/transam.h"
 #endif
 #ifdef ADB
-#include "nodes/nodeFuncs.h"
-#include "catalog/adb_ha_sync_log.h"
+#include "access/rxact_mgr.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
+#include "catalog/adb_ha_sync_log.h"
+#include "nodes/nodeFuncs.h"
 #endif /* ADB */
 #ifdef ADBMGRD
 #	include "mgr/mgr_agent.h"
@@ -4457,6 +4458,17 @@ PostgresMain(int argc, char *argv[],
 		 * the storage it points at.
 		 */
 		debug_query_string = NULL;
+
+#ifdef ADB
+		/*
+		 * Make sure disconect with Remote Xact Manager.
+		 *
+		 * Also clear variables which are used to Remote Xact,
+		 * Because we pop it to Remote Xact Manager.
+		 */
+		DisconnectRemoteXact();
+		AtEOXact_Remote();
+#endif
 
 		/*
 		 * Abort the current transaction in order to recover.

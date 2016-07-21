@@ -63,10 +63,6 @@
 #include "utils/timestamp.h"
 #include "pg_trace.h"
 
-#ifdef ADB
-#include "access/remote_xact.h"
-#endif
-
 extern uint32 bootstrap_data_checksum_version;
 
 /* File path names (all relative to $PGDATA) */
@@ -5890,11 +5886,6 @@ StartupXLOG(void)
 				/* Else, try to fetch the next WAL record */
 				record = ReadRecord(xlogreader, InvalidXLogRecPtr, LOG, false);
 			} while (record != NULL);
-
-#ifdef ADB
-			/* Here is we actually do remote xact redo */
-			ReplayRemoteXact();
-#endif
 
 			/*
 			 * end of main redo apply loop

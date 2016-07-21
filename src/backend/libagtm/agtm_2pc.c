@@ -285,6 +285,8 @@ void agtm_PrepareTransaction_ByDBname(const char *prepared_gid, const char *dbna
 	} PG_CATCH();
 	{
 		pfree(prepare_cmd.data);
+		agtm_Close();
+		SetTopXactBeginAGTM(false);
 		PG_RE_THROW();
 	} PG_END_TRY();
 
@@ -339,6 +341,11 @@ void agtm_CommitTransaction_ByDBname(const char *prepared_gid, bool missing_ok, 
 	} PG_CATCH();
 	{
 		pfree(commit_cmd.data);
+		if (TopXactBeginAGTM())
+		{
+			agtm_Close();
+			SetTopXactBeginAGTM(false);
+		}
 		PG_RE_THROW();
 	} PG_END_TRY();
 
