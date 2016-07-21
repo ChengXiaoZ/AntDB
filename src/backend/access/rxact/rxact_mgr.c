@@ -1325,7 +1325,10 @@ static void rxact_2pc_do(void)
 
 			/* when SQL not maked, make it */
 			if(cmd_is_ok == false)
+			{
 				rxact_build_2pc_cmd(&buf, ginfo->gid, ginfo->type);
+				cmd_is_ok = true;
+			}
 
 			pg_res = PQexec(node_conn->conn, buf.data);
 			if(PQresultStatus(pg_res) != PGRES_COMMAND_OK)
