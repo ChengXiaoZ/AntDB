@@ -720,7 +720,7 @@ RETURNS NULL ON NULL INPUT;
 
 --get the threshlod for all type
 CREATE VIEW adbmgr.get_threshold_all_type AS
-select mt_type as type, mt_warning_threshold as warning, mt_critical_threshold as critical, mt_emergency_threshold as emergency
+select mt_type as type, mt_direction, mt_warning_threshold as warning, mt_critical_threshold as critical, mt_emergency_threshold as emergency
   from pg_catalog.monitor_host_threshold 
 	where mt_type in (1,2,3,4,5,6) 
 	   order by 1 asc;
@@ -728,7 +728,7 @@ select mt_type as type, mt_warning_threshold as warning, mt_critical_threshold a
 --get the threshlod for all type
 CREATE VIEW adbmgr.get_db_threshold_all_type
 as 
- select tt1.mt_type as type, tt1.mt_warning_threshold as node_warning, tt1.mt_critical_threshold as node_critical, 
+ select tt1.mt_type as type, tt1.mt_direction, tt1.mt_warning_threshold as node_warning, tt1.mt_critical_threshold as node_critical, 
 			  tt1.mt_emergency_threshold as node_emergency,tt2.mt_warning_threshold as cluster_warning, 
 				tt2.mt_critical_threshold as cluster_critical, tt2.mt_emergency_threshold as cluster_emergency 
 from (select * from pg_catalog.monitor_host_threshold where mt_type in (11,12,13,14,15,16,17))as tt1  
