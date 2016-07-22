@@ -186,7 +186,7 @@ static int agent_session_command(PoolAgent *agent, const char *set_command, Pool
 static int send_local_commands(PoolAgent *agent, List *datanodelist, List *coordlist);
 
 static void destroy_slot(PGXCNodePoolSlot *slot, bool send_cancel);
-static void release_slot(PGXCNodePoolSlot *slot);
+static void release_slot(PGXCNodePoolSlot *slot, bool force_close);
 static void idle_slot(PGXCNodePoolSlot *slot);
 static void destroy_node_pool(PGXCNodePool *node_pool, bool bfree);
 static bool node_pool_in_using(PGXCNodePool *node_pool);
@@ -1666,7 +1666,7 @@ static void destroy_slot(PGXCNodePoolSlot *slot, bool send_cancel)
 	if(send_cancel)
 	{
 		if(slot->xc_cancelConn == NULL)
-			PQgetCancel((PGconn*)slot->conn);
+			slot->xc_cancelConn = PQgetCancel((PGconn*)slot->conn);
 		if(slot->xc_cancelConn)
 		{
 			char err_msg[256];
@@ -1689,10 +1689,13 @@ static void destroy_slot(PGXCNodePoolSlot *slot, bool send_cancel)
 	slot->state = SLOT_STATE_UNINIT;
 }
 
-static void release_slot(PGXCNodePoolSlot *slot)
+static void release_slot(PGXCNodePoolSlot *slot, bool force_close)
 {
 	AssertArg(slot);
-	if(ADB_CHECK_SLOT(slot, false) == false)
+	if(force_close)
+	{
+		destroy_slot(slot, true);
+	}else if(ADB_CHECK_SLOT(slot, false) == false)
 	{
 		if(slot->state != SLOT_STATE_UNINIT)
 		{
@@ -1896,13 +1899,13 @@ static void agent_release_connections(PoolAgent *agent, bool force_destroy)
 	{
 		Assert(agent->dn_connections);
 		if(agent->dn_connections[i])
-			release_slot(agent->dn_connections[i]);
+			release_slot(agent->dn_connections[i], force_destroy);
 	}
 	for(i=0;i<agent->num_coord_connections;++i)
 	{
 		Assert(agent->coord_connections);
 		if(agent->coord_connections[i])
-			release_slot(agent->coord_connections[i]);
+			release_slot(agent->coord_connections[i], force_destroy);
 	}
 }
 
