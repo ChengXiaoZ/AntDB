@@ -24,6 +24,7 @@
 #define PG_BASEBACKUP_VERSION "pg_basebackup (PostgreSQL) " PG_VERSION "\n"
 #define PG_CTL_VERSION "pg_ctl (PostgreSQL) " PG_VERSION "\n"
 #define PSQL_VERSION "psql (Postgres-XC) " PGXC_VERSION "\n"
+#define PG_DUMPALL_VERSION "pg_dumpall (PostgreSQL) " PG_VERSION "\n"
 
 static void cmd_node_init(StringInfo msg, char *cmdfile, char* VERSION);
 static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg);
@@ -42,6 +43,7 @@ extern bool get_disk_info(StringInfo hostinfostring);
 extern bool get_net_info(StringInfo hostinfostring);
 extern bool get_host_info(StringInfo hostinfostring);
 extern bool get_disk_iops_info(StringInfo hostinfostring);
+static void cmd_rm_temp_file(StringInfo msg);
 
 void do_agent_command(StringInfo buf)
 {
@@ -95,10 +97,27 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_MONITOR_GETS_HOST_INFO:
 		cmd_monitor_gets_hostinfo();
 		break;
+    case AGT_CMD_RM:
+        cmd_rm_temp_file(buf);
+        break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
 			,errmsg("unknown agent command %d", cmd_type)));
 	}
+}
+
+static void cmd_rm_temp_file(StringInfo msg)
+{
+    int res;
+
+    fflush(stdout);
+	fflush(stderr);
+    
+    res = system(msg->data);
+    if (res != 0)
+    {
+        ereport(ERROR, (errmsg("could not run %s", msg->data)));
+    }
 }
 
 static void cmd_node_init(StringInfo msg, char *cmdfile, char* VERSION)
