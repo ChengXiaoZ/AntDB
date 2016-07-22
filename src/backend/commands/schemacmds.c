@@ -139,6 +139,8 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 		initStringInfo(&buf);
 		appendStringInfoString(&buf,"CREATE SCHEMA ");
 		appendStringInfo(&buf, "%s", schemaName);
+		appendStringInfoString(&buf," AUTHORIZATION ");
+		appendStringInfo(&buf, "%s", authId);
 		agtm_Schema(buf.data);
 
 		pfree(buf.data);
@@ -216,12 +218,32 @@ RemoveSchemaById(Oid schemaOid)
 	Relation	relation;
 	HeapTuple	tup;
 
+#ifdef ADB
+	char * schemaName = NULL;
+	StringInfoData	buf;
+#endif
+
 	relation = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache1(NAMESPACEOID,
 						  ObjectIdGetDatum(schemaOid));
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for namespace %u", schemaOid);
+
+#ifdef ADB
+	if(IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		schemaName = pstrdup(NameStr(((Form_pg_namespace) GETSTRUCT(tup))->nspname));
+
+		initStringInfo(&buf);
+		appendStringInfoString(&buf, "DROP SCHEMA ");
+		appendStringInfo(&buf, "%s", schemaName);
+
+		agtm_Schema(buf.data);
+		pfree(buf.data);
+		pfree(schemaName);
+	}
+#endif
 
 	simple_heap_delete(relation, &tup->t_self);
 
