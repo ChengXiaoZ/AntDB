@@ -1235,13 +1235,6 @@ standard_ProcessUtility(Node *parsetree,
 				else
 #ifdef PGXC
 					ExecDropStmt(stmt, isTopLevel, queryString, sentToRemote);
-				
-				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				{
-					/* execute create schema on agtm */
-					if (stmt->removeType == OBJECT_SCHEMA)
-						agtm_Schema(queryString);
-				}
 #else
 					ExecDropStmt(stmt, isTopLevel);
 #endif
