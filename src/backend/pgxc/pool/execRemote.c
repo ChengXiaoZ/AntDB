@@ -4192,7 +4192,7 @@ PGXCNodeCleanAndRelease(int code, Datum arg)
 	DropAllPreparedStatements();
 
 	/* Release Datanode connections */
-	release_handles();
+	release_handles2(true);
 
 	/* Disconnect from Pooler */
 	PoolManagerDisconnect();
@@ -4704,6 +4704,9 @@ PrePrepare_Remote(const char *gid)
 		return ;
 
 	init_RemoteXactState(false);
+
+	if (gid == NULL || gid[0] == '\0')
+		return ;
 
 	/*
 	 * PREPARE the transaction on all nodes including remote nodes as well as

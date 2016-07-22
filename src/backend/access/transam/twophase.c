@@ -1602,11 +1602,10 @@ FinishPreparedTransactionExt(const char *gid,
 	invalmsgs = (SharedInvalidationMessage *) bufptr;
 	bufptr += MAXALIGN(hdr->ninvalmsgs * sizeof(SharedInvalidationMessage));
 #ifdef ADB
+	nodeIds = (Oid *) bufptr;
+	bufptr += MAXALIGN(hdr->nnodes * sizeof(Oid));
 	if (!IsConnFromRxactMgr())
 	{
-		nodeIds = (Oid *) bufptr;
-		bufptr += MAXALIGN(hdr->nnodes * sizeof(Oid));
-
 		if (!isRemoteInit)
 			init_RemoteXactStateByNodes(hdr->nnodes, nodeIds, true);
 
