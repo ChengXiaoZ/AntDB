@@ -139,8 +139,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 		initStringInfo(&buf);
 		appendStringInfoString(&buf,"CREATE SCHEMA ");
 		appendStringInfo(&buf, "%s", schemaName);
-		appendStringInfoString(&buf," AUTHORIZATION ");
-		appendStringInfo(&buf, "%s", authId);
+
+		if (authId != NULL)
+		{
+			appendStringInfoString(&buf," AUTHORIZATION ");
+			appendStringInfo(&buf, "%s", authId);
+		}
+
 		agtm_Schema(buf.data);
 
 		pfree(buf.data);
