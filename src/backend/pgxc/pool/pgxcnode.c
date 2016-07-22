@@ -358,6 +358,10 @@ pgxc_node_free(PGXCNodeHandle *handle)
 {
 	close(handle->sock);
 	handle->sock = NO_SOCKET;
+	handle->state = DN_CONNECTION_STATE_IDLE;
+	if (handle->error)
+		pfree(handle->error);
+	handle->error = NULL;
 	if(handle->file_data)
 	{
 		char file_name[20];

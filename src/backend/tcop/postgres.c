@@ -4461,13 +4461,15 @@ PostgresMain(int argc, char *argv[],
 
 #ifdef ADB
 		/*
+		 * Make sure release connections with pool manager.
 		 * Make sure disconect with Remote Xact Manager.
 		 *
 		 * Also clear variables which are used to Remote Xact,
 		 * Because we pop it to Remote Xact Manager.
 		 */
-		DisconnectRemoteXact();
+		release_handles2(true);
 		AtEOXact_Remote();
+		DisconnectRemoteXact();
 #endif
 
 		/*
@@ -4511,10 +4513,6 @@ PostgresMain(int argc, char *argv[],
 #ifdef ADBMGRD
 		ma_clean();
 #endif /* ADBMGRD */
-
-#ifdef ADB
-		release_handles2(true);
-#endif
 
 		/* Now we can allow interrupts again */
 		RESUME_INTERRUPTS();
