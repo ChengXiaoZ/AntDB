@@ -506,6 +506,7 @@ pid_t StartRemoteXactMgr(void)
 
 		/* Lose the postmaster's on-exit routines */
 		on_exit_reset();
+		PGXC_init_lock_files();
 
 		/* Drop our connection to postmaster's shared memory, as well */
 		PGSharedMemoryDetach();
