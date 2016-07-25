@@ -331,7 +331,10 @@ static void PoolerLoop(void)
 
 	if(sigsetjmp(local_sigjmp_buf, 1) != 0)
 	{
-		/* nothing todo */
+		/* Cleanup something */
+		EmitErrorReport();
+		FlushErrorState();
+		error_context_stack = NULL;
 	}
 	PG_exception_stack = &local_sigjmp_buf;
 	(void)MemoryContextSwitchTo(context);
