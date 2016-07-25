@@ -1853,7 +1853,7 @@ static void rxact_check_update_rlog(void)
 
 	/* get file current size */
 	offset = FileSeek(rxlf_rxid, 0, SEEK_CUR);
-	if(offset >= XLOG_BLCKSZ)
+	if(offset >= XLOG_SEG_SIZE)
 	{
 		START_CRIT_SECTION();
 		++rxlf_last_rxid_num;
