@@ -70,6 +70,9 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_DN_RESTART:
 		cmd_node_init(buf, "pg_ctl", PG_CTL_VERSION);
 		break;
+    case AGT_CMD_PGDUMPALL:
+        cmd_node_init(buf, "pg_dumpall", PG_DUMPALL_VERSION);
+        break;
 	case AGT_CMD_GTM_START_MASTER:
 	case AGT_CMD_GTM_STOP_MASTER:
 	case AGT_CMD_GTM_START_SLAVE:
