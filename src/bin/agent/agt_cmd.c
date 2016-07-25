@@ -68,15 +68,18 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_DN_STOP:
 	case AGT_CMD_DN_FAILOVER:
 	case AGT_CMD_DN_RESTART:
+	case AGT_CMD_CN_RESTART:
 		cmd_node_init(buf, "pg_ctl", PG_CTL_VERSION);
 		break;
-    case AGT_CMD_PGDUMPALL:
-        cmd_node_init(buf, "pg_dumpall", PG_DUMPALL_VERSION);
-        break;
+	case AGT_CMD_PGDUMPALL:
+		cmd_node_init(buf, "pg_dumpall", PG_DUMPALL_VERSION);
+		break;
 	case AGT_CMD_GTM_START_MASTER:
 	case AGT_CMD_GTM_STOP_MASTER:
 	case AGT_CMD_GTM_START_SLAVE:
 	case AGT_CMD_GTM_STOP_SLAVE:
+	case AGT_CMD_GTM_SLAVE_FAILOVER:
+	case AGT_CMD_AGTM_RESTART:
 		cmd_node_init(buf, "agtm_ctl", GTM_CTL_VERSION);
 		break;
 	case AGT_CMD_PSQL_CMD:

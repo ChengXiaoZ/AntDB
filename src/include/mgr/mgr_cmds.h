@@ -65,6 +65,7 @@ extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceive
 /*coordinator datanode parse cmd*/
 extern Datum mgr_init_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_start_gtm_master(PG_FUNCTION_ARGS);
+extern Datum mgr_stop_one_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_master_f(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_master_i(PG_FUNCTION_ARGS);
@@ -79,6 +80,7 @@ extern Datum mgr_start_gtm_extern(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_extern(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_extern_f(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_gtm_extern_i(PG_FUNCTION_ARGS);
+extern Datum mgr_failover_gtm(PG_FUNCTION_ARGS);
 extern void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest);

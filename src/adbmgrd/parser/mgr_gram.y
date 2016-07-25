@@ -1476,6 +1476,14 @@ FailoverStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", $3));
 			$$ = (Node*)stmt;
 	}
+	| FAILOVER GTM
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeNullAConst(-1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
+			$$ = (Node*)stmt;
+	}
 	;
 /* cndn end*/
 
