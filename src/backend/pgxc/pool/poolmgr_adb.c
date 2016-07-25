@@ -2275,12 +2275,12 @@ static int agent_session_command(PoolAgent *agent, const char *set_command, Pool
 	res = 0;
 	for(i=0;i<agent->num_dn_connections;++i)
 	{
-		if(agent->dn_connections[i])
+		if(agent->dn_connections[i] && agent->dn_connections[i]->conn)
 			res |= PGXCNodeSendSetQuery(agent->dn_connections[i]->conn, set_command);
 	}
 	for (i = 0; i < agent->num_coord_connections; i++)
 	{
-		if (agent->coord_connections[i])
+		if (agent->coord_connections[i] && agent->coord_connections[i]->conn)
 			res |= PGXCNodeSendSetQuery(agent->coord_connections[i]->conn, set_command);
 	}
 	return res;
