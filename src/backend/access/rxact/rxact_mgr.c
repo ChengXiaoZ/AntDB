@@ -1,6 +1,7 @@
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "access/heapam.h"
 #include "access/htup_details.h"
 #include "access/rxact_comm.h"
 #include "access/rxact_mgr.h"
@@ -22,6 +23,7 @@
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/syscache.h"
+#include "utils/tqual.h"
 
 #include <unistd.h>
 #include <sys/stat.h>
@@ -52,14 +54,15 @@
 #define REMOTE_CONN_INTERVAL_MAX	30	/* max connection remote interval (in second)*/
 #define REMOTE_IDLE_TIMEOUT			60	/* close remote connect if it idle in second */
 
-#define RXACT_MSG_CONNECT	'C'
-#define RXACT_MSG_DO		'D'
-#define RXACT_MSG_SUCCESS	'S'
-#define RXACT_MSG_FAILED	'F'
-#define RXACT_MSG_CHANGE	'G'
-#define RXACT_MSG_OK		'K'
-#define RXACT_MSG_ERROR		'E'
-#define RXACT_MSG_NODE_INFO	'I'
+#define RXACT_MSG_CONNECT		'C'
+#define RXACT_MSG_DO			'D'
+#define RXACT_MSG_SUCCESS		'S'
+#define RXACT_MSG_FAILED		'F'
+#define RXACT_MSG_CHANGE		'G'
+#define RXACT_MSG_OK			'K'
+#define RXACT_MSG_ERROR			'E'
+#define RXACT_MSG_NODE_INFO		'I'
+#define RXACT_MSG_UPDATE_NODE	'U'
 
 #define RXACT_TYPE_IS_VALID(t) (t == RX_PREPARE || t == RX_COMMIT || t == RX_ROLLBACK)
 
@@ -168,7 +171,7 @@ static void rxact_agent_connect(RxactAgent *agent, StringInfo msg);
 static void rxact_agent_do(RxactAgent *agent, StringInfo msg);
 static void rxact_agent_mark(RxactAgent *agent, StringInfo msg, bool success);
 static void rxact_agent_change(RxactAgent *agent, StringInfo msg);
-static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg);
+static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_update);
 /* if any oid unknown, get it from backend */
 static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count);
 
@@ -182,7 +185,7 @@ static void
 rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid, bool is_redo);
 static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, bool is_redo);
 static void rxact_change_gid(const char *gid, RemoteXactType type, bool is_redo);
-static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool update, bool is_redo);
+static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool is_redo);
 
 /* 2pc redo functions */
 static void rxact_2pc_do(void);
@@ -442,7 +445,7 @@ static void RemoteXactMgrInit(void)
 		, 64, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 
 	/* insert AGTM info */
-	rxact_insert_node_info(AGTM_OID, (short)AGtmPort, AGtmHost, false, true);
+	rxact_insert_node_info(AGTM_OID, (short)AGtmPort, AGtmHost, true);
 
 	/* create HTAB for NodeConn */
 	Assert(htab_node_conn == NULL);
@@ -603,7 +606,7 @@ static void RxactLoadLog(void)
 				continue;
 			}
 			rxact_insert_node_info(rnode.nodeOid, rnode.nodePort
-				, rnode.nodeHost, false, true);
+				, rnode.nodeHost, true);
 		}
 		rxact_end_read_log(rlog);
 	}
@@ -849,12 +852,29 @@ rxact_agent_input(RxactAgent *agent)
 			rxact_agent_change(agent, &s);
 			break;
 		case RXACT_MSG_NODE_INFO:
-			rxact_agent_node_info(agent, &s);
+			rxact_agent_node_info(agent, &s, false);
+			break;
+		case RXACT_MSG_UPDATE_NODE:
+			rxact_agent_node_info(agent, &s, true);
 			break;
 		default:
-			ereport(ERROR, (errmsg("unknown message type %d", qtype)));
+			PG_TRY();
+			{
+				ereport(ERROR, (errmsg("unknown message type %d", qtype)));
+			}PG_CATCH();
+			{
+				rxact_agent_destroy(agent);
+				PG_RE_THROW();
+			}PG_END_TRY();
 		}
-		rxact_get_msg_end(&s);
+		PG_TRY();
+		{
+			rxact_get_msg_end(&s);
+		}PG_CATCH();
+		{
+			rxact_agent_destroy(agent);
+			PG_RE_THROW();
+		}PG_END_TRY();
 	}
 	error_context_stack = err_calback.previous;
 }
@@ -991,13 +1011,31 @@ static void rxact_agent_change(RxactAgent *agent, StringInfo msg)
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
 }
 
-static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg)
+static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_update)
 {
 	const char *address;
+	List *oid_list;
 	int i,count;
 	Oid oid;
 	short port;
 	AssertArg(agent && msg);
+
+	if(is_update)
+	{
+		RemoteNode *rnode;
+		HASH_SEQ_STATUS seq_status;
+		/* delete old info */
+		hash_seq_init(&seq_status, htab_remote_node);
+		while((rnode = hash_seq_search(&seq_status)) != NULL)
+		{
+			if(rnode->nodeOid != AGTM_OID)
+				hash_search(htab_remote_node, &(rnode->nodeOid), HASH_REMOVE, NULL);
+		}
+
+		Assert(rxlf_remote_node != -1);
+		FileTruncate(rxlf_remote_node, 0);
+		oid_list = NIL;
+	}
 
 	count = rxact_get_int(msg);
 	for(i=0;i<count;++i)
@@ -1005,10 +1043,39 @@ static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg)
 		oid = (Oid)rxact_get_int(msg);
 		port = rxact_get_short(msg);
 		address = rxact_get_string(msg);
-		rxact_insert_node_info(oid, port, address, false, false);
+		rxact_insert_node_info(oid, port, address, false);
+		if(is_update)
+			oid_list = lappend_oid(oid_list, oid);
 	}
 	FileSync(rxlf_remote_node);
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
+
+	if(is_update)
+	{
+		/* disconnect remote */
+		NodeConn *pconn;
+		ListCell *lc;
+		HASH_SEQ_STATUS seq_status;
+		hash_seq_init(&seq_status, htab_node_conn);
+		while((pconn = hash_seq_search(&seq_status)) != NULL)
+		{
+			foreach(lc, oid_list)
+			{
+				if(pconn->oids.node_oid == lfirst_oid(lc))
+				{
+					if(pconn->conn != NULL)
+					{
+						PQfinish(pconn->conn);
+						pconn->conn = NULL;
+					}
+					pconn->last_use = (time_t)0;
+					pconn->conn_interval = 0;
+					break;
+				}
+			}
+		}
+		list_free(oid_list);
+	}
 }
 
 /* if any oid unknown, get it from backend */
@@ -1256,7 +1323,7 @@ static void rxact_change_gid(const char *gid, RemoteXactType type, bool is_redo)
 	}
 }
 
-static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool update, bool is_redo)
+static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool is_redo)
 {
 	RemoteNode *rnode;
 	bool found;
@@ -1274,13 +1341,14 @@ static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool u
 			Assert(rxlf_remote_node != -1);
 			rxact_log_simple_write(rxlf_remote_node, rnode, sizeof(*rnode));
 		}
-	}else if(update)
+	}else
 	{
-		ereport(ERROR, (errmsg("not support yet!")));
-		/* TODO update log file */
-		Assert(rnode && rnode->nodeOid == oid);
-		rnode->nodePort = (uint16)port;
-		strncpy(rnode->nodeHost, addr, sizeof(rnode->nodeHost)-1);
+		if(rnode->nodePort != (uint16)port
+			|| strcmp(rnode->nodeHost, addr) != 0)
+		{
+			ereport(WARNING, (errmsg("remote node %d info conflict, use old info", oid)
+				, errhint("old:%s:%u, new:%s:%u", rnode->nodeHost, (unsigned)rnode->nodePort, addr, (unsigned)port)));
+		}
 	}
 }
 
@@ -2113,6 +2181,42 @@ static void connect_rxact(void)
 			, errmsg("Can not connect to RXACT manager:%m")));
 	}
 	send_msg_to_rxact(&buf);
+	recv_msg_from_rxact(&buf);
+	pfree(buf.data);
+}
+
+void RemoteXactReloadNode(void)
+{
+	Form_pgxc_node xc_node;
+	HeapTuple tuple;
+	HeapScanDesc scan;
+	Relation rel;
+	StringInfoData buf;
+	int count,offset;
+
+	if(rxact_client_fd == PGINVALID_SOCKET)
+		connect_rxact();
+
+	rel = heap_open(PgxcNodeRelationId, AccessShareLock);
+	scan = heap_beginscan(rel, SnapshotSelf, 0, NULL);
+
+	rxact_begin_msg(&buf, RXACT_MSG_UPDATE_NODE);
+	offset = buf.len;
+	rxact_put_int(&buf, 0);
+	count = 0;
+	while((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		xc_node = (Form_pgxc_node)GETSTRUCT(tuple);
+		rxact_put_int(&buf, (int)HeapTupleGetOid(tuple));
+		rxact_put_short(&buf, (short)(xc_node->node_port));
+		rxact_put_string(&buf, NameStr(xc_node->node_host));
+		++count;
+	}
+	heap_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	memcpy(buf.data + offset, &count, 4);
+	send_msg_to_rxact(&buf);
+
 	recv_msg_from_rxact(&buf);
 	pfree(buf.data);
 }

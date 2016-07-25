@@ -17,6 +17,9 @@
 #include "miscadmin.h"
 #include "libpq/pqsignal.h"
 
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif /* ADB */
 #include "pgxc/pgxc.h"
 #include "nodes/nodes.h"
 #include "pgxc/poolmgr.h"
@@ -102,6 +105,10 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 	/* A Datanode has no pooler active, so do not bother about that */
 	if (IS_PGXC_DATANODE)
 		PG_RETURN_BOOL(true);
+
+#ifdef ADB
+	RemoteXactReloadNode();
+#endif /* ADB */
 
 	/* Take a lock on pooler to forbid any action during reload */
 	PoolManagerLock(true);
