@@ -72,6 +72,7 @@ static void mgr_set_nodeinit_true(void);
 static void mgr_add_agtm_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
 static void mgr_reload_hbaconf(Oid hostoid, char *nodepath);
+static bool mgr_start_one_gtm_master(void);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -978,6 +979,49 @@ Datum mgr_start_gtm_master(PG_FUNCTION_ARGS)
 {
 	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_START_MASTER, fcinfo, takeplaparm_n);
 }
+
+/*
+* start one gtm master
+*/
+static bool mgr_start_one_gtm_master(void)
+{
+	GetAgentCmdRst getAgentCmdRst;
+	HeapTuple tup_result;
+	HeapTuple aimtuple = NULL;
+	ScanKeyData key[0];
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(GTM_TYPE_GTM_MASTER));
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((aimtuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		break;
+	}
+	if (!HeapTupleIsValid(aimtuple))
+	{
+		elog(ERROR, "cache lookup failed for gtm master");
+	}
+	/*get execute cmd result from agent*/
+	initStringInfo(&(getAgentCmdRst.description));
+	//tupleret = heap_copytuple(aimtuple);
+	mgr_runmode_cndn_get_result(AGT_CMD_GTM_START_MASTER, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
+	tup_result = build_common_command_tuple(
+		&(getAgentCmdRst.nodename)
+		, getAgentCmdRst.ret
+		, getAgentCmdRst.description.data);
+	heap_endscan(rel_scan);
+	heap_close(rel_node, RowExclusiveLock);
+	pfree(getAgentCmdRst.description.data);
+
+	return getAgentCmdRst.ret;
+}
+
 /*
 * start gtm slave
 */
@@ -1059,8 +1103,10 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Form_mgr_node mgr_node_gtm;
 	Datum datumPath;
 	Datum DatumStopDnMaster;
+	Datum DatumMaster;
 	StringInfoData buf;
 	StringInfoData infosendmsg;
+	StringInfoData strinfoport;
 	ManagerAgent *ma;
 	bool isNull = false,
 		execok = false,
@@ -1083,6 +1129,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Oid	masterhostOid;
 	bool getmaster = false;
 	bool isprimary = false;
+	bool ismasterrunning = 0;
 	ScanKeyData key[1];
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
@@ -1215,6 +1262,16 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		appendStringInfo(&infosendmsg, " -D %s", cndnPath);
 		appendStringInfo(&infosendmsg, " -x");
 		ReleaseSysCache(gtmmastertuple);
+		/*check it need start gtm master*/
+		initStringInfo(&strinfoport);
+		appendStringInfo(&strinfoport, "%d", masterport);
+		ismasterrunning = pingNode(masterhostaddress, strinfoport.data);
+		pfree(strinfoport.data);	
+		if(ismasterrunning != 0)
+		{
+			if(!mgr_start_one_gtm_master())
+				elog(ERROR, "start gtm master \"%s\" fail", mastername);			
+		}
 	}
 	else if (AGT_CMD_GTM_START_MASTER == cmdtype || AGT_CMD_GTM_START_SLAVE == cmdtype)
 	{
@@ -1271,6 +1328,17 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Assert(execok == getAgentCmdRst->ret);
 	ma_close(ma);
 	
+	if (AGT_CMD_GTM_SLAVE_INIT == cmdtype)
+	{
+		/*stop gtm master if we start it*/
+		if(ismasterrunning != 0)
+		{
+			/*it need stop gtm master*/
+			DatumMaster = DirectFunctionCall1(mgr_stop_one_gtm_master, (Datum)0);
+			if(DatumGetObjectId(DatumMaster) == InvalidOid)
+				elog(ERROR, "stop gtm master \"%s\" fail", mastername);
+		}
+	}
 	/*when init, 1. update gtm system table's column to set initial is true 2. refresh postgresql.conf*/
 	if (execok && AGT_CMD_GTM_INIT == cmdtype)
 	{
@@ -1285,7 +1353,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(GTM_TYPE_GTM_MASTER, &infosendmsg);
+		mgr_add_parameters_hbaconf(aimtuple, GTM_TYPE_GTM_MASTER, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
 	/*when init, 1. update gtm system table's column to set initial is true 2. refresh postgresql.conf*/
@@ -1302,7 +1370,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(GTM_TYPE_GTM_MASTER, &infosendmsg);
+		mgr_add_parameters_hbaconf(aimtuple, GTM_TYPE_GTM_MASTER, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh recovry.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -1324,7 +1392,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(nodetype, &infosendmsg);
+		mgr_add_parameters_hbaconf(aimtuple, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
 	/*failover execute success*/
@@ -2349,6 +2417,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	PGconn *pg_conn;
 	PGresult *res;
 	HeapTuple tup_result;
+	HeapTuple aimtuple = NULL;
 	char coordport_buf[10];
 
 	initStringInfo(&(getAgentCmdRst.description));
@@ -2377,8 +2446,8 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	/* step 3: update datanode master's pg_hba.conf */
 	resetStringInfo(&(getAgentCmdRst.description));
 	resetStringInfo(&infosendmsg);
-	mgr_add_parameters_hbaconf(CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
-    mgr_add_oneline_info_pghbaconf(2, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+	mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+	mgr_add_oneline_info_pghbaconf(2, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 							appendnodeinfo.nodepath,
 							&infosendmsg,
@@ -3857,6 +3926,7 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid mastero
 		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s", masterhostaddress, masterport, username, "slave");
 	else
 		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s", masterhostaddress, masterport, username, "extern");
+	mgr_append_pgconf_paras_str_str("recovery_target_timeline", "latest", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("standby_mode", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, infosendparamsg);
 	pfree(primary_conninfo_value.data);
@@ -3865,16 +3935,20 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid mastero
 
 /*
 * the parameters which need refresh for pg_hba.conf
+* gtm : include all gtm master/slave/extern ip and all coordinators ip and datanode masters ip
+* coordinator: include all coordinators ip
+* datanode master: include all coordinators ip
 */
-void mgr_add_parameters_hbaconf(char nodetype, StringInfo infosendhbamsg)
+void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo infosendhbamsg)
 {
 	Relation rel_node;
 	HeapScanDesc rel_scan;
 	Oid hostoid;
 	char *cnuser;
 	char *cnaddress;
-	Form_mgr_node mgr_node;	
+	Form_mgr_node mgr_node;
 	HeapTuple tuple;
+	Oid masterOid;
 	
 	/*get all coordinator master ip*/
 	if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
@@ -3913,13 +3987,15 @@ void mgr_add_parameters_hbaconf(char nodetype, StringInfo infosendhbamsg)
 			cnuser = get_hostuser_from_hostoid(hostoid);
 			/*get coordinator address*/
 			cnaddress = get_hostaddress_from_hostoid(hostoid);
-			if(CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype && CNDN_TYPE_DATANODE_MASTER == nodetype)
+			if ( (CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype && CNDN_TYPE_DATANODE_MASTER == nodetype)
+				|| ((GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTERN == mgr_node->nodetype) && GTM_TYPE_GTM_MASTER == nodetype) )
 			{
-				mgr_add_oneline_info_pghbaconf(2, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
-			}
-			else if (GTM_TYPE_GTM_SLAVE == mgr_node->nodetype && GTM_TYPE_GTM_MASTER == nodetype)
-			{
-				mgr_add_oneline_info_pghbaconf(2, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				if(HeapTupleIsValid(aimtuple))
+				{
+					masterOid = HeapTupleGetOid(aimtuple);
+					if (masterOid == mgr_node->nodemasternameoid)
+						mgr_add_oneline_info_pghbaconf(2, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				}
 			}
 			pfree(cnuser);
 			pfree(cnaddress);
@@ -3929,6 +4005,18 @@ void mgr_add_parameters_hbaconf(char nodetype, StringInfo infosendhbamsg)
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
 			if (CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
+			{
+				/*hostoid*/
+				hostoid = mgr_node->nodehost;
+				/*database user for this coordinator*/
+				cnuser = get_hostuser_from_hostoid(hostoid);
+				/*get address*/
+				cnaddress = get_hostaddress_from_hostoid(hostoid);
+				mgr_add_oneline_info_pghbaconf(2, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				pfree(cnuser);
+				pfree(cnaddress);
+			}
+			else if (CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype && GTM_TYPE_GTM_MASTER == nodetype)
 			{
 				/*hostoid*/
 				hostoid = mgr_node->nodehost;

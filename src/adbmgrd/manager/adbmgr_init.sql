@@ -408,7 +408,7 @@ AS
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in timestamptz, in int)
 		RETURNS TABLE
 	(
-		timetmp timestamptz(0),
+		time timestamptz(0),
 		tps int,
 		qps int
 	)
