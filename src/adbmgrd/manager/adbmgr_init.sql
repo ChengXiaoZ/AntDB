@@ -357,7 +357,7 @@ GROUP BY monitor_databaseitem_time ) AS b on a.row_number = b.row_number;
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 	RETURNS TABLE
 	(
-		timetmp timestamptz(0),
+		recordtime timestamptz(0),
 		tps  bigint,
 		qps  bigint,
 		connectnum bigint,
@@ -366,7 +366,7 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
 	)
 	AS 
 	$$
-	SELECT time, tps, qps, connectnum, dbsize, indexsize
+	SELECT time as recordtime, tps, qps, connectnum, dbsize, indexsize
 	FROM 
 		adbmgr.monitor_cluster_fouritem_v
 	$$
@@ -408,13 +408,13 @@ AS
 CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in timestamptz, in int)
 		RETURNS TABLE
 	(
-		time timestamptz(0),
+		recordtime timestamptz(0),
 		tps int,
 		qps int
 	)
 	AS 
 		$$
-	SELECT monitor_databasetps_time::timestamptz(0) AS time,
+	SELECT monitor_databasetps_time::timestamptz(0) AS recordtime,
 				monitor_databasetps_tps   AS tps,
 				monitor_databasetps_qps   AS qps
 	FROM 
