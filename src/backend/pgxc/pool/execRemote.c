@@ -1767,9 +1767,11 @@ pgxc_node_remote_prepare(const char *gid)
 			BufferConnection(connections[i]);
 
 		/* Clean the previous errors, if any */
-		connections[i]->error = NULL;
 #ifdef ADB
+		FreeHandleError(connections[i]);
 		connections[i]->combiner = NULL;
+#else
+		connections[i]->error = NULL;
 #endif
 
 		/*
@@ -1934,9 +1936,11 @@ pgxc_node_remote_commit(const char *gid, bool missing_ok)
 			   remoteXactState.remoteNodeStatus[i] == RXACT_NODE_NONE);
 
 		/* Clean the previous errors, if any */
-		connections[i]->error = NULL;
 #ifdef ADB
+		FreeHandleError(connections[i]);
 		connections[i]->combiner = NULL;
+#else
+		connections[i]->error = NULL;
 #endif
 
 		if (pgxc_node_send_query(connections[i], command.data))
@@ -2077,8 +2081,12 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 			   remoteXactState.remoteNodeStatus[i] == RXACT_NODE_NONE);
 
 		/* Clean the previous errors, if any */
-		connections[i]->error = NULL;
+#ifdef ADB
+		FreeHandleError(connections[i]);
 		connections[i]->combiner = NULL;
+#else
+		connections[i]->error = NULL;
+#endif
 
 		if (pgxc_node_send_query(connections[i], command.data))
 		{

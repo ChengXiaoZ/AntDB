@@ -112,6 +112,15 @@ struct pgxc_node_handle
 };
 typedef struct pgxc_node_handle PGXCNodeHandle;
 
+#ifdef ADB
+#define FreeHandleError(handle)								\
+	do {													\
+		if (((PGXCNodeHandle *) (handle))->error)			\
+			pfree(((PGXCNodeHandle *) (handle))->error);	\
+		((PGXCNodeHandle *) (handle))->error = NULL;		\
+	} while (0)
+#endif
+
 /* Structure used to get all the handles involved in a transaction */
 typedef struct
 {

@@ -359,9 +359,7 @@ pgxc_node_free(PGXCNodeHandle *handle)
 	close(handle->sock);
 	handle->sock = NO_SOCKET;
 	handle->state = DN_CONNECTION_STATE_IDLE;
-	if (handle->error)
-		pfree(handle->error);
-	handle->error = NULL;
+	FreeHandleError(handle);
 	if(handle->file_data)
 	{
 		char file_name[20];
@@ -1011,7 +1009,11 @@ clear_all_data(void)
 			handle->state = DN_CONNECTION_STATE_IDLE;
 		}
 		/* Clear any previous error messages */
+#ifdef ADB
+		FreeHandleError(handle);
+#else
 		handle->error = NULL;
+#endif
 	}
 
 	/* Collect Coordinator handles */
@@ -1025,7 +1027,11 @@ clear_all_data(void)
 			handle->state = DN_CONNECTION_STATE_IDLE;
 		}
 		/* Clear any previous error messages */
+#ifdef ADB
+		FreeHandleError(handle);
+#else
 		handle->error = NULL;
+#endif
 	}
 }
 
@@ -1903,7 +1909,7 @@ add_error_message(PGXCNodeHandle *handle, const char *fmt, ...)
 		/* PGXCTODO append */
 	} else
 	{
-		handle->error = pstrdup(buf.data);
+		handle->error = MemoryContextStrdup(TopMemoryContext, buf.data);
 	}
 
 	pfree(buf.data);
@@ -1971,7 +1977,7 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 			{
 				node_handle = &dn_handles[i];
 #ifdef ADB
-				node_handle->error = NULL;
+				FreeHandleError(node_handle);
 #endif
 				result->datanode_handles[i] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
@@ -2008,7 +2014,7 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 
 				node_handle = &dn_handles[node];
 #ifdef ADB
-				node_handle->error = NULL;
+				FreeHandleError(node_handle);
 #endif
 				result->datanode_handles[i++] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
@@ -2043,7 +2049,7 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 			{
 				node_handle = &co_handles[i];
 #ifdef ADB
-				node_handle->error = NULL;
+				FreeHandleError(node_handle);
 #endif
 				result->coord_handles[i] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
@@ -2080,7 +2086,7 @@ get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 
 				node_handle = &co_handles[node];
 #ifdef ADB
-				node_handle->error = NULL;
+				FreeHandleError(node_handle);
 #endif
 				result->coord_handles[i++] = node_handle;
 				if (node_handle->sock == NO_SOCKET)
