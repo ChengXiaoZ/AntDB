@@ -4207,7 +4207,30 @@ void mgr_mark_node_in_cluster(Relation rel)
 */
 Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_SLAVE_FAILOVER, fcinfo, takeplaparm_n);
+	Relation rel;
+	HeapScanDesc scan;
+	HeapTuple tuple;
+	ScanKeyData key[1];
+	bool getgtmslave = false;
+	
+	/*check the node systbl has gtm slave, if not, use gtm extern*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(GTM_TYPE_GTM_SLAVE));
+	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		getgtmslave = true;
+	}
+	heap_endscan(scan);
+	heap_close(rel, RowExclusiveLock);
+	if (getgtmslave)
+		return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_SLAVE_FAILOVER, fcinfo, takeplaparm_n);
+	else
+		return mgr_runmode_cndn(GTM_TYPE_GTM_EXTERN, AGT_CMD_GTM_SLAVE_FAILOVER, fcinfo, takeplaparm_n);
 	
 }
 
@@ -4233,6 +4256,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Oid hostOidtmp;
 	Oid hostOid;
 	Oid nodemasternameoid;
+	Oid newgtmtupleoid;
 	Datum datumPath;
 	Datum DatumStopDnMaster;
 	bool isNull;
@@ -4243,12 +4267,14 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 
 
 	initStringInfo(&infosendmsg);
+	newgtmtupleoid = HeapTupleGetOid(aimtuple);
 	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 	Assert(mgr_node);
 	hostOid = mgr_node->nodehost;
 	nodemasternameoid = mgr_node->nodemasternameoid;
 	/*get nodename*/
 	cndnname = NameStr(mgr_node->nodename);
+	
 	/*0.refresh all coordinator/datanode postgresql.conf:agtm_port,agtm_host*/
 	/*get agtm_port,agtm_host*/
 	resetStringInfo(&infosendmsg);
@@ -4301,6 +4327,22 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	mgr_node->nodetype = GTM_TYPE_GTM_MASTER;
 	mgr_node->nodemasternameoid = 0;
 	heap_inplace_update(noderel, aimtuple);
+	
+	/*update gtm extern nodemasternameoid*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(GTM_TYPE_GTM_EXTERN));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_nodetmp);
+		mgr_nodetmp->nodemasternameoid = newgtmtupleoid;
+		heap_inplace_update(noderel, tuple);
+	}
+	heap_endscan(rel_scan);
 	/*4. refresh postgresql.conf*/
 	resetStringInfo(&infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
