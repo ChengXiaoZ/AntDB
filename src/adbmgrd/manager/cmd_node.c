@@ -60,8 +60,8 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
 static void mgr_get_appendnodeinfo(AppendNodeInfo *appendnodeinfo);
 static void mgr_append_init_dnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
-static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport);
-static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport);
+static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo);
+static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport, Oid dnmasteroid);
 static void mgr_start_dn_master_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_pg_dumpall_input_dn_master(const Oid dn_master_oid, const int32 dn_master_port);
 static void mgr_rm_dumpall_temp_file(Oid dnhostoid);
@@ -71,6 +71,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 static void mgr_set_nodeinit_true(void);
 static void mgr_add_agtm_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
+static void mgr_reload_hbaconf(Oid hostoid, char *nodepath);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -2343,11 +2344,11 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	Oid coordhostoid;
 	int32 coordport;
 	char *coordhost;
-    Oid dnhostoid;
-    int32 dnport;
-    PGconn *pg_conn;
-    PGresult *res;
-    HeapTuple tup_result;
+	Oid dnhostoid;
+	int32 dnport;
+	PGconn *pg_conn;
+	PGresult *res;
+	HeapTuple tup_result;
 	char coordport_buf[10];
 
 	initStringInfo(&(getAgentCmdRst.description));
@@ -2357,10 +2358,8 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
 	Assert(appendnodeinfo.nodename);
 	mgr_get_appendnodeinfo(&appendnodeinfo);
-    
+
 	namestrcpy(&(getAgentCmdRst.nodename), appendnodeinfo.nodename);
-
-
 
 	/* step 1: init workdir */
 	mgr_append_init_dnmaster(&appendnodeinfo);
@@ -2385,44 +2384,44 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 							&infosendmsg,
 							appendnodeinfo.nodehost,
 							&getAgentCmdRst);
-    /* add host line for agtm */
-    mgr_add_agtm_hbaconf(GTM_TYPE_GTM_MASTER, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
-    mgr_add_agtm_hbaconf(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
-    mgr_add_agtm_hbaconf(GTM_TYPE_GTM_EXTERN, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	/* add host line for agtm */
+	mgr_add_agtm_hbaconf(GTM_TYPE_GTM_MASTER, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	mgr_add_agtm_hbaconf(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	mgr_add_agtm_hbaconf(GTM_TYPE_GTM_EXTERN, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
 
 	/* step 4: block all the DDL lock */
-	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport);
+	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo);
 	coordhost = get_hostaddress_from_hostoid(coordhostoid);
 	sprintf(coordport_buf, "%d", coordport);
-    pg_conn = PQsetdbLogin(coordhost
-                            ,coordport_buf
-                            ,NULL, NULL
-                            ,DEFAULT_DB
-                            ,appendnodeinfo.nodeusername
-                            ,NULL);
-    
-    if (pg_conn == NULL || PQstatus((PGconn*)pg_conn) != CONNECTION_OK)
-    {
-        PQfinish(pg_conn);
-        pg_conn = NULL;
+	pg_conn = PQsetdbLogin(coordhost
+							,coordport_buf
+							,NULL, NULL
+							,DEFAULT_DB
+							,appendnodeinfo.nodeusername
+							,NULL);
 
-        ereport(ERROR,
-            (errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)pg_conn)),
-             errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
-                coordhost, coordport, DEFAULT_DB, appendnodeinfo.nodeusername)));
-    }
-    
-    res = PQexec(pg_conn, "select pgxc_lock_for_backup();");
+	if (pg_conn == NULL || PQstatus((PGconn*)pg_conn) != CONNECTION_OK)
+	{
+		PQfinish(pg_conn);
+		pg_conn = NULL;
+	
+		ereport(ERROR,
+			(errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)pg_conn)),
+			errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
+				coordhost, coordport, DEFAULT_DB, appendnodeinfo.nodeusername)));
+	}
+
+	res = PQexec(pg_conn, "select pgxc_lock_for_backup();");
 	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-        ereport(ERROR,
-            (errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)pg_conn)),
-             errhint("execute command failed: select pgxc_lock_for_backup().")));
+	ereport(ERROR,
+		(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)pg_conn)),
+		errhint("execute command failed: select pgxc_lock_for_backup().")));
 	}
 
 	/* step 5: dumpall catalog message */
-	mgr_get_active_hostoid_and_port(CNDN_TYPE_DATANODE_MASTER, &dnhostoid, &dnport);
-	mgr_pg_dumpall_from_dnmaster(dnhostoid, dnport);
+	mgr_get_active_hostoid_and_port(CNDN_TYPE_DATANODE_MASTER, &dnhostoid, &dnport, &appendnodeinfo);
+	mgr_pg_dumpall_from_dnmaster(dnhostoid, dnport, appendnodeinfo.nodehost);
 
 	/* step 6: start the datanode master with restoremode mode, and input all catalog message */
 	mgr_start_dn_master_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -2444,59 +2443,59 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	mgr_set_nodeinit_true();
 	pfree(coordhost);
 
-    getAgentCmdRst.ret = 0;
-    
+	getAgentCmdRst.ret = 0;
+
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
-        ,getAgentCmdRst.ret == 0 ? true:false
-        ,getAgentCmdRst.ret == 0 ? "sucess":"not sucess");
-    
+		,getAgentCmdRst.ret == 0 ? true:false
+		,getAgentCmdRst.ret == 0 ? "success":"not success");
+
 	return HeapTupleGetDatum(tup_result);
 }
 
 static void mgr_add_agtm_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 {
 
-    InitNodeInfo *info;
-    ScanKeyData key[2];
+	InitNodeInfo *info;
+	ScanKeyData key[2];
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData  infosendmsg;
-    HeapTuple tuple;
-    Datum datumPath;
-    bool isNull;
-    Form_mgr_node mgr_node;
+	HeapTuple tuple;
+	Datum datumPath;
+	bool isNull;
+	Form_mgr_node mgr_node;
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
 
-    ScanKeyInit(&key[0]
-                ,Anum_mgr_node_nodetype
-                ,BTEqualStrategyNumber
-                ,F_CHAREQ
-                ,CharGetDatum(nodetype));
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(nodetype));
 
-    ScanKeyInit(&key[1]
-                ,Anum_mgr_node_nodeinited
-                ,BTEqualStrategyNumber
-                ,F_BOOLEQ
-                ,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
 
-    info = palloc(sizeof(*info));
-    info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-    info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
-    info->lcp =NULL;
+	info = palloc(sizeof(*info));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	info->lcp =NULL;
 
-    tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
-    if(tuple == NULL)
-    {
-        /* end of row */
-        heap_endscan(info->rel_scan);
-        heap_close(info->rel_node, RowExclusiveLock);
-        pfree(info);
-        return ;
-    }
+	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tuple == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return ;
+	}
 
-    mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-    Assert(mgr_node);
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
 
 	/*get nodepath from tuple*/
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
@@ -2507,16 +2506,56 @@ static void mgr_add_agtm_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 			, errmsg("column nodepath is null")));
 	}
 
-    mgr_add_oneline_info_pghbaconf(2, "all", dnusername, dnaddr, 32, "trust", &infosendmsg);
+	mgr_add_oneline_info_pghbaconf(2, "all", dnusername, dnaddr, 32, "trust", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 							TextDatumGetCString(datumPath),
 							&infosendmsg,
 							mgr_node->nodehost,
 							&getAgentCmdRst);
 
-    heap_endscan(info->rel_scan);
-    heap_close(info->rel_node, AccessShareLock);
-    pfree(info);
+	mgr_reload_hbaconf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+}
+
+static void mgr_reload_hbaconf(Oid hostoid, char *nodepath)
+{
+	ManagerAgent *ma;
+	StringInfoData sendstrmsg, buf;
+	GetAgentCmdRst getAgentCmdRst;
+	bool execok;
+
+	initStringInfo(&sendstrmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	appendStringInfo(&sendstrmsg, " reload -D %s", nodepath); /* pg_ctl reload -D pathdir */
+
+	ma = ma_connect_hostoid(hostoid);
+	if(!ma_isconnected(ma))
+	{
+		/* report error message */
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		return;
+	}
+	getAgentCmdRst.ret = false;
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_NODE_RELOAD);
+	mgr_append_infostr_infostr(&buf, &sendstrmsg);
+	pfree(sendstrmsg.data);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
+	{
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
+		return;
+	}
+	/*check the receive msg*/
+	execok = mgr_recv_msg(ma, &getAgentCmdRst);
+	Assert(execok == getAgentCmdRst.ret);
+	ma_close(ma);
 }
 
 static void mgr_set_nodeinit_true(void)
@@ -2548,7 +2587,7 @@ static void mgr_set_nodeinit_true(void)
 	{
 		/* end of row */
 		heap_endscan(info->rel_scan);
-		heap_close(info->rel_node, RowExclusiveLock);
+		heap_close(info->rel_node, AccessShareLock);
 		pfree(info);
 		return ;
 	}
@@ -2557,7 +2596,7 @@ static void mgr_set_nodeinit_true(void)
 	Assert(mgr_node);
 
 	mgr_node->nodeinited = true;
-    mgr_node->nodeincluster = true;
+	mgr_node->nodeincluster = true;
 	heap_inplace_update(info->rel_node, tuple);
 
 	heap_endscan(info->rel_scan);
@@ -2853,7 +2892,7 @@ static void mgr_start_dn_master_with_restoremode(const char *nodepath, Oid hosto
 	ma_close(ma);
 }
 
-static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport)
+static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport, Oid dnmasteroid)
 {
 	StringInfoData pg_dumpall_cmd;
 	StringInfoData buf;
@@ -2870,7 +2909,7 @@ static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport)
 	appendStringInfo(&pg_dumpall_cmd, " -h %s -p %d -s --include-nodes --dump-nodes -f %s", hostaddr, hostport, PG_DUMPALL_TEMP_FILE);
 
 	/* connection agent */
-	ma = ma_connect_hostoid(hostoid);
+	ma = ma_connect_hostoid(dnmasteroid);
 	if (!ma_isconnected(ma))
 	{
 		/* report error message */
@@ -2898,45 +2937,82 @@ static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport)
 	pfree(hostaddr);
 }
 
-static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport)
+static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo)
 {
 	InitNodeInfo *info;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	char * host;
 	StringInfoData port;
 	int ret;
+	bool isNull;
+	Datum datumPath;
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData  infosendmsg;
 
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
 	ScanKeyInit(&key[0]
 				,Anum_mgr_node_nodetype
 				,BTEqualStrategyNumber
 				,F_CHAREQ
 				,CharGetDatum(node_type));
-
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
 	info = palloc(sizeof(*info));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
 	info->lcp =NULL;
 
-	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tuple == NULL)
 	{
-		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_node);
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return ;
+	}
 
-		host = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
 
-		initStringInfo(&port);
-		appendStringInfo(&port, "%d", mgr_node->nodeport);
-		ret = pingNode(host, port.data);
-		if (ret == 0)
+	host = get_hostaddress_from_hostoid(mgr_node->nodehost);
+
+	initStringInfo(&port);
+	appendStringInfo(&port, "%d", mgr_node->nodeport);
+	ret = pingNode(host, port.data);
+	if (ret == 0)
+	{
+		if (hostoid)
+			*hostoid = mgr_node->nodehost;
+		if (hostport)
+			*hostport = mgr_node->nodeport;
+	}
+
+	if (node_type == CNDN_TYPE_DATANODE_MASTER)
+	{
+		/*get nodepath from tuple*/
+		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+		if (isNull)
 		{
-			if (hostoid)
-				*hostoid = mgr_node->nodehost;
-			if (hostport)
-				*hostport = mgr_node->nodeport;
-			return ;
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column nodepath is null")));
 		}
+		mgr_add_oneline_info_pghbaconf(2, "all", appendnodeinfo->nodeusername, appendnodeinfo->nodeaddr,
+										32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								TextDatumGetCString(datumPath),
+								&infosendmsg,
+								mgr_node->nodehost,
+								&getAgentCmdRst);
+		
+		mgr_reload_hbaconf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 	}
 
 	heap_endscan(info->rel_scan);
@@ -3028,7 +3104,7 @@ static void mgr_get_appendnodeinfo(AppendNodeInfo *appendnodeinfo)
 
 	appendnodeinfo->nodetype = mgr_node->nodetype;
 	appendnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-    appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	appendnodeinfo->nodeport = mgr_node->nodeport;
 	appendnodeinfo->nodehost = mgr_node->nodehost;
 

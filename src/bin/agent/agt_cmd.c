@@ -69,6 +69,7 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_DN_FAILOVER:
 	case AGT_CMD_DN_RESTART:
 	case AGT_CMD_CN_RESTART:
+    case AGT_CMD_NODE_RELOAD:
 		cmd_node_init(buf, "pg_ctl", PG_CTL_VERSION);
 		break;
 	case AGT_CMD_PGDUMPALL:

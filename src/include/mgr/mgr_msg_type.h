@@ -46,6 +46,7 @@ typedef enum AgentCommand
 	,AGT_CMD_MONITOR_GETS_HOST_INFO
 	,AGT_CMD_PGDUMPALL
 	,AGT_CMD_RM
+	,AGT_CMD_NODE_RELOAD
 }AgentCommand;
 
 #endif /* MGR_MSG_TYPE_H */
