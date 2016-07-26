@@ -50,8 +50,6 @@
 #define IS_ERR_INTR() (errno == EINTR)
 #endif
 
-#define REMOTE_CONN_INTERVAL_STEP	2	/* connection failure add interval value */
-#define REMOTE_CONN_INTERVAL_MAX	30	/* max connection remote interval (in second)*/
 #define REMOTE_IDLE_TIMEOUT			60	/* close remote connect if it idle in second */
 
 #define RXACT_MSG_CONNECT		'C'
@@ -104,7 +102,8 @@ typedef struct NodeConn
 	PGconn *conn;
 	time_t last_use;	/* when conn != NULL: last use time
 						 * when conn == NULL: next connect time */
-	uint32 conn_interval; /* when connection failure, next connect interval */
+	PostgresPollingStatusType
+			status;
 }NodeConn;
 
 typedef struct GlobalTransactionInfo
@@ -143,6 +142,7 @@ static const char rxlf_directory[] = {"pg_rxlog"};
 static pgsocket rxact_server_fd = PGINVALID_SOCKET;
 static RxactAgent *allRxactAgent = NULL;
 static Index *indexRxactAgent = NULL;
+static int MaxRxactAgent;
 static volatile unsigned int agentCount = 0;
 /*static volatile bool rxact_has_filed_gid = false;*/
 
@@ -190,6 +190,8 @@ static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool i
 /* 2pc redo functions */
 static void rxact_2pc_do(void);
 static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time);
+static bool rxact_check_node_conn(NodeConn *conn);
+static void rxact_finish_node_conn(NodeConn *conn);
 static void rxact_build_2pc_cmd(StringInfo cmd, const char *gid, RemoteXactType type);
 static void rxact_close_timeout_remote_conn(time_t cur_time);
 static bool rxact_enum_log_file(void* context, rxact_log_worker walker);
@@ -202,6 +204,14 @@ static File rxact_log_open_file(const char *log_name, int fileFlags, int fileMod
 static void rxact_check_update_rlog(void);
 static bool oids_is_valid(const Oid *oids, int count);
 
+/* interface for client */
+static void record_rxact_status(const char *gid, RemoteXactType type, bool success);
+static void send_msg_to_rxact(StringInfo buf);
+static void recv_msg_from_rxact(StringInfo buf);
+static bool wait_socket(pgsocket sock, bool wait_send, bool block);
+static void recv_socket(pgsocket sock, StringInfo buf, int max_recv);
+static void connect_rxact(void);
+
 static void
 CreateRxactAgent(pgsocket agent_fd)
 {
@@ -209,14 +219,14 @@ CreateRxactAgent(pgsocket agent_fd)
 	unsigned int i;
 	AssertArg(agent_fd != PGINVALID_SOCKET);
 
-	if(agentCount >= MaxBackends)
+	if(agentCount >= MaxRxactAgent)
 	{
 		closesocket(agent_fd);
 		ereport(WARNING, (errmsg("too many connect for RXACT")));
 	}
 
 	agent = NULL;
-	for(i=0;i<MaxBackends;++i)
+	for(i=0;i<MaxRxactAgent;++i)
 	{
 		if(allRxactAgent[i].index == INVALID_INDEX)
 		{
@@ -251,9 +261,13 @@ static void RxactLoop(void)
 	struct pollfd		*pollfds, *tmpfd;
 	StringInfoData		message;
 	time_t				last_time,cur_time;
+	NodeConn			*pconn;
+	HASH_SEQ_STATUS		seq_status;
 	unsigned int		i, count;
 	Index 				index;
-	int					agent_fd;
+	pgsocket			agent_fd;
+	int					poll_count;
+	int					max_pool;
 
 	Assert(rxact_server_fd != PGINVALID_SOCKET);
 	if(pg_set_noblock(rxact_server_fd) == false)
@@ -261,7 +275,8 @@ static void RxactLoop(void)
 
 	MemoryContextSwitchTo(TopMemoryContext);
 
-	pollfds = palloc(sizeof(pollfds[0]) * (MaxBackends+1));
+	max_pool = MaxRxactAgent+1;
+	pollfds = palloc(sizeof(pollfds[0]) * max_pool);
 	pollfds[0].fd = rxact_server_fd;
 	pollfds[0].events = POLLIN;
 	initStringInfo(&message);
@@ -289,7 +304,7 @@ static void RxactLoop(void)
 		for (i = agentCount; i--;)
 		{
 			index = indexRxactAgent[i];
-			Assert(index >= 0 && index < (Index)MaxBackends);
+			Assert(index >= 0 && index < (Index)MaxRxactAgent);
 			agent = &allRxactAgent[index];
 			Assert(agent->index == index && agent->sock != PGINVALID_SOCKET);
 
@@ -300,9 +315,58 @@ static void RxactLoop(void)
 				pollfds[i+1].events = POLLIN;
 		}
 
+		/* append connecting node sockets */
+		hash_seq_init(&seq_status, htab_node_conn);
+		poll_count = agentCount+1;
+		while((pconn = hash_seq_search(&seq_status)) != NULL)
+		{
+			bool wait_write;
+			if(pconn->conn == NULL)
+				continue;
+			switch(PQstatus(pconn->conn))
+			{
+			case CONNECTION_BAD:
+				rxact_finish_node_conn(pconn);
+				continue;
+			case CONNECTION_OK:
+				continue;
+			default:
+				break;
+			}
+
+			switch(pconn->status)
+			{
+			case PGRES_POLLING_ACTIVE:
+			case PGRES_POLLING_FAILED:
+			case PGRES_POLLING_OK:
+				continue;
+			case PGRES_POLLING_WRITING:
+				wait_write = true;
+				break;
+			case PGRES_POLLING_READING:
+				wait_write = false;
+				break;
+			default:
+				Assert(0);
+			}
+
+			if(poll_count >= max_pool)
+			{
+				START_CRIT_SECTION();
+				max_pool += 16;
+				pollfds = repalloc(pollfds, max_pool*sizeof(pollfds[0]));
+				END_CRIT_SECTION();
+			}
+			pollfds[poll_count].fd = PQsocket(pconn->conn);
+			Assert(pollfds[poll_count].fd != PGINVALID_SOCKET);
+			pollfds[poll_count].events = wait_write ? POLLOUT:POLLIN;
+			pollfds[poll_count].revents = 0;
+			++poll_count;
+		}
+
 re_poll_:
 		/* for we wait 1 second */
-		pollres = poll(pollfds, agentCount+1, 1000);
+		pollres = poll(pollfds, poll_count, 1000);
 		CHECK_FOR_INTERRUPTS();
 
 		if (pollres < 0)
@@ -317,6 +381,26 @@ re_poll_:
 		}
 
 		count = 0;
+		for(i=agentCount+1;i < poll_count && count < (unsigned int)pollres;++i)
+		{
+			tmpfd = &pollfds[i];
+			if(tmpfd->revents == 0)
+				continue;
+
+			hash_seq_init(&seq_status, htab_node_conn);
+			while((pconn = hash_seq_search(&seq_status)) != NULL)
+			{
+				if(tmpfd->fd != PQsocket(pconn->conn))
+					continue;
+
+				pconn->status = PQconnectPoll(pconn->conn);
+
+				++count;
+				hash_seq_term(&seq_status);
+				break;
+			}
+		}
+
 		for(i=agentCount;i && count < (unsigned int)pollres;)
 		{
 			tmpfd = &pollfds[i];
@@ -325,7 +409,7 @@ re_poll_:
 				continue;
 
 			index = indexRxactAgent[i];
-			Assert(index >= 0 && index < (Index)MaxBackends);
+			Assert(index >= 0 && index < (Index)MaxRxactAgent);
 			agent = &allRxactAgent[index];
 			Assert(agent->index == index);
 			Assert(agent->sock != PGINVALID_SOCKET && agent->sock == tmpfd->fd);
@@ -412,6 +496,7 @@ static void RemoteXactMgrInit(void)
 	HASHCTL hctl;
 	unsigned int i;
 
+	MaxRxactAgent = MaxBackends * 2;
 	START_CRIT_SECTION();
 
 	/* init listen socket */
@@ -470,14 +555,14 @@ static void RemoteXactMgrInit(void)
 		, &hctl, HASH_ELEM | HASH_CONTEXT);
 
 	Assert(agentCount == 0);
-	allRxactAgent = palloc(sizeof(allRxactAgent[0]) * MaxBackends);
-	for(i=0;i<MaxBackends;++i)
+	allRxactAgent = palloc(sizeof(allRxactAgent[0]) * MaxRxactAgent);
+	for(i=0;i<MaxRxactAgent;++i)
 	{
 		allRxactAgent[i].index = INVALID_INDEX;
 		initStringInfo(&(allRxactAgent[i].in_buf));
 		initStringInfo(&(allRxactAgent[i].out_buf));
 	}
-	indexRxactAgent = palloc(sizeof(indexRxactAgent[0]) * MaxBackends);
+	indexRxactAgent = palloc(sizeof(indexRxactAgent[0]) * MaxRxactAgent);
 
 	MessageContext = AllocSetContextCreate(TopMemoryContext,
 										   "MessageContext",
@@ -592,7 +677,7 @@ static void RxactLoadLog(void)
 	{
 		/* read remote node */
 		RemoteNode rnode;
-		rlog = rxact_begin_read_log(rxlf_db_node);
+		rlog = rxact_begin_read_log(rxlf_remote_node);
 		for(;;)
 		{
 			rxact_log_reset(rlog);
@@ -1064,13 +1149,7 @@ static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_upd
 			{
 				if(pconn->oids.node_oid == lfirst_oid(lc))
 				{
-					if(pconn->conn != NULL)
-					{
-						PQfinish(pconn->conn);
-						pconn->conn = NULL;
-					}
-					pconn->last_use = (time_t)0;
-					pconn->conn_interval = 0;
+					rxact_finish_node_conn(pconn);
 					break;
 				}
 			}
@@ -1460,60 +1539,84 @@ static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 	{
 		conn->conn = NULL;
 		conn->last_use = cur_time;
-		conn->conn_interval = 0;
+		conn->status = PGRES_POLLING_FAILED;
 	}
 
 	Assert(conn && conn->oids.db_oid == db_oid && conn->oids.node_oid == node_oid);
-	if(conn->conn != NULL && PQstatus(conn->conn) != CONNECTION_OK)
-	{
-		PQfinish(conn->conn);
-		conn->conn = NULL;
-	}
+	if(conn->conn != NULL && PQstatus(conn->conn) == CONNECTION_BAD)
+		rxact_finish_node_conn(conn);
 
-	if(conn->conn == NULL && conn->last_use <= cur_time)
+	if(conn->conn == NULL && conn->last_use < cur_time)
 	{
 		/* connection to remote node */
 		RemoteNode *rnode;
 		DatabaseNode *dnode;
-		const char *pgoptions = "-c remotetype=rxactmgr";
-		char port[15];
-		if(conn->conn)
-		{
-			PQfinish(conn->conn);
-			conn->conn = NULL;
-		}
+		StringInfoData buf;
+
 		rnode = hash_search(htab_remote_node, &key.node_oid, HASH_FIND, NULL);
 		dnode = hash_search(htab_db_node, &key.db_oid, HASH_FIND, NULL);
 		if(rnode && dnode)
 		{
-			sprintf(port, "%u", rnode->nodePort);
-			conn->conn = PQsetdbLogin(rnode->nodeHost, port
-				, (key.node_oid == AGTM_OID ? NULL : pgoptions)
-				, NULL
-				, dnode->dbname, dnode->owner, NULL);
-			if(PQstatus(conn->conn) != CONNECTION_OK)
-			{
-				PQfinish(conn->conn);
-				conn->conn = NULL;
-			}
-		}
-
-		/* test connection is successed */
-		if(conn->conn == NULL)
-		{
-			/* connection failed, update next connection time */
-			conn->conn_interval += REMOTE_CONN_INTERVAL_STEP;
-			if(conn->conn_interval > REMOTE_CONN_INTERVAL_MAX)
-				conn->conn_interval = REMOTE_CONN_INTERVAL_MAX;
-			/* do not use "cur_time" value here */
-			conn->last_use = time(NULL) + conn->conn_interval;
-		}else
-		{
-			Assert(PQstatus(conn->conn) == CONNECTION_OK);
+			initStringInfo(&buf);
+			appendStringInfo(&buf, "host='%s' port=%u user='%s' dbname='%s'"
+				,rnode->nodeHost, rnode->nodePort, dnode->owner, dnode->dbname);
+			if(key.node_oid != AGTM_OID)
+				appendStringInfoString(&buf, " options='-c remotetype=rxactmgr'");
+			conn->conn = PQconnectStart(buf.data);
+			conn->status = PGRES_POLLING_WRITING;
+			pfree(buf.data);
 		}
 	}
 
-	return conn;
+	return rxact_check_node_conn(conn) ? conn:NULL;
+}
+
+static bool rxact_check_node_conn(NodeConn *conn)
+{
+	AssertArg(conn);
+	if(conn->conn == NULL)
+		return false;
+	if(PQstatus(conn->conn) == CONNECTION_BAD)
+	{
+		rxact_finish_node_conn(conn);
+		return false;
+	}
+
+re_poll_conn_:
+	switch(conn->status)
+	{
+	case PGRES_POLLING_READING:
+		if(wait_socket(PQsocket(conn->conn), false, false) == false)
+			return false;
+		break;
+	case PGRES_POLLING_WRITING:
+		if(wait_socket(PQsocket(conn->conn), true, false) == false)
+			return false;
+		break;
+	case PGRES_POLLING_OK:
+		conn->last_use = time(NULL);
+		return true;
+	case PGRES_POLLING_FAILED:
+	case PGRES_POLLING_ACTIVE:	/* should be not happen */
+		rxact_finish_node_conn(conn);
+		return false;
+	}
+	conn->status = PQconnectPoll(conn->conn);
+	goto re_poll_conn_;
+
+	return false;
+}
+
+static void rxact_finish_node_conn(NodeConn *conn)
+{
+	AssertArg(conn);
+	if(conn->conn != NULL)
+	{
+		PQfinish(conn->conn);
+		conn->conn = NULL;
+		conn->last_use = time(NULL);
+	}
+	conn->status = PGRES_POLLING_FAILED;
 }
 
 static void rxact_build_2pc_cmd(StringInfo cmd, const char *gid, RemoteXactType type)
@@ -1550,10 +1653,11 @@ static void rxact_close_timeout_remote_conn(time_t cur_time)
 	{
 		if(node_conn->conn == NULL)
 			continue;
-		if(cur_time - node_conn->last_use >= REMOTE_IDLE_TIMEOUT)
+
+		if(PQstatus(node_conn->conn) == CONNECTION_OK
+			&& cur_time - node_conn->last_use >= REMOTE_IDLE_TIMEOUT)
 		{
-			PQfinish(node_conn->conn);
-			node_conn->conn = NULL;
+			rxact_finish_node_conn(node_conn);
 		}
 	}
 }
@@ -1877,12 +1981,6 @@ static bool oids_is_valid(const Oid *oids, int count)
 }
 
 /* ---------------------- interface for xact client --------------------------*/
-static void record_rxact_status(const char *gid, RemoteXactType type, bool success);
-static void send_msg_to_rxact(StringInfo buf);
-static void recv_msg_from_rxact(StringInfo buf);
-static void wait_socket(pgsocket sock, bool wait_send);
-static void recv_socket(pgsocket sock, StringInfo buf, int max_recv);
-static void connect_rxact(void);
 
 void RecordRemoteXact(const char *gid, Oid *nodes, int count, RemoteXactType type)
 {
@@ -1992,7 +2090,7 @@ re_send_:
 		buf->cursor += send_res;
 		if(buf->len > buf->cursor)
 		{
-			wait_socket((pgsocket)rxact_client_fd, true);
+			wait_socket((pgsocket)rxact_client_fd, true, true);
 			goto re_send_;
 		}
 	}PG_CATCH();
@@ -2020,13 +2118,13 @@ re_recv_msg_:
 	{
 		while(buf->len < 5)
 		{
-			wait_socket(rxact_client_fd, false);
+			wait_socket(rxact_client_fd, false, true);
 			recv_socket(rxact_client_fd, buf, 5-buf->len);
 		}
 		len = *(int*)(buf->data);
 		while(buf->len < len)
 		{
-			wait_socket(rxact_client_fd, false);
+			wait_socket(rxact_client_fd, false, true);
 			recv_socket(rxact_client_fd, buf, len-buf->len);
 		}
 
@@ -2115,7 +2213,7 @@ re_recv_:
 	buf->len += recv_res;
 }
 
-static void wait_socket(pgsocket sock, bool wait_send)
+static bool wait_socket(pgsocket sock, bool wait_send, bool block)
 {
 	int ret;
 #ifdef HAVE_POLL
@@ -2124,16 +2222,19 @@ static void wait_socket(pgsocket sock, bool wait_send)
 	poll_fd.events = (wait_send ? POLLOUT : POLLIN) | POLLERR;
 	poll_fd.revents = 0;
 re_poll_:
-	ret = poll(&poll_fd, 1, -1);
+	ret = poll(&poll_fd, 1, block ? -1:0);
 #else
 	fd_set mask;
+	struct timeval tv;
 re_poll_:
+	tv.tv_sec 0;
+	tv.tv_usec = 0;
 	FD_ZERO(&mask);
 	FD_SET(sock, &mask);
 	if(wait_send)
-		ret = select(sock+1, NULL, &mask, NULL, NULL);
+		ret = select(sock+1, NULL, &mask, NULL, block ? NULL:&tv);
 	else
-		ret = select(sock+1, &mask, NULL, NULL, NULL);
+		ret = select(sock+1, &mask, NULL, NULL, block ? NULL:&tv);
 #endif
 
 	if(ret < 0)
@@ -2143,6 +2244,7 @@ re_poll_:
 		ereport(WARNING, (errcode_for_socket_access()
 			, errmsg("wait socket failed:%m")));
 	}
+	return ret == 0 ? false:true;
 }
 
 static void connect_rxact(void)
