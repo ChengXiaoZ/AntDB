@@ -57,6 +57,7 @@
 #include "storage/spin.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/relmapper.h"
 #include "utils/snapmgr.h"
@@ -637,6 +638,9 @@ static bool InRedo = false;
 /* Have we launched bgwriter during recovery? */
 static bool bgwriterLaunched = false;
 
+#ifdef WAL_DEBUG
+static MemoryContext walDebugCxt = NULL;
+#endif
 
 static void readRecoveryCommandFile(void);
 static void exitArchiveRecovery(TimeLineID endTLI, XLogSegNo endLogSegNo);
@@ -1071,6 +1075,7 @@ begin:;
 	if (XLOG_DEBUG)
 	{
 		StringInfoData buf;
+		MemoryContext oldCxt = MemoryContextSwitchTo(walDebugCxt);
 
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "INSERT @ %X/%X: ",
@@ -1078,11 +1083,20 @@ begin:;
 		xlog_outrec(&buf, rechdr);
 		if (rdata->data != NULL)
 		{
-			appendStringInfo(&buf, " - ");
-			RmgrTable[rechdr->xl_rmid].rm_desc(&buf, rechdr->xl_info, rdata->data);
+			StringInfoData recordbuf;
+			XLogRecData *rtmp = rdata;
+
+			initStringInfo(&recordbuf);
+			for (;rtmp != NULL; rtmp = rtmp->next)
+				appendBinaryStringInfo(&recordbuf, rtmp->data, rtmp->len);
+
+			appendStringInfoString(&buf, " - ");
+			RmgrTable[rechdr->xl_rmid].rm_desc(&buf, rechdr->xl_info, recordbuf.data);
 		}
 		elog(LOG, "%s", buf.data);
-		pfree(buf.data);
+
+		MemoryContextSwitchTo(oldCxt);
+		MemoryContextReset(walDebugCxt);
 	}
 #endif
 
@@ -3926,6 +3940,17 @@ XLOGShmemInit(void)
 	bool		foundCFile,
 				foundXLog;
 	char	   *allocptr;
+
+#ifdef WAL_DEBUG
+	if (walDebugCxt == NULL)
+	{
+		walDebugCxt = AllocSetContextCreate(TopMemoryContext,
+											"WAL Debug",
+											ALLOCSET_DEFAULT_MINSIZE,
+											ALLOCSET_DEFAULT_INITSIZE,
+											ALLOCSET_DEFAULT_MAXSIZE);
+	}
+#endif
 
 	ControlFile = (ControlFileData *)
 		ShmemInitStruct("Control File", sizeof(ControlFileData), &foundCFile);
