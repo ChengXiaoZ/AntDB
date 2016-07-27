@@ -275,36 +275,61 @@ Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 	Relation rel_slowlog;
 	List *dbnamelist = NIL;
 	ListCell *cell;
+	bool haveget = false;
+	HeapScanDesc rel_scan;
+	ScanKeyData key[1];
+	Form_mgr_node mgr_node;
+	HeapTuple tuple;
 	
 	rel_slowlog = heap_open(MslowlogRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	/*get user, address, coordport from node systbl*/
-	monitor_get_one_node_user_address_port(rel_node, &user, &address, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
-	Assert(address != NULL);
-	Assert(user != NULL);
-	/*get database name list*/
-	dbnamelist = monitor_get_dbname_list(user, address, coordport);
-	if(dbnamelist == NULL)
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-			,errmsg("get database namelist error")));
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if (! mgr_node->nodeincluster)
+			continue;
+		/*get user, address, coordport*/
+		coordport = mgr_node->nodeport;
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		if(!haveget)
+		{
+			user = get_hostuser_from_hostoid(mgr_node->nodehost);
+			/*get database name list*/
+			dbnamelist = monitor_get_dbname_list(user, address, coordport);
+			if(dbnamelist == NULL)
+			{
+				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+					,errmsg("get database namelist error")));
+			}
+			dbnum = list_length(dbnamelist);
+			Assert(dbnum > 0);
+		}
+		Assert(address != NULL);
+		Assert(user != NULL);
+		haveget = true;
+		foreach(cell, dbnamelist)
+		{
+			dbname = (char *)(lfirst(cell));
+			monitor_get_onedb_slowdata_insert(rel_slowlog, user, address, coordport, dbname);
+		}
+		pfree(address);
 	}
-	dbnum = list_length(dbnamelist);
-	Assert(dbnum > 0);
-	foreach(cell, dbnamelist)
-	{
-		dbname = (char *)(lfirst(cell));
-		monitor_get_onedb_slowdata_insert(rel_slowlog, user, address, coordport, dbname);
-	}
-
-	list_free(dbnamelist);
-	pfree(user);
-	pfree(address);
+	heap_endscan(rel_scan);
+	if (dbnamelist)
+		list_free(dbnamelist);
+	if(user)
+		pfree(user);
 	heap_close(rel_slowlog, RowExclusiveLock);
 	heap_close(rel_node, RowExclusiveLock);
 	PG_RETURN_TEXT_P(cstring_to_text("insert_data"));
 }
-
 
 /*
 * build tuple for table: monitor_slowlog, see: monitor_slowlog.h
