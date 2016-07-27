@@ -2539,6 +2539,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	int32 coordport;
 	PGconn *pg_conn;
 	PGresult *res;
+	HeapTuple aimtuple = NULL;
 	HeapTuple tup_result;
 	char coordport_buf[10];
 
@@ -2568,7 +2569,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	/* step 3: update coordinator master's pg_hba.conf */
 	resetStringInfo(&(getAgentCmdRst.description));
 	resetStringInfo(&infosendmsg);
-	mgr_add_parameters_hbaconf(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+	mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
     mgr_add_oneline_info_pghbaconf(2, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 							appendnodeinfo.nodepath,
