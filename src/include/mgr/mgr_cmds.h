@@ -112,6 +112,7 @@ extern Datum mgr_monitor_dnmaster_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_dnslave_all(PG_FUNCTION_ARGS);
 
 extern Datum mgr_append_dnmaster(PG_FUNCTION_ARGS);
+extern Datum mgr_append_coordmaster(PG_FUNCTION_ARGS);
 
 /* extern void mgr_configure_nodes_all(void); */
 Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);

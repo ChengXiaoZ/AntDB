@@ -39,6 +39,8 @@
 #define takeplaparm_n  "none"
 #define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
 #define PG_DUMPALL_TEMP_FILE "/tmp/pg_dumpall_temp.txt"
+#define APPEND_DNMASTER  1
+#define APPEND_CNMASTER  2
 
 typedef struct AppendNodeInfo
 {
@@ -57,22 +59,24 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,char type             
                                                         ,bool status               
                                                         ,const char *description);
-static void mgr_get_appendnodeinfo(AppendNodeInfo *appendnodeinfo);
-static void mgr_append_init_dnmaster(AppendNodeInfo *appendnodeinfo);
+static void mgr_get_appendnodeinfo(int node_type, AppendNodeInfo *appendnodeinfo);
+static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
 static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo);
-static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport, Oid dnmasteroid);
-static void mgr_start_dn_master_with_restoremode(const char *nodepath, Oid hostoid);
-static void mgr_pg_dumpall_input_dn_master(const Oid dn_master_oid, const int32 dn_master_port);
+static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid);
+static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid);
+static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port);
 static void mgr_rm_dumpall_temp_file(Oid dnhostoid);
-static void mgr_stop_dn_master_with_restoremode(const char *nodepath, Oid hostoid);
-static void mgr_start_datanode_master(const char *nodepath, Oid hostoid);
+static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
+static void mgr_start_node(const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport);
-static void mgr_set_nodeinit_true(void);
-static void mgr_add_agtm_hbaconf(char nodetype, char *dnusername, char *dnaddr);
+static void mgr_set_inited_incluster_true(char *nodename, char nodetype);
+static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
+static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
 static void mgr_reload_hbaconf(Oid hostoid, char *nodepath);
 static bool mgr_start_one_gtm_master(void);
+static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -2426,12 +2430,12 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	/* get node info for append datanode master */
 	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
 	Assert(appendnodeinfo.nodename);
-	mgr_get_appendnodeinfo(&appendnodeinfo);
+	mgr_get_appendnodeinfo(APPEND_DNMASTER, &appendnodeinfo);
 
 	namestrcpy(&(getAgentCmdRst.nodename), appendnodeinfo.nodename);
 
 	/* step 1: init workdir */
-	mgr_append_init_dnmaster(&appendnodeinfo);
+	mgr_append_init_cndnmaster(&appendnodeinfo);
 
 	/* step 2: update datanode master's postgresql.conf. */
 	resetStringInfo(&(getAgentCmdRst.description));
@@ -2454,9 +2458,9 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 							appendnodeinfo.nodehost,
 							&getAgentCmdRst);
 	/* add host line for agtm */
-	mgr_add_agtm_hbaconf(GTM_TYPE_GTM_MASTER, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
-	mgr_add_agtm_hbaconf(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
-	mgr_add_agtm_hbaconf(GTM_TYPE_GTM_EXTERN, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	mgr_add_hbaconf(GTM_TYPE_GTM_EXTERN, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
 
 	/* step 4: block all the DDL lock */
 	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo);
@@ -2490,16 +2494,16 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 	/* step 5: dumpall catalog message */
 	mgr_get_active_hostoid_and_port(CNDN_TYPE_DATANODE_MASTER, &dnhostoid, &dnport, &appendnodeinfo);
-	mgr_pg_dumpall_from_dnmaster(dnhostoid, dnport, appendnodeinfo.nodehost);
+	mgr_pg_dumpall(dnhostoid, dnport, appendnodeinfo.nodehost);
 
 	/* step 6: start the datanode master with restoremode mode, and input all catalog message */
-	mgr_start_dn_master_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-	mgr_pg_dumpall_input_dn_master(appendnodeinfo.nodehost, appendnodeinfo.nodeport);
+	mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+	mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport);
 	mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost);
 
 	/* step 7: stop the datanode master with restoremode, and then start it with "datanode" mode */
-	mgr_stop_dn_master_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-	mgr_start_datanode_master(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+	mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+	mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 	/* step 8: create node on all the coordinator */
 	mgr_create_node_on_all_coord(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
@@ -2509,7 +2513,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	PQfinish(pg_conn);
 
 	/* step10: update node system table's column to set initial is true when cmd is init*/
-	mgr_set_nodeinit_true();
+	mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER);
 	pfree(coordhost);
 
 	getAgentCmdRst.ret = 0;
@@ -2522,7 +2526,273 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	return HeapTupleGetDatum(tup_result);
 }
 
-static void mgr_add_agtm_hbaconf(char nodetype, char *dnusername, char *dnaddr)
+/*
+ * APPEND COORDINATOR MASTER nodename
+ */
+Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
+{
+	AppendNodeInfo appendnodeinfo;
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData  infosendmsg;
+	char *coordhost;
+	Oid coordhostoid;
+	int32 coordport;
+	PGconn *pg_conn;
+	PGresult *res;
+	HeapTuple tup_result;
+	char coordport_buf[10];
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+
+	/* get node info for append coordinator master */
+	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
+	Assert(appendnodeinfo.nodename);
+	mgr_get_appendnodeinfo(APPEND_CNMASTER, &appendnodeinfo);
+
+	namestrcpy(&(getAgentCmdRst.nodename), appendnodeinfo.nodename);
+
+	/* step 1: init workdir */
+	mgr_append_init_cndnmaster(&appendnodeinfo);
+
+	/* step 2: update coordinator master's postgresql.conf. */
+	resetStringInfo(&(getAgentCmdRst.description));
+	mgr_get_agtm_host_and_port(&infosendmsg);
+	mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+							appendnodeinfo.nodepath,
+							&infosendmsg, 
+							appendnodeinfo.nodehost, 
+							&getAgentCmdRst);
+
+	/* step 3: update coordinator master's pg_hba.conf */
+	resetStringInfo(&(getAgentCmdRst.description));
+	resetStringInfo(&infosendmsg);
+	mgr_add_parameters_hbaconf(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+    mgr_add_oneline_info_pghbaconf(2, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+							appendnodeinfo.nodepath,
+							&infosendmsg,
+							appendnodeinfo.nodehost,
+							&getAgentCmdRst);
+	/* add host line for exist already */
+	mgr_add_hbaconf_all(appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+	
+	/* step 4: block all the DDL lock */
+	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo);
+	coordhost = get_hostaddress_from_hostoid(coordhostoid);
+	sprintf(coordport_buf, "%d", coordport);
+	pg_conn = PQsetdbLogin(coordhost
+							,coordport_buf
+							,NULL, NULL
+							,DEFAULT_DB
+							,appendnodeinfo.nodeusername
+							,NULL);
+
+	if (pg_conn == NULL || PQstatus((PGconn*)pg_conn) != CONNECTION_OK)
+	{
+		PQfinish(pg_conn);
+		pg_conn = NULL;
+	
+		ereport(ERROR,
+			(errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)pg_conn)),
+			errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
+				coordhost, coordport, DEFAULT_DB, appendnodeinfo.nodeusername)));
+	}
+
+	res = PQexec(pg_conn, "select pgxc_lock_for_backup();");
+	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+	ereport(ERROR,
+		(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)pg_conn)),
+		errhint("execute command failed: select pgxc_lock_for_backup().")));
+	}
+
+	/* step 5: dumpall catalog message */
+	mgr_pg_dumpall(coordhostoid, coordport, appendnodeinfo.nodehost);
+
+	/* step 6: start the datanode master with restoremode mode, and input all catalog message */
+	mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+	mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport);
+	mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost);
+
+	/* step 7: stop the datanode master with restoremode, and then start it with "datanode" mode */
+	mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+	mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+	/* step 8: create node on all the coordinator */
+	mgr_create_node_on_all_coord(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
+
+	/* step 9:*/
+	mgr_alter_pgxc_node(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
+
+	/* step 10: release the DDL lock */
+	PQclear(res);
+	PQfinish(pg_conn);
+
+	/* step 11: update node system table's column to set initial is true when cmd is init*/
+	mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER);
+	pfree(coordhost);
+
+	getAgentCmdRst.ret = 0;
+
+	tup_result = build_common_command_tuple(
+		&(getAgentCmdRst.nodename)
+		,getAgentCmdRst.ret == 0 ? true:false
+		,getAgentCmdRst.ret == 0 ? "success":"not success");
+
+	return HeapTupleGetDatum(tup_result);
+}
+static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport)
+{
+	InitNodeInfo *info;
+	ScanKeyData key[2];
+	HeapTuple tuple;
+	ManagerAgent *ma;
+	Form_mgr_node mgr_node;
+	StringInfoData psql_cmd;
+	bool execok = false;
+	StringInfoData buf;
+
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,CStringGetDatum(nodename));
+
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(false));
+
+	info = palloc(sizeof(*info));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	info->lcp = NULL;
+
+	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tuple == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return ;
+	}
+
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
+
+	/* connection agent */
+	ma = ma_connect_hostoid(mgr_node->nodehost);
+	if (!ma_isconnected(ma))
+	{
+		/* report error message */
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+	}
+
+	initStringInfo(&psql_cmd);
+	appendStringInfo(&psql_cmd, " -h %s -p %u -d %s -U %s -a -c \""
+					,get_hostaddress_from_hostoid(nodehostoid)
+					,nodeport
+					,DEFAULT_DB
+					,get_hostuser_from_hostoid(nodehostoid));
+
+	appendStringInfo(&psql_cmd, " ALTER NODE %s WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
+					,nodename
+					,get_hostname_from_hostoid(nodehostoid)
+					,nodeport);
+	appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
+
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
+	ma_sendstring(&buf, psql_cmd.data);
+	pfree(psql_cmd.data);
+	ma_endmessage(&buf, ma);
+
+	if (! ma_flush(ma, true))
+	{
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+	}
+
+	/*check the receive msg*/
+	execok = mgr_recv_msg(ma, &getAgentCmdRst);
+	Assert(execok == getAgentCmdRst.ret);
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+}
+
+static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
+{
+
+	InitNodeInfo *info;
+	ScanKeyData key[2];
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData  infosendmsg;
+	HeapTuple tuple;
+	Datum datumPath;
+	bool isNull;
+	Form_mgr_node mgr_node;
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,CharGetDatum(true));
+
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	info = palloc(sizeof(*info));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	info->lcp =NULL;
+
+	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+
+		/*get nodepath from tuple*/
+		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+		if (isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column nodepath is null")));
+		}
+
+		mgr_add_oneline_info_pghbaconf(2, "all", dnusername, dnaddr, 32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+							TextDatumGetCString(datumPath),
+							&infosendmsg,
+							mgr_node->nodehost,
+							&getAgentCmdRst);
+
+		mgr_reload_hbaconf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+	}
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+}
+
+static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 {
 
 	InitNodeInfo *info;
@@ -2627,28 +2897,40 @@ static void mgr_reload_hbaconf(Oid hostoid, char *nodepath)
 	ma_close(ma);
 }
 
-static void mgr_set_nodeinit_true(void)
+static void mgr_set_inited_incluster_true(char *nodename, char nodetype)
 {
 	InitNodeInfo *info;
-	ScanKeyData key[2];
+	ScanKeyData key[4];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 
 	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,CStringGetDatum(nodename));
+
+	ScanKeyInit(&key[1]
 				,Anum_mgr_node_nodetype
 				,BTEqualStrategyNumber
 				,F_CHAREQ
-				,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
+				,CharGetDatum(nodetype));
 
-	ScanKeyInit(&key[1]
+	ScanKeyInit(&key[2]
 				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(false));
+
+	ScanKeyInit(&key[3]
+				,Anum_mgr_node_nodeincluster
 				,BTEqualStrategyNumber
 				,F_BOOLEQ
 				,BoolGetDatum(false));
 
 	info = palloc(sizeof(*info));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
 	info->lcp =NULL;
 
 	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
@@ -2718,7 +3000,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid)
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport)
 {
 	InitNodeInfo *info;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	HeapTuple tuple;
 	ManagerAgent *ma;
 	Form_mgr_node mgr_node;
@@ -2736,9 +3018,15 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 				,F_CHAREQ
 				,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
 
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+    
 	info = palloc(sizeof(*info));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
 	info->lcp = NULL;
 
 	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
@@ -2790,7 +3078,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 	pfree(info);
 }
 
-static void mgr_start_datanode_master(const char *nodepath, Oid hostoid)
+static void mgr_start_node(const char *nodepath, Oid hostoid)
 {
 	StringInfoData start_cmd;
 	StringInfoData buf;
@@ -2832,7 +3120,7 @@ static void mgr_start_datanode_master(const char *nodepath, Oid hostoid)
 	ma_close(ma);
 }
 
-static void mgr_stop_dn_master_with_restoremode(const char *nodepath, Oid hostoid)
+static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 {
 	StringInfoData stop_cmd;
 	StringInfoData buf;
@@ -2874,7 +3162,7 @@ static void mgr_stop_dn_master_with_restoremode(const char *nodepath, Oid hostoi
 	ma_close(ma);
 }
 
-static void mgr_pg_dumpall_input_dn_master(const Oid dn_master_oid, const int32 dn_master_port)
+static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port)
 {
 	StringInfoData pgsql_cmd;
 	StringInfoData buf;
@@ -2919,7 +3207,7 @@ static void mgr_pg_dumpall_input_dn_master(const Oid dn_master_oid, const int32 
 	pfree(dn_master_addr);
 }
 
-static void mgr_start_dn_master_with_restoremode(const char *nodepath, Oid hostoid)
+static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 {
 	StringInfoData start_cmd;
 	StringInfoData buf;
@@ -2961,7 +3249,7 @@ static void mgr_start_dn_master_with_restoremode(const char *nodepath, Oid hosto
 	ma_close(ma);
 }
 
-static void mgr_pg_dumpall_from_dnmaster(Oid hostoid, int32 hostport, Oid dnmasteroid)
+static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid)
 {
 	StringInfoData pg_dumpall_cmd;
 	StringInfoData buf;
@@ -3132,7 +3420,7 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 	pfree(info);
 }
 
-static void mgr_get_appendnodeinfo(AppendNodeInfo *appendnodeinfo)
+static void mgr_get_appendnodeinfo(int node_type, AppendNodeInfo *appendnodeinfo)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[2];
@@ -3147,17 +3435,31 @@ static void mgr_get_appendnodeinfo(AppendNodeInfo *appendnodeinfo)
 				,F_NAMEEQ
 				,NameGetDatum(appendnodeinfo->nodename));
 
-	ScanKeyInit(&key[1]
-				,Anum_mgr_node_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
+	if (node_type == APPEND_DNMASTER)
+	{
+		ScanKeyInit(&key[1]
+					,Anum_mgr_node_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
+	}
+	else if (node_type == APPEND_CNMASTER)
+	{
+		ScanKeyInit(&key[1]
+					,Anum_mgr_node_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	}else
+	{
+		elog(ERROR, "append node type is not exist."); 
+	}
 
 	info = palloc(sizeof(*info));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
 	info->lcp =NULL;
-
+	
 	if ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) == NULL)
 	{
 		heap_endscan(info->rel_scan);
@@ -3199,7 +3501,7 @@ static void mgr_get_appendnodeinfo(AppendNodeInfo *appendnodeinfo)
 	pfree(info);
 }
 
-static void mgr_append_init_dnmaster(AppendNodeInfo *appendnodeinfo)
+static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 {
 	StringInfoData  infosendmsg;
 	ManagerAgent *ma;

@@ -5192,6 +5192,9 @@ DESCR("mgr stop dn slave");
 DATA(insert OID = 3209 (  mgr_append_dnmaster        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_append_dnmaster _null_ _null_ _null_ ));
 DESCR("mgr append datanode master");
 
+DATA(insert OID = 3212 (  mgr_append_coordmaster        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_append_coordmaster _null_ _null_ _null_ ));
+DESCR("mgr append coordinator master");
+
 DATA(insert OID = 3210 ( mgr_failover_one_dn      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_one_dn _null_ _null_ _null_ ));
 DESCR("mgr failover datanode");
 
