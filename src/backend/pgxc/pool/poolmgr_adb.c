@@ -773,12 +773,14 @@ agent_destroy(PoolAgent *agent)
 	{
 		if (poolAgents[i] == agent)
 		{
-			memcpy(&(poolAgents[i]), &(poolAgents[i+1]), (MaxConnections - i -1)*sizeof(agent));
+			Size end = --agentCount;
+			if(end > i)
+				memmove(&(poolAgents[i]), &(poolAgents[i+1]), (end-i)*sizeof(agent));
+			poolAgents[end] = NULL;
 			break;
 		}
 	}
-	Assert(i<agentCount);
-	--agentCount;
+	Assert(i<=agentCount);
 	MemoryContextDelete(agent->mctx);
 }
 
