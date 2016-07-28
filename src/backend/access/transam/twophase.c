@@ -1716,7 +1716,7 @@ FinishPreparedTransactionExt(const char *gid,
 	 * Record SUCCESS log. It bases on the xact involves local node
 	 * (ADB 2.2 is this case absolutely).
 	 */
-	if (!IsUnderRemoteXact())
+	if (IsUnderRemoteXact() && !IsConnFromRxactMgr())
 	{
 		if (isCommit)
 			RecordRemoteXactSuccess(gid, RX_COMMIT);
