@@ -327,10 +327,18 @@ static const PQEnvironmentOption EnvironmentOptions[] =
 static const char uri_designator[] = "postgresql://";
 static const char short_uri_designator[] = "postgres://";
 
+#ifdef ADB
+PGDLLIMPORT type_getParamDescriptions custom_getParamDescriptions;
+PGDLLIMPORT type_getAnotherTuple custom_getAnotherTuple;
+#endif /* ADB */
+
 static bool connectOptions1(PGconn *conn, const char *conninfo);
 static bool connectOptions2(PGconn *conn);
 static int	connectDBStart(PGconn *conn);
 static int	connectDBComplete(PGconn *conn);
+#ifdef ADB
+static int	connectDBCompleteFlag(PGconn *conn, PostgresPollingStatusType flag);
+#endif /* ADB */
 static PGPing internal_ping(PGconn *conn);
 static PGconn *makeEmptyPGconn(void);
 static bool fillPGconn(PGconn *conn, PQconninfoOption *connOptions);
@@ -402,6 +410,13 @@ pqDropConnection(PGconn *conn, bool flushInput)
 	/* Drop any SSL state */
 	pqsecure_close(conn);
 	/* Close the socket itself */
+#ifdef ADB
+	if (conn->is_attached)
+	{
+		if(!conn->close_sock_on_end)
+			conn->sock = -1;
+	}
+#endif
 	if (conn->sock >= 0)
 		closesocket(conn->sock);
 	conn->sock = -1;
@@ -1516,6 +1531,12 @@ static int
 connectDBComplete(PGconn *conn)
 {
 	PostgresPollingStatusType flag = PGRES_POLLING_WRITING;
+#ifdef ADB
+	return connectDBCompleteFlag(conn, flag);
+}
+static int	connectDBCompleteFlag(PGconn *conn, PostgresPollingStatusType flag)
+{
+#endif /* ADB */
 	time_t		finish_time = ((time_t) -1);
 
 	if (conn == NULL || conn->status == CONNECTION_BAD)
@@ -2821,6 +2842,12 @@ makeEmptyPGconn(void)
 		conn = NULL;
 	}
 
+#ifdef ADB
+	conn->custom = NULL;
+	conn->is_attached = false;
+	conn->use_custom = false;
+#endif /* ADB */
+
 	return conn;
 }
 
@@ -2946,7 +2973,11 @@ closePGconn(PGconn *conn)
 	 * Note that the protocol doesn't allow us to send Terminate messages
 	 * during the startup phase.
 	 */
-	if (conn->sock >= 0 && conn->status == CONNECTION_OK)
+	if (conn->sock >= 0 && conn->status == CONNECTION_OK
+#ifdef ADB
+		&& conn->is_attached == false
+#endif
+		)
 	{
 		/*
 		 * Try to send "close connection" message to backend. Ignore any
@@ -2974,6 +3005,9 @@ closePGconn(PGconn *conn)
 	conn->asyncStatus = PGASYNC_IDLE;
 	pqClearAsyncResult(conn);	/* deallocate result */
 	resetPQExpBuffer(&conn->errorMessage);
+#ifdef ADB
+	if(conn->addrlist)
+#endif /* ADB */
 	pg_freeaddrinfo_all(conn->addrlist_family, conn->addrlist);
 	conn->addrlist = NULL;
 	conn->addr_cur = NULL;
@@ -3058,6 +3092,14 @@ PQreset(PGconn *conn)
 {
 	if (conn)
 	{
+#ifdef ADB
+		if(conn->is_attached)
+		{
+			printfPQExpBuffer(&conn->errorMessage,
+							  libpq_gettext("PQreset not support in attached connection"));
+			return;
+		}
+#endif /* ADB */
 		closePGconn(conn);
 
 		if (connectDBStart(conn) && connectDBComplete(conn))
@@ -3099,6 +3141,14 @@ PQresetStart(PGconn *conn)
 {
 	if (conn)
 	{
+#ifdef ADB
+		if(conn->is_attached)
+		{
+			printfPQExpBuffer(&conn->errorMessage,
+							  libpq_gettext("PQresetStart not support in attached connection"));
+			return 0;
+		}
+#endif /* ADB */
 		closePGconn(conn);
 
 		return connectDBStart(conn);
@@ -5918,3 +5968,107 @@ PQregisterThreadLock(pgthreadlock_t newhandler)
 
 	return prev;
 }
+
+#ifdef ADB
+
+PGconn *PQattach(pgsocket sock, void *custom, int close_sock_on_end)
+{
+	PGconn *conn = PQbeginAttach(sock, custom, close_sock_on_end);
+	if(conn && conn->status != CONNECTION_BAD)
+		(void)connectDBCompleteFlag(conn, PGRES_POLLING_READING);
+	return conn;
+}
+
+/* async interface, use PQconnectPoll finish connection */
+PGconn *PQbeginAttach(pgsocket sock, void *custom, int close_sock_on_end)
+{
+	PGconn		*conn;
+	char		sebuf[256];
+
+	/*
+	 * Allocate memory for the conn structure
+	 */
+	conn = makeEmptyPGconn();
+	if (conn == NULL)
+		return NULL;
+
+	conn->sock = sock;
+	conn->custom = custom;
+	conn->is_attached = true;
+	conn->close_sock_on_end = close_sock_on_end ? true:false;
+	conn->pversion = PG_PROTOCOL_LATEST;
+	conn->auth_req_received = true;
+
+	/* Fill in the client address */
+	conn->laddr.salen = sizeof(conn->laddr.addr);
+	if (getsockname(conn->sock,
+					(struct sockaddr *) & conn->laddr.addr,
+					&conn->laddr.salen) < 0)
+	{
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not get client address from socket: %s\n"),
+				SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+		goto error_return;
+	}
+
+	conn->raddr.salen = sizeof(conn->raddr.addr);
+	if (getpeername(conn->sock,
+					(struct sockaddr *) & conn->raddr.addr,
+					&conn->raddr.salen) < 0)
+	{
+		appendPQExpBuffer(&conn->errorMessage,
+						  libpq_gettext("could not get peer address from socket: %s\n"),
+				SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+		goto error_return;
+	}
+
+	/* get block status */
+	conn->nonblocking = pg_set_noblock(conn->sock);
+	if(!conn->nonblocking)
+		pg_set_block(conn->sock);
+
+	/* make a query info message */
+	if(pqPacketSend(conn, 'I', NULL, 0) != STATUS_OK)
+	{
+		appendPQExpBuffer(&conn->errorMessage,
+			libpq_gettext("could not send query info packet: %s\n"),
+				SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+		goto error_return;
+	}
+
+	conn->status = CONNECTION_AUTH_OK;
+	conn->asyncStatus = PGASYNC_BUSY;
+
+error_return:
+	return conn;
+}
+
+void PQdetach(PGconn *conn)
+{
+	if(conn == NULL)
+		return;
+
+	/* flush data first if have */
+	pqFlush(conn);
+
+	/* is copy running, end it */
+	switch(conn->asyncStatus)
+	{
+	case PGASYNC_COPY_IN:
+	case PGASYNC_COPY_BOTH:
+		PQputCopyEnd(conn, NULL);
+		break;
+	case PGASYNC_COPY_OUT:
+		PQendcopy(conn);
+		break;
+	default:
+		break;
+	}
+
+	PQsetSingleRowMode(conn);
+	PQclear(PQexecFinish(conn));
+
+	PQfinish(conn);
+}
+
+#endif /* ADB */

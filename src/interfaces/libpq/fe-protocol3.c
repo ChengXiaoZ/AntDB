@@ -290,6 +290,13 @@ pqParseInput3(PGconn *conn)
 					else if (conn->result == NULL ||
 							 conn->queryclass == PGQUERY_DESCRIBE)
 					{
+#ifdef ADB
+						if(conn->use_custom && custom_getParamDescriptions)
+						{
+							if((*custom_getParamDescriptions)(conn, msgLength))
+								return;
+						}else
+#endif /* ADB */
 						/* First 'T' in a query sequence */
 						if (getRowDescriptions(conn, msgLength))
 							return;
@@ -346,6 +353,13 @@ pqParseInput3(PGconn *conn)
 					if (conn->result != NULL &&
 						conn->result->resultStatus == PGRES_TUPLES_OK)
 					{
+#ifdef ADB
+						if(conn->use_custom && custom_getAnotherTuple)
+						{
+							if((*custom_getAnotherTuple)(conn, msgLength))
+								return;
+						}else
+#endif
 						/* Read another tuple of a normal query response */
 						if (getAnotherTuple(conn, msgLength))
 							return;

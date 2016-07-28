@@ -552,6 +552,7 @@ SocketBackend(StringInfo inBuf)
 #endif /* PGXC */
 #ifdef ADB
 		case 'L':				/* agtm backend listen port */
+		case 'I':				/* query server info */
 			break;
 		case 's':				/* snapshot */
 			break;
@@ -4872,7 +4873,23 @@ PostgresMain(int argc, char *argv[],
 				}
 				send_ready_for_query = true;
 				break;
-#endif
+#endif /* ADB */
+#if defined(ADB) || defined(AGTM)
+			case 'I':		/* query server info */
+				BeginReportingGUCOptions();
+				if(whereToSendOutput == DestRemote&&
+					PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
+				{
+					StringInfoData buf;
+
+					pq_beginmessage(&buf, 'K');
+					pq_sendint(&buf, (int32) MyProcPid, sizeof(int32));
+					pq_sendint(&buf, (int32) MyCancelKey, sizeof(int32));
+					pq_endmessage(&buf);
+				}
+				send_ready_for_query = true;
+				break;
+#endif /* defined(ADB) || defined(AGTM) */
 
 			case 'H':			/* flush */
 				pq_getmsgend(&input_message);

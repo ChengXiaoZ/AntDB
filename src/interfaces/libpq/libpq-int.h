@@ -462,6 +462,12 @@ struct pg_conn
 
 	/* Buffer for receiving various parts of messages */
 	PQExpBufferData workBuffer; /* expansible string */
+#ifdef ADB
+	void *custom;				/* user custom data */
+	bool is_attached;
+	bool use_custom;			/* use custom functions ? */
+	bool close_sock_on_end;		/* attached conn, close socket when error or finish */
+#endif /* ADB */
 };
 
 /* PGcancel stores all data necessary to cancel a connection. A copy of this
@@ -639,5 +645,24 @@ __attribute__((format_arg(1)));
 #define SOCK_STRERROR pqStrerror
 #define SOCK_ERRNO_SET(e) (errno = (e))
 #endif
+
+#ifdef ADB
+
+/* user custom functions, see protocol*.c getParamDescriptions and getAnotherTuple */
+typedef int(*type_getParamDescriptions)();
+typedef int(*type_getAnotherTuple)();
+
+extern PGDLLIMPORT type_getParamDescriptions custom_getParamDescriptions;
+extern PGDLLIMPORT type_getAnotherTuple custom_getAnotherTuple;
+
+extern PGconn *PQattach(pgsocket sock, void *custom, int close_sock_on_end);
+/* async interface
+ * use PQconnectPoll finish connection
+ * start status is PGRES_POLLING_READING
+ */
+extern PGconn *PQbeginAttach(pgsocket sock, void *custom, int close_sock_on_end);
+extern void PQdetach(PGconn *conn);
+
+#endif /* ADB */
 
 #endif   /* LIBPQ_INT_H */
