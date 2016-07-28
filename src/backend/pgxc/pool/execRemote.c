@@ -1754,6 +1754,7 @@ pgxc_node_remote_prepare(const char *gid)
 	/* Generate the PREPARE TRANSACTION command */
 	ADB_CONN_STATE_ERROR(gid[0] != '\0');
 	appendStringInfo(&prepare_cmd, "PREPARE TRANSACTION '%s'", gid);
+	elog(DEBUG1, "[ADB prepare]: %s", prepare_cmd.data);
 
 	for (i = 0; i < write_conn_count; i++)
 	{
@@ -1913,6 +1914,7 @@ pgxc_node_remote_commit(const char *gid, bool missing_ok)
 	{
 		appendStringInfoString(&command, "COMMIT TRANSACTION");
 	}
+	elog(DEBUG1, "[ADB commit]: %s", command.data);
 #endif
 
 	SetSendCommandId(false);
@@ -2072,6 +2074,7 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 	{
 		appendStringInfoString(&command, "ROLLBACK TRANSACTION");
 	}
+	elog(DEBUG1, "[ADB abort]: %s", command.data);
 #endif
 
 	/* Send COMMIT/ROLLBACK PREPARED TRANSACTION to the remote nodes */

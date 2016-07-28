@@ -809,7 +809,6 @@ get_message(PGXCNodeHandle *conn, int *len, char **msg)
 	return msgtype;
 }
 
-
 /*
  * Release all Datanode and Coordinator connections
  * back to pool and release occupied memory
@@ -846,8 +845,9 @@ void release_handles2(bool force_close)
 			{
 				has_error = true;
 #endif /* ADB */
-				elog(DEBUG1, "Connection to Datanode %d has unexpected state %d and will be dropped",
-					 handle->nodeoid, handle->state);
+				elog(DEBUG1,
+					"Connection to Datanode %s has unexpected state %d and will be dropped",
+					 NameStr(handle->name), handle->state);
 #ifdef ADB
 			}
 #endif /* ADB */
@@ -867,8 +867,9 @@ void release_handles2(bool force_close)
 			{
 				has_error = true;
 #endif /* ADB */
-				elog(DEBUG1, "Connection to Coordinator %d has unexpected state %d and will be dropped",
-					 handle->nodeoid, handle->state);
+				elog(DEBUG1,
+					"Connection to Coordinator %s has unexpected state %d and will be dropped",
+					 NameStr(handle->name), handle->state);
 #ifdef ADB
 			}
 #endif /* ADB */
