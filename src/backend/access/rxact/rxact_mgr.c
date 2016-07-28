@@ -2052,7 +2052,7 @@ void rlog_desc(const char *file_name)
 
 		if(c == RXACT_MSG_DO)
 		{
-			dbOid = (Oid)rxact_log_get_int(rlog);
+			(void)rxact_log_get_int(rlog);
 			type = (RemoteXactType)rxact_log_get_int(rlog);
 			count = rxact_log_get_int(rlog);
 			oids = palloc(sizeof(Oid)*count);
