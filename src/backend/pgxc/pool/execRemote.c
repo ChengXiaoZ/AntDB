@@ -4693,11 +4693,7 @@ PreAbort_Remote(const char *gid, bool missing_ok)
 	ForgetTransactionNodes();
 
 	if (!PersistentConnections)
-#ifdef ADB
-		release_handles2(true);
-#else
 		release_handles();
-#endif
 
 	return true;
 }

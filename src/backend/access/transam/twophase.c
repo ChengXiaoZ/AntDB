@@ -1614,7 +1614,7 @@ FinishPreparedTransactionExt(const char *gid,
 										   isMissingOK, hdr->isimplicit);
 		else
 			RecordRemoteXactAbortPrepared(gid, hdr->nnodes, nodeIds,
-										  isMissingOK, hdr->isimplicit);
+										  isMissingOK);
 	}
 #endif
 

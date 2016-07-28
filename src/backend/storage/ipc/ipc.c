@@ -30,6 +30,9 @@
 #include "storage/ipc.h"
 #include "tcop/tcopprot.h"
 
+#ifdef ADB
+#include "agtm/agtm_client.h"
+#endif
 
 /*
  * This flag is set during proc_exit() to change ereport()'s behavior,
@@ -179,6 +182,11 @@ proc_exit_prepare(int code)
 	error_context_stack = NULL;
 	/* For the same reason, reset debug_query_string before it's clobbered */
 	debug_query_string = NULL;
+
+#ifdef ADB
+	agtm_Close();
+	agtm_SetDefaultPort();
+#endif
 
 	/* do our shared memory exits first */
 	shmem_exit(code);

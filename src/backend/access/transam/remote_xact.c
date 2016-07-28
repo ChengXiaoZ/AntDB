@@ -118,8 +118,7 @@ void
 RecordRemoteXactAbortPrepared(const char *gid,
 							  int nnodes,
 							  Oid *nodeIds,
-							  bool missing_ok,
-							  bool implicit)
+							  bool missing_ok)
 {
 	if (!IsUnderRemoteXact())
 		return ;
@@ -127,8 +126,7 @@ RecordRemoteXactAbortPrepared(const char *gid,
 	AssertArg(gid && gid[0]);
 
 	/* Record ROLLBACK log */
-	if (!implicit)
-		RecordRemoteXact(gid, nodeIds, nnodes, RX_ROLLBACK);
+	RecordRemoteXact(gid, nodeIds, nnodes, RX_ROLLBACK);
 
 	PG_TRY();
 	{

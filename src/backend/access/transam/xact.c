@@ -2967,7 +2967,7 @@ CleanupTransaction(void)
 
 #ifdef ADB
 	s->agtm_begin = false;
-	s->implicit2PC = true;
+	s->implicit2PC = false;
 #endif
 }
 

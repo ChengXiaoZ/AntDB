@@ -17,10 +17,22 @@
 #include "utils/builtins.h"
 
 /* Configuration variables */
-extern char			*AGtmHost;
-extern int 			AGtmPort;
-static AGTM_Conn	*agtm_conn = NULL;
-#define AGTM_PORT	"agtm_port"
+extern char				*AGtmHost;
+extern int 				AGtmPort;
+
+#define AGTM_PORT		"agtm_port"
+#define InvalidAGtmPort	0
+
+static AGTM_Conn		*agtm_conn = NULL;
+static int				save_DefaultAGtmPort = InvalidAGtmPort;
+static bool				IsDefaultAGtmPortSave = false;
+
+#define SaveDefaultAGtmPort(port)			\
+	do {									\
+		if (!IsDefaultAGtmPortSave)			\
+			save_DefaultAGtmPort = (port);	\
+		IsDefaultAGtmPortSave = true;		\
+	} while(0)
 
 static void agtm_Connect(void);
 static void agtm_ConnectByDBname(const char *databaseName);
@@ -45,6 +57,8 @@ agtm_ConnectByDBname(const char *databaseName)
 		return ;
 
 	agtm_Close();
+
+	SaveDefaultAGtmPort(AGtmPort);
 
 	if (databaseName == NULL)
 		dbname = get_database_name(MyDatabaseId);
@@ -135,7 +149,7 @@ int agtm_Init(void)
 		ereport(ERROR,
 			(errmsg("Invalid AGTM listen port: %d.", port_int)));
 
-	ereport(DEBUG1,
+	ereport(LOG,
 		(errmsg("Get AGTM listen port: %d,", port_int)));
 
 	return port_int;
@@ -151,14 +165,22 @@ agtm_SetPort(int listen_port)
 	ereport(LOG,
 		(errmsg("Get AGTM listen port: %d from coordinator,", listen_port)));
 
+	SaveDefaultAGtmPort(AGtmPort);
 	/*
 	 * Close old connection if received a new AGTM backend listen port
 	 */
 	if (listen_port != AGtmPort)
 	{
-		AGtmPort = listen_port;
 		agtm_Close();
+		AGtmPort = listen_port;
 	}
+}
+
+void
+agtm_SetDefaultPort(void)
+{
+	if (IsDefaultAGtmPortSave)
+		AGtmPort = save_DefaultAGtmPort;
 }
 
 void agtm_Close(void)

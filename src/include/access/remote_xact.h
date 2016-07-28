@@ -31,7 +31,6 @@ extern void RecordRemoteXactCommitPrepared(const char *gid,
 extern void RecordRemoteXactAbortPrepared(const char *gid,
 									int nnodes,
 									Oid *nodeIds,
-									bool missing_ok,
-									bool implicit);
+									bool missing_ok);
 #endif /* REMOTE_XACT_H */
 

@@ -400,6 +400,11 @@ void agtm_AbortTransaction_ByDBname(const char *prepared_gid, bool missing_ok, c
 	} PG_CATCH();
 	{
 		pfree(abort_cmd.data);
+		if (TopXactBeginAGTM())
+		{
+			agtm_Close();
+			SetTopXactBeginAGTM(false);
+		}
 		PG_RE_THROW();
 	} PG_END_TRY();
 
