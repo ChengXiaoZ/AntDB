@@ -170,6 +170,13 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 		namestrcpy(&mastername, node->mastername);
 		nodestring = "datanode slave";
 	}
+	else if (node->nodetype == NODE_DATANODE && node->innertype == TYPE_EXTERN)
+	{
+		nodetype = CNDN_TYPE_DATANODE_EXTERN;
+		Assert(node->mastername);
+		namestrcpy(&mastername, node->mastername);
+		nodestring = "datanode extern";
+	}
 	else
 	{
 		/*never come here*/
@@ -279,7 +286,7 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	{
 		if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 			datum[Anum_mgr_node_nodemasternameOid-1] = UInt32GetDatum(0);
-		else if(CNDN_TYPE_DATANODE_SLAVE == nodetype)
+		else if(CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTERN == nodetype)
 		{
 			mastertuple = mgr_get_tuple_node_from_name_type(rel, NameStr(mastername), CNDN_TYPE_DATANODE_MASTER);
 			if(!HeapTupleIsValid(mastertuple))
@@ -393,6 +400,13 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		Assert(node->mastername);
 		namestrcpy(&mastername, node->mastername);
 		nodestring = "datanode slave";
+	}
+	else if (node->nodetype == NODE_DATANODE && node->innertype == TYPE_EXTERN)
+	{
+		nodetype = CNDN_TYPE_DATANODE_EXTERN;
+		Assert(node->mastername);
+		namestrcpy(&mastername, node->mastername);
+		nodestring = "datanode extern";
 	}
 	
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
@@ -527,6 +541,11 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
 		nodestring = "datanode slave";
+	}
+	else if (node->nodetype == NODE_DATANODE && node->innertype == TYPE_EXTERN)
+	{
+		nodetype = CNDN_TYPE_DATANODE_EXTERN;
+		nodestring = "datanode extern";
 	}
 
 	context = AllocSetContextCreate(CurrentMemoryContext
@@ -730,6 +749,103 @@ mgr_init_dn_slave(PG_FUNCTION_ARGS)
 }
 
 /*
+* execute init datanode extern, send infomation to agent to init it 
+*/
+Datum 
+mgr_init_dn_extern(PG_FUNCTION_ARGS)
+{
+	GetAgentCmdRst getAgentCmdRst;
+	HeapTuple tuple
+			,aimtuple
+			,mastertuple;
+	Relation rel_node;
+	HeapScanDesc scan;
+	Form_mgr_node mgr_node;
+	bool gettuple = false;
+	ScanKeyData key[2];
+	uint32 masterport;
+	Oid masterhostOid;
+	char *masterhostaddress;
+	char *mastername;
+	FuncCallContext *funcctx;
+	const char *nodename = PG_GETARG_CSTRING(0);
+	Assert(nodename);
+	
+	/*output the exec result: col1 hostname,col2 SUCCESS(t/f),col3 description*/	
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		/* get the master name */
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodename
+			,BTEqualStrategyNumber, F_NAMEEQ
+			,NameGetDatum(nodename));
+		ScanKeyInit(&key[1]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(CNDN_TYPE_DATANODE_EXTERN));
+		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+		scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			if(strcmp(NameStr(mgr_node->nodename), nodename) == 0)
+			{
+				/*check the nodetype*/
+				if(mgr_node->nodetype != CNDN_TYPE_DATANODE_EXTERN)
+				{
+					ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+						, errmsg("the type is not datanode extern, use \"list node\" to check")));
+				}
+				aimtuple = tuple;
+				gettuple = true;
+				break;
+			}
+			
+		}
+		if(gettuple == false)
+		{
+			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+				, errmsg("the need infomation does not in system table of node, use \"list node\" to check")));
+		}
+		/*get the master port, master host address*/
+		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
+		if(!HeapTupleIsValid(mastertuple))
+		{
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+				, errmsg("node master dosen't exist")));
+		}
+		mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
+		Assert(mastertuple);
+		masterport = mgr_node->nodeport;
+		masterhostOid = mgr_node->nodehost;
+		mastername = NameStr(mgr_node->nodename);
+		masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
+		ReleaseSysCache(mastertuple);
+		
+		mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, rel_node, aimtuple, masterhostaddress,masterport, mastername);
+		tuple = build_common_command_tuple(
+			&(getAgentCmdRst.nodename)
+			, getAgentCmdRst.ret
+			, getAgentCmdRst.description.data);
+		pfree(getAgentCmdRst.description.data);
+		pfree(masterhostaddress);
+		heap_endscan(scan);
+		heap_close(rel_node, RowExclusiveLock);
+		MemoryContextSwitchTo(oldcontext);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+	/* we have only one datanode slave for given name, returnd at first time */
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	SRF_RETURN_DONE(funcctx);
+}
+
+/*
 *	execute init datanode slave all, send infomation to agent to init 
 */
 Datum 
@@ -759,6 +875,82 @@ mgr_init_dn_slave_all(PG_FUNCTION_ARGS)
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(CNDN_TYPE_DATANODE_SLAVE));
+		info = palloc(sizeof(*info));
+		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+		/* save info */
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+	funcctx = SRF_PERCALL_SETUP();
+	info = funcctx->user_fctx;
+	Assert(info);
+	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tuple == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, RowExclusiveLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+	/*get nodename*/
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
+	/*get the master port, master host address*/
+	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
+	if(!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			, errmsg("node master dosen't exist")));
+	}
+	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
+	Assert(mastertuple);
+	masterport = mgr_node->nodeport;
+	masterhostOid = mgr_node->nodehost;
+	mastername = NameStr(mgr_node->nodename);
+	masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
+	ReleaseSysCache(mastertuple);
+	mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, info->rel_node, tuple, masterhostaddress, masterport, mastername);
+	pfree(masterhostaddress);
+	tup_result = build_common_command_tuple(
+		&(getAgentCmdRst.nodename)
+		, getAgentCmdRst.ret
+		, getAgentCmdRst.description.data);
+	pfree(getAgentCmdRst.description.data);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+/*
+*	execute init datanode extern all, send infomation to agent to init 
+*/
+Datum 
+mgr_init_dn_extern_all(PG_FUNCTION_ARGS)
+{
+	InitNodeInfo *info;
+	GetAgentCmdRst getAgentCmdRst;
+	Form_mgr_node mgr_node;
+	FuncCallContext *funcctx;
+	HeapTuple tuple
+			,tup_result,
+			mastertuple;
+	ScanKeyData key[1];
+	uint32 masterport;
+	Oid masterhostOid;
+	char *masterhostaddress;
+	char *mastername;
+	
+	/*output the exec result: col1 hostname,col2 SUCCESS(t/f),col3 description*/	
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_DATANODE_EXTERN));
 		info = palloc(sizeof(*info));
 		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
@@ -1098,6 +1290,15 @@ Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS)
 Datum mgr_start_dn_slave(PG_FUNCTION_ARGS)
 {
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_START, fcinfo, takeplaparm_n);	
+}
+
+/*
+* start datanode extern dn1,dn2...
+* start datanode extern all
+*/
+Datum mgr_start_dn_extern(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTERN, AGT_CMD_DN_START, fcinfo, takeplaparm_n);	
 }
 
 void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *shutdown_mode)
@@ -1683,6 +1884,25 @@ Datum mgr_stop_dn_slave_f(PG_FUNCTION_ARGS)
 Datum mgr_stop_dn_slave_i(PG_FUNCTION_ARGS)
 {
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_STOP, fcinfo, shutdown_i);
+}
+
+/*
+* stop datanode extern dn1,dn2...
+* stop datanode extern all
+*/
+Datum mgr_stop_dn_extern(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTERN, AGT_CMD_DN_STOP, fcinfo, shutdown_s);
+}
+
+Datum mgr_stop_dn_extern_f(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTERN, AGT_CMD_DN_STOP, fcinfo, shutdown_f);
+}
+
+Datum mgr_stop_dn_extern_i(PG_FUNCTION_ARGS)
+{
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTERN, AGT_CMD_DN_STOP, fcinfo, shutdown_i);
 }
 
 /*
@@ -4162,7 +4382,7 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 		mgr_append_pgconf_paras_str_int("wal_keep_segments", WAL_KEEP_SEGMENTS_NUM, infosendparamsg);
 		mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendparamsg);
 	}
-	if(nodetype == CNDN_TYPE_DATANODE_SLAVE || nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTERN)
+	if(nodetype == CNDN_TYPE_DATANODE_SLAVE || nodetype == CNDN_TYPE_DATANODE_EXTERN || nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTERN)
 	{
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", infosendparamsg);
 	}
@@ -4392,7 +4612,7 @@ char *mgr_get_slavename(Oid tupleOid, char nodetype)
 			{
 				if(CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype)
 					getslave = true;
-				else if (CNDN_TYPE_DATANODE_EXTERN == nodetype)
+				else if (CNDN_TYPE_DATANODE_EXTERN == mgr_node->nodetype)
 					getextern = true;
 			}
 		}

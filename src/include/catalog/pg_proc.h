@@ -5105,6 +5105,9 @@ DESCR("init datanode master");
 DATA(insert OID = 3187 (  mgr_init_dn_slave        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_slave _null_ _null_ _null_ ));
 DESCR("init datanode slave");
 
+DATA(insert OID = 3465 (  mgr_init_dn_extern       PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extern _null_ _null_ _null_ ));
+DESCR("init datanode extern");
+
 DATA(insert OID = 3188 (  mgr_init_dn_slave_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_slave_all _null_ _null_ _null_ ));
 DESCR("init datanode slave all");
 
@@ -5186,6 +5189,9 @@ DESCR("mgr stop dn master");
 DATA(insert OID = 3207 ( mgr_start_dn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_slave _null_ _null_ _null_ ));
 DESCR("mgr start dn slave");
 
+DATA(insert OID = 3475 ( mgr_start_dn_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_extern _null_ _null_ _null_ ));
+DESCR("mgr start dn extern");
+
 DATA(insert OID = 3208 ( mgr_stop_dn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_slave _null_ _null_ _null_ ));
 DESCR("mgr stop dn slave");
 
@@ -5239,6 +5245,18 @@ DESCR("monitor_slowlog_insert_data");
 
 DATA(insert OID = 3227 ( get_dbthreshold      PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ get_dbthreshold _null_ _null_ _null_ ));
 DESCR("get_dbthreshold");
+
+DATA(insert OID = 3476 ( mgr_stop_dn_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extern _null_ _null_ _null_ ));
+DESCR("mgr stop dn extern fast");
+
+DATA(insert OID = 3477 ( mgr_stop_dn_extern_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extern_f _null_ _null_ _null_ ));
+DESCR("mgr stop dn extern fast");
+
+DATA(insert OID = 3478 ( mgr_stop_dn_extern_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extern_i _null_ _null_ _null_ ));
+DESCR("mgr stop dn extern immediate");
+
+DATA(insert OID = 3479 (  mgr_init_dn_extern_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extern_all _null_ _null_ _null_ ));
+DESCR("init datanode extern all");
 
 #endif
 
