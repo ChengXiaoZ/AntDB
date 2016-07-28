@@ -4510,7 +4510,7 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 			cnuser = get_hostuser_from_hostoid(hostoid);
 			/*get coordinator address*/
 			cnaddress = get_hostaddress_from_hostoid(hostoid);
-			if ( (CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype && CNDN_TYPE_DATANODE_MASTER == nodetype)
+			if ( ((CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype || CNDN_TYPE_DATANODE_EXTERN == mgr_node->nodetype) && CNDN_TYPE_DATANODE_MASTER == nodetype)
 				|| ((GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTERN == mgr_node->nodetype) && GTM_TYPE_GTM_MASTER == nodetype) )
 			{
 				if(HeapTupleIsValid(aimtuple))
