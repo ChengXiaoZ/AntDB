@@ -18,5 +18,6 @@ extern void RecordRemoteXactFailed(const char *gid, RemoteXactType type);
 extern void RecordRemoteXactChange(const char *gid, RemoteXactType type);
 extern void RemoteXactReloadNode(void);
 extern void DisconnectRemoteXact(void);
+extern void rlog_desc(const char *file_name) __attribute__((noreturn));;
 
 #endif /* RXACT_MGR_H */
