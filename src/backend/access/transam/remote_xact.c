@@ -106,9 +106,6 @@ RecordRemoteXactCommitPrepared(const char *gid,
 		RecordRemoteXactFailed(gid, RX_COMMIT);
 		PG_RE_THROW();
 	} PG_END_TRY();
-
-	/* Record SUCCESS log */
-	RecordRemoteXactSuccess(gid, RX_COMMIT);
 }
 
 /*
@@ -142,8 +139,5 @@ RecordRemoteXactAbortPrepared(const char *gid,
 		RecordRemoteXactFailed(gid, RX_ROLLBACK);
 		PG_RE_THROW();
 	} PG_END_TRY();
-
-	/* Record SUCCESS log */
-	RecordRemoteXactSuccess(gid, RX_ROLLBACK);
 }
 

@@ -1708,6 +1708,21 @@ FinishPreparedTransactionExt(const char *gid,
 	MyLockedGxact = NULL;
 
 	pfree(buf);
+
+#ifdef ADB
+	/*
+	 * After all (local node and remote nodes) do completely.
+	 * Record SUCCESS log. It bases on the xact involves local node
+	 * (ADB 2.2 is this case absolutely).
+	 */
+	if (!IsUnderRemoteXact())
+	{
+		if (isCommit)
+			RecordRemoteXactSuccess(gid, RX_COMMIT);
+		else
+			RecordRemoteXactSuccess(gid, RX_ROLLBACK);
+	}
+#endif
 }
 
 /*
