@@ -55,6 +55,8 @@ char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, 
 	PGconn* conn;
 	PGresult *res;
 	char *oneCoordValueStr = NULL;
+	int nrow = 0;
+	int iloop = 0;
 	
 	initStringInfo(&constr);
 	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
@@ -81,11 +83,19 @@ char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, 
 		pfree(constr.data);
 		return NULL;
 	}
-	/*check row number*/
-	Assert(1 == PQntuples(res));
 	/*check column number*/
 	Assert(1 == PQnfields(res));
-	oneCoordValueStr = pstrdup(PQgetvalue(res, 0, 0 ));
+	/*get row num*/
+	nrow = PQntuples(res);
+	oneCoordValueStr = (char *)palloc(nrow*1024);
+	for (iloop=0; iloop<nrow; iloop++)
+	{
+		strcat(oneCoordValueStr, PQgetvalue(res, iloop, 0 ));
+		if(iloop != nrow-1)
+			strcat(oneCoordValueStr, "\n");
+		else
+			strcat(oneCoordValueStr, "\0");
+	}
 	PQclear(res);
 	PQfinish(conn);
 	pfree(constr.data);
