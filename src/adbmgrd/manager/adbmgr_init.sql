@@ -303,11 +303,12 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
                        left join monitor_disk d on(c.host_oid = d.host_oid and c.mc_timestamptz = d.md_timestamptz)
                        left join monitor_net  n on(c.host_oid = n.host_oid and c.mc_timestamptz = n.mn_timestamptz)
                        left join monitor_host h on(c.host_oid = h.host_oid and c.mc_timestamptz = h.mh_current_time)
-                       left join mgr_host   mgr on(c.host_oid = mgr.oid)
-                       left join (select mh.host_oid, mh.mh_current_time 
-                                  from monitor_host mh 
-                                  order by mh.mh_current_time desc 
-                                  limit 1) temp on(c.host_oid = temp.host_oid)
+                       left join mgr_host   mgr on(c.host_oid = mgr.oid),
+
+                       (select mh.host_oid, mh.mh_current_time 
+                        from monitor_host mh 
+                        order by mh.mh_current_time desc 
+                        limit 1) as temp
     where c.mc_timestamptz  >  temp.mh_current_time - case $2 
                                                       when 0 then interval '1 hour'
                                                       when 1 then interval '1 day'
