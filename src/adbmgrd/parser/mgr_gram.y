@@ -110,9 +110,9 @@ extern char *defGetString(DefElem *def);
 				AlterParmStmt ListParmStmt StartAgentStmt AddNodeStmt 
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
-				MonitorStmt AppendNodeStmt FailoverStmt ConfigAllStmt DeploryStmt
+				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
-				Get_host_threshold Get_alarm_info
+				Get_host_threshold Get_alarm_info AppendNodeStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList
@@ -176,7 +176,6 @@ stmtmulti:	stmtmulti ';' stmt
 
 stmt :
 	  AddHostStmt
-	| AppendNodeStmt
 	| DropHostStmt
 	| ListHostStmt
 	| AlterHostStmt
@@ -201,9 +200,28 @@ stmt :
 	| Update_host_config_value
 	| Get_host_threshold
 	| Get_alarm_info
+	| AppendNodeStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
+AppendNodeStmt:
+		APPEND DATANODE MASTER Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnmaster", args));
+			$$ = (Node*)stmt;
+		}
+		| APPEND COORDINATOR Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordmaster", args));
+			$$ = (Node*)stmt;
+		};
+
 Get_alarm_info:
 		GET_ALARM_INFO_ASC '(' Ident ',' Ident ',' SConst ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ')'
 		{
@@ -362,17 +380,6 @@ ConfigAllStmt:
             stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_configure_nodes_all", NULL));
             $$ = (Node*)stmt;
 		};
-
-AppendNodeStmt:
-		APPEND DATANODE MASTER Ident
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeString($4));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnmaster", args));
-			$$ = (Node*)stmt;
-		}
-		;
 
 MonitorStmt:
 		MONITOR ALL
