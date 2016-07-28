@@ -2019,7 +2019,6 @@ void rlog_desc(const char *file_name)
 	RemoteXactType type;
 	File rfile;
 	int count;
-	Oid dbOid;
 	char c;
 
 	if(file_name == NULL)

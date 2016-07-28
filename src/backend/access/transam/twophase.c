@@ -76,6 +76,7 @@
 
 #ifdef ADB
 #include "access/remote_xact.h"
+#include "access/rxact_mgr.h"
 #include "commands/dbcommands.h"
 #include "utils/lsyscache.h"
 #endif
