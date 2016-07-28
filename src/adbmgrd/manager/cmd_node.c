@@ -4403,7 +4403,7 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 /*
 * the parameters which need refresh for recovery.conf
 */
-void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid masteroid, StringInfo infosendparamsg)
+void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoid, StringInfo infosendparamsg)
 {
 	Form_mgr_node mgr_node;
 	Form_mgr_host mgr_host;
@@ -4416,10 +4416,10 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid mastero
 	StringInfoData primary_conninfo_value;
 	
 	/*get the master port, master host address*/
-	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(masteroid));
+	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(tupleoid));
 	if(!HeapTupleIsValid(mastertuple))
 	{
-		ereport(ERROR, (errmsg("node oid \"%u\" not exist", masteroid)
+		ereport(ERROR, (errmsg("node oid \"%u\" not exist", tupleoid)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errcode(ERRCODE_INTERNAL_ERROR)));
 	}
@@ -4866,7 +4866,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		heap_inplace_update(noderel, tuple);
 	}
 	heap_endscan(rel_scan);
-	/*4. refresh postgresql.conf*/
+	/*4. refresh new master postgresql.conf*/
 	resetStringInfo(&infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
@@ -4892,13 +4892,12 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column cndnpath is null")));
 		}
-		/*get cndnPath from aimtuple*/
+		/*get cndnPathtmp from tuple*/
 		cndnPathtmp = TextDatumGetCString(datumPath);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPathtmp, &infosendmsg, hostOid, getAgentCmdRst);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPathtmp, &infosendmsg, mgr_nodetmp->nodehost, getAgentCmdRst);
 		if(!getAgentCmdRst->ret)
 		{
 			elog(LOG, "refresh agtm extern fail");
-			return;
 		}
 		/*restart gtm extern*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -4906,7 +4905,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		if(!getAgentCmdRst->ret)
 		{
 			elog(LOG, "agtm_ctl restart gtm extern fail");
-			return;
 		}	
 	}
 	heap_endscan(rel_scan);	
@@ -4926,8 +4924,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart coordinator fail");
-			return;
+			elog(LOG, "pg_ctl restart coordinator %s fail", NameStr(mgr_nodetmp->nodename));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -4946,8 +4943,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode master fail");
-			return;
+			elog(LOG, "pg_ctl restart datanode %s master fail", NameStr(mgr_nodetmp->nodename));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -4966,8 +4962,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode slave fail");
-			return;
+			elog(LOG, "pg_ctl restart datanode %s slave fail", NameStr(mgr_nodetmp->nodename));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -4986,8 +4981,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode extern fail");
-			return;
+			elog(LOG, "pg_ctl restart datanode %s extern fail", NameStr(mgr_nodetmp->nodename));
 		}
 	}
 	heap_endscan(rel_scan);

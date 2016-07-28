@@ -143,7 +143,7 @@ extern void mgr_get_gtm_host_port(StringInfo infosendmsg);
 extern void mgr_append_infostr_infostr(StringInfo infostr, StringInfo sourceinfostr);
 extern void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, StringInfo infosendparamsg);
 extern void mgr_append_pgconf_paras_str_quotastr(char *key, char *value, StringInfo infosendmsg);
-extern void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid masteroid, StringInfo infosendparamsg);
+extern void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoid, StringInfo infosendparamsg);
 extern void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo infosendhbamsg);
 void mgr_add_oneline_info_pghbaconf(int type, char *database, char *user, char *addr, int addr_mark, char *auth_method, StringInfo infosendhbamsg);
 extern Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS);
