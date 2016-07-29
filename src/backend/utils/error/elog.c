@@ -76,6 +76,7 @@
 #include "tcop/tcopprot.h"
 #include "utils/guc.h"
 #include "utils/memutils.h"
+#include "lib/stringinfo.h"
 #include "utils/ps_status.h"
 #ifdef PGXC
 #include "pgxc/pgxc.h"
@@ -591,7 +592,7 @@ errfinish(int dummy,...)
 	CHECK_FOR_INTERRUPTS();
 }
 
-#ifdef ADB
+#if defined(ADB) || defined(ADBMGRD) || defined(AGTM)
 /*
  * errdump --- dump the latest ErrorData from error data stack.
  *
@@ -1311,6 +1312,24 @@ geterrposition(void)
 
 	return edata->cursorpos;
 }
+
+#if defined(ADB) || defined(ADBMGRD) || defined(AGTM)
+void
+geterrmsg(StringInfo buf)
+{
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+
+    /* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+    if (edata->message)
+		appendStringInfo(buf, "%s", edata->message);
+	if (edata->detail)
+		appendStringInfo(buf, "\n%s", edata->detail);
+	if (edata->hint)
+		appendStringInfo(buf, "\n%s", edata->hint);
+}
+#endif
 
 /*
  * getinternalerrposition --- same for internal error position

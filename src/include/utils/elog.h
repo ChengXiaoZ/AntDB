@@ -13,7 +13,7 @@
  */
 #ifndef ELOG_H
 #define ELOG_H
-
+#include "lib/stringinfo.h"
 #include <setjmp.h>
 
 /* Error level codes */
@@ -137,7 +137,8 @@
 extern bool errstart(int elevel, const char *filename, int lineno,
 		 const char *funcname, const char *domain);
 extern void errfinish(int dummy,...);
-#ifdef ADB
+
+#if defined(ADB) || defined(ADBMGRD) || defined(AGTM)
 extern void errdump(void);
 #endif
 
@@ -233,6 +234,9 @@ extern int	geterrcode(void);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
+#if defined(ADB) || defined(ADBMGRD) || defined(AGTM)
+extern void geterrmsg(StringInfo buf);
+#endif
 
 /*----------
  * Old-style error reporting API: to be used in this way:
