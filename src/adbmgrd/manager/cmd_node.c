@@ -3636,6 +3636,18 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 	mgr_append_pgconf_paras_str_quotastr("agtm_host", agtm_host, infosendmsg);
 	mgr_append_pgconf_paras_str_int("agtm_port", mgr_node->nodeport, infosendmsg);
 
+	mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendmsg);
+    mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendmsg);
+    mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendmsg);
+    mgr_append_pgconf_paras_str_int("wal_keep_segments", WAL_KEEP_SEGMENTS_NUM, infosendmsg);
+    mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendmsg);
+    mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendmsg);
+    mgr_append_pgconf_paras_str_int("max_prepared_transactions", MAX_PREPARED_TRANSACTIONS_DEFAULT, infosendmsg);
+    mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendmsg);
+    mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendmsg);
+    mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendmsg);
+    mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %t %e %x", infosendmsg);
+
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
@@ -4375,17 +4387,20 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 	/*refresh postgresql.conf of this node*/
 	if (slavename != NULL)
 	{
-		mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendparamsg);
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", slavename, infosendparamsg);
-		pfree(slavename);
-		mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendparamsg);
-		mgr_append_pgconf_paras_str_int("wal_keep_segments", WAL_KEEP_SEGMENTS_NUM, infosendparamsg);
-		mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendparamsg);
+        pfree(slavename);
 	}
 	if(nodetype == CNDN_TYPE_DATANODE_SLAVE || nodetype == CNDN_TYPE_DATANODE_EXTERN || nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTERN)
 	{
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", infosendparamsg);
 	}
+
+    mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendparamsg);
+    mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendparamsg);
+
+    mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendparamsg);
+    mgr_append_pgconf_paras_str_int("wal_keep_segments", WAL_KEEP_SEGMENTS_NUM, infosendparamsg);
+    mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendparamsg);
+
 	mgr_append_pgconf_paras_str_int("port", cndnport, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendparamsg);
 	mgr_append_pgconf_paras_str_int("max_prepared_transactions", MAX_PREPARED_TRANSACTIONS_DEFAULT, infosendparamsg);
