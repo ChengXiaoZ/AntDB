@@ -19,6 +19,9 @@
 
 #include "access/htup_details.h"
 #include "access/reloptions.h"
+#if defined(AGTM)
+#include "access/transam.h"
+#endif
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
@@ -474,6 +477,20 @@ standard_ProcessUtility(Node *parsetree,
 									SetPGVariable("transaction_deferrable",
 												  list_make1(item->arg),
 												  true);
+#if defined(AGTM)
+								else if (strcmp(item->defname, "least_xid_is") == 0)
+								{
+									A_Const		*con;
+									long		 least_xid;
+
+									AssertArg(IsA(item->arg, A_Const));
+									con = (A_Const *) (item->arg);
+									AssertArg(nodeTag(&con->val) == T_Integer);
+									least_xid = intVal(&con->val);
+
+									AdjustTransactionId(least_xid);
+								}
+#endif
 							}
 						}
 						break;

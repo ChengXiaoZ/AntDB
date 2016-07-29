@@ -162,6 +162,9 @@ extern TransactionId TransactionIdLatest(TransactionId mainxid,
 extern XLogRecPtr TransactionIdGetCommitLSN(TransactionId xid);
 
 /* in transam/varsup.c */
+#if defined(AGTM)
+extern void AdjustTransactionId(long least_xid);
+#endif
 #ifdef ADB
 extern TransactionId GetNewGlobalTransactionId(bool isSubXact);
 #endif

@@ -11,6 +11,7 @@
 
 #include "access/heapam.h"
 #include "access/htup_details.h"
+#include "catalog/pg_database.h"
 #include "access/transam.h"
 #include "access/xact.h"
 #include "catalog/adb_ha_sync_log.h"
@@ -42,11 +43,13 @@ static bool WalkerAlterSeqValFunc(Node *node, void *context);
 static bool WalkerSelectPortal(Portal portal);
 static bool WalkerMultiQueryPortal(Portal portal);
 
+#define IsNormalDatabase()	(MyDatabaseId > TemplateDbOid)
+
 #define CanAdbHaSync() \
 	(enable_adb_ha_sync && \
 	IS_PGXC_COORDINATOR && \
 	!IsConnFromCoord() && \
-	OidIsValid(MyDatabaseId))
+	IsNormalDatabase() )
 
 void
 AddAdbHaSyncLog(TimestampTz create_time,

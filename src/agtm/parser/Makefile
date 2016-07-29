@@ -36,9 +36,6 @@ endif
 # important, otherwise make will choose the built-in rule for
 # gram.y=>gram.c.
 
-gram.y: $(top_srcdir)/src/adbmgrd/parser/gram.y
-	rm -f $@ && $(LN_S) $< .
-
 gram.h: gram.c ;
 
 gram.c: BISONFLAGS += -d

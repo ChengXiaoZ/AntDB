@@ -1,5 +1,6 @@
 #include "postgres.h"
 
+#include "access/transam.h"
 #include "access/xact.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
@@ -176,6 +177,7 @@ agtm_generate_begin_command(void)
 	static char begin_cmd[BEGIN_COMMAND_SIZE];
 	const char *read_only;
 	const char *isolation_level;
+	TransactionId xid;
 
 	/*
 	 * First get the READ ONLY status because the next call to GetConfigOption
@@ -190,9 +192,15 @@ agtm_generate_begin_command(void)
 	isolation_level = GetConfigOption("transaction_isolation", false, false);
 	if (strcmp(isolation_level, "default") == 0)
 		isolation_level = GetConfigOption("default_transaction_isolation", false, false);
+	
+
+	/* Get local new xid, also is minimum xid from AGTM absolutely */
+	xid = ReadNewTransactionId();
 
 	/* Finally build a START TRANSACTION command */
-	sprintf(begin_cmd, "START TRANSACTION ISOLATION LEVEL %s %s", isolation_level, read_only);
+	sprintf(begin_cmd,
+		"START TRANSACTION ISOLATION LEVEL %s %s LEAST XID IS %u",
+		isolation_level, read_only, xid);
 
 	return begin_cmd;
 }

@@ -35,6 +35,26 @@
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
 
+#if defined(AGTM)
+/*
+ * AdjustTransactionId
+ *
+ * make sure next xid from AGTM is bigger than the caller's.
+ */
+void
+AdjustTransactionId(long least_xid)
+{
+	LWLockAcquire(XidGenLock, LW_SHARED);
+	elog(DEBUG1,
+		"AGTM adjust next xid from %u to %ld",
+		ShmemVariableCache->nextXid, least_xid);
+
+	while ((long)ShmemVariableCache->nextXid < least_xid)
+		TransactionIdAdvance(ShmemVariableCache->nextXid);
+	LWLockRelease(XidGenLock);
+}
+#endif
+
 #ifdef ADB
 TransactionId
 GetNewGlobalTransactionId(bool isSubXact)
@@ -228,6 +248,7 @@ GetNewGlobalTransactionId(bool isSubXact)
 
 	LWLockRelease(XidGenLock);
 
+	elog(DEBUG1, "Return new global xid: %u", xid);
 	return xid;
 }
 #endif
@@ -428,6 +449,8 @@ GetNewTransactionId(bool isSubXact)
 	}
 
 	LWLockRelease(XidGenLock);
+
+	elog(DEBUG1, "Return new local xid: %u", xid);
 	return xid;
 }
 

@@ -592,6 +592,10 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 
 	WHEN WHERE WHITESPACE_P WINDOW WITH WITHOUT WORK WRAPPER WRITE
 
+/* AGTM BEGIN */
+	XID
+/* AGTM END */
+
 	XML_P XMLATTRIBUTES XMLCONCAT XMLELEMENT XMLEXISTS XMLFOREST XMLPARSE
 	XMLPI XMLROOT XMLSERIALIZE
 
@@ -13438,6 +13442,9 @@ unreserved_keyword:
 			| WORK
 			| WRAPPER
 			| WRITE
+/* AGTM BEGIN */
+			| XID
+/* AGTM END */
 			| XML_P
 			| YEAR_P
 			| YES_P
