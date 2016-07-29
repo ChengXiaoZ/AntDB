@@ -9,6 +9,7 @@
 #include "parser/mgr_node.h"
 #include "parser/parser.h"
 #include "parser/scanner.h"
+#include "catalog/mgr_cndnnode.h"
 
 /*
  * The YY_EXTRA data that a flex scanner allows us to pass around.  Private
@@ -119,7 +120,7 @@ extern char *defGetString(DefElem *def);
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
 
-%type <ival>	Iconst SignedIconst opt_inner_type
+%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type
 %type <vsetstmt> set_rest set_rest_more
 %type <value>	NumericOnly
 
@@ -763,58 +764,31 @@ ListParmStmt:
 /* parm end*/
 
 /* gtm/coordinator/datanode 
-*nodetype: 0 gtm, 1 coordinator, 2 datanode
-*innertype: 0 master, 1 slave, 2 extern
 */
 AddNodeStmt:
-	  ADD_P GTM MASTER Ident opt_general_options
+	  ADD_P GTM opt_gtm_inner_type Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
 			node->if_not_exists = false;
-			node->nodetype = 0; 
-			node->innertype = 0; 
+			node->nodetype = $3; 
 			node->name = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
-	| ADD_P GTM MASTER IF_P NOT EXISTS Ident opt_general_options
+	| ADD_P GTM opt_gtm_inner_type IF_P NOT EXISTS Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
 			node->if_not_exists = true;
-			node->nodetype = 0;
-			node->innertype = 0;
+			node->nodetype = $3;
 			node->name = $7;
 			node->options = $8;
-			$$ = (Node*)node;
-		}
-	| ADD_P GTM opt_inner_type MASTER Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = false;
-			node->nodetype = 0;
-			node->innertype = $3;
-			node->name = $5;
-			node->mastername = $5;
-			node->options = $6;
-			$$ = (Node*)node;
-		}
-	| ADD_P GTM opt_inner_type IF_P NOT EXISTS MASTER Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = true;
-			node->nodetype = 0;
-			node->innertype = $3;
-			node->name = $8;
-			node->mastername = $8;
-			node->options = $9;
 			$$ = (Node*)node;
 		}
 	| ADD_P COORDINATOR Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
 			node->if_not_exists = false;
-			node->nodetype = 1;
-			node->innertype = 0;
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 			node->name = $3;
 			node->options = $4;
 			$$ = (Node*)node;
@@ -823,98 +797,39 @@ AddNodeStmt:
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
 			node->if_not_exists = true;
-			node->nodetype = 1;
-			node->innertype = 0;
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 			node->name = $6;
 			node->options = $7;
 			$$ = (Node*)node;
 		}
-	| ADD_P DATANODE MASTER Ident opt_general_options
+	| ADD_P DATANODE opt_dn_inner_type Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
 			node->if_not_exists = false;
-			node->nodetype = 2;
-			node->innertype = 0;
+			node->nodetype = $3;
 			node->name = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
-	| ADD_P DATANODE MASTER IF_P NOT EXISTS Ident opt_general_options
+	| ADD_P DATANODE opt_dn_inner_type IF_P NOT EXISTS Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
 			node->if_not_exists = true;
-			node->nodetype = 2;
-			node->innertype = 0;
+			node->nodetype = $3;
 			node->name = $7;
 			node->options = $8;
-			$$ = (Node*)node;
-		}
-	| ADD_P DATANODE SLAVE MASTER Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = false;
-			node->nodetype = 2;
-			node->innertype = 1;
-			node->name = $5;
-			node->mastername = $5;
-			node->options = $6;
-			$$ = (Node*)node;
-		}
-	| ADD_P DATANODE SLAVE IF_P NOT EXISTS MASTER Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = true;
-			node->nodetype = 2;
-			node->innertype = 1;
-			node->name = $8;
-			node->mastername = $8;
-			node->options = $9;
-			$$ = (Node*)node;
-		}
-	| ADD_P DATANODE EXTERN MASTER Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = false;
-			node->nodetype = 2;
-			node->innertype = 2;
-			node->name = $5;
-			node->mastername = $5;
-			node->options = $6;
-			$$ = (Node*)node;
-		}
-	| ADD_P DATANODE EXTERN IF_P NOT EXISTS MASTER Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = true;
-			node->nodetype = 2;
-			node->innertype = 2;
-			node->name = $8;
-			node->mastername = $8;
-			node->options = $9;
 			$$ = (Node*)node;
 		}
 	;
 	
 
 AlterNodeStmt:
-	  ALTER GTM MASTER Ident opt_general_options
+		ALTER GTM opt_gtm_inner_type Ident opt_general_options
 		{
 			MGRAlterNode *node = makeNode(MGRAlterNode);
 			node->if_not_exists = false;
-			node->nodetype = 0;
-			node->innertype = 0;
+			node->nodetype = $3;
 			node->name = $4;
-			node->options = $5;
-			$$ = (Node*)node;
-		}
-	| ALTER GTM opt_inner_type Ident opt_general_options
-		{
-			MGRAlterNode *node = makeNode(MGRAlterNode);
-			node->if_not_exists = false;
-			node->nodetype = 0;
-			node->innertype = $3;
-			node->name = $4;
-			node->mastername = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
@@ -922,144 +837,69 @@ AlterNodeStmt:
 		{
 			MGRAlterNode *node = makeNode(MGRAlterNode);
 			node->if_not_exists = false;
-			node->nodetype = 1;
-			node->innertype = 0;
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 			node->name = $3;
 			node->options = $4;
 			$$ = (Node*)node;
 		}
-	| ALTER DATANODE MASTER Ident opt_general_options
+	| ALTER DATANODE opt_dn_inner_type Ident opt_general_options
 		{
 			MGRAlterNode *node = makeNode(MGRAlterNode);
 			node->if_not_exists = false;
-			node->nodetype = 2;
-			node->innertype = 0;
+			node->nodetype = $3;
 			node->name = $4;
-			node->options = $5;
-			$$ = (Node*)node;
-		}
-	| ALTER DATANODE SLAVE Ident opt_general_options
-		{
-			MGRAlterNode *node = makeNode(MGRAlterNode);
-			node->if_not_exists = false;
-			node->nodetype = 2;
-			node->innertype = 1;
-			node->name = $4;
-			node->mastername = $4;
-			node->options = $5;
-			$$ = (Node*)node;
-		}
-	| ALTER DATANODE EXTERN Ident opt_general_options
-		{
-			MGRAlterNode *node = makeNode(MGRAlterNode);
-			node->if_not_exists = false;
-			node->nodetype = 2;
-			node->innertype = 2;
-			node->name = $4;
-			node->mastername = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
 	;
 
 DropNodeStmt:
-		DROP GTM MASTER ObjList
+	  DROP GTM opt_gtm_inner_type ObjList
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
 			node->if_exists = false;
-			node->nodetype = 0;
-			node->innertype = 0;
-			node->hosts = $4;
+			node->nodetype = $3;
+			node->names = $4;
 			$$ = (Node*)node;
 		}
-	|	DROP GTM MASTER IF_P EXISTS ObjList
+	|	DROP GTM opt_gtm_inner_type IF_P EXISTS ObjList
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 0;
-			node->innertype = 0;
-			node->hosts = $6;
-			$$ = (Node*)node;
-		}
-	|	DROP GTM opt_inner_type ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 0;
-			node->innertype = $3;
-			node->hosts = $4;
-			$$ = (Node*)node;
-		}
-	|	DROP GTM opt_inner_type IF_P EXISTS ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 0;
-			node->innertype = $3;
-			node->hosts = $6;
+			node->if_exists = true;
+			node->nodetype = $3;
+			node->names = $6;
 			$$ = (Node*)node;
 		}
 	|	DROP COORDINATOR ObjList
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
 			node->if_exists = false;
-			node->nodetype = 1;
-			node->innertype = 0;
-			node->hosts = $3;
-			$$ = (Node*)node;
-		}
-	|	DROP DATANODE MASTER ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 2;
-			node->innertype = 0;
-			node->hosts = $4;
-			$$ = (Node*)node;
-		}
-	|	DROP DATANODE SLAVE ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 2;
-			node->innertype = 1;
-			node->hosts = $4;
-			$$ = (Node*)node;
-		}
-	|	DROP DATANODE EXTERN ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 2;
-			node->innertype = 2;
-			node->hosts = $4;
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+			node->names = $3;
 			$$ = (Node*)node;
 		}
 	|	DROP COORDINATOR IF_P EXISTS ObjList
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 1;
-			node->innertype = 0;
-			node->hosts = $5;
+			node->if_exists = true;
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+			node->names = $5;
 			$$ = (Node*)node;
 		}
-	|	DROP DATANODE MASTER IF_P EXISTS ObjList
+	|	DROP DATANODE opt_dn_inner_type ObjList
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
 			node->if_exists = false;
-			node->nodetype = 2;
-			node->innertype = 0;
-			node->hosts = $6;
+			node->nodetype = $3;
+			node->names = $4;
 			$$ = (Node*)node;
 		}
-	|	DROP DATANODE SLAVE IF_P EXISTS ObjList
+	|	DROP DATANODE opt_dn_inner_type IF_P EXISTS ObjList
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = 2;
-			node->innertype = 1;
-			node->hosts = $6;
+			node->if_exists = true;
+			node->nodetype = $3;
+			node->names = $6;
 			$$ = (Node*)node;
 		}
 	;
@@ -1592,21 +1432,28 @@ StopNodeMasterStmt:
 		}
 	;
 FailoverStmt:
-		FAILOVER DATANODE NodeConstList
+		FAILOVER DATANODE SLAVE NodeConstList
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", $3));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn_slave", $4));
 			$$ = (Node*)stmt;
 	}
+	|	FAILOVER DATANODE EXTERN NodeConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn_extern", $4));
+			$$ = (Node*)stmt;
+		}
 	| FAILOVER GTM
-	{
+		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
-	}
+		}
 	;
 /* cndn end*/
 
@@ -1645,9 +1492,15 @@ opt_stop_mode_i:
 	MODE IMMEDIATE		{ $$ = pstrdup("MODE IMMEDIATE"); }
 	| MODE I			{ $$ = pstrdup("MODE IMMEDIATE"); }
 	;
-opt_inner_type:
-	SLAVE { $$ = 1; }
-	| EXTERN { $$ = 2; }
+opt_gtm_inner_type:
+	  MASTER { $$ = GTM_TYPE_GTM_MASTER; }
+	| SLAVE { $$ = GTM_TYPE_GTM_SLAVE; }
+	| EXTERN { $$ = GTM_TYPE_GTM_EXTERN; }
+	;
+opt_dn_inner_type:
+	 MASTER { $$ = CNDN_TYPE_DATANODE_MASTER; }
+	|SLAVE { $$ = CNDN_TYPE_DATANODE_SLAVE; }
+	| EXTERN { $$ = CNDN_TYPE_DATANODE_EXTERN; }
 	;
 ListMonitor:
 	GET_CLUSTER_HEADPAGE_LINE

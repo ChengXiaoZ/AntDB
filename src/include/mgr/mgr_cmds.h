@@ -87,6 +87,7 @@ extern Datum mgr_stop_dn_extern(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_extern_f(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_extern_i(PG_FUNCTION_ARGS);
 extern Datum mgr_init_dn_extern_all(PG_FUNCTION_ARGS);
+extern Datum mgr_failover_one_dn_extern(PG_FUNCTION_ARGS);
 extern void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest);
@@ -133,8 +134,8 @@ extern List * get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallIn
        , void (*check_value_func_ptr)(char*)
 #endif
        );
-extern Datum mgr_failover_one_dn(PG_FUNCTION_ARGS);
-void check_dn_slave(List *nodenamelist, Relation rel_node, StringInfo infosendmsg);
+extern Datum mgr_failover_one_dn_slave(PG_FUNCTION_ARGS);
+void check_dn_slave(char nodetype, List *nodenamelist, Relation rel_node, StringInfo infosendmsg);
 extern bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress, bool isprimary, Oid cndnmasternameoid, GetAgentCmdRst *getAgentCmdRst);
 extern void mgr_send_conf_parameters(char filetype, char *datapath, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst);
 extern void mgr_append_pgconf_paras_str_str(char *key, char *value, StringInfo infosendmsg);

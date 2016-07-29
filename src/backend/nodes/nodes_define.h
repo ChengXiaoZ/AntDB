@@ -4125,7 +4125,7 @@ END_NODE(MGRAlterNode)
 #ifndef NO_NODE_MGRDropNode
 BEGIN_NODE(MGRDropNode)
 	NODE_SCALAR(bool, if_exists)
-	NODE_NODE(List, hosts)
+	NODE_NODE(List, names)
 END_NODE(MGRDropNode)
 #endif /* NO_NODE_MGRDropNode */
 
