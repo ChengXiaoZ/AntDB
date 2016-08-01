@@ -29,12 +29,12 @@ CREATE VIEW adbmgr.node AS
     CASE mgrnode.nodetype
       WHEN 'g' THEN 'gtm master'::text
       WHEN 'p' THEN 'gtm slave'::text
-      WHEN 'e' THEN 'gtm extern'::text
+      WHEN 'e' THEN 'gtm extra'::text
       WHEN 'c' THEN 'coordinator'::text
       WHEN 's' THEN 'coordinator slave'::text
       WHEN 'd' THEN 'datanode master'::text
       WHEN 'b' THEN 'datanode slave'::text
-      WHEN 'n' THEN 'datanode extern'::text
+      WHEN 'n' THEN 'datanode extra'::text
     END AS type,
     node_alise.nodename AS mastername,
     mgrnode.nodeport    AS  port,
@@ -60,9 +60,9 @@ CREATE VIEW adbmgr.initall AS
 	UNION ALL
 	SELECT 'start gtm slave' AS "operation type", * FROM mgr_start_gtm_slave(NULL)
 	UNION ALL
-	SELECT 'init gtm extern' AS "operation type",* FROM mgr_init_gtm_extern(NULL)
+	SELECT 'init gtm extra' AS "operation type",* FROM mgr_init_gtm_extra(NULL)
 	UNION ALL
-	SELECT 'start gtm extern' AS "operation type", * FROM mgr_start_gtm_extern(NULL)
+	SELECT 'start gtm extra' AS "operation type", * FROM mgr_start_gtm_extra(NULL)
 	UNION ALL
 	SELECT 'init coordinator' AS "operation type",* FROM mgr_init_cn_master(NULL)
 	UNION ALL
@@ -76,9 +76,9 @@ CREATE VIEW adbmgr.initall AS
 	UNION ALL
 	SELECT 'start datanode slave' AS "operation type", * FROM mgr_start_dn_slave(NULL)
 	UNION ALL
-	SELECT 'init datanode extern' AS "operation type", * FROM mgr_init_dn_extern_all()
+	SELECT 'init datanode extra' AS "operation type", * FROM mgr_init_dn_extra_all()
 	UNION ALL
-	SELECT 'start datanode extern' AS "operation type", * FROM mgr_start_dn_extern(NULL)
+	SELECT 'start datanode extra' AS "operation type", * FROM mgr_start_dn_extra(NULL)
 	UNION ALL
 	SELECT 'config coordinator' AS "operation type", * FROM mgr_configure_nodes_all(NULL);
 
@@ -88,21 +88,21 @@ CREATE VIEW adbmgr.initdatanodeall AS
     UNION all
     SELECT 'init datanode slave' AS "operation type", * FROM mgr_init_dn_slave_all()
     UNION all
-    SELECT 'init datanode extern' AS "operation type", * FROM mgr_init_dn_extern_all();
+    SELECT 'init datanode extra' AS "operation type", * FROM mgr_init_dn_extra_all();
 --start datanode all
 CREATE VIEW adbmgr.start_datanode_all AS
     SELECT 'start datanode master' AS "operation type", * FROM mgr_start_dn_master(NULL)
     UNION all
     SELECT 'start datanode slave' AS "operation type", * FROM mgr_start_dn_slave(NULL)
     UNION all
-    SELECT 'start datanode extern' AS "operation type", * FROM mgr_start_dn_extern(NULL);
+    SELECT 'start datanode extra' AS "operation type", * FROM mgr_start_dn_extra(NULL);
 --start all
 CREATE VIEW adbmgr.startall AS
     SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm_master(NULL)
     UNION all
     SELECT 'start gtm slave' AS "operation type", * FROM mgr_start_gtm_slave(NULL)
     UNION all
-    SELECT 'start gtm extern' AS "operation type", * FROM mgr_start_gtm_extern(NULL)
+    SELECT 'start gtm extra' AS "operation type", * FROM mgr_start_gtm_extra(NULL)
     UNION all
     SELECT 'start coordinator' AS "operation type", * FROM mgr_start_cn_master(NULL)
     UNION all
@@ -110,28 +110,28 @@ CREATE VIEW adbmgr.startall AS
     UNION all
     SELECT 'start datanode slave' AS "operation type", * FROM mgr_start_dn_slave(NULL)
     UNION all
-    SELECT 'start datanode extern' AS "operation type", * FROM mgr_start_dn_extern(NULL);
+    SELECT 'start datanode extra' AS "operation type", * FROM mgr_start_dn_extra(NULL);
 --stop datanode all
 CREATE VIEW adbmgr.stop_datanode_all AS
     SELECT 'stop datanode master' AS "operation type", * FROM mgr_stop_dn_master(NULL)
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave(NULL)
     UNION all
-    SELECT 'stop datanode extern' AS "operation type", * FROM mgr_stop_dn_extern(NULL);
+    SELECT 'stop datanode extra' AS "operation type", * FROM mgr_stop_dn_extra(NULL);
 
 CREATE VIEW adbmgr.stop_datanode_all_f AS
     SELECT 'stop datanode master' AS "operation type", * FROM mgr_stop_dn_master_f(NULL)
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_f(NULL)
     UNION all
-    SELECT 'stop datanode extern' AS "operation type", * FROM mgr_stop_dn_extern_f(NULL);
+    SELECT 'stop datanode extra' AS "operation type", * FROM mgr_stop_dn_extra_f(NULL);
 
 CREATE VIEW adbmgr.stop_datanode_all_i AS
     SELECT 'stop datanode master' AS "operation type", * FROM mgr_stop_dn_master_i(NULL)
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_i(NULL)
     UNION all
-    SELECT 'stop datanode extern' AS "operation type", * FROM mgr_stop_dn_extern_i(NULL);
+    SELECT 'stop datanode extra' AS "operation type", * FROM mgr_stop_dn_extra_i(NULL);
 
 --stop all
 CREATE VIEW adbmgr.stopall AS
@@ -141,9 +141,9 @@ CREATE VIEW adbmgr.stopall AS
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave(NULL)
     UNION all
-    SELECT 'stop datanode extern' AS "operation type", * FROM mgr_stop_dn_extern(NULL)
+    SELECT 'stop datanode extra' AS "operation type", * FROM mgr_stop_dn_extra(NULL)
     UNION all
-    SELECT 'stop gtm extern' AS "operation type", * FROM mgr_stop_gtm_extern(NULL)
+    SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra(NULL)
     UNION all
     SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave(NULL)
     UNION all
@@ -156,9 +156,9 @@ CREATE VIEW adbmgr.stopall_f AS
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_f(NULL)
     UNION all
-    SELECT 'stop datanode extern' AS "operation type", * FROM mgr_stop_dn_extern_f(NULL)
+    SELECT 'stop datanode extra' AS "operation type", * FROM mgr_stop_dn_extra_f(NULL)
     UNION all
-    SELECT 'stop gtm extern' AS "operation type", * FROM mgr_stop_gtm_extern_f(NULL)
+    SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_f(NULL)
     UNION all
     SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_f(NULL)
     UNION all
@@ -171,9 +171,9 @@ CREATE VIEW adbmgr.stopall_i AS
     UNION all
     SELECT 'stop datanode slave' AS "operation type", * FROM mgr_stop_dn_slave_i(NULL)
     UNION all
-    SELECT 'stop datanode extern' AS "operation type", * FROM mgr_stop_dn_extern_i(NULL)
+    SELECT 'stop datanode extra' AS "operation type", * FROM mgr_stop_dn_extra_i(NULL)
     UNION all
-    SELECT 'stop gtm extern' AS "operation type", * FROM mgr_stop_gtm_extern_i(NULL)
+    SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_i(NULL)
     UNION all
     SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_i(NULL)
     UNION all

@@ -52,7 +52,7 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define CNDN_TYPE_COORDINATOR_SLAVE			's'
 #define CNDN_TYPE_DATANODE_MASTER			'd'
 #define CNDN_TYPE_DATANODE_SLAVE			'b'
-#define CNDN_TYPE_DATANODE_EXTERN			'n'
+#define CNDN_TYPE_DATANODE_EXTRA			'n'
 
 #define MAX_WAL_SENDERS_NUM					5
 #define WAL_KEEP_SEGMENTS_NUM				32
@@ -60,7 +60,7 @@ typedef FormData_mgr_node *Form_mgr_node;
 
 #define GTM_TYPE_GTM_MASTER			'g'
 #define GTM_TYPE_GTM_SLAVE			'p'
-#define GTM_TYPE_GTM_EXTERN			'e'
+#define GTM_TYPE_GTM_EXTRA			'e'
 
 #ifndef GTM_DEFAULT_PORT
 #	define GTM_DEFAULT_PORT 6666

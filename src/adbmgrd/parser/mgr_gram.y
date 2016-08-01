@@ -137,7 +137,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword> PASSWORD
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
-%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F EXTERN
+%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -970,12 +970,12 @@ InitNodeStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_slave", args));
 			$$ = (Node*)stmt;
 		}
-	| INIT GTM EXTERN 
+	| INIT GTM EXTRA 
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extern", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extra", args));
 			$$ = (Node*)stmt;
 		}
 	| INIT COORDINATOR NodeConstList
@@ -1015,11 +1015,11 @@ InitNodeStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave", $4));
 			$$ = (Node*)stmt;
 		}
-	| INIT DATANODE EXTERN AConstList
+	| INIT DATANODE EXTRA AConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extern", $4));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra", $4));
 			$$ = (Node*)stmt;
 		}
 	|	INIT DATANODE SLAVE ALL
@@ -1029,11 +1029,11 @@ InitNodeStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave_all", NULL));
 			$$ = (Node*)stmt;
 		}
-	|	INIT DATANODE EXTERN ALL
+	|	INIT DATANODE EXTRA ALL
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extern_all", NULL));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra_all", NULL));
 			$$ = (Node*)stmt;
 		}
 	| INIT DATANODE ALL
@@ -1068,12 +1068,12 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_slave", args));
 			$$ = (Node*)stmt;
 		}
-	| START GTM EXTERN
+	| START GTM EXTRA
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_extern", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_extra", args));
 			$$ = (Node*)stmt;
 		}
 	|	START COORDINATOR NodeConstList
@@ -1113,11 +1113,11 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_slave", $4));
 			$$ = (Node*)stmt;
 		}
-	|	START DATANODE EXTERN NodeConstList
+	|	START DATANODE EXTRA NodeConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_extern", $4));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_extra", $4));
 			$$ = (Node*)stmt;
 		}
 	|	START DATANODE SLAVE ALL
@@ -1128,12 +1128,12 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_slave", args));
 			$$ = (Node*)stmt;
 		}
-	|	START DATANODE EXTERN ALL
+	|	START DATANODE EXTRA ALL
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_extern", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_extra", args));
 			$$ = (Node*)stmt;
 		}
 	|	START DATANODE ALL
@@ -1200,28 +1200,28 @@ StopNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_slave_i", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM EXTERN opt_stop_mode_s
+	|	STOP GTM EXTRA opt_stop_mode_s
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extern", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM EXTERN opt_stop_mode_f
+	|	STOP GTM EXTRA opt_stop_mode_f
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extern_f", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra_f", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM EXTERN opt_stop_mode_i
+	|	STOP GTM EXTRA opt_stop_mode_i
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extern_i", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra_i", args));
 			$$ = (Node*)stmt;
 		}
 	|	STOP COORDINATOR AConstList opt_stop_mode_s
@@ -1335,49 +1335,49 @@ StopNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave_i", $4));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTERN AConstList opt_stop_mode_s
+	|	STOP DATANODE EXTRA AConstList opt_stop_mode_s
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extern", $4));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", $4));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTERN AConstList opt_stop_mode_f
+	|	STOP DATANODE EXTRA AConstList opt_stop_mode_f
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extern_f", $4));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_f", $4));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTERN AConstList opt_stop_mode_i
+	|	STOP DATANODE EXTRA AConstList opt_stop_mode_i
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extern_i", $4));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_i", $4));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTERN ALL opt_stop_mode_s
+	|	STOP DATANODE EXTRA ALL opt_stop_mode_s
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extern", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTERN ALL opt_stop_mode_f
+	|	STOP DATANODE EXTRA ALL opt_stop_mode_f
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extern_f", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_f", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTERN ALL opt_stop_mode_i
+	|	STOP DATANODE EXTRA ALL opt_stop_mode_i
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extern_i", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_i", args));
 			$$ = (Node*)stmt;
 		}
 	|	STOP DATANODE SLAVE ALL opt_stop_mode_s
@@ -1455,11 +1455,11 @@ FailoverStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn_slave", $4));
 			$$ = (Node*)stmt;
 	}
-	|	FAILOVER DATANODE EXTERN NodeConstList
+	|	FAILOVER DATANODE EXTRA NodeConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn_extern", $4));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn_extra", $4));
 			$$ = (Node*)stmt;
 		}
 	| FAILOVER GTM
@@ -1511,12 +1511,12 @@ opt_stop_mode_i:
 opt_gtm_inner_type:
 	  MASTER { $$ = GTM_TYPE_GTM_MASTER; }
 	| SLAVE { $$ = GTM_TYPE_GTM_SLAVE; }
-	| EXTERN { $$ = GTM_TYPE_GTM_EXTERN; }
+	| EXTRA { $$ = GTM_TYPE_GTM_EXTRA; }
 	;
 opt_dn_inner_type:
 	 MASTER { $$ = CNDN_TYPE_DATANODE_MASTER; }
 	|SLAVE { $$ = CNDN_TYPE_DATANODE_SLAVE; }
-	| EXTERN { $$ = CNDN_TYPE_DATANODE_EXTERN; }
+	| EXTRA { $$ = CNDN_TYPE_DATANODE_EXTRA; }
 	;
 ListMonitor:
 	GET_CLUSTER_HEADPAGE_LINE
@@ -1651,7 +1651,7 @@ unreserved_keyword:
 	| DEPLOY
 	| DROP
 	| EXISTS
-	| EXTERN
+	| EXTRA
 	| F
 	| FAILOVER
 	| FAST
@@ -1695,7 +1695,6 @@ unreserved_keyword:
 	| S
 	| SET
 	| SLAVE
-	| EXTRA
 	| SMART
 	| START
 	| STOP

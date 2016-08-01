@@ -5093,8 +5093,8 @@ DESCR("init gtm master");
 DATA(insert OID = 3179 ( mgr_init_gtm_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm_slave _null_ _null_ _null_ ));
 DESCR("init gtm slave");
 
-DATA(insert OID = 3458 ( mgr_init_gtm_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm_extern _null_ _null_ _null_ ));
-DESCR("init gtm extern");
+DATA(insert OID = 3458 ( mgr_init_gtm_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm_extra _null_ _null_ _null_ ));
+DESCR("init gtm extra");
 
 DATA(insert OID = 3183 ( mgr_init_cn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_cn_master _null_ _null_ _null_ ));
 DESCR("init coordinator master");
@@ -5105,8 +5105,8 @@ DESCR("init datanode master");
 DATA(insert OID = 3187 (  mgr_init_dn_slave        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_slave _null_ _null_ _null_ ));
 DESCR("init datanode slave");
 
-DATA(insert OID = 3465 (  mgr_init_dn_extern       PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extern _null_ _null_ _null_ ));
-DESCR("init datanode extern");
+DATA(insert OID = 3465 (  mgr_init_dn_extra       PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extra _null_ _null_ _null_ ));
+DESCR("init datanode extra");
 
 DATA(insert OID = 3188 (  mgr_init_dn_slave_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_slave_all _null_ _null_ _null_ ));
 DESCR("init datanode slave all");
@@ -5168,17 +5168,17 @@ DESCR("mgr stop gtm slave");
 DATA(insert OID = 3463 ( mgr_failover_gtm      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_gtm _null_ _null_ _null_ ));
 DESCR("mgr failover gtm");
 
-DATA(insert OID = 3460 ( mgr_stop_gtm_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extern _null_ _null_ _null_ ));
-DESCR("mgr stop gtm extern");
+DATA(insert OID = 3460 ( mgr_stop_gtm_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extra _null_ _null_ _null_ ));
+DESCR("mgr stop gtm extra");
 
-DATA(insert OID = 3461 ( mgr_stop_gtm_extern_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extern_f _null_ _null_ _null_ ));
-DESCR("mgr stop gtm extern");
+DATA(insert OID = 3461 ( mgr_stop_gtm_extra_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extra_f _null_ _null_ _null_ ));
+DESCR("mgr stop gtm extra");
 
-DATA(insert OID = 3462 ( mgr_stop_gtm_extern_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extern_i _null_ _null_ _null_ ));
-DESCR("mgr stop gtm extern");
+DATA(insert OID = 3462 ( mgr_stop_gtm_extra_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extra_i _null_ _null_ _null_ ));
+DESCR("mgr stop gtm extra");
 
-DATA(insert OID = 3459 ( mgr_start_gtm_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_gtm_extern _null_ _null_ _null_ ));
-DESCR("mgr start gtm extern");
+DATA(insert OID = 3459 ( mgr_start_gtm_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_gtm_extra _null_ _null_ _null_ ));
+DESCR("mgr start gtm extra");
 
 DATA(insert OID = 3205 ( mgr_start_dn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_master _null_ _null_ _null_ ));
 DESCR("mgr start dn master");
@@ -5189,8 +5189,8 @@ DESCR("mgr stop dn master");
 DATA(insert OID = 3207 ( mgr_start_dn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_slave _null_ _null_ _null_ ));
 DESCR("mgr start dn slave");
 
-DATA(insert OID = 3475 ( mgr_start_dn_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_extern _null_ _null_ _null_ ));
-DESCR("mgr start dn extern");
+DATA(insert OID = 3475 ( mgr_start_dn_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_extra _null_ _null_ _null_ ));
+DESCR("mgr start dn extra");
 
 DATA(insert OID = 3208 ( mgr_stop_dn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_slave _null_ _null_ _null_ ));
 DESCR("mgr stop dn slave");
@@ -5252,20 +5252,20 @@ DESCR("monitor_slowlog_insert_data");
 DATA(insert OID = 3227 ( get_dbthreshold      PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ get_dbthreshold _null_ _null_ _null_ ));
 DESCR("get_dbthreshold");
 
-DATA(insert OID = 3476 ( mgr_stop_dn_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extern _null_ _null_ _null_ ));
-DESCR("mgr stop dn extern fast");
+DATA(insert OID = 3476 ( mgr_stop_dn_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extra _null_ _null_ _null_ ));
+DESCR("mgr stop dn extra fast");
 
-DATA(insert OID = 3477 ( mgr_stop_dn_extern_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extern_f _null_ _null_ _null_ ));
-DESCR("mgr stop dn extern fast");
+DATA(insert OID = 3477 ( mgr_stop_dn_extra_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extra_f _null_ _null_ _null_ ));
+DESCR("mgr stop dn extra fast");
 
-DATA(insert OID = 3478 ( mgr_stop_dn_extern_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extern_i _null_ _null_ _null_ ));
-DESCR("mgr stop dn extern immediate");
+DATA(insert OID = 3478 ( mgr_stop_dn_extra_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_extra_i _null_ _null_ _null_ ));
+DESCR("mgr stop dn extra immediate");
 
-DATA(insert OID = 3479 (  mgr_init_dn_extern_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extern_all _null_ _null_ _null_ ));
-DESCR("init datanode extern all");
+DATA(insert OID = 3479 (  mgr_init_dn_extra_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extra_all _null_ _null_ _null_ ));
+DESCR("init datanode extra all");
 
-DATA(insert OID = 3480 ( mgr_failover_one_dn_extern      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_one_dn_extern _null_ _null_ _null_ ));
-DESCR("mgr failover datanode extern");
+DATA(insert OID = 3480 ( mgr_failover_one_dn_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_one_dn_extra _null_ _null_ _null_ ));
+DESCR("mgr failover datanode extra");
 
 #endif
 
