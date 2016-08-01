@@ -2509,7 +2509,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		/* get node info for append datanode master */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_MASTER, &appendnodeinfo);
@@ -2554,9 +2554,6 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		if (pg_conn == NULL || PQstatus((PGconn*)pg_conn) != CONNECTION_OK)
 		{
-			PQfinish(pg_conn);
-			pg_conn = NULL;
-		
 			ereport(ERROR,
 				(errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)pg_conn)),
 				errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
@@ -2592,19 +2589,26 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		/* step 9: release the DDL lock */
 		PQclear(res);
 		PQfinish(pg_conn);
+		pg_conn = NULL;
 
 		/* step10: update node system table's column to set initial is true when cmd is init*/
 		mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER);
-	}PG_CATCH();
+	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-	}PG_END_TRY();
+	}PG_END_TRY_HOLD();
 
 	if (catcherr)
 	{
 		initStringInfo(&catcherrmsg);
 		geterrmsg(&catcherrmsg);
 		errdump();
+	}
+
+	if(pg_conn)
+	{
+		PQfinish(pg_conn);
+		pg_conn = NULL;
 	}
 
 	tup_result = build_common_command_tuple(
@@ -2614,7 +2618,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 	if (catcherr)
 		pfree(catcherrmsg.data);
-	
+
 	return HeapTupleGetDatum(tup_result);
 }
 
@@ -2640,7 +2644,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		/* get node info both slave and master node. */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_SLAVE, &appendnodeinfo);
@@ -2711,10 +2715,10 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
-	}PG_CATCH();
+	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-	}PG_END_TRY();
+	}PG_END_TRY_HOLD();
 
 	if (catcherr)
 	{
@@ -2730,7 +2734,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 	if (catcherr)
 		pfree(catcherrmsg.data);
-	
+
 	return HeapTupleGetDatum(tup_result);
 }
 
@@ -2756,7 +2760,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		/* get node info both slave and master node. */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_EXTERN, &appendnodeinfo);
@@ -2827,10 +2831,10 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
-	}PG_CATCH();
+	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-	}PG_END_TRY();
+	}PG_END_TRY_HOLD();
 
 	if (catcherr)
 	{
@@ -2846,7 +2850,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 	if (catcherr)
 		pfree(catcherrmsg.data);
-	
+
 	return HeapTupleGetDatum(tup_result);
 }
 
@@ -2878,7 +2882,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	Assert(appendnodeinfo.nodename);
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		/* get node info for append coordinator master */
 		mgr_get_appendnodeinfo(CNDN_TYPE_COORDINATOR_MASTER, &appendnodeinfo);
@@ -2921,9 +2925,6 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 
 		if (pg_conn == NULL || PQstatus((PGconn*)pg_conn) != CONNECTION_OK)
 		{
-			PQfinish(pg_conn);
-			pg_conn = NULL;
-
 			ereport(ERROR,
 				(errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)pg_conn)),
 				errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
@@ -2961,19 +2962,25 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		/* step 10: release the DDL lock */
 		PQclear(res);
 		PQfinish(pg_conn);
+        pg_conn = NULL;
 
 		/* step 11: update node system table's column to set initial is true when cmd is init*/
 		mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER);
-	}PG_CATCH();
+	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-	}PG_END_TRY();
+	}PG_END_TRY_HOLD();
 	
 	if (catcherr)
 	{
 		initStringInfo(&catcherrmsg);
 		geterrmsg(&catcherrmsg);
 		errdump();
+	}
+	if(pg_conn)
+	{
+		PQfinish(pg_conn);
+		pg_conn = NULL;
 	}
 
 	tup_result = build_common_command_tuple(

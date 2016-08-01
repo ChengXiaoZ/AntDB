@@ -377,7 +377,7 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
  *		}
  *		PG_END_TRY();
  */
-#ifdef ADB
+#if defined(ADB) || defined(ADBMGRD)
 #define PG_TRY_HOLD()														\
 	do {																	\
 		extern PGDLLIMPORT volatile uint32 InterruptHoldoffCount;			\
@@ -405,7 +405,7 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 		PG_exception_stack = save_exception_stack;							\
 		error_context_stack = save_context_stack;							\
 	} while (0)
-#endif /* ADB */
+#endif /* defined(ADB) || defined(ADBMGRD) */
 
 /*
  * gcc understands __attribute__((noreturn)); for other compilers, insert
