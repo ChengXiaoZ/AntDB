@@ -133,7 +133,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARM
-%token<keyword>	INIT GTM MASTER SLAVE ALL NODE COORDINATOR DATANODE
+%token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
 %token<keyword> PASSWORD
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
@@ -212,6 +212,22 @@ AppendNodeStmt:
 			List *args = list_make1(makeStringConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnmaster", args));
+			$$ = (Node*)stmt;
+		}
+		| APPEND DATANODE SLAVE Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnslave", args));
+			$$ = (Node*)stmt;
+		}
+		| APPEND DATANODE EXTRA Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnextra", args));
 			$$ = (Node*)stmt;
 		}
 		| APPEND COORDINATOR Ident
@@ -1679,6 +1695,7 @@ unreserved_keyword:
 	| S
 	| SET
 	| SLAVE
+	| EXTRA
 	| SMART
 	| START
 	| STOP

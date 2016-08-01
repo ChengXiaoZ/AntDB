@@ -50,6 +50,7 @@ typedef struct AppendNodeInfo
     Oid   nodehost;
 	char *nodeaddr;
 	int32 nodeport;
+    Oid   nodemasteroid;
     char *nodeusername;
 }AppendNodeInfo;
 
@@ -75,11 +76,14 @@ static void mgr_set_inited_incluster_true(char *nodename, char nodetype);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
-static void mgr_reload_hbaconf(Oid hostoid, char *nodepath);
+static void mgr_reload_conf(Oid hostoid, char *nodepath);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport);
 static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
 static char *mgr_nodetype_str(char nodetype);
+static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
+static void makesure_dnmaster_running(char *hostaddr, int32 hostport);
+static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -2483,9 +2487,9 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 {
 	AppendNodeInfo appendnodeinfo;
 	StringInfoData  infosendmsg;
-    volatile bool catcherr = false;
-    StringInfoData catcherrmsg;
-    NameData nodename;
+	volatile bool catcherr = false;
+	StringInfoData catcherrmsg;
+	NameData nodename;
 	Oid coordhostoid;
 	int32 coordport;
 	char *coordhost;
@@ -2591,6 +2595,238 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step10: update node system table's column to set initial is true when cmd is init*/
 		mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER);
+	}PG_CATCH();
+	{
+		catcherr = true;
+	}PG_END_TRY();
+
+	if (catcherr)
+	{
+		initStringInfo(&catcherrmsg);
+		geterrmsg(&catcherrmsg);
+		errdump();
+	}
+
+	tup_result = build_common_command_tuple(
+		&nodename
+		,catcherr == false ? true : false
+		,catcherr == false ? "success" : catcherrmsg.data);
+
+	if (catcherr)
+		pfree(catcherrmsg.data);
+	
+	return HeapTupleGetDatum(tup_result);
+}
+
+/*
+ * APPEND DATANODE SLAVE nodename
+ */
+Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
+{
+	AppendNodeInfo appendnodeinfo
+					,parentnodeinfo;
+	StringInfoData  infosendmsg;
+	volatile bool catcherr = false;
+	StringInfoData catcherrmsg
+				,primary_conninfo_value;
+	NameData nodename;
+	HeapTuple tup_result;
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
+	Assert(appendnodeinfo.nodename);
+
+	namestrcpy(&nodename, appendnodeinfo.nodename);
+
+	PG_TRY();
+	{
+		/* get node info both slave and master node. */
+		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_SLAVE, &appendnodeinfo);
+		mgr_get_parent_appendnodeinfo(appendnodeinfo.nodemasteroid, &parentnodeinfo);
+
+		/* step 1: make sure the datanode master is running. */
+		makesure_dnmaster_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+
+		/* step 2: update datanode master's postgresql.conf. */
+		// to do nothing now
+
+		/* step 3: update datanode master's pg_hba.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, parentnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								parentnodeinfo.nodepath,
+								&infosendmsg,
+								parentnodeinfo.nodehost,
+								&getAgentCmdRst);
+
+		/* step 4: reload datanode master. */
+		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
+
+		/* step 5: basebackup for datanode master using pg_basebackup command. */
+		mgr_pgbasebackup(&appendnodeinfo, &appendnodeinfo);
+
+		/* step 6: update datanode slave's postgresql.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								appendnodeinfo.nodepath,
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 7: update datanode slave's recovery.conf. */
+		resetStringInfo(&infosendmsg);
+		initStringInfo(&primary_conninfo_value);
+		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
+						get_hostaddress_from_hostoid(parentnodeinfo.nodehost),
+						parentnodeinfo.nodeport,
+						get_hostuser_from_hostoid(parentnodeinfo.nodehost),
+						parentnodeinfo.nodename);
+
+		mgr_append_pgconf_paras_str_str("standby_mode", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
+		mgr_append_pgconf_paras_str_str("recovery_target_timeline", "latest", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF,
+								appendnodeinfo.nodepath, 
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 8: start datanode slave. */
+		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		/* step 9: update datanode master's postgresql.conf.*/
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								parentnodeinfo.nodepath,
+								&infosendmsg, 
+								parentnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 10: reload datanode master's postgresql.conf. */
+		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
+
+	}PG_CATCH();
+	{
+		catcherr = true;
+	}PG_END_TRY();
+
+	if (catcherr)
+	{
+		initStringInfo(&catcherrmsg);
+		geterrmsg(&catcherrmsg);
+		errdump();
+	}
+
+	tup_result = build_common_command_tuple(
+		&nodename
+		,catcherr == false ? true : false
+		,catcherr == false ? "success" : catcherrmsg.data);
+
+	if (catcherr)
+		pfree(catcherrmsg.data);
+	
+	return HeapTupleGetDatum(tup_result);
+}
+
+/*
+ * APPEND DATANODE EXTRA nodename
+ */
+Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
+{
+	AppendNodeInfo appendnodeinfo
+					,parentnodeinfo;
+	StringInfoData  infosendmsg;
+	volatile bool catcherr = false;
+	StringInfoData catcherrmsg
+				,primary_conninfo_value;
+	NameData nodename;
+	HeapTuple tup_result;
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
+	Assert(appendnodeinfo.nodename);
+
+	namestrcpy(&nodename, appendnodeinfo.nodename);
+
+	PG_TRY();
+	{
+		/* get node info both slave and master node. */
+		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_EXTERN, &appendnodeinfo);
+		mgr_get_parent_appendnodeinfo(appendnodeinfo.nodemasteroid, &parentnodeinfo);
+
+		/* step 1: make sure the datanode master is running. */
+		makesure_dnmaster_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+
+		/* step 2: update datanode master's postgresql.conf. */
+		// to do nothing now
+
+		/* step 3: update datanode master's pg_hba.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, parentnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								parentnodeinfo.nodepath,
+								&infosendmsg,
+								parentnodeinfo.nodehost,
+								&getAgentCmdRst);
+
+		/* step 4: reload datanode master. */
+		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
+
+		/* step 5: basebackup for datanode master using pg_basebackup command. */
+		mgr_pgbasebackup(&appendnodeinfo, &appendnodeinfo);
+
+		/* step 6: update datanode slave's postgresql.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								appendnodeinfo.nodepath,
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 7: update datanode slave's recovery.conf. */
+		resetStringInfo(&infosendmsg);
+		initStringInfo(&primary_conninfo_value);
+		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
+						get_hostaddress_from_hostoid(parentnodeinfo.nodehost),
+						parentnodeinfo.nodeport,
+						get_hostuser_from_hostoid(parentnodeinfo.nodehost),
+						parentnodeinfo.nodename);
+
+		mgr_append_pgconf_paras_str_str("standby_mode", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
+		mgr_append_pgconf_paras_str_str("recovery_target_timeline", "latest", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF,
+								appendnodeinfo.nodepath, 
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 8: start datanode slave. */
+		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		/* step 9: update datanode master's postgresql.conf.*/
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								parentnodeinfo.nodepath,
+								&infosendmsg, 
+								parentnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 10: reload datanode master's postgresql.conf. */
+		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
+
 	}PG_CATCH();
 	{
 		catcherr = true;
@@ -2751,6 +2987,109 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	return HeapTupleGetDatum(tup_result);
 }
 
+static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo)
+{
+
+	ManagerAgent *ma;
+	StringInfoData sendstrmsg, buf;
+	GetAgentCmdRst getAgentCmdRst;
+	bool execok;
+
+	initStringInfo(&sendstrmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	appendStringInfo(&sendstrmsg, " -h %s -p %d -D %s -Xs -Fp -R", 
+								get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
+								,parentnodeinfo->nodeport
+								,appendnodeinfo->nodepath);
+
+	ma = ma_connect_hostoid(appendnodeinfo->nodehost);
+	if(!ma_isconnected(ma))
+	{
+		/* report error message */
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		return;
+	}
+	getAgentCmdRst.ret = false;
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_CNDN_SLAVE_INIT);
+	mgr_append_infostr_infostr(&buf, &sendstrmsg);
+	pfree(sendstrmsg.data);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
+	{
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
+		return;
+	}
+	/*check the receive msg*/
+	execok = mgr_recv_msg(ma, &getAgentCmdRst);
+	Assert(execok == getAgentCmdRst.ret);
+	ma_close(ma);
+}
+
+static void makesure_dnmaster_running(char *hostaddr, int32 hostport)
+{
+	StringInfoData port;
+	int ret;
+
+	initStringInfo(&port);
+	appendStringInfo(&port, "%d", hostport);
+
+	ret = pingNode(hostaddr, port.data);
+	if (ret != 0)
+	{
+		ereport(ERROR, (errmsg("its datanode master is not running.")));
+	}
+
+	pfree(port.data);
+}
+
+static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo)
+{
+	Relation noderelation;
+	HeapTuple mastertuple;
+	Form_mgr_node mgr_node;
+	Datum datumPath;
+	char * hostaddr;
+	bool isNull = false;
+
+	noderelation = heap_open(NodeRelationId, AccessShareLock);
+
+	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
+	if(!HeapTupleIsValid(mastertuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_NAME)
+			,errmsg("can not find datanode master."))); 
+	}
+
+	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
+	Assert(mgr_node);
+
+	parentnodeinfo->nodetype = mgr_node->nodetype;
+	parentnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	parentnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	parentnodeinfo->nodeport = mgr_node->nodeport;
+	parentnodeinfo->nodehost = mgr_node->nodehost;
+
+	/*get nodepath from tuple*/
+	datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(noderelation), &isNull);
+	if (isNull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+			, errmsg("column nodepath is null")));
+	}
+
+	parentnodeinfo->nodepath = TextDatumGetCString(datumPath);
+	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+
+	ReleaseSysCache(mastertuple);
+	heap_close(noderelation, AccessShareLock);
+	pfree(hostaddr);
+}
+
 static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport)
 {
 	InitNodeInfo *info;
@@ -2841,7 +3180,6 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 {
-
 	InitNodeInfo *info;
 	ScanKeyData key[2];
 	GetAgentCmdRst getAgentCmdRst;
@@ -2892,7 +3230,7 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 							mgr_node->nodehost,
 							&getAgentCmdRst);
 
-		mgr_reload_hbaconf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 	}
 
 	heap_endscan(info->rel_scan);
@@ -2960,14 +3298,14 @@ static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 							mgr_node->nodehost,
 							&getAgentCmdRst);
 
-	mgr_reload_hbaconf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+	mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
 }
 
-static void mgr_reload_hbaconf(Oid hostoid, char *nodepath)
+static void mgr_reload_conf(Oid hostoid, char *nodepath)
 {
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg, buf;
@@ -3477,7 +3815,7 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 								mgr_node->nodehost,
 								&getAgentCmdRst);
 		
-		mgr_reload_hbaconf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 	}
 
 	heap_endscan(info->rel_scan);
@@ -3622,6 +3960,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	appendnodeinfo->nodeport = mgr_node->nodeport;
 	appendnodeinfo->nodehost = mgr_node->nodehost;
+    appendnodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
 
 	/*get nodepath from tuple*/
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
