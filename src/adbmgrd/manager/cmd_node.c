@@ -3954,7 +3954,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 			ereport(ERROR, (errmsg("can not find the gtm extra %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
 			break;
 		default:
-			NULL;
+			ereport(ERROR, (errmsg("node type \"%c\" not exist.", node_type)));
 			break;
 		}
 	}
