@@ -805,7 +805,7 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		/* build tupdesc for result tuples */
 		/* this had better match pg_prepared_xacts view in system_views.sql */
 #ifdef ADB
-		tupdesc = CreateTemplateTupleDesc(6, false);
+		tupdesc = CreateTemplateTupleDesc(7, false);
 #else
 		tupdesc = CreateTemplateTupleDesc(5, false);
 #endif
@@ -820,7 +820,9 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "dbid",
 						   OIDOID, -1, 0);
 #ifdef ADB
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "rnodes",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "implicit",
+						   BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 7, "rnodes",
 						   OIDVECTOROID, -1, 0);
 #endif
 
@@ -848,8 +850,8 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		PGPROC	   *proc = &ProcGlobal->allProcs[gxact->pgprocno];
 		PGXACT	   *pgxact = &ProcGlobal->allPgXact[gxact->pgprocno];
 #ifdef ADB
-		Datum		values[6];
-		bool		nulls[6];
+		Datum		values[7];
+		bool		nulls[7];
 #else
 		Datum		values[5];
 		bool		nulls[5];
@@ -875,13 +877,14 @@ pg_prepared_xact(PG_FUNCTION_ARGS)
 		values[3] = ObjectIdGetDatum(gxact->owner);
 		values[4] = ObjectIdGetDatum(proc->databaseId);
 #ifdef ADB
+		values[5] = BoolGetDatum(gxact->isimplicit);
 		if (gxact->node_cnt <= 0)
 		{
-			nulls[5] = true;
+			nulls[6] = true;
 		} else
 		{
 			nodes = buildoidvector(gxact->nodeIds, gxact->node_cnt);
-			values[5] = PointerGetDatum(nodes);
+			values[6] = PointerGetDatum(nodes);
 		}
 #endif
 

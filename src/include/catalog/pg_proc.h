@@ -2951,7 +2951,7 @@ DESCR("SHOW ALL as a function");
 DATA(insert OID = 1371 (  pg_lock_status   PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{25,26,26,23,21,25,28,26,26,21,25,23,25,16,16}" "{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}" "{locktype,database,relation,page,tuple,virtualxid,transactionid,classid,objid,objsubid,virtualtransaction,pid,mode,granted,fastpath}" _null_ pg_lock_status _null_ _null_ _null_ ));
 DESCR("view system lock information");
 #ifdef ADB
-DATA(insert OID = 1065 (  pg_prepared_xact PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{28,25,1184,26,26,30}" "{o,o,o,o,o,o}" "{transaction,gid,prepared,ownerid,dbid,rnodes}" _null_ pg_prepared_xact _null_ _null_ _null_ ));
+DATA(insert OID = 1065 (  pg_prepared_xact PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{28,25,1184,26,26,16,30}" "{o,o,o,o,o,o,o}" "{transaction,gid,prepared,ownerid,dbid,implicit,rnodes}" _null_ pg_prepared_xact _null_ _null_ _null_ ));
 #else
 DATA(insert OID = 1065 (  pg_prepared_xact PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{28,25,1184,26,26}" "{o,o,o,o,o}" "{transaction,gid,prepared,ownerid,dbid}" _null_ pg_prepared_xact _null_ _null_ _null_ ));
 #endif
