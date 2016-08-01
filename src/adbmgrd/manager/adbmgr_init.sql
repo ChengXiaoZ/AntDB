@@ -595,7 +595,7 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
                                     select case f.nodetype
                                            when 'd' then '"master"'
                                            when 'b' then '"slave"'
-                                           when 'e' then '"extra"'
+                                           when 'n' then '"extra"'
                                            end 
                                            || ':' || '{' || '"node_name"' || ':' || '"' || f.nodename || '"' || ',' 
                                                          || '"node_port"' || ':' ||        f.nodeport        || ','
@@ -632,7 +632,7 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
                                                           n.nodeincluster = true and
                                                           n.nodeinited = true
                                                 ) t2
-                                                on t1.oid = t2.nodemasternameoid and t2.nodetype in ('b','e')
+                                                on t1.oid = t2.nodemasternameoid and t2.nodetype in ('b','n')
                                         ) as f
                                 ), ','
                         ) from (select nodename from mgr_node where nodetype = 'd') x
@@ -658,7 +658,7 @@ CREATE VIEW adbmgr.get_agtm_node_topology AS
                                     select case f.nodetype
                                         when 'g' then '"master"'
                                         when 'p' then '"slave"'
-                                        when 'x' then '"extra"'
+                                        when 'e' then '"extra"'
                                         end 
                                         || ':' || '{' || '"node_name"' || ':' || '"' || f.nodename || '"' || ',' 
                                                       || '"node_port"' || ':' ||        f.nodeport        || ','
@@ -670,7 +670,7 @@ CREATE VIEW adbmgr.get_agtm_node_topology AS
                                         where n.nodeincluster = true and
                                               n.nodeinited = true and
                                               n.nodehost = h.oid and
-                                              n.nodetype in ('g', 'p', 'x')
+                                              n.nodetype in ('g', 'p', 'e')
                                         ) f
                                 ) -- end array
                             , ','
