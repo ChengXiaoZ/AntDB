@@ -446,6 +446,9 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 		}
 		else
 			combiner->combine_type = COMBINE_TYPE_NONE;
+	} else
+	{
+		elog(DEBUG1, "[ADB]Receive complete(C) message: %s", msg_body);
 	}
 
 	/* If response checking is enable only then do further processing */

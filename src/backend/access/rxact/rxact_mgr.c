@@ -2096,6 +2096,9 @@ void RecordRemoteXact(const char *gid, Oid *nodes, int count, RemoteXactType typ
 	StringInfoData buf;
 	AssertArg(gid && gid[0] && count >= 0);
 	AssertArg(RXACT_TYPE_IS_VALID(type));
+
+	elog(DEBUG1, "[ADB]Record %s rxact %s", RemoteXactType2String(type), gid);
+
 	if(rxact_client_fd == PGINVALID_SOCKET)
 		connect_rxact();
 
@@ -2138,6 +2141,9 @@ void RecordRemoteXactChange(const char *gid, RemoteXactType type)
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, errmsg("invalid remote xact type '%d'", (int)type)));
 	}
+
+	elog(DEBUG1, "[ADB]Record change rxact %s to %s", gid, RemoteXactType2String(type));
+
 	if(rxact_client_fd == PGINVALID_SOCKET)
 		rxact_connect();
 
@@ -2154,6 +2160,10 @@ static void record_rxact_status(const char *gid, RemoteXactType type, bool succe
 {
 	StringInfoData buf;
 	AssertArg(gid && gid[0] && RXACT_TYPE_IS_VALID(type));
+
+	elog(DEBUG1, "[ADB]Record %s rxact %s %s",
+		RemoteXactType2String(type), gid, success ? "SUCCESS" : "FAILED");
+
 	if(rxact_client_fd == PGINVALID_SOCKET)
 		connect_rxact();
 
