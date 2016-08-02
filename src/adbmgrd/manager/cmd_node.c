@@ -2495,7 +2495,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	char *coordhost;
 	Oid dnhostoid;
 	int32 dnport;
-	PGconn *pg_conn;
+	PGconn *pg_conn = NULL;
 	PGresult *res;
 	HeapTuple tup_result;
 	HeapTuple aimtuple = NULL;
@@ -2865,7 +2865,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	char *coordhost;
 	Oid coordhostoid;
 	int32 coordport;
-	PGconn *pg_conn;
+	PGconn *pg_conn = NULL;
 	PGresult *res;
 	HeapTuple aimtuple = NULL;
 	HeapTuple tup_result;
