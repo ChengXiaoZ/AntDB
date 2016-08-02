@@ -176,7 +176,7 @@ static void agent_create(volatile pgsocket new_fd);
 static void agent_release_connections(PoolAgent *agent, bool force_destroy);
 static void agent_idle_connections(PoolAgent *agent, bool force_destroy);
 static int *agent_acquire_connections(PoolAgent *agent, const List *datanodelist, const List *coordlist);
-static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node);
+static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, const PoolAgent *agent);
 static bool agent_acquire_conn_list(PGXCNodePoolSlot **slots, const Oid *oids, const List *node_list, PoolAgent *agent);
 static void agent_lock_connect_list(PGXCNodePoolSlot **slots, const List *node_list, int *fds, const PoolAgent *agent);
 static void cancel_query_on_connections(PoolAgent *agent, Size count, PGXCNodePoolSlot **slots, const List *nodelist);
@@ -784,7 +784,7 @@ agent_destroy(PoolAgent *agent)
 	MemoryContextDelete(agent->mctx);
 }
 
-static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node)
+static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, const PoolAgent *agent)
 {
 	PGXCNodePool *node_pool;
 	PGXCNodePoolSlot *slot
@@ -847,6 +847,11 @@ static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node)
 			&& node_pool->slot[i].state == SLOT_STATE_RELEASED)
 		{
 			released_slot = &(node_pool->slot[i]);
+			if(released_slot->last_user_pid == agent->pid)
+			{
+				slot = released_slot;
+				break;
+			}
 		}else if(uninit_slot == NULL
 			&& node_pool->slot[i].state == SLOT_STATE_UNINIT)
 		{
@@ -1912,7 +1917,6 @@ static void agent_release_connections(PoolAgent *agent, bool force_destroy)
 			{
 				release_slot(slot, force_destroy);
 			}
-			agent->dn_connections[i] = NULL;
 		}
 	}
 	for(i=0;i<agent->num_coord_connections;++i)
@@ -1926,7 +1930,6 @@ static void agent_release_connections(PoolAgent *agent, bool force_destroy)
 			{
 				release_slot(slot, force_destroy);
 			}
-			agent->coord_connections[i] = NULL;
 		}
 	}
 }
@@ -1943,7 +1946,7 @@ static void agent_idle_connections(PoolAgent *agent, bool force_destroy)
 		slot = agent->dn_connections[i];
 		if(slot)
 		{
-			if(slot->state == SLOT_STATE_LOCKED
+			if((slot->state == SLOT_STATE_RELEASED || slot->state == SLOT_STATE_LOCKED)
 				&& slot->last_user_pid == agent->pid)
 			{
 				idle_slot(slot);
@@ -1957,7 +1960,7 @@ static void agent_idle_connections(PoolAgent *agent, bool force_destroy)
 		slot = agent->coord_connections[i];
 		if(slot)
 		{
-			if(slot->state == SLOT_STATE_LOCKED
+			if((slot->state == SLOT_STATE_RELEASED || slot->state == SLOT_STATE_LOCKED)
 				&& slot->last_user_pid == agent->pid)
 			{
 				idle_slot(agent->coord_connections[i]);
@@ -1997,7 +2000,7 @@ retry_get_connection_:
 
 			if(slot == NULL || slot->state != SLOT_STATE_IDLE)
 			{
-				slot = acquire_connection(agent->db_pool, oids[lfirst_int(lc)]);
+				slot = acquire_connection(agent->db_pool, oids[lfirst_int(lc)], agent);
 				if(slot == NULL)
 					return false;
 			}
