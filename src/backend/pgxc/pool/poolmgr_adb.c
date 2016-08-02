@@ -369,6 +369,19 @@ static void PoolerLoop(void)
 		}
 
 		count = 0;
+		for(i=agentCount; i > 0 && count < (Size)rval;)
+		{
+			pollfd_tmp = &(poll_fd[i]);
+			--i;
+			agent = poolAgents[i];
+			if(pollfd_tmp->fd == Socket(agent->port)
+				&& pollfd_tmp->revents != 0)
+			{
+				++count;
+				agent_handle_input(agent, &input_msg);
+			}
+		}
+
 		if(poll_fd[0].revents & POLLIN)
 		{
 			new_socket = accept(server_fd, NULL, NULL);
@@ -381,19 +394,6 @@ static void PoolerLoop(void)
 				agent_create(new_socket);
 			}
 			++count;
-		}
-
-		for(i=agentCount; i > 0 && count < (Size)rval;)
-		{
-			pollfd_tmp = &(poll_fd[i]);
-			--i;
-			agent = poolAgents[i];
-			if(pollfd_tmp->fd == Socket(agent->port)
-				&& pollfd_tmp->revents != 0)
-			{
-				++count;
-				agent_handle_input(agent, &input_msg);
-			}
 		}
 		cur_time = time(NULL);
 		/* close timeout idle slot(s) */
@@ -1898,42 +1898,70 @@ static bool slot_in_node_pool(const PGXCNodePoolSlot *slot, const PGXCNodePool *
 
 static void agent_release_connections(PoolAgent *agent, bool force_destroy)
 {
+	PGXCNodePoolSlot *slot;
 	Size i;
 	AssertArg(agent);
 	for(i=0;i<agent->num_dn_connections;++i)
 	{
 		Assert(agent->dn_connections);
-		if(agent->dn_connections[i])
-			release_slot(agent->dn_connections[i], force_destroy);
-	}
-	for(i=0;i<agent->num_coord_connections;++i)
-	{
-		Assert(agent->coord_connections);
-		if(agent->coord_connections[i])
-			release_slot(agent->coord_connections[i], force_destroy);
-	}
-}
-
-/* set agent's all slots to idle, include reset */
-static void agent_idle_connections(PoolAgent *agent, bool force_destroy)
-{
-	Size i;
-	AssertArg(agent);
-	for(i=0;i<agent->num_dn_connections;++i)
-	{
-		Assert(agent->dn_connections);
-		if(agent->dn_connections[i])
+		slot = agent->dn_connections[i];
+		if(slot)
 		{
-			idle_slot(agent->dn_connections[i]);
+			if(slot->state == SLOT_STATE_LOCKED
+				&& slot->last_user_pid == agent->pid)
+			{
+				release_slot(slot, force_destroy);
+			}
 			agent->dn_connections[i] = NULL;
 		}
 	}
 	for(i=0;i<agent->num_coord_connections;++i)
 	{
 		Assert(agent->coord_connections);
-		if(agent->coord_connections[i])
+		slot = agent->coord_connections[i];
+		if(slot)
 		{
-			idle_slot(agent->coord_connections[i]);
+			if(slot->state == SLOT_STATE_LOCKED
+				&& slot->last_user_pid == agent->pid)
+			{
+				release_slot(slot, force_destroy);
+			}
+			agent->coord_connections[i] = NULL;
+		}
+	}
+}
+
+/* set agent's all slots to idle, include reset */
+static void agent_idle_connections(PoolAgent *agent, bool force_destroy)
+{
+	PGXCNodePoolSlot *slot;
+	Size i;
+	AssertArg(agent);
+	for(i=0;i<agent->num_dn_connections;++i)
+	{
+		Assert(agent->dn_connections);
+		slot = agent->dn_connections[i];
+		if(slot)
+		{
+			if(slot->state == SLOT_STATE_LOCKED
+				&& slot->last_user_pid == agent->pid)
+			{
+				idle_slot(slot);
+			}
+			agent->dn_connections[i] = NULL;
+		}
+	}
+	for(i=0;i<agent->num_coord_connections;++i)
+	{
+		Assert(agent->coord_connections);
+		slot = agent->coord_connections[i];
+		if(slot)
+		{
+			if(slot->state == SLOT_STATE_LOCKED
+				&& slot->last_user_pid == agent->pid)
+			{
+				idle_slot(agent->coord_connections[i]);
+			}
 			agent->coord_connections[i] = NULL;
 		}
 	}
