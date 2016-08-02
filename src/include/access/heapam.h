@@ -81,6 +81,9 @@ typedef struct HeapUpdateFailureData
 
 /* in heap/heapam.c */
 extern Relation relation_open(Oid relationId, LOCKMODE lockmode);
+#ifdef ADB
+extern Relation relation_open_ext(Oid relationId, LOCKMODE lockmode, bool lookup_cache);
+#endif
 extern Relation try_relation_open(Oid relationId, LOCKMODE lockmode);
 extern Relation relation_openrv(const RangeVar *relation, LOCKMODE lockmode);
 extern Relation relation_openrv_extended(const RangeVar *relation,

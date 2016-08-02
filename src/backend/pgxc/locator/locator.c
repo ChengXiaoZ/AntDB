@@ -1168,7 +1168,11 @@ RelationLocInfo *
 GetRelationLocInfo(Oid relid)
 {
 	RelationLocInfo *ret_loc_info = NULL;
+#ifdef ADB
+	Relation	rel = relation_open_ext(relid, AccessShareLock, false);
+#else
 	Relation	rel = relation_open(relid, AccessShareLock);
+#endif
 
 	/* Relation needs to be valid */
 	Assert(rel->rd_isvalid);
