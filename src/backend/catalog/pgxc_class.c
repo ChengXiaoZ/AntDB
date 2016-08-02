@@ -228,10 +228,17 @@ PgxcClassAlter(Oid pcrelid,
 #ifdef ADB
 	if (new_record_repl[Anum_pgxc_class_pcfuncid - 1])
 	{
+		/* First remove dependency on the old function */
+		deleteDependencyRecordsForClass(RelationRelationId, pcrelid,
+										ProcedureRelationId, DEPENDENCY_NORMAL);
+
 		if (IsLocatorDistributedByUserDefined(pclocatortype))
 		{
 			Assert(OidIsValid(pcfuncid));
 			new_record[Anum_pgxc_class_pcfuncid - 1] = ObjectIdGetDatum(pcfuncid);
+
+			/* Second create new dependency */
+			CreatePgxcClassFuncDepend(pclocatortype, pcrelid, pcfuncid);
 		} else
 		{
 			new_record_nulls[Anum_pgxc_class_pcfuncid - 1] = true;
@@ -294,7 +301,7 @@ RemovePgxcClass(Oid pcrelid)
 void
 CreatePgxcClassFuncDepend(char locatortype, Oid relid, Oid funcid)
 {
-	Assert(OidIsValid(relid));
+	AssertArg(OidIsValid(relid));
 	if (IsLocatorDistributedByUserDefined(locatortype))
 	{
 		ObjectAddress myself, referenced;
