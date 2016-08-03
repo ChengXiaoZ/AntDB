@@ -291,6 +291,12 @@ parse_row_count(const char *message, size_t len, uint64 *rowcount)
 			*rowcount = *rowcount * 10 + message[pos] - '0';
 			digits++;
 		}
+#ifdef DEBUG_ADB
+		else if (message[pos] == '/' && message[pos + 1] == '*')
+		{
+			break;
+		}
+#endif
 		else
 		{
 			*rowcount = 0;

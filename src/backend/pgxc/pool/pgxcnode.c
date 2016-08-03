@@ -1614,8 +1614,23 @@ pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *query,
 {
 	/* NULL query indicates already prepared statement */
 	if (query)
+	{
+#ifdef DEBUG_ADB
+		StringInfoData buf;
+		initStringInfo(&buf);
+		appendStringInfo(&buf, "/*%d*/%s", MyProcPid, query);
+
+		if (pgxc_node_send_parse(handle, statement, buf.data, num_params, param_types))
+		{
+			pfree(buf.data);
+			return EOF;
+		}
+		pfree(buf.data);
+#else
 		if (pgxc_node_send_parse(handle, statement, query, num_params, param_types))
 			return EOF;
+#endif /* DEBUG_ADB */
+	}
 	if (pgxc_node_send_bind(handle, portal, statement, paramlen, params))
 		return EOF;
 	if (send_describe)
@@ -1735,16 +1750,20 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 	int			strLen;
 	int			msgLen;
 
-	StringInfoData	tmp_query;
-	
+#ifdef DEBUG_ADB
+	StringInfoData buf;
+#endif
+
 	/* Invalid connection state, return error */
 	if (handle->state != DN_CONNECTION_STATE_IDLE)
 		return EOF;
 
-	initStringInfo(&tmp_query);
-	appendStringInfo(&tmp_query, "/* %u */%s", MyProcPid, query);
-	query = tmp_query.data;
-	
+#ifdef DEBUG_ADB
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "/*%d*/%s", MyProcPid, query);
+	query = buf.data;
+#endif
+
 	strLen = strlen(query) + 1;
 	/* size + strlen */
 	msgLen = 4 + strLen;
@@ -1788,8 +1807,10 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 
 	handle->state = DN_CONNECTION_STATE_QUERY;
 
-	pfree(tmp_query.data);
-	
+#ifdef DEBUG_ADB
+	pfree(buf.data);
+#endif
+
  	return pgxc_node_flush(handle);
 }
 

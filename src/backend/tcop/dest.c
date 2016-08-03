@@ -151,6 +151,7 @@ EndCommand(const char *commandTag, CommandDest dest)
 			 * We assume the commandTag is plain ASCII and therefore requires
 			 * no encoding conversion.
 			 */
+			elog(DEBUG1, "[ADB]Send Command(C): %s", commandTag);
 			pq_putmessage('C', commandTag, strlen(commandTag) + 1);
 			break;
 
