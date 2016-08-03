@@ -1735,10 +1735,16 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 	int			strLen;
 	int			msgLen;
 
+	StringInfoData	tmp_query;
+	
 	/* Invalid connection state, return error */
 	if (handle->state != DN_CONNECTION_STATE_IDLE)
 		return EOF;
 
+	initStringInfo(&tmp_query);
+	appendStringInfo(&tmp_query, "/* %u */%s", MyProcPid, query);
+	query = tmp_query.data;
+	
 	strLen = strlen(query) + 1;
 	/* size + strlen */
 	msgLen = 4 + strLen;
@@ -1782,6 +1788,8 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 
 	handle->state = DN_CONNECTION_STATE_QUERY;
 
+	pfree(tmp_query.data);
+	
  	return pgxc_node_flush(handle);
 }
 

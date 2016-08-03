@@ -71,7 +71,7 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				output = ProcessSetSeqCommand(input_message, &buf);
 			} PG_CATCH();
 			{
-				CommitTransactionCommand();
+			/*	CommitTransactionCommand();*/
 				PG_RE_THROW();
 			} PG_END_TRY();
 			break;
@@ -82,7 +82,7 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				output = ProcessNextSeqCommand(input_message, &buf);
 			} PG_CATCH();
 			{
-				CommitTransactionCommand();
+			/*	CommitTransactionCommand();*/
 				PG_RE_THROW();
 			} PG_END_TRY();
 			break;
