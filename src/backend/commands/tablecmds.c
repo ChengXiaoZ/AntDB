@@ -101,6 +101,9 @@
 #include "pgxc/redistrib.h"
 #endif
 
+#ifdef ADB
+#include "catalog/pg_proc.h"
+#endif
 /*
  * ON COMMIT action list
  */
@@ -10293,9 +10296,14 @@ AtExecDistributeBy(Relation rel, DistributeBy *options)
 	int16 *attnums = NULL;
 #endif
 
+#ifdef ADB
+	if (options == NULL)
+		return;
+#else
 	/* Nothing to do on Datanodes */
 	if (IS_PGXC_DATANODE || options == NULL)
 		return;
+#endif
 
 	relid = RelationGetRelid(rel);
 
@@ -10313,6 +10321,21 @@ AtExecDistributeBy(Relation rel, DistributeBy *options)
 								 , &attnums
 #endif
 								 );
+
+
+#ifdef ADB
+	if (IS_PGXC_DATANODE)
+	{
+		/* First remove dependency on the old function */
+		deleteDependencyRecordsForClass(RelationRelationId, relid,
+										ProcedureRelationId, DEPENDENCY_NORMAL);
+		if (IsLocatorDistributedByUserDefined(locatortype))
+		{
+			/* Second create new dependency */
+			CreatePgxcClassFuncDepend(locatortype, relid, funcid);
+		}
+	} else
+#endif
 
 	/*
 	 * It is not checked if the distribution type list is the same as the old one,
