@@ -1578,28 +1578,8 @@ formrdesc(const char *relationName, Oid relationReltype,
  */
 Relation
 RelationIdGetRelation(Oid relationId)
-#ifdef ADB
-{
-	return RelationIdGetRelationExt(relationId, true);
-}
-
-/*
- * RelationIdGetRelationExt
- *
- * It is similar to RelationIdGetRelation, and the difference is that
- * we will never lookup a reldesc in the cache if lookup_cache is not
- * true.
- */
-Relation
-RelationIdGetRelationExt(Oid relationId, bool lookup_cache)
-#endif
 {
 	Relation	rd;
-
-#ifdef ADB
-	if (lookup_cache)
-	{
-#endif
 
 	/*
 	 * first try to find reldesc in the cache
@@ -1624,10 +1604,6 @@ RelationIdGetRelationExt(Oid relationId, bool lookup_cache)
 		}
 		return rd;
 	}
-
-#ifdef ADB
-	}
-#endif
 
 	/*
 	 * no reldesc in the cache, so have RelationBuildDesc() build one and add

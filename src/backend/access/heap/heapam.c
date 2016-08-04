@@ -1028,20 +1028,6 @@ fastgetattr(HeapTuple tup, int attnum, TupleDesc tupleDesc,
  */
 Relation
 relation_open(Oid relationId, LOCKMODE lockmode)
-#ifdef ADB
-{
-	return relation_open_ext(relationId, lockmode, true);
-}
-
-/*
- * relation_open_ext - open any relation by relation OID
- *
- * It is similar to relation_open, and the difference is that we will never
- * find relation in the cache if lookup_cache is not true.
- */
-Relation
-relation_open_ext(Oid relationId, LOCKMODE lockmode, bool lookup_cache)
-#endif
 {
 	Relation	r;
 
@@ -1052,11 +1038,7 @@ relation_open_ext(Oid relationId, LOCKMODE lockmode, bool lookup_cache)
 		LockRelationOid(relationId, lockmode);
 
 	/* The relcache does all the real work... */
-#ifdef ADB
-	r = RelationIdGetRelationExt(relationId, lookup_cache);
-#else
 	r = RelationIdGetRelation(relationId);
-#endif
 
 	if (!RelationIsValid(r))
 		elog(ERROR, "could not open relation with OID %u", relationId);

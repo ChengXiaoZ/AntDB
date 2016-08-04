@@ -32,9 +32,6 @@ typedef Relation *RelationPtr;
  * Routines to open (lookup) and close a relcache entry
  */
 extern Relation RelationIdGetRelation(Oid relationId);
-#ifdef ADB
-extern Relation RelationIdGetRelationExt(Oid relationId, bool lookup_cache);
-#endif
 extern void RelationClose(Relation relation);
 
 /*

@@ -50,7 +50,9 @@
 #include "access/hash.h"
 
 #ifdef ADB
+#include "access/transam.h"
 #include "fmgr.h"
+#include "postmaster/autovacuum.h"
 #include "utils/datum.h"
 #endif
 
@@ -1168,14 +1170,24 @@ RelationLocInfo *
 GetRelationLocInfo(Oid relid)
 {
 	RelationLocInfo *ret_loc_info = NULL;
-#ifdef ADB
-	Relation	rel = relation_open_ext(relid, AccessShareLock, false);
-#else
 	Relation	rel = relation_open(relid, AccessShareLock);
-#endif
 
 	/* Relation needs to be valid */
 	Assert(rel->rd_isvalid);
+
+#ifdef ADB
+	if (IS_PGXC_COORDINATOR &&
+		rel->rd_id >= FirstNormalObjectId &&
+		!IsAutoVacuumWorkerProcess())
+	{
+		if (rel->rd_locator_info)
+		{
+			pfree(rel->rd_locator_info);
+			rel->rd_locator_info = NULL;
+		}
+		RelationBuildLocator(rel);
+	}
+#endif
 
 	if (rel->rd_locator_info)
 		ret_loc_info = CopyRelationLocInfo(rel->rd_locator_info);
