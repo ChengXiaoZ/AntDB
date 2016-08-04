@@ -71,6 +71,7 @@ typedef struct PGXCNodePoolSlot
 	unsigned int		state;				/* SLOT_STATE_* */
 	int					last_user_pid;
 	int					last_agtm_port;		/* last send agtm port */
+	bool				has_temp;			/* have temp object? */
 } PGXCNodePoolSlot;
 
 /* Pool of connections to specified pgxc node */
@@ -847,10 +848,17 @@ static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, cons
 			&& node_pool->slot[i].state == SLOT_STATE_RELEASED)
 		{
 			released_slot = &(node_pool->slot[i]);
-			if(released_slot->last_user_pid == agent->pid)
+			if(released_slot->has_temp)
 			{
-				slot = released_slot;
-				break;
+				if(released_slot->last_user_pid != agent->pid)
+				{
+					released_slot = NULL;
+					continue;
+				}else
+				{
+					slot = released_slot;
+					break;
+				}
 			}
 		}else if(uninit_slot == NULL
 			&& node_pool->slot[i].state == SLOT_STATE_UNINIT)
@@ -2073,6 +2081,7 @@ static void agent_lock_connect_list(PGXCNodePoolSlot **slots, const List *node_l
 
 		fds[i] = PQsocket((PGconn *)(slot->conn));
 		slot->state = SLOT_STATE_LOCKED;
+		slot->has_temp = agent->is_temp;
 		++i;
 	}
 }
