@@ -544,6 +544,10 @@ pgxc_send_matview_data(RangeVar *matview_rv, const char *query_string)
 											   copyState->exec_nodes->nodeList,
 											   GetActiveSnapshot(),
 											   PGXC_NODE_COORDINATOR);
+#ifdef ADB
+	if (copyState->connections == NULL)
+		return;
+#endif
 
 	/*
 	 * Open the relation for reading.
