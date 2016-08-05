@@ -183,6 +183,7 @@ InitMultinodeExecutor(bool is_force)
 		init_pgxc_handle(&dn_handles[count]);
 		dn_handles[count].nodeoid = dnOids[count];
 #ifdef ADB
+		dn_handles[count].type = PGXC_NODE_DATANODE;
 		nodeName = get_pgxc_nodename(dn_handles[count].nodeoid);
 		strncpy(NameStr(dn_handles[count].name),
 				nodeName,
@@ -195,6 +196,7 @@ InitMultinodeExecutor(bool is_force)
 		init_pgxc_handle(&co_handles[count]);
 		co_handles[count].nodeoid = coOids[count];
 #ifdef ADB
+		co_handles[count].type = PGXC_NODE_COORDINATOR;
 		nodeName = get_pgxc_nodename(co_handles[count].nodeoid);
 		strncpy(NameStr(co_handles[count].name),
 				nodeName,
@@ -660,6 +662,11 @@ retry:
 		{
 			add_error_message(conn,
 				"Could not receive data from server %s", NameStr(conn->name));
+
+			conn->state = DN_CONNECTION_STATE_ERROR_FATAL;	/* No more connection to
+															* backend */
+			closesocket(conn->sock);
+			conn->sock = NO_SOCKET;
 		}
 		return -1;
 
@@ -700,8 +707,14 @@ retry:
 	if (nread == 0)
 	{
 		if (close_if_error)
+		{
 			elog(DEBUG1, "nread returned 0");
-		return EOF;
+			conn->state = DN_CONNECTION_STATE_ERROR_FATAL;	/* No more connection to
+															* backend */
+			closesocket(conn->sock);
+			conn->sock = NO_SOCKET;
+		}
+		return -1;
 	}
 
 	if (someread)
@@ -895,7 +908,7 @@ void
 cancel_query(void)
 {
 	int			i;
-	int 			dn_cancel[NumDataNodes];
+	int 		dn_cancel[NumDataNodes];
 	int			co_cancel[NumCoords];
 	int			dn_count = 0;
 	int			co_count = 0;
@@ -1028,6 +1041,176 @@ clear_all_data(void)
 		FreeHandleError(handle); 
 	}
 }
+
+#ifdef ADB
+void
+cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
+				  int num_cohandles, PGXCNodeHandle **cohandles)
+{
+	PGXCNodeHandle	*handle;
+	PGXCNodeHandle **new_dnhandles = NULL;
+	PGXCNodeHandle **new_cohandles = NULL;
+	int				 i;
+	int				*dn_cancel = NULL;
+	int				*co_cancel = NULL;
+	int				 dn_count = 0;
+	int				 co_count = 0;
+
+	if (num_dnhandles <= 0 && num_cohandles <= 0)
+		return ;
+
+	PG_TRY();
+	{
+		if (num_dnhandles > 0)
+		{
+			AssertArg(dnhandles);
+
+			dn_cancel = (int *) palloc0(num_dnhandles * sizeof(int));
+			new_dnhandles = (PGXCNodeHandle **)
+				palloc0(num_dnhandles * sizeof(PGXCNodeHandle *));
+
+			for (i = 0; i < num_dnhandles; i++)
+			{
+				handle = dnhandles[i];
+				if (handle->sock == NO_SOCKET)
+					continue;
+
+				if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+					handle->state == DN_CONNECTION_STATE_COPY_OUT)
+				{
+					DataNodeCopyEnd(handle, true);
+				} else
+				{
+					if (handle->state != DN_CONNECTION_STATE_IDLE)
+					{
+						dn_cancel[dn_count++] = PGXCNodeGetNodeId(
+							handle->nodeoid, PGXC_NODE_DATANODE);
+						new_dnhandles[dn_count] = handle;
+					}
+				}
+			}
+		}
+
+		if (num_cohandles > 0)
+		{
+			AssertArg(cohandles);
+
+			co_cancel = (int *) palloc0(num_cohandles * sizeof(int));
+			new_cohandles = (PGXCNodeHandle **)
+				palloc0(num_cohandles * sizeof(PGXCNodeHandle *));
+
+			for (i = 0; i < num_cohandles; i++)
+			{
+				handle = cohandles[i];
+				if (handle->sock == NO_SOCKET)
+					continue;
+
+				if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+					handle->state == DN_CONNECTION_STATE_COPY_OUT)
+				{
+					DataNodeCopyEnd(handle, true);
+				} else
+				{
+					if (handle->state != DN_CONNECTION_STATE_IDLE)
+					{
+						co_cancel[co_count++] = PGXCNodeGetNodeId(
+							handle->nodeoid, PGXC_NODE_COORDINATOR);
+						new_cohandles[co_count] = handle;
+					}
+				}
+			}
+		}
+		
+		PoolManagerCancelQuery(dn_count, dn_cancel, co_count, co_cancel);
+
+		/*
+		 * Read responses from the nodes to whom we sent the cancel command. This
+		 * ensures that there are no pending messages left on the connection
+		 */
+		for (i = 0; i < dn_count; i++)
+		{
+			handle = new_dnhandles[i];
+
+			pgxc_node_flush_read(handle);
+		}
+
+		for (i = 0; i < co_count; i++)
+		{
+			handle = new_cohandles[i];
+
+			pgxc_node_flush_read(handle);
+		}
+	} PG_CATCH();
+	{
+		if (dn_cancel)
+			pfree(dn_cancel);
+		if (co_cancel)
+			pfree(co_cancel);
+		if (new_dnhandles)
+			pfree(new_dnhandles);
+		if (new_cohandles)
+			pfree(new_cohandles);
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	if (dn_cancel)
+		pfree(dn_cancel);
+	if (co_cancel)
+		pfree(co_cancel);
+	if (new_dnhandles)
+		pfree(new_dnhandles);
+	if (new_cohandles)
+		pfree(new_cohandles);
+
+	/*
+	 * Hack to wait a moment to cancel requests are processed in other nodes.
+	 * If we send a new query to nodes before cancel requests get to be
+	 * processed, the query will get unanticipated failure.
+	 * As we have no way to know when to the request processed, and
+	 * because this dulation depends upon the platform and the environment,
+	 * this value is now moved to GUC (pgxc_calcen_delay) parameter.
+	 */
+	if (pgxcnode_cancel_delay > 0)
+		pg_usleep(pgxcnode_cancel_delay * 1000);
+}
+
+void
+clear_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
+				 int num_cohandles, PGXCNodeHandle **cohandles)
+{
+	PGXCNodeHandle *handle;
+	int				i;
+
+	if (num_dnhandles <= 0 && num_cohandles <= 0)
+		return ;
+
+	for (i = 0; i < num_dnhandles; i++)
+	{
+		handle = dnhandles[i];
+
+		FreeHandleError(handle);
+
+		if (handle->sock == NO_SOCKET)
+			continue;
+
+		if (handle->state != DN_CONNECTION_STATE_IDLE)
+			pgxc_node_flush_read(handle);
+	}
+
+	for (i = 0; i < num_cohandles; i++)
+	{
+		handle = cohandles[i];
+
+		FreeHandleError(handle);
+
+		if (handle->sock == NO_SOCKET)
+			continue;
+
+		if (handle->state != DN_CONNECTION_STATE_IDLE)
+			pgxc_node_flush_read(handle);
+	}
+}
+#endif
 
 /*
  * Ensure specified amount of data can fit to the incoming buffer and
@@ -1613,6 +1796,9 @@ pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *query,
 		initStringInfo(&buf);
 		appendStringInfo(&buf, "/*%d*/%s", MyProcPid, query);
 
+		elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
+			NameStr(handle->name), handle->sock, query);
+
 		if (pgxc_node_send_parse(handle, statement, buf.data, num_params, param_types))
 		{
 			pfree(buf.data);
@@ -1670,7 +1856,7 @@ static void pgxc_node_flush_read(PGXCNodeHandle *handle)
 	fd_set rfd;
 	struct timeval tv;
 
-	if(handle == NULL)
+	if(handle == NULL || handle->sock == NO_SOCKET)
 		return;
 
 	last_time = time(NULL);
@@ -1695,7 +1881,7 @@ static void pgxc_node_flush_read(PGXCNodeHandle *handle)
 			break;
 		}
 
-		result = pgxc_node_read_data(handle, false);
+		result = pgxc_node_read_data(handle, true);
 		if(result > 0)
 			last_time = time(NULL);
 		if(result < 0 || is_data_node_ready(handle))
@@ -1755,6 +1941,9 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 	initStringInfo(&buf);
 	appendStringInfo(&buf, "/*%d*/%s", MyProcPid, query);
 	query = buf.data;
+
+	elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
+		NameStr(handle->name), handle->sock, query);
 #endif
 
 	strLen = strlen(query) + 1;

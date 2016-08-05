@@ -78,6 +78,7 @@ struct pgxc_node_handle
 	Oid			nodeoid;
 #ifdef ADB
 	NameData	name;
+	char		type;
 #endif
 
 	/* fd of the connection */
@@ -154,6 +155,10 @@ extern void pfree_pgxc_all_handles(PGXCNodeAllHandles *handles);
 extern void release_handles(void);
 #ifdef ADB
 extern void release_handles2(bool force_close);
+extern void cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
+							  int num_cohandles, PGXCNodeHandle **cohandles);
+extern void clear_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
+							 int num_cohandles, PGXCNodeHandle **cohandles);
 #endif /* ADB */
 extern void cancel_query(void);
 extern void clear_all_data(void);

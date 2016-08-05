@@ -1248,7 +1248,7 @@ FetchTuple(RemoteQueryState *combiner, TupleTableSlot *slot)
 
 #ifdef ADB
 static const char *
-print_request_type(RequestType type)
+RequestTypeAsCString(RequestType type)
 {
 	switch(type)
 	{
@@ -1269,7 +1269,7 @@ print_request_type(RequestType type)
 }
 
 static const char *
-print_response_result(int result)
+ResponseResultAsCString(int result)
 {
 	switch(result)
 	{
@@ -1340,8 +1340,8 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 					/* Inconsistent responses */
 					{
 						const char *nodeName = NameStr(to_receive[i]->name);
-						const char *requestType = print_request_type(combiner->request_type);
-						const char *resultStr = print_response_result(result);
+						const char *requestType = RequestTypeAsCString(combiner->request_type);
+						const char *resultStr = ResponseResultAsCString(result);
 
 						add_error_message(to_receive[i],
 							"[From node '%s']Unexpected response: result = %s, request type %s",
@@ -1420,14 +1420,16 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 
 		/* TODO handle other possible responses */
 		msg_type = get_message(conn, &msg_len, &msg);
-#ifdef ADB
+#ifdef DEBUG_ADB
 		ereport(DEBUG1,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("[%ld] [msg_type] %c [combiner] %p [request_type] %s",
-					(long int)getpid(),
+				errmsg("[process] %d [handle] %s [sock] %d [msg_type] %c [combiner] %p [request_type] %s",
+					MyProcPid,
+					NameStr(conn->name),
+					conn->sock,
 					msg_type,
 					combiner,
-					print_request_type(combiner->request_type))
+					RequestTypeAsCString(combiner->request_type))
 				));
 #endif
 		switch (msg_type)
@@ -4864,6 +4866,58 @@ init_RemoteXactStateByNodes(int node_cnt, Oid *nodeIds, bool isPrepared)
 	}
 }
 
+static void
+PreClearQueryInvolved(void)
+{
+	PGXCNodeHandle		**handles = remoteXactState.remoteNodeHandles;
+	int					  num_write = remoteXactState.numWriteRemoteNodes;
+	int					  num_read = remoteXactState.numReadRemoteNodes;
+	int					  num_all = num_write + num_read;
+	PGXCNodeHandle		**dnhandles = NULL;
+	PGXCNodeHandle		**cohandles = NULL;
+	PGXCNodeHandle		 *handle;
+	int					  num_dnhandles = 0;
+	int					  num_cohandles = 0;
+	int					  i;
+
+	if (num_all > 0)
+	{
+		dnhandles = (PGXCNodeHandle **) palloc0 (num_all * sizeof(PGXCNodeHandle *));
+		cohandles = (PGXCNodeHandle **) palloc0 (num_all * sizeof(PGXCNodeHandle *));
+
+		for (i = 0; i < num_all; i++)
+		{
+			handle = handles[i];
+			switch(handle->type)
+			{
+				case PGXC_NODE_COORDINATOR:
+					cohandles[num_cohandles++] = handle;
+					break;
+				case PGXC_NODE_DATANODE:
+					dnhandles[num_dnhandles++] = handle;
+					break;
+				default:
+					Assert(0);
+					break;
+			}
+		}
+
+		PG_TRY();
+		{
+			cancel_some_query(num_dnhandles, dnhandles, num_cohandles, cohandles);
+			clear_some_query(num_dnhandles, dnhandles, num_cohandles, cohandles);
+		} PG_CATCH();
+		{
+			pfree(dnhandles);
+			pfree(cohandles);
+			PG_RE_THROW();
+		} PG_END_TRY();
+
+		pfree(dnhandles);
+		pfree(cohandles);
+	}
+}
+
 void
 AbnormalAbort_Remote(void)
 {
@@ -4883,11 +4937,10 @@ AbnormalAbort_Remote(void)
 	if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
 		return ;
 
-	cancel_query();
-	clear_all_data();
-
 	if (remoteXactState.status == RXACT_NONE)
 		init_RemoteXactState(false);
+
+	PreClearQueryInvolved();
 
 	connections = remoteXactState.remoteNodeHandles;
 	write_conn_count = remoteXactState.numWriteRemoteNodes;
