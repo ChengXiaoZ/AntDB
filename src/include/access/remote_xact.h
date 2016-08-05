@@ -18,7 +18,7 @@
 #define IsUnderRemoteXact()	(IS_PGXC_COORDINATOR && !IsConnFromCoord())
 
 extern void RemoteXactCommit(int nnodes, Oid *nodeIds);
-extern void RemoteXactAbort(int nnodes, Oid *nodeIds);
+extern void RemoteXactAbort(int nnodes, Oid *nodeIds, bool normal);
 extern void RecordRemoteXactPrepare(const char *gid,
 									int nnodes,
 									Oid *nodeIds,

@@ -994,7 +994,8 @@ cancel_query(void)
 void
 clear_all_data(void)
 {
-	int			i;
+	PGXCNodeHandle *handle;
+	int				i;
 
 	if (datanode_count == 0 && coord_count == 0)
 		return;
@@ -1002,7 +1003,7 @@ clear_all_data(void)
 	/* Collect Datanodes handles */
 	for (i = 0; i < NumDataNodes; i++)
 	{
-		PGXCNodeHandle *handle = &dn_handles[i];
+		handle = &dn_handles[i];
 
 		if (handle->sock != NO_SOCKET && handle->state != DN_CONNECTION_STATE_IDLE)
 		{
@@ -1010,17 +1011,13 @@ clear_all_data(void)
 			handle->state = DN_CONNECTION_STATE_IDLE;
 		}
 		/* Clear any previous error messages */
-#ifdef ADB
 		FreeHandleError(handle);
-#else
-		handle->error = NULL;
-#endif
 	}
 
 	/* Collect Coordinator handles */
 	for (i = 0; i < NumCoords; i++)
 	{
-		PGXCNodeHandle *handle = &co_handles[i];
+		handle = &co_handles[i];
 
 		if (handle->sock != NO_SOCKET && handle->state != DN_CONNECTION_STATE_IDLE)
 		{
@@ -1028,11 +1025,7 @@ clear_all_data(void)
 			handle->state = DN_CONNECTION_STATE_IDLE;
 		}
 		/* Clear any previous error messages */
-#ifdef ADB
-		FreeHandleError(handle);
-#else
-		handle->error = NULL;
-#endif
+		FreeHandleError(handle); 
 	}
 }
 

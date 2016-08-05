@@ -224,11 +224,11 @@ extern CommandId GetCurrentCommandId(bool used);
 extern CommandId GetCurrentCommandIdIfAny(void);
 extern void SetTopXactBeginAGTM(bool status);
 extern bool TopXactBeginAGTM(void);
-extern void xact_redo_commit_prepared(xl_xact_commit *xlrec,
-									  TransactionId xid,
-									  XLogRecPtr lsn);
-extern void xact_redo_abort_prepared(xl_xact_abort * xlrec,
-									 TransactionId xid);
+extern void SetCurrentXactPhase1(void);
+extern void SetCurrentXactPhase2(void);
+extern bool IsCurrentXactInPhase2(void);
+extern void SetXactErrorAborted(bool flag);
+extern bool IsXactErrorAbort(void);
 #endif
 extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);

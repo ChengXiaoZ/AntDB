@@ -519,7 +519,9 @@ standard_ProcessUtility(Node *parsetree,
 						PreventTransactionChain(isTopLevel, "COMMIT PREPARED");
 						PreventCommandDuringRecovery("COMMIT PREPARED");
 #if defined(ADB)
+						SetCurrentXactPhase2();
 						FinishPreparedTransactionExt(stmt->gid, true, false, stmt->missing_ok);
+						SetCurrentXactPhase1();
 #elif defined(AGTM)
 						FinishPreparedTransactionExt(stmt->gid, true, stmt->missing_ok);
 #else
@@ -531,7 +533,9 @@ standard_ProcessUtility(Node *parsetree,
 						PreventTransactionChain(isTopLevel, "ROLLBACK PREPARED");
 						PreventCommandDuringRecovery("ROLLBACK PREPARED");
 #if defined(ADB)
+						SetCurrentXactPhase2();
 						FinishPreparedTransactionExt(stmt->gid, false, false, stmt->missing_ok);
+						SetCurrentXactPhase1();
 #elif defined(AGTM)
 						FinishPreparedTransactionExt(stmt->gid, false, stmt->missing_ok);
 #else

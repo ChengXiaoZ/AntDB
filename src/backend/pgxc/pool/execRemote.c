@@ -1362,9 +1362,16 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 			}
 		}
 	}
+#ifdef ADB
+	if (validate_combiner(combiner))
+		return 0;
+
+	return EOF;
+#else
 	pgxc_node_report_error(combiner);
 
 	return 0;
+#endif
 }
 
 /*
@@ -4855,6 +4862,98 @@ init_RemoteXactStateByNodes(int node_cnt, Oid *nodeIds, bool isPrepared)
 			remoteXactState.remoteNodeStatus[i] = RXACT_NODE_PREPARED;
 		remoteXactState.status = RXACT_PREPARED;
 	}
+}
+
+void
+AbnormalAbort_Remote(void)
+{
+	PGXCNodeHandle	**connections;
+	PGXCNodeHandle	**new_connections;
+	int				  write_conn_count;
+	int				  read_conn_count;
+	int				  total_conn_count;
+	PGXCNodeHandle	 *conn;
+	int				  new_conn_count = 0;
+	RemoteQueryState *combiner = NULL;
+	const char		 *command = "ROLLBACK TRANSACTION";
+	int				  i;
+
+	elog(DEBUG1, "Abort remote transaction in phase 1");
+
+	if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
+		return ;
+
+	cancel_query();
+	clear_all_data();
+
+	if (remoteXactState.status == RXACT_NONE)
+		init_RemoteXactState(false);
+
+	connections = remoteXactState.remoteNodeHandles;
+	write_conn_count = remoteXactState.numWriteRemoteNodes;
+	read_conn_count = remoteXactState.numReadRemoteNodes;
+	total_conn_count = write_conn_count + read_conn_count;
+	new_connections = NULL;
+	if (total_conn_count > 0)
+	{
+		new_connections = (PGXCNodeHandle **)
+			palloc0(total_conn_count * sizeof(PGXCNodeHandle *));
+	}
+
+	/* Send rollback */
+	for (i = 0; i < total_conn_count; i++)
+	{
+		conn = connections[i];
+
+		/* Check whether is valid connection or not */
+		if (conn->sock == NO_SOCKET ||
+			conn->state == DN_CONNECTION_STATE_ERROR_FATAL)
+			continue;
+
+		if (pgxc_node_send_query(conn, command))
+		{
+			conn->state = DN_CONNECTION_STATE_ERROR_FATAL;
+		} else
+		{
+			new_connections[new_conn_count++] = conn;
+		}
+	}
+
+ABORT_REMOTE_ABNORMAL:
+	if (new_conn_count > 0)
+	{
+		int save_new_conn_count = new_conn_count;
+		combiner = CreateResponseCombiner(save_new_conn_count,
+						COMBINE_TYPE_NONE);
+		(void)pgxc_node_receive_responses(save_new_conn_count,
+						new_connections,
+						NULL, combiner);
+		CloseCombiner(combiner);
+		combiner = NULL;
+		new_conn_count = 0;
+		for (i = 0; i < save_new_conn_count; i++)
+		{
+			conn = new_connections[i];
+			if (conn->state == DN_CONNECTION_STATE_IDLE ||
+				conn->state == DN_CONNECTION_STATE_ERROR_FATAL)
+				continue;
+
+			new_connections[new_conn_count++] = conn;
+		}
+		for (i = new_conn_count; i < total_conn_count; i++)
+			new_connections[i] = NULL;
+
+		goto ABORT_REMOTE_ABNORMAL;
+	}
+
+	if (new_connections)
+	{
+		pfree(new_connections);
+		new_connections = NULL;
+	}
+
+	AtEOXact_Remote();
+	release_handles();
 }
 #endif
 

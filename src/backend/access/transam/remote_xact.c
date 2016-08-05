@@ -9,6 +9,7 @@
 #include "access/remote_xact.h"
 #include "access/rxact_mgr.h"
 #include "agtm/agtm.h"
+#include "agtm/agtm_client.h"
 #include "pgxc/execRemote.h"
 #include "pgxc/pgxc.h"
 
@@ -24,14 +25,28 @@ RemoteXactCommit(int nnodes, Oid *nodeIds)
 }
 
 void
-RemoteXactAbort(int nnodes, Oid *nodeIds)
+RemoteXactAbort(int nnodes, Oid *nodeIds, bool normal)
 {
 	if (!IsUnderRemoteXact())
 		return ;
 
-	if (nnodes > 0)
-		PreAbort_Remote(NULL, false);
-	agtm_AbortTransaction(NULL, false);
+	if (normal)
+	{
+		if (nnodes > 0)
+			PreAbort_Remote(NULL, false);
+		agtm_AbortTransaction(NULL, false);
+	} else
+	{
+		AbnormalAbort_Remote();
+		PG_TRY_HOLD();
+		{
+			agtm_AbortTransaction(NULL, false);
+		} PG_CATCH_HOLD();
+		{
+			errdump();
+			agtm_Close();
+		} PG_END_TRY_HOLD();
+	}
 }
 
 /*

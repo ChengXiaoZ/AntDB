@@ -142,6 +142,27 @@ typedef enum TBlockState
 	TBLOCK_SUBABORT_RESTART		/* failed subxact, ROLLBACK TO received */
 } TBlockState;
 
+#ifdef ADB
+typedef enum XactPhase
+{
+	XACT_PHASE_1,
+	XACT_PHASE_2
+} XactPhase;
+
+#define IsXactInPhase2(s)	\
+	(((TransactionState)(s))->xact_phase == XACT_PHASE_2)
+#define SetXactPhase1(s)	\
+	((TransactionState)(s))->xact_phase = XACT_PHASE_1
+#define SetXactPhase2(s)	\
+	((TransactionState)(s))->xact_phase = XACT_PHASE_2
+
+/*
+ * Flag to keep track of whether we have a error in a transaction.
+ * This is decide what to do in AbortTransaction about remote nodes.
+ */
+static bool xact_error_abort = false;
+#endif
+
 /*
  *	transaction state structure
  */
@@ -154,7 +175,7 @@ typedef struct TransactionStateData
 													 * in transaction block (SET LOCAL, DEFERRED) */
 #ifdef ADB
 	bool				agtm_begin;					/* mark agtm is begin or not in current xact */
-	bool				implicit2PC;				/* mark whether is implicit two-phase commit  */
+	XactPhase			xact_phase;					/* mark which phase the current xact in */
 #endif
 #else
 	TransactionId transactionId;	/* my XID, or Invalid if none */
@@ -760,6 +781,39 @@ bool
 TopXactBeginAGTM(void)
 {
 	return TopTransactionStateData.agtm_begin;
+}
+
+void
+SetCurrentXactPhase1(void)
+{
+	TransactionState s = CurrentTransactionState;
+	SetXactPhase1(s);
+}
+
+void
+SetCurrentXactPhase2(void)
+{
+	TransactionState s = CurrentTransactionState;
+	SetXactPhase2(s);
+}
+
+bool
+IsCurrentXactInPhase2(void)
+{
+	TransactionState s = CurrentTransactionState;
+	return IsXactInPhase2(s);
+}
+
+void
+SetXactErrorAborted(bool flag)
+{
+	xact_error_abort = flag;
+}
+
+bool
+IsXactErrorAbort(void)
+{
+	return xact_error_abort;
 }
 
 /*
@@ -1901,7 +1955,7 @@ StartTransaction(void)
 
 #ifdef ADB
 	s->agtm_begin = false;
-	s->implicit2PC = false;
+	s->xact_phase = XACT_PHASE_1;
 #endif
 
 	/*
@@ -2128,10 +2182,11 @@ CommitTransaction(void)
 				StartTransaction();
 
 				/*
-				 * Local node is prepared
+				 * Nodes involved are prepared and now the transaction step into
+				 * the second phase(COMMIT/ROLLBACK PREPARED XXX).
 				 */
 				s = CurrentTransactionState;
-				s->implicit2PC = true;
+				SetXactPhase2(s);
 				TellRemoteXactLocalPrepared(true);
 			}
 		}
@@ -2205,7 +2260,7 @@ CommitTransaction(void)
 		 * that we are here shows that the transaction has been committed
 		 * successfully on the remote nodes
 		 */
-		if (s->implicit2PC)
+		if (IsXactInPhase2(s))
 		{
 			PreventTransactionChain(true, "COMMIT IMPLICIT PREPARED");
 
@@ -2215,12 +2270,11 @@ CommitTransaction(void)
 			} PG_CATCH();
 			{
 				SafeFreeSaveGID();
-				s->implicit2PC = false;
 				PG_RE_THROW();
 			} PG_END_TRY();
-			
+
+			SetXactPhase1(s);
 			SafeFreeSaveGID();
-			s->implicit2PC = false;
 		} else
 		{
 			nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
@@ -2713,29 +2767,18 @@ PrepareTransaction(void)
 #endif
 }
 
-/*
- *	AbortTransaction
- */
-static void
-AbortTransaction(void)
-{
-	TransactionState s = CurrentTransactionState;
-	TransactionId latestXid;
 #ifdef ADB
-	int nodecnt;
-	Oid *nodeIds;
+static void
+NormalAbortRemoteXact(TransactionState s)
+{
+	int		 nodecnt;
+	Oid		*nodeIds;
 
-	/*
-	 * Cleanup the files created during database/tablespace operations.
-	 * This must happen before we release locks, because we want to hold the
-	 * locks acquired initially while we cleanup the files.
-	 */
-	AtEOXact_DBCleanup(false);
+	if (!IsUnderRemoteXact())
+		return ;
 
-	/*
-	 * Handle remote abort first.
-	 */
-	if (s->implicit2PC)
+	/* we are now in phase 2 */
+	if (IsXactInPhase2(s))
 	{
 		PreventTransactionChain(true, "ROLLBACK IMPLICIT PREPARED");
 
@@ -2745,19 +2788,58 @@ AbortTransaction(void)
 		} PG_CATCH();
 		{
 			SafeFreeSaveGID();
-			s->implicit2PC = false;
 			PG_RE_THROW();
 		} PG_END_TRY();
 
+		SetXactPhase1(s);
 		SafeFreeSaveGID();
-		s->implicit2PC = false;
-	} else
-	{
-		nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
-
-		/* Abort remote xact */
-		RemoteXactAbort(nodecnt, nodeIds);
 	}
+	/* we are now in phase 1 */
+	else
+	{
+		Assert(s->xact_phase == XACT_PHASE_1);
+		nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
+		/* Abort remote xact */
+		RemoteXactAbort(nodecnt, nodeIds, true);
+	}
+}
+
+static void
+UnexpectedAbortRemoteXact(TransactionState s)
+{
+	int		 nodecnt;
+	Oid		*nodeIds;
+
+	if (!IsUnderRemoteXact())
+		return ;
+
+	nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
+	/* Abort remote xact */
+	RemoteXactAbort(nodecnt, nodeIds, false);
+}
+#endif
+
+/*
+ *	AbortTransaction
+ */
+static void
+AbortTransaction(void)
+{
+	TransactionState s = CurrentTransactionState;
+	TransactionId latestXid;
+
+#ifdef ADB
+	/*
+	 * Cleanup the files created during database/tablespace operations.
+	 * This must happen before we release locks, because we want to hold the
+	 * locks acquired initially while we cleanup the files.
+	 */
+	AtEOXact_DBCleanup(false);
+
+	if (IsXactErrorAbort())
+		UnexpectedAbortRemoteXact(s);
+	else
+		NormalAbortRemoteXact(s);
 #endif
 
 	/* Prevent cancel/die interrupt while cleaning up */
@@ -2967,7 +3049,7 @@ CleanupTransaction(void)
 
 #ifdef ADB
 	s->agtm_begin = false;
-	s->implicit2PC = false;
+	SetXactPhase1(s);
 #endif
 }
 

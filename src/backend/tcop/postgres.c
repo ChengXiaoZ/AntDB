@@ -4486,12 +4486,17 @@ PostgresMain(int argc, char *argv[],
 
 #ifdef ADB
 		/*
-		 * Make sure disconect with Remote Xact Manager.
-		 *
-		 * Also clear variables which are used to Remote Xact,
-		 * Because we pop it to Remote Xact Manager.
+		 * Tell xact.c we are in a fatal transaction.
 		 */
-		AtEOXact_Remote();
+		SetXactErrorAborted(true);
+		if (IsCurrentXactInPhase2())
+		{
+			/*
+			 * clear variables which are used to the Remote Xact in phase 2,
+			 * Because we pop it to Remote Xact Manager.
+			 */
+			AtEOXact_Remote();
+		}
 		DisconnectRemoteXact();
 #endif
 
@@ -4520,6 +4525,9 @@ PostgresMain(int argc, char *argv[],
 
 		/* We don't have a transaction command open anymore */
 		xact_started = false;
+#ifdef ADB
+		SetXactErrorAborted(false);
+#endif
 
 		/*
 		 * If an error occurred while we were reading a message from the

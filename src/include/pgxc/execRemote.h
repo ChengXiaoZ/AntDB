@@ -198,6 +198,7 @@ extern void init_RemoteXactStateByNodes(int node_cnt, Oid *nodeIds, bool isPrepa
 extern void TellRemoteXactLocalPrepared(bool status);
 extern int pgxcGetInvolvedRemoteNodes(Oid **nodeIds);
 extern int pgxcGetInvolvedNodes(bool localNode, Oid **nodeIds);
+extern void AbnormalAbort_Remote(void);
 #endif /* ADB */
 
 #endif
