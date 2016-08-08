@@ -1431,11 +1431,17 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| SESSION AUTHORIZATION NonReservedWord_or_Sconst
 				{
+#ifdef ADB
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("ADB not support SET SESSION AUTHORIZATION yet")));
+#else
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "session_authorization";
 					n->args = list_make1(makeStringConst($3, @3));
 					$$ = n;
+#endif
 				}
 			| SESSION AUTHORIZATION DEFAULT
 				{
