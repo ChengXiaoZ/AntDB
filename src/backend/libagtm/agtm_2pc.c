@@ -22,7 +22,6 @@ static char* agtm_generate_begin_command(void);
 static bool  AcceptAgtmResult(const PGresult *result);
 static bool  AgtmProcessResult(PGresult **results);
 static void  agtm_node_send_query(const char *query);
-static void  agtm_node_send_query_with_dbname(const char *query,const char *dbname);
 static bool  CheckAgtmConnection(void);
 static void  CheckAndExecOnAgtm(const char *dmlOperation);
 static bool  ConnectionAgtmUp(void);
@@ -208,18 +207,11 @@ agtm_generate_begin_command(void)
 static void
 agtm_node_send_query(const char *query)
 {
-	agtm_node_send_query_with_dbname(query,NULL);
-}
-
-static void
-agtm_node_send_query_with_dbname(const char *query,const char *dbname)
-
-{
 	PGresult 	*results = NULL;
 	PGconn		*agtm_conn = NULL;
 	bool		OK = false;
 
-	agtm_conn = getAgtmConnectionByDBname(dbname);
+	agtm_conn = getAgtmConnection();
 	
 	if (NULL == agtm_conn)
 		ereport(ERROR,
@@ -240,11 +232,6 @@ agtm_node_send_query_with_dbname(const char *query,const char *dbname)
 
 void agtm_BeginTransaction(void)
 {
-	agtm_BeginTransaction_ByDBname(NULL);
-}
-
-void agtm_BeginTransaction_ByDBname(const char *dbname)
-{
 	char * agtm_begin_cmd = NULL;
 	
 	if (!IsUnderAGTM())
@@ -258,17 +245,12 @@ void agtm_BeginTransaction_ByDBname(const char *dbname)
  
 	agtm_begin_cmd = agtm_generate_begin_command();
 
-	agtm_node_send_query_with_dbname(agtm_begin_cmd, dbname);
+	agtm_node_send_query(agtm_begin_cmd);
 
 	SetTopXactBeginAGTM(true);
 }
 
 void agtm_PrepareTransaction(const char *prepared_gid)
-{
-	agtm_PrepareTransaction_ByDBname(prepared_gid,NULL);
-}
-
-void agtm_PrepareTransaction_ByDBname(const char *prepared_gid, const char *dbname)
 {
 	StringInfoData prepare_cmd;
 
@@ -289,7 +271,7 @@ void agtm_PrepareTransaction_ByDBname(const char *prepared_gid, const char *dbna
 
 	PG_TRY();
 	{
-		agtm_node_send_query_with_dbname(prepare_cmd.data, dbname);
+		agtm_node_send_query(prepare_cmd.data);
 	} PG_CATCH();
 	{
 		pfree(prepare_cmd.data);
@@ -304,11 +286,6 @@ void agtm_PrepareTransaction_ByDBname(const char *prepared_gid, const char *dbna
 }
 
 void agtm_CommitTransaction(const char *prepared_gid, bool missing_ok)
-{
-	agtm_CommitTransaction_ByDBname(prepared_gid,missing_ok,NULL);
-}
-
-void agtm_CommitTransaction_ByDBname(const char *prepared_gid, bool missing_ok, const char *dbname)
 {
 	StringInfoData commit_cmd;
 
@@ -345,7 +322,7 @@ void agtm_CommitTransaction_ByDBname(const char *prepared_gid, bool missing_ok, 
 
 	PG_TRY();
 	{
-		agtm_node_send_query_with_dbname(commit_cmd.data, dbname);
+		agtm_node_send_query(commit_cmd.data);
 	} PG_CATCH();
 	{
 		pfree(commit_cmd.data);
@@ -363,11 +340,6 @@ void agtm_CommitTransaction_ByDBname(const char *prepared_gid, bool missing_ok, 
 }
 
 void agtm_AbortTransaction(const char *prepared_gid, bool missing_ok)
-{
-	agtm_AbortTransaction_ByDBname(prepared_gid,missing_ok,NULL);
-}
-
-void agtm_AbortTransaction_ByDBname(const char *prepared_gid, bool missing_ok, const char *dbname)
 {
 	StringInfoData abort_cmd;
 
@@ -404,7 +376,7 @@ void agtm_AbortTransaction_ByDBname(const char *prepared_gid, bool missing_ok, c
 
 	PG_TRY();
 	{
-		agtm_node_send_query_with_dbname(abort_cmd.data, dbname);
+		agtm_node_send_query(abort_cmd.data);
 	} PG_CATCH();
 	{
 		pfree(abort_cmd.data);

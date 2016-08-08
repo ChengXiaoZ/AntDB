@@ -85,28 +85,20 @@ extern Timestamp agtm_GetTimestamptz(void);
  */
 extern void agtm_BeginTransaction(void);
 
-extern void agtm_BeginTransaction_ByDBname(const char *dbname);
-
 /*
  * prepare commit transaction on AGTM
  */
 extern void agtm_PrepareTransaction(const char *prepared_gid);
-
-extern void agtm_PrepareTransaction_ByDBname(const char *prepared_gid, const char *dbname);
 
 /*
  * commit transcation on AGTM
  */
 extern void agtm_CommitTransaction(const char *prepared_gid, bool missing_ok);
 
-extern void agtm_CommitTransaction_ByDBname(const char *prepared_gid, bool missing_ok, const char *dbname);
-
 /*
  * rollback transacton on AGTM
  */
 extern void agtm_AbortTransaction(const char *prepared_gid, bool missing_ok);
-
-extern void agtm_AbortTransaction_ByDBname(const char *prepared_gid, bool missing_ok, const char *dbname);
 
 /*
  * create/drop/alter sequence on agtm

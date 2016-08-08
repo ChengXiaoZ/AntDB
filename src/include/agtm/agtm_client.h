@@ -40,7 +40,6 @@ extern void agtm_SetPort(int listen_port);
 extern void agtm_SetDefaultPort(void);
 
 extern PGconn* getAgtmConnection(void);
-extern PGconn* getAgtmConnectionByDBname(const char *dbname);
 extern PGresult* agtm_GetResult(void);
 extern StringInfo agtm_use_result_data(const PGresult *res, StringInfo buf);
 extern StringInfo agtm_use_result_type(const PGresult *res, StringInfo buf, AGTM_ResultType type);

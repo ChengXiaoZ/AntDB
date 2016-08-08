@@ -35,19 +35,11 @@ static bool				IsDefaultAGtmPortSave = false;
 	} while(0)
 
 static void agtm_Connect(void);
-static void agtm_ConnectByDBname(const char *databaseName);
 
 static void
 agtm_Connect(void)
 {
-	agtm_ConnectByDBname(NULL);
-}
-
-static void
-agtm_ConnectByDBname(const char *databaseName)
-{
-	const char 		*dbname;
-	Datum 			 d_name;
+	const char 		*dbName;
 	char 			*userName;
 	PGconn volatile	*pg_conn;
 	StringInfoData 	 agtmOption;
@@ -59,14 +51,8 @@ agtm_ConnectByDBname(const char *databaseName)
 	agtm_Close();
 
 	SaveDefaultAGtmPort(AGtmPort);
-
-	if (databaseName == NULL)
-		dbname = get_database_name(MyDatabaseId);
-	else
-		dbname = databaseName;
-	
-	d_name = DirectFunctionCall1(current_user, (Datum)0);
-	userName = NameStr(*DatumGetName(d_name));
+	dbName = get_database_name(MyDatabaseId);
+	userName = GetUserNameFromId(GetUserId());
 
 	sprintf(port_buf, "%d", AGtmPort);
 	initStringInfo(&agtmOption);
@@ -76,7 +62,7 @@ agtm_ConnectByDBname(const char *databaseName)
 						   port_buf,
 						   agtmOption.data,
 						   NULL,
-						   dbname,
+						   dbName,
 						   userName,
 						   NULL);
 	pfree(agtmOption.data);
@@ -85,7 +71,7 @@ agtm_ConnectByDBname(const char *databaseName)
 		ereport(ERROR,
 			(errmsg("Fail to connect to AGTM(return NULL pointer)."),
 			 errhint("AGTM info(host=%s port=%d dbname=%s user=%s)",
-		 		AGtmHost, AGtmPort, dbname, userName)));
+		 		AGtmHost, AGtmPort, dbName, userName)));
 
 	PG_TRY();
 	{
@@ -95,7 +81,7 @@ agtm_ConnectByDBname(const char *databaseName)
 				(errmsg("Fail to connect to AGTM %s",
 					PQerrorMessage((PGconn*)pg_conn)),
 				 errhint("AGTM info(host=%s port=%d dbname=%s user=%s)",
-					AGtmHost, AGtmPort, dbname, userName)));
+					AGtmHost, AGtmPort, dbName, userName)));
 		}
 
 		/*
@@ -120,7 +106,7 @@ agtm_ConnectByDBname(const char *databaseName)
 
 	ereport(LOG,
 		(errmsg("Connect to AGTM(host=%s port=%d dbname=%s user=%s) successfully.",
-		AGtmHost, AGtmPort, dbname, userName)));
+		AGtmHost, AGtmPort, dbName, userName)));
 }
 
 int
@@ -237,15 +223,9 @@ void agtm_Flush(void)
 PGconn*
 getAgtmConnection(void)
 {
-	return getAgtmConnectionByDBname(NULL);
-}
-
-PGconn* 
-getAgtmConnectionByDBname(const char *dbname)
-{
 	if (agtm_conn == NULL)
 	{
-		agtm_ConnectByDBname(dbname);
+		agtm_Connect();
 		return agtm_conn->pg_Conn;
 	}
 
@@ -266,7 +246,7 @@ getAgtmConnectionByDBname(const char *dbname)
 	} else
 	{
 		agtm_Close();
-		agtm_ConnectByDBname(dbname);
+		agtm_Connect();
 	}
 
 	return agtm_conn->pg_Conn;
