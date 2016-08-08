@@ -84,6 +84,7 @@ static char *mgr_nodetype_str(char nodetype);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static void makesure_dnmaster_running(char *hostaddr, int32 hostport);
 static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
+static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -4031,170 +4032,95 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 	ma_close(ma);
 }
 
-Datum 
-mgr_failover_one_dn_slave(PG_FUNCTION_ARGS)
+/*
+* failover datanode slave dnname: PG_GETARG_CSTRING(0) is "slave"
+* failover datanode extra dnname: PG_GETARG_CSTRING(0) is "extra"
+* failover datanode dnname: PG_GETARG_CSTRING(0) is "either", if datanode slave dnname exists, using datanode slave dnname; 
+* otherwise using datanode extra dnname
+*/
+Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 {
-	List *nodenamelist;
-	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tup_result;
-	HeapTuple aimtuple;
-	FuncCallContext *funcctx;
-	ListCell **lcp;
-	InitNodeInfo *info;
-	char *nodename;
-	StringInfoData getnotslavename;
+	char *typestr = PG_GETARG_CSTRING(0);
+	char *nodename = PG_GETARG_CSTRING(1);
 	char cmdtype = AGT_CMD_DN_FAILOVER;
-	
-	/* stuff done only on the first call of the function */
-	if (SRF_IS_FIRSTCALL())
+	char nodetype;
+	bool nodetypechange = false;
+	if (strcmp(typestr, "slave") == 0)
 	{
-		MemoryContext oldcontext;
-		nodenamelist = NIL;
-		/* create a function context for cross-call persistence */
-		funcctx = SRF_FIRSTCALL_INIT();
-		/* switch to memory context appropriate for multiple function calls */
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		/* allocate memory for user context */
-		info = palloc(sizeof(*info));
-		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
-		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-		/*check all inputs nodename are datanode slaves*/
-		check_dn_slave(CNDN_TYPE_DATANODE_SLAVE, nodenamelist, info->rel_node, &getnotslavename);
-		if(getnotslavename.maxlen != 0 && getnotslavename.data[0] != '\0')
-		{
-			/*let the hostname is empty*/
-			namestrcpy(&(getAgentCmdRst.nodename), getnotslavename.data);
-			getAgentCmdRst.ret = false;
-			initStringInfo(&(getAgentCmdRst.description));
-			appendStringInfo(&(getAgentCmdRst.description), "ERROR: %s is not a datanode slave", getnotslavename.data);
-			tup_result = build_common_command_tuple(
-				&(getAgentCmdRst.nodename)
-				, getAgentCmdRst.ret
-				, getAgentCmdRst.description.data);
-			pfree(getAgentCmdRst.description.data);
-			pfree(getnotslavename.data);
-			heap_close(info->rel_node, RowExclusiveLock);
-			return HeapTupleGetDatum(tup_result);	
-		}
-		*(info->lcp) = list_head(nodenamelist);
-		funcctx->user_fctx = info;
-		MemoryContextSwitchTo(oldcontext);
+		nodetype = CNDN_TYPE_DATANODE_SLAVE;
+	}
+	else if (strcmp(typestr, "extra") == 0)
+	{
+		nodetype = CNDN_TYPE_DATANODE_EXTRA;
+	}
+	else if (strcmp(typestr, "either") == 0)
+	{
+		nodetype = CNDN_TYPE_DATANODE_SLAVE;
+		nodetypechange = true;
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("no such node type: %s", typestr)));
 	}
 
-	/* stuff done on every call of the function */
-	funcctx = SRF_PERCALL_SETUP();	
-	info = funcctx->user_fctx;
-	Assert(info);
-	lcp = info->lcp;
-	if (*lcp == NULL)
-	{
-		heap_close(info->rel_node, RowExclusiveLock);
-		SRF_RETURN_DONE(funcctx);
-	}
-	nodename = (char *) lfirst(*lcp);
-	*lcp = lnext(*lcp);
-	aimtuple = mgr_get_tuple_node_from_name_type(info->rel_node, nodename, CNDN_TYPE_DATANODE_SLAVE);
-	if (!HeapTupleIsValid(aimtuple))
-		elog(ERROR, "cache lookup failed for %s", nodename);
-	/*get execute cmd result from agent*/
-	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, info->rel_node, aimtuple, takeplaparm_n);
-	tup_result = build_common_command_tuple(
-		&(getAgentCmdRst.nodename)
-		, getAgentCmdRst.ret
-		, getAgentCmdRst.description.data);
-	heap_freetuple(aimtuple);
-	pfree(getAgentCmdRst.description.data);
-	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, nodetypechange);
 }
 
-/*failover datanode extra dn1
-* failover datanode extra dn1 dn2 ...
+/*
+* inner function, userd for node failover
 */
-Datum mgr_failover_one_dn_extra(PG_FUNCTION_ARGS)
+static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange)
 {
-	List *nodenamelist;
-	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tup_result;
+	Relation rel_node;
 	HeapTuple aimtuple;
-	FuncCallContext *funcctx;
-	ListCell **lcp;
-	InitNodeInfo *info;
-	char *nodename;
-	StringInfoData getnotslavename;
-	char cmdtype = AGT_CMD_DN_FAILOVER;
-	
-	/* stuff done only on the first call of the function */
-	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcontext;
-		nodenamelist = NIL;
-		/* create a function context for cross-call persistence */
-		funcctx = SRF_FIRSTCALL_INIT();
-		/* switch to memory context appropriate for multiple function calls */
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		/* allocate memory for user context */
-		info = palloc(sizeof(*info));
-		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
-		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-		/*check all inputs nodename are datanode slaves*/
-		check_dn_slave(CNDN_TYPE_DATANODE_EXTRA, nodenamelist, info->rel_node, &getnotslavename);
-		if(getnotslavename.maxlen != 0 && getnotslavename.data[0] != '\0')
-		{
-			/*let the hostname is empty*/
-			namestrcpy(&(getAgentCmdRst.nodename), getnotslavename.data);
-			getAgentCmdRst.ret = false;
-			initStringInfo(&(getAgentCmdRst.description));
-			appendStringInfo(&(getAgentCmdRst.description), "ERROR: %s is not a datanode extra", getnotslavename.data);
-			tup_result = build_common_command_tuple(
-				&(getAgentCmdRst.nodename)
-				, getAgentCmdRst.ret
-				, getAgentCmdRst.description.data);
-			pfree(getAgentCmdRst.description.data);
-			pfree(getnotslavename.data);
-			heap_close(info->rel_node, RowExclusiveLock);
-			return HeapTupleGetDatum(tup_result);	
-		}
-		*(info->lcp) = list_head(nodenamelist);
-		funcctx->user_fctx = info;
-		MemoryContextSwitchTo(oldcontext);
-	}
+	HeapTuple tup_result;
+	GetAgentCmdRst getAgentCmdRst;
+	char nodetypesecond;
 
-	/* stuff done on every call of the function */
-	funcctx = SRF_PERCALL_SETUP();	
-	info = funcctx->user_fctx;
-	Assert(info);
-	lcp = info->lcp;
-	if (*lcp == NULL)
-	{
-		heap_close(info->rel_node, RowExclusiveLock);
-		SRF_RETURN_DONE(funcctx);
-	}
-	nodename = (char *) lfirst(*lcp);
-	*lcp = lnext(*lcp);
-	aimtuple = mgr_get_tuple_node_from_name_type(info->rel_node, nodename, CNDN_TYPE_DATANODE_EXTRA);
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetype);
 	if (!HeapTupleIsValid(aimtuple))
-		elog(ERROR, "cache lookup failed for %s", nodename);
-	/*get execute cmd result from agent*/
+	{
+		/*cannot find datanode slave, so find datanode extra*/
+		if (nodetypechange)
+		{
+			switch(nodetype)
+			{
+				case CNDN_TYPE_DATANODE_SLAVE:
+					nodetypesecond = CNDN_TYPE_DATANODE_EXTRA;
+					break;
+				case CNDN_TYPE_DATANODE_EXTRA:
+					nodetypesecond = CNDN_TYPE_DATANODE_SLAVE;
+					break;
+				default:
+					ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+						,errmsg("no such node type: %c", nodetype)));
+			}
+			aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetypesecond);
+		}
+		if (!HeapTupleIsValid(aimtuple))
+		{
+			heap_close(rel_node, RowExclusiveLock);
+			if (nodetype == CNDN_TYPE_DATANODE_SLAVE)
+				elog(ERROR, "lookup failed for datanode slave %s", nodename);
+			else if (nodetype == CNDN_TYPE_DATANODE_EXTRA)
+				elog(ERROR, "lookup failed for datanode extra %s", nodename);
+			else
+				elog(ERROR, "lookup failed for datanode slave and extra %s", nodename);
+		}
+	}
 	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, info->rel_node, aimtuple, takeplaparm_n);
+	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
 		, getAgentCmdRst.description.data);
 	heap_freetuple(aimtuple);
 	pfree(getAgentCmdRst.description.data);
-	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+	heap_close(rel_node, RowExclusiveLock);
+	return HeapTupleGetDatum(tup_result);
+
 }
 
 /*check all the given nodename are datanode slaves*/
