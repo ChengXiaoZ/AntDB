@@ -37,6 +37,8 @@
 #include "access/xact.h"
 #include "utils/date.h"
 
+static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len);
+
 #define DEFAULT_DB "postgres"
 
 typedef enum ResultChoice
@@ -68,7 +70,7 @@ int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, in
 	initStringInfo(&constr);
 	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
 	appendStringInfoCharMacro(&constr, '\0');
-	ereport(LOG,
+	ereport(DEBUG1,
 		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
 	conn = PQconnectdb(constr.data);
 	/* Check to see that the backend connection was successfully made */
@@ -200,6 +202,9 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	int standbydelay = 0;
 	int indexsize = 0;
 	int longtransmintime = 100;
+	int iloop = 0;
+	int iarray_heaphit_read_indexsize[3] = {0,0,0};
+	int iarray_commit_connect_longidle_prepare[6] = {0, 0, 0, 0, 0, 0};
 	float heaphitrate = 0;
 	float commitrate = 0;
 	List *dbnamelist = NIL;
@@ -209,21 +214,11 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	Relation rel;
 	Relation rel_node;
 	StringInfoData sqldbsizeStrData;
-	StringInfoData sqlcommitStrData;
-	StringInfoData sqlrollbackStrData;
-	StringInfoData sqlprepareStrData;
 	StringInfoData sqllocksStrData;
-	StringInfoData sqllongqueryStrData;
-	StringInfoData sqlidlequeryStrData;
-	StringInfoData sqlconnectnumStrData;
-	char *sqlheaphit = "select sum(heap_blks_hit) from pg_statio_user_tables;";
-	char *sqlheapread = "select sum(heap_blks_read) from pg_statio_user_tables;";
+	StringInfoData sqlstr_heaphit_read_indexsize;
+	StringInfoData sqlstr_commit_connect_longidle_prepare;
 	char *sqlunusedindex = "select count(*) from  pg_stat_user_indexes where idx_scan = 0";
-	char *sqlstrgetdbage = "select max(age(datfrozenxid)) from pg_database";
-	char *sqlautovacuum = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'autovacuum\'";
-	char *sqlarchive = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'archive_mode\'";
 	char *sqlstrstandbydelay = "select CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0  ELSE round(EXTRACT (EPOCH FROM now() - pg_last_xact_replay_timestamp())) end;";
-	char *sqlstrindexsize = "select round(sum(pg_relation_size(indexrelid)::numeric(18,4)/1024/1024)) from pg_stat_user_indexes;";
 	Monitor_Threshold monitor_threshold;
 	
 	rel = heap_open(MdatabaseitemRelationId, RowExclusiveLock);
@@ -233,10 +228,10 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	Assert(user != NULL);
 	Assert(hostaddress != NULL);
 	dbnamelist = monitor_get_dbname_list(user, hostaddress, coordport);
-	pfree(user);
-	pfree(hostaddress);
 	if(dbnamelist == NULL)
 	{
+		pfree(user);
+		pfree(hostaddress);
 		heap_close(rel, RowExclusiveLock);
 		heap_close(rel_node, RowExclusiveLock);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
@@ -248,40 +243,63 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	/*get long transaction min time from table: MonitorHostThresholdRelationId*/
 	get_threshold(LONGTRANS_MINTIME, &monitor_threshold);
 	if (monitor_threshold.threshold_warning !=0)
+	{
 		longtransmintime = monitor_threshold.threshold_warning;
+	}
+	initStringInfo(&sqldbsizeStrData);
+	initStringInfo(&sqllocksStrData);
+	initStringInfo(&sqlstr_heaphit_read_indexsize);
+	initStringInfo(&sqlstr_commit_connect_longidle_prepare);
 	foreach(cell, dbnamelist)
 	{
 		dbname = (char *)(lfirst(cell));
 		/* get database size on coordinator*/
-		initStringInfo(&sqldbsizeStrData);
 		appendStringInfo(&sqldbsizeStrData, "select round(pg_database_size(datname)::numeric(18,4)/1024/1024) from pg_database where datname=\'%s\';", dbname);
 		/*dbsize, unit MB*/
 		dbsize = monitor_get_result_one_node(rel_node, sqldbsizeStrData.data, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
-
-		/*get heap hit rate on datanode master*/
-		heaphit = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlheaphit, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
-		heapread = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlheapread, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+		for (iloop=0; iloop<3; iloop++)
+		{
+			iarray_heaphit_read_indexsize[iloop] = 0;
+		}
+		/*heaphit, heapread, indexsize*/
+		appendStringInfo(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit) from pg_statio_user_tables union all select sum(heap_blks_read) from pg_statio_user_tables union all select round(pg_database_size(datname)::numeric(18,4)/1024/1024) from pg_database where datname=\'%s\'", dbname);
+		monitor_get_sum_all_onetypenode_onedb(rel_node, sqlstr_heaphit_read_indexsize.data, dbname, CNDN_TYPE_DATANODE_MASTER, iarray_heaphit_read_indexsize, 3);
+		
+		heaphit = iarray_heaphit_read_indexsize[0];
+		heapread = iarray_heaphit_read_indexsize[1];
 		if((heaphit + heapread) == 0)
 			heaphitrate = 1;
 		else
 			heaphitrate = heaphit*1.0/(heaphit + heapread);
+		/*the database index size, unit: MB */
+		indexsize = iarray_heaphit_read_indexsize[2];
+		
+		/*get all coordinators' result then sum them*/		
+		/*
+		* xact_commit, xact_rollback, numbackends, longquerynum, idlequerynum, preparednum
+		*/
+		for (iloop=0; iloop<3; iloop++)
+		{
+			iarray_commit_connect_longidle_prepare[iloop] = 0;
+		}
+		appendStringInfo(&sqlstr_commit_connect_longidle_prepare,"select xact_commit from pg_stat_database where datname = \'%s\' union all select xact_rollback from pg_stat_database where datname = \'%s\' union all select numbackends from pg_stat_database where datname = \'%s\' union all select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > %d and datname=\'%s\' union all select count(*) from pg_stat_activity where state='idle' and datname = \'%s\' union all select count(*) from pg_prepared_xacts where database= \'%s\';", dbname, dbname, dbname, longtransmintime, dbname, dbname, dbname);
+		monitor_get_sum_all_onetypenode_onedb(rel_node, sqlstr_commit_connect_longidle_prepare.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, iarray_commit_connect_longidle_prepare, 6);
 		
 		/*xact_commit_rate on coordinator*/
-		initStringInfo(&sqlcommitStrData);
-		initStringInfo(&sqlrollbackStrData);
-		appendStringInfo(&sqlcommitStrData, "select xact_commit from pg_stat_database where datname = \'%s\'", dbname);
-		appendStringInfo(&sqlrollbackStrData, "select xact_rollback from pg_stat_database where datname = \'%s\'", dbname);
-		commit = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlcommitStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		rollback = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlrollbackStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		commit = iarray_commit_connect_longidle_prepare[0];
+		rollback = iarray_commit_connect_longidle_prepare[1];
 		if((commit + rollback) == 0)
 			commitrate = 1;
 		else
 			commitrate = commit*1.0/(commit + rollback);
-		
+		/*connect num*/
+		connectnum = iarray_commit_connect_longidle_prepare[2];
+		/*get long query num on coordinator*/
+		longquerynum = iarray_commit_connect_longidle_prepare[3];
+		idlequerynum = iarray_commit_connect_longidle_prepare[4];
 		/*prepare query num on coordinator*/
-		initStringInfo(&sqlprepareStrData);
-		appendStringInfo(&sqlprepareStrData, "select count(*) from pg_prepared_xacts where database=\'%s\'", dbname);
-		preparenum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlprepareStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
+		preparenum = iarray_commit_connect_longidle_prepare[5];
+		
 		
 		/*unused index on datanode master, get min
 		* " select count(*) from  pg_stat_user_indexes where idx_scan = 0"  on one database, get min on every dn master
@@ -289,63 +307,44 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		unusedindexnum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlunusedindex, dbname, CNDN_TYPE_DATANODE_MASTER, GET_MIN);
 		
 		/*get locks on coordinator, get max*/
-		initStringInfo(&sqllocksStrData);
 		appendStringInfo(&sqllocksStrData, "select count(*) from pg_locks ,pg_database where pg_database.Oid = pg_locks.database and pg_database.datname=\'%s\';", dbname);
 		locksnum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqllocksStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_MAX);
 		
-		/*get long query num on coordinator*/
-		initStringInfo(&sqllongqueryStrData);
-		initStringInfo(&sqlidlequeryStrData);
-		appendStringInfo(&sqllongqueryStrData, "select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > %d and datname=\'%s\';", longtransmintime, dbname);
-		appendStringInfo(&sqlidlequeryStrData, "select count(*) from pg_stat_activity where state='idle' and datname = \'%s\'", dbname);
-		longquerynum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqllongqueryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
-		
-		/*get idle query num on coordinator*/
-		idlequerynum = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlidlequeryStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, GET_SUM);
 		
 		/*autovacuum*/
 		if(bfrist)
 		{
-			/*these vars just need get one time*/
-			bautovacuum = (monitor_get_result_one_node(rel_node, sqlautovacuum, DEFAULT_DB,CNDN_TYPE_DATANODE_MASTER) == 0 ? false:true);
-			barchive = (monitor_get_result_one_node(rel_node, sqlarchive, DEFAULT_DB, CNDN_TYPE_DATANODE_MASTER) == 0 ? false:true);
-	
+			/*these vars just need get one time, from coordinator*/
+			char *sqlstr_vacuum_archive_dbage = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'autovacuum\' union all select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'archive_mode\' union all select max(age(datfrozenxid)) from pg_database";
+			int iarray_vacuum_archive_dbage[3] = {0,0,0};
+			monitor_get_sqlvalues_one_node(sqlstr_vacuum_archive_dbage, user, hostaddress, coordport,DEFAULT_DB, iarray_vacuum_archive_dbage, 3);
+			
+			bautovacuum = (iarray_vacuum_archive_dbage[0] == 0 ? false:true);
+			barchive = (iarray_vacuum_archive_dbage[1] == 0 ? false:true);
 			/*get database age*/
-			dbage = monitor_get_result_one_node(rel_node, sqlstrgetdbage, DEFAULT_DB, CNDN_TYPE_COORDINATOR_MASTER);
+			dbage = iarray_vacuum_archive_dbage[2];
 		
 			/*standby delay*/
 			standbydelay = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlstrstandbydelay, DEFAULT_DB, CNDN_TYPE_DATANODE_SLAVE, GET_MAX);
 		}
-		/*connect num*/
-		initStringInfo(&sqlconnectnumStrData);
-		appendStringInfo(&sqlconnectnumStrData, "select numbackends from pg_stat_database where datname = \'%s\'", dbname);
-		connectnum = monitor_get_result_one_node(rel_node, sqlconnectnumStrData.data, dbname, CNDN_TYPE_COORDINATOR_MASTER);
-		/*the database index size, unit: MB */
-		indexsize = monitor_get_sqlres_all_typenode_usedbname(rel_node, sqlstrindexsize, dbname, CNDN_TYPE_DATANODE_MASTER, GET_SUM);
+
 		/*build tuple*/
 		tuple = monitor_build_database_item_tuple(rel, time, dbname, dbsize, barchive, bautovacuum, heaphitrate, commitrate, dbage, connectnum, standbydelay, locksnum, longquerynum, idlequerynum, preparenum, unusedindexnum, indexsize);
 		simple_heap_insert(rel, tuple);
 		CatalogUpdateIndexes(rel, tuple);
 		heap_freetuple(tuple);
 		resetStringInfo(&sqldbsizeStrData);
-		resetStringInfo(&sqlcommitStrData);
-		resetStringInfo(&sqlrollbackStrData);
-		resetStringInfo(&sqlprepareStrData);
 		resetStringInfo(&sqllocksStrData);
-		resetStringInfo(&sqllongqueryStrData);
-		resetStringInfo(&sqlidlequeryStrData);
-		resetStringInfo(&sqlconnectnumStrData);
+		resetStringInfo(&sqlstr_heaphit_read_indexsize);
+		resetStringInfo(&sqlstr_commit_connect_longidle_prepare);
 		bfrist = false;
 	}
+	pfree(user);
+	pfree(hostaddress);
 	pfree(sqldbsizeStrData.data);
-	pfree(sqlcommitStrData.data);
-	pfree(sqlrollbackStrData.data);
-	pfree(sqlprepareStrData.data);
 	pfree(sqllocksStrData.data);
-	pfree(sqllongqueryStrData.data);
-	pfree(sqlidlequeryStrData.data);
-	pfree(sqlconnectnumStrData.data);
-	
+	pfree(sqlstr_heaphit_read_indexsize.data);
+	pfree(sqlstr_commit_connect_longidle_prepare.data);
 	list_free(dbnamelist);
 	heap_close(rel, RowExclusiveLock);
 	heap_close(rel_node, RowExclusiveLock);
@@ -565,4 +564,56 @@ HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz ti
 	nulls[0] = nulls[1] = nulls[2] = nulls[3] = nulls[4] = false;
 	
 	return heap_form_tuple(desc, datums, nulls);
+}
+/*get the sqlstr values from given sql on given typenode, then sum them
+* for example: we want to get caculate cmmitrate, which on coordinators, we need get sum
+* commit on all coordinators and sum rollback on all coordinators. the input parameters: len
+* is the num we want, iarray is the values restore.
+*/
+static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len)
+{
+	/*get node user, port*/
+	HeapScanDesc rel_scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	char *user = NULL;
+	char *address = NULL;
+	int port;
+	int *iarraytmp;
+	int iloop = 0;
+	bool bfirst = true;
+	
+	iarraytmp = (int *)palloc(sizeof(int)*len);
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		port = mgr_node->nodeport;
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		if(bfirst)
+		{
+			user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		}
+		bfirst = false;
+		memset(iarraytmp, 0, len*sizeof(int));
+		monitor_get_sqlvalues_one_node(sqlstr, user, address, port,dbname, iarraytmp, len);
+		for(iloop=0; iloop<len; iloop++)
+		{
+			iarray[iloop] += iarraytmp[iloop];
+		}
+		pfree(address);
+	}
+	if(user)
+	{
+		pfree(user);
+	}
+	heap_endscan(rel_scan);
+	pfree(iarraytmp);
 }

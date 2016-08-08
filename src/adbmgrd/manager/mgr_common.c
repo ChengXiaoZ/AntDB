@@ -339,8 +339,6 @@ List *monitor_get_dbname_list(char *user, char *address, int port)
 		
 	initStringInfo(&constr);
 	appendStringInfo(&constr, "postgresql://%s@%s:%d/postgres", user, address, port);
-	ereport(LOG,
-		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
 	conn = PQconnectdb(constr.data);
 	/* Check to see that the backend connection was successfully made */
 	if (PQstatus(conn) != CONNECTION_OK) 
@@ -403,3 +401,51 @@ void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char
 	heap_endscan(rel_scan);
 }
 
+/*
+* get len values to iarray, the values get from the given sqlstr's result
+*/
+bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len)
+{
+	StringInfoData constr;
+	PGconn* conn;
+	PGresult *res;
+	char *pvalue;
+	int iloop = 0;
+	
+	initStringInfo(&constr);
+	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
+	appendStringInfoCharMacro(&constr, '\0');
+	conn = PQconnectdb(constr.data);
+	/* Check to see that the backend connection was successfully made */
+	if (PQstatus(conn) != CONNECTION_OK) 
+	{
+		ereport(LOG,
+		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
+		PQfinish(conn);
+		pfree(constr.data);
+		return false;
+	}
+	res = PQexec(conn, sqlstr);
+	if(PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ereport(LOG,
+		(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
+		PQclear(res);
+		PQfinish(conn);
+		pfree(constr.data);
+		return false;
+	}
+	/*check row number*/
+	Assert(len == PQntuples(res));
+	/*check column number*/
+	Assert(1 == PQnfields(res));
+	for (iloop=0; iloop<len; iloop++)
+	{
+		pvalue = PQgetvalue(res, iloop, 0);
+		iarray[iloop] = atoi(pvalue);
+	}
+	PQclear(res);
+	PQfinish(conn);
+	pfree(constr.data);
+	return true;
+}
