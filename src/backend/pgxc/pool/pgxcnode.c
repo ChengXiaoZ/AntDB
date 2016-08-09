@@ -1240,10 +1240,8 @@ clear_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
 	}
 
 	/*
-	 * Notice pool manager to release handles if any connection
-	 * is invalid.
+	 * We cannot release handle here, it is decided with the caller. 
 	 */
-	release_handles();
 }
 
 void
