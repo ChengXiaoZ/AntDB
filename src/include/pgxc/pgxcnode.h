@@ -73,12 +73,19 @@ typedef enum
 		((conn)->inCursor + 4 < (conn)->inEnd \
 			&& (conn)->inCursor + ntohl(*((uint32_t *) ((conn)->inBuffer + (conn)->inCursor + 1))) < (conn)->inEnd)
 
+#ifdef DEBUG_ADB
+#define DEBUG_BUF_SIZE 1024
+#endif
+
 struct pgxc_node_handle
 {
 	Oid			nodeoid;
 #ifdef ADB
 	NameData	name;
 	char		type;
+#ifdef DEBUG_ADB
+	char		last_query[DEBUG_BUF_SIZE];
+#endif
 #endif
 
 	/* fd of the connection */
@@ -153,16 +160,18 @@ extern PGXCNodeAllHandles *get_handles(List *datanodelist, List *coordlist, bool
 extern void pfree_pgxc_all_handles(PGXCNodeAllHandles *handles);
 
 extern void release_handles(void);
+
 #ifdef ADB
 extern void release_handles2(bool force_close);
-extern void cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
+extern void cancel_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
 							  int num_cohandles, PGXCNodeHandle **cohandles);
-extern void clear_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
+extern void clear_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
 							 int num_cohandles, PGXCNodeHandle **cohandles);
+extern void clear_all_handle(void);
 #endif /* ADB */
+
 extern void cancel_query(void);
 extern void clear_all_data(void);
-
 
 extern int get_transaction_nodes(PGXCNodeHandle ** connections,
 								  char client_conn_type,

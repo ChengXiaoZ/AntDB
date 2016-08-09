@@ -361,6 +361,7 @@ pgxc_node_free(PGXCNodeHandle *handle)
 	close(handle->sock);
 	handle->sock = NO_SOCKET;
 	handle->state = DN_CONNECTION_STATE_IDLE;
+	handle->combiner = NULL;
 	FreeHandleError(handle);
 	if(handle->file_data)
 	{
@@ -1038,14 +1039,14 @@ clear_all_data(void)
 			handle->state = DN_CONNECTION_STATE_IDLE;
 		}
 		/* Clear any previous error messages */
-		FreeHandleError(handle); 
+		FreeHandleError(handle);
 	}
 }
 
 #ifdef ADB
 void
-cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
-				  int num_cohandles, PGXCNodeHandle **cohandles)
+cancel_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
+				   int num_cohandles, PGXCNodeHandle **cohandles)
 {
 	PGXCNodeHandle	*handle;
 	PGXCNodeHandle **new_dnhandles = NULL;
@@ -1072,7 +1073,7 @@ cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
 			for (i = 0; i < num_dnhandles; i++)
 			{
 				handle = dnhandles[i];
-				if (handle->sock == NO_SOCKET)
+				if (!handle || handle->sock == NO_SOCKET)
 					continue;
 
 				if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
@@ -1083,9 +1084,10 @@ cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
 				{
 					if (handle->state != DN_CONNECTION_STATE_IDLE)
 					{
-						dn_cancel[dn_count++] = PGXCNodeGetNodeId(
+						dn_cancel[dn_count] = PGXCNodeGetNodeId(
 							handle->nodeoid, PGXC_NODE_DATANODE);
 						new_dnhandles[dn_count] = handle;
+						dn_count++;
 					}
 				}
 			}
@@ -1102,7 +1104,7 @@ cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
 			for (i = 0; i < num_cohandles; i++)
 			{
 				handle = cohandles[i];
-				if (handle->sock == NO_SOCKET)
+				if (!handle || handle->sock == NO_SOCKET)
 					continue;
 
 				if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
@@ -1113,9 +1115,10 @@ cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
 				{
 					if (handle->state != DN_CONNECTION_STATE_IDLE)
 					{
-						co_cancel[co_count++] = PGXCNodeGetNodeId(
+						co_cancel[co_count] = PGXCNodeGetNodeId(
 							handle->nodeoid, PGXC_NODE_COORDINATOR);
 						new_cohandles[co_count] = handle;
+						co_count++;
 					}
 				}
 			}
@@ -1175,8 +1178,8 @@ cancel_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
 }
 
 void
-clear_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
-				 int num_cohandles, PGXCNodeHandle **cohandles)
+clear_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
+				  int num_cohandles, PGXCNodeHandle **cohandles)
 {
 	PGXCNodeHandle *handle;
 	int				i;
@@ -1188,27 +1191,127 @@ clear_some_query(int num_dnhandles, PGXCNodeHandle **dnhandles,
 	{
 		handle = dnhandles[i];
 
-		FreeHandleError(handle);
-
-		if (handle->sock == NO_SOCKET)
+		if (!handle)
 			continue;
 
+		/* Free any error message */
+		FreeHandleError(handle);
+
+		/* Continue if invalid socket or invalid connection state */
+		if (handle->sock == NO_SOCKET ||
+			handle->state == DN_CONNECTION_STATE_ERROR_FATAL)
+		{
+			handle->combiner = NULL;
+			continue;
+		}
+
+		/* try to flush read any data */
 		if (handle->state != DN_CONNECTION_STATE_IDLE)
 			pgxc_node_flush_read(handle);
+
+		/* release any combiner */
+		handle->combiner = NULL;
 	}
 
 	for (i = 0; i < num_cohandles; i++)
 	{
 		handle = cohandles[i];
 
-		FreeHandleError(handle);
-
-		if (handle->sock == NO_SOCKET)
+		if (!handle)
 			continue;
 
+		/* Free any error message */
+		FreeHandleError(handle);
+
+		/* Continue if invalid socket or invalid connection state */
+		if (handle->sock == NO_SOCKET ||
+			handle->state == DN_CONNECTION_STATE_ERROR_FATAL)
+		{
+			handle->combiner = NULL;
+			continue;
+		}
+
+		/* try to flush read any data */
 		if (handle->state != DN_CONNECTION_STATE_IDLE)
 			pgxc_node_flush_read(handle);
+
+		/* release any combiner */
+		handle->combiner = NULL;
 	}
+
+	/*
+	 * Notice pool manager to release handles if any connection
+	 * is invalid.
+	 */
+	release_handles();
+}
+
+void
+clear_all_handle(void)
+{
+	PGXCNodeHandle *handle;
+	int 			i;
+
+	if (datanode_count <= 0 && coord_count <= 0)
+		return ;
+
+	for (i = 0; i < NumDataNodes; i++)
+	{
+		handle = &dn_handles[i];
+
+		if (!handle)
+			continue;
+
+		/* Free any error message */
+		FreeHandleError(handle);
+
+		/* Continue if invalid socket or invalid connection state */
+		if (handle->sock == NO_SOCKET ||
+			handle->state == DN_CONNECTION_STATE_ERROR_FATAL)
+		{
+			handle->combiner = NULL;
+			continue;
+		}
+
+		/* try to flush read any data */
+		if (handle->state != DN_CONNECTION_STATE_IDLE)
+			pgxc_node_flush_read(handle);
+
+		/* release any combiner */
+		handle->combiner = NULL;
+	}
+
+	for (i = 0; i < NumCoords; i++)
+	{
+		handle = &co_handles[i];
+
+		if (!handle)
+			continue;
+
+		/* Free any error message */
+		FreeHandleError(handle);
+
+		/* Continue if invalid socket or invalid connection state */
+		if (handle->sock == NO_SOCKET ||
+			handle->state == DN_CONNECTION_STATE_ERROR_FATAL)
+		{
+			handle->combiner = NULL;
+			continue;
+		}
+
+		/* try to flush read any data */
+		if (handle->state != DN_CONNECTION_STATE_IDLE)
+			pgxc_node_flush_read(handle);
+
+		/* release any combiner */
+		handle->combiner = NULL;
+	}
+
+	/*
+	 * Notice pool manager to release handles if any connection
+	 * is invalid.
+	 */
+	release_handles();
 }
 #endif
 
@@ -1799,6 +1902,9 @@ pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *query,
 		elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
 			NameStr(handle->name), handle->sock, query);
 
+		MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
+		snprintf(handle->last_query, DEBUG_BUF_SIZE, "%s", query);
+
 		if (pgxc_node_send_parse(handle, statement, buf.data, num_params, param_types))
 		{
 			pfree(buf.data);
@@ -1862,6 +1968,9 @@ static void pgxc_node_flush_read(PGXCNodeHandle *handle)
 	last_time = time(NULL);
 	for(;;)
 	{
+		if (is_data_node_ready(handle))
+			break;
+		
 		FD_ZERO(&rfd);
 		FD_SET(handle->sock, &rfd);
 		tv.tv_sec = FLUSH_READ_TIMEOUT - (time(NULL) - last_time);
@@ -1884,7 +1993,7 @@ static void pgxc_node_flush_read(PGXCNodeHandle *handle)
 		result = pgxc_node_read_data(handle, true);
 		if(result > 0)
 			last_time = time(NULL);
-		if(result < 0 || is_data_node_ready(handle))
+		if(result < 0)
 			break;
 	}
 }
@@ -1944,6 +2053,9 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 
 	elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
 		NameStr(handle->name), handle->sock, query);
+
+	MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
+	snprintf(handle->last_query, DEBUG_BUF_SIZE, "%s", query);
 #endif
 
 	strLen = strlen(query) + 1;

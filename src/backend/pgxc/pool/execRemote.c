@@ -234,6 +234,7 @@ static int flushPGXCNodeHandleData(PGXCNodeHandle *handle);
 #ifdef ADB
 static ExecNodes *reget_exec_nodes_by_en_expr(RemoteQueryState *planstate,
 											  ExecNodes *exec_nodes);
+static void PreClearQueryInvolved(void);
 #endif
 
 /*
@@ -1265,7 +1266,7 @@ RequestTypeAsCString(RequestType type)
 		default:
 			break;
 	}
-	return "UNKNOWN REQUEST";
+	return "UNKNOWN REQUEST TYPE";
 }
 
 static const char *
@@ -1290,7 +1291,28 @@ ResponseResultAsCString(int result)
 		default:
 			break;
 	}
-	return "UNKNOWN RESPONSE";
+	return "UNKNOWN RESPONSE RESULT";
+}
+
+static const char *
+DNConnectionStateAsCString(DNConnectionState state)
+{
+	switch (state)
+	{
+		case DN_CONNECTION_STATE_IDLE:
+			return "DN_CONNECTION_STATE_IDLE";
+		case DN_CONNECTION_STATE_QUERY:
+			return "DN_CONNECTION_STATE_QUERY";
+		case DN_CONNECTION_STATE_ERROR_FATAL:
+			return "DN_CONNECTION_STATE_ERROR_FATAL";
+		case DN_CONNECTION_STATE_COPY_IN:
+			return "DN_CONNECTION_STATE_COPY_IN";
+		case DN_CONNECTION_STATE_COPY_OUT:
+			return "DN_CONNECTION_STATE_COPY_OUT";
+		default:
+			break;
+	}
+	return "UNKNOWN HANDLE STATE";
 }
 #endif
 
@@ -1423,13 +1445,15 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 #ifdef DEBUG_ADB
 		ereport(DEBUG1,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("[process] %d [handle] %s [sock] %d [msg_type] %c [combiner] %p [request_type] %s",
-					MyProcPid,
-					NameStr(conn->name),
-					conn->sock,
-					msg_type,
-					combiner,
-					RequestTypeAsCString(combiner->request_type))
+				errmsg("[process] %d [handle] %s [sock] %d [state] %s "
+					   "[msg_type] %c [combiner] %p [request_type] %s",
+					   MyProcPid,
+					   NameStr(conn->name),
+					   conn->sock,
+					   DNConnectionStateAsCString(conn->state),
+					   msg_type,
+					   combiner,
+					   RequestTypeAsCString(combiner->request_type))
 				));
 #endif
 		switch (msg_type)
@@ -4904,8 +4928,8 @@ PreClearQueryInvolved(void)
 
 		PG_TRY();
 		{
-			cancel_some_query(num_dnhandles, dnhandles, num_cohandles, cohandles);
-			clear_some_query(num_dnhandles, dnhandles, num_cohandles, cohandles);
+			cancel_some_handle(num_dnhandles, dnhandles, num_cohandles, cohandles);
+			clear_some_handle(num_dnhandles, dnhandles, num_cohandles, cohandles);
 		} PG_CATCH();
 		{
 			pfree(dnhandles);
@@ -4959,7 +4983,7 @@ AbnormalAbort_Remote(void)
 		conn = connections[i];
 
 		/* Check whether is valid connection or not */
-		if (conn->sock == NO_SOCKET ||
+		if (!conn || conn->sock == NO_SOCKET ||
 			conn->state == DN_CONNECTION_STATE_ERROR_FATAL)
 			continue;
 
