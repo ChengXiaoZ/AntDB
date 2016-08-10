@@ -1423,18 +1423,26 @@ set_rest_more:	/* Generic SET syntaxes: */
 				}
 			| ROLE NonReservedWord_or_Sconst
 				{
+#ifdef ADB
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							errmsg("ADB not support SET ROLE ... yet"),
+							parser_errposition(@1)));
+#else /* ADB */
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
 					n->name = "role";
 					n->args = list_make1(makeStringConst($2, @2));
 					$$ = n;
+#endif /* ADB */
 				}
 			| SESSION AUTHORIZATION NonReservedWord_or_Sconst
 				{
 #ifdef ADB
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							errmsg("ADB not support SET SESSION AUTHORIZATION yet")));
+							errmsg("ADB not support SET SESSION AUTHORIZATION yet"),
+							parser_errposition(@3)));
 #else
 					VariableSetStmt *n = makeNode(VariableSetStmt);
 					n->kind = VAR_SET_VALUE;
