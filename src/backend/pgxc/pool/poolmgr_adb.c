@@ -176,9 +176,9 @@ static bool check_slot_status(PGXCNodePoolSlot *slot, bool re_connect);
 static void agent_create(volatile pgsocket new_fd);
 static void agent_release_connections(PoolAgent *agent, bool force_destroy);
 static void agent_idle_connections(PoolAgent *agent, bool force_destroy);
-static int *agent_acquire_connections(PoolAgent *agent, const List *datanodelist, const List *coordlist);
-static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, const PoolAgent *agent);
-static bool agent_acquire_conn_list(PGXCNodePoolSlot **slots, const Oid *oids, const List *node_list, PoolAgent *agent);
+static int *agent_acquire_connections(PoolAgent *agent, const List *datanodelist, const List *coordlist, StringInfo lastError);
+static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, const PoolAgent *agent, StringInfo lastError);
+static bool agent_acquire_conn_list(PGXCNodePoolSlot **slots, const Oid *oids, const List *node_list, PoolAgent *agent, StringInfo lastError);
 static void agent_lock_connect_list(PGXCNodePoolSlot **slots, const List *node_list, int *fds, const PoolAgent *agent);
 static void cancel_query_on_connections(PoolAgent *agent, Size count, PGXCNodePoolSlot **slots, const List *nodelist);
 static void reload_database_pools(PoolAgent *agent);
@@ -785,7 +785,7 @@ agent_destroy(PoolAgent *agent)
 	MemoryContextDelete(agent->mctx);
 }
 
-static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, const PoolAgent *agent)
+static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, const PoolAgent *agent, StringInfo lastError)
 {
 	PGXCNodePool *node_pool;
 	PGXCNodePoolSlot *slot
@@ -881,12 +881,25 @@ static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, cons
 		{
 			uninit_slot->state = SLOT_STATE_IDLE;
 			return uninit_slot;
+		}else
+		{
+			/* connection failed */
+			const char *err_msg = PQerrorMessage((PGconn*)(uninit_slot->conn));
+			if(lastError)
+			{
+				if(lastError->data == NULL)
+					initStringInfo(lastError);
+				if(lastError->len)
+					resetStringInfo(lastError);
+				appendStringInfoString(lastError, err_msg);
+			}else
+			{
+				ereport(WARNING, (errmsg("can not connection node %u", node)
+					,errhint("%s", err_msg)));
+			}
+			PGXCNodeClose(uninit_slot->conn);
+			uninit_slot->conn = NULL;
 		}
-		/* connection failed */
-		ereport(WARNING, (errmsg("can not connection node %u", node)
-			,errhint("%s", PQerrorMessage((PGconn*)(uninit_slot->conn)))));
-		PGXCNodeClose(uninit_slot->conn);
-		uninit_slot->conn = NULL;
 	}
 
 	/* at lost, we need use a released slot */
@@ -1302,18 +1315,30 @@ static void agent_handle_input(PoolAgent * agent, StringInfo s)
 			}
 			break;
 		case PM_MSG_GET_CONNECT:
-			agent->agtm_port = pool_getint(s);
-			datanodelist = pool_get_nodeid_list(s);
-			coordlist = pool_get_nodeid_list(s);
-			fds = agent_acquire_connections(agent, datanodelist, coordlist);
-			len = fds ? list_length(datanodelist) + list_length(coordlist):0;
-			res = pool_sendfds(&agent->port, fds, len);
-			if(res != 0)
-				ereport(ERROR, (errmsg("can not send fds to backend")));
-			if(fds)
-				pfree(fds);
-			list_free(coordlist);
-			list_free(datanodelist);
+			{
+				StringInfoData errBuf;
+				errBuf.data = NULL;
+				agent->agtm_port = pool_getint(s);
+				datanodelist = pool_get_nodeid_list(s);
+				coordlist = pool_get_nodeid_list(s);
+				fds = agent_acquire_connections(agent, datanodelist, coordlist, &errBuf);
+				if(fds == NULL)
+				{
+					ereport(ERROR,
+						(errmsg("%s", errBuf.data ? errBuf.data :
+							"Can not connection to node(s) and lost error message")));
+				}
+				len = fds ? list_length(datanodelist) + list_length(coordlist):0;
+				res = pool_sendfds(&agent->port, fds, len);
+				if(res != 0)
+					ereport(ERROR, (errmsg("can not send fds to backend")));
+				if(fds)
+					pfree(fds);
+				list_free(coordlist);
+				list_free(datanodelist);
+				if(errBuf.data)
+					pfree(errBuf.data);
+			}
 			break;
 		case PM_MSG_CANCEL_QUERY:
 			err_calback.arg = NULL; /* do not send error if have */
@@ -1371,7 +1396,10 @@ static void agent_error_hook(void *arg)
 	if(arg && (err = err_current_data()) != NULL
 		&& err->elevel >= ERROR)
 	{
-		pool_putmessage(arg, PM_MSG_ERROR, NULL, 0);
+		if(err->message)
+			pool_putmessage(arg, PM_MSG_ERROR, err->message, strlen(err->message));
+		else
+			pool_putmessage(arg, PM_MSG_ERROR, NULL, 0);
 		pool_flush(arg);
 	}
 }
@@ -1977,7 +2005,7 @@ static void agent_idle_connections(PoolAgent *agent, bool force_destroy)
 		}
 	}
 }
-static bool agent_acquire_conn_list(PGXCNodePoolSlot **slots, const Oid *oids, const List *node_list, PoolAgent *agent)
+static bool agent_acquire_conn_list(PGXCNodePoolSlot **slots, const Oid *oids, const List *node_list, PoolAgent *agent, StringInfo lastError)
 {
 	ListCell *lc;
 	PGXCNodePoolSlot *slot;
@@ -2008,7 +2036,7 @@ retry_get_connection_:
 
 			if(slot == NULL || slot->state != SLOT_STATE_IDLE)
 			{
-				slot = acquire_connection(agent->db_pool, oids[lfirst_int(lc)], agent);
+				slot = acquire_connection(agent->db_pool, oids[lfirst_int(lc)], agent, lastError);
 				if(slot == NULL)
 					return false;
 			}
@@ -2086,7 +2114,7 @@ static void agent_lock_connect_list(PGXCNodePoolSlot **slots, const List *node_l
 	}
 }
 
-static int *agent_acquire_connections(PoolAgent *agent, const List *datanodelist, const List *coordlist)
+static int *agent_acquire_connections(PoolAgent *agent, const List *datanodelist, const List *coordlist, StringInfo lastError)
 {
 	int *result;
 	AssertArg(agent);
@@ -2100,8 +2128,8 @@ static int *agent_acquire_connections(PoolAgent *agent, const List *datanodelist
 
 	result = palloc((list_length(datanodelist) + list_length(coordlist)) * sizeof(int));
 
-	if(agent_acquire_conn_list(agent->dn_connections, agent->datanode_oids, datanodelist, agent) == false
-		|| agent_acquire_conn_list(agent->coord_connections, agent->coord_oids, coordlist, agent) == false)
+	if(agent_acquire_conn_list(agent->dn_connections, agent->datanode_oids, datanodelist, agent, lastError) == false
+		|| agent_acquire_conn_list(agent->coord_connections, agent->coord_oids, coordlist, agent, lastError) == false)
 	{
 		pfree(result);
 		return NULL;

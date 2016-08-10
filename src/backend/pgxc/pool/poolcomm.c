@@ -33,6 +33,8 @@
 
 static int	pool_recvbuf(PoolPort *port);
 static int	pool_discardbytes(PoolPort *port, size_t len);
+static void pool_report_error(pgsocket sock, uint32 msg_len);
+static int pool_block_recv(pgsocket sock, void *ptr, uint32 size);
 
 #ifdef HAVE_UNIX_SOCKETS
 
@@ -548,36 +550,26 @@ pool_recvfds(PoolPort *port, pgsocket *fds, int count)
 	static Size controllen = 0;
 	static struct cmsghdr *cmptr = NULL;
 	Size need_size;
+	uint32 msg_size;
 	int rval;
 
 	AssertArg(port && fds && count>0);
 	need_size = CMSG_LEN(count * sizeof(int));
 	if(controllen < need_size)
 	{
-		volatile bool has_error = false;
-		PG_TRY();
-		{
-			if(cmptr == NULL)
-			{
-				cmptr = MemoryContextAlloc(TopMemoryContext, need_size);
-			}else
-			{
-				cmptr = repalloc(cmptr, need_size);
-			}
-		}PG_CATCH();
-		{
-			has_error = true;
-		}PG_END_TRY();
-		if(has_error)
+		cmptr = realloc(cmptr, need_size);
+		if(cmptr == NULL)
 			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
 				errmsg("out of memory for get connect")));
 		controllen = need_size;
 	}
 
+	/* first read message head */
 	HOLD_CANCEL_INTERRUPTS();
 retry_recvmsg_:
 	iov[0].iov_base = buf;
-	iov[0].iov_len = SEND_MSG_BUFFER_SIZE;
+	iov[0].iov_len = 5;
+	memset(&msg, 0, sizeof(msg));
 	msg.msg_iov = iov;
 	msg.msg_iovlen = lengthof(iov);
 	msg.msg_name = NULL;
@@ -588,13 +580,9 @@ retry_recvmsg_:
 	rval = recvmsg(Socket(*port), &msg, 0);
 	if(rval < 0)
 	{
-		if(errno == EAGAIN
-#if defined(EWOULDBLOCK) && (EWOULDBLOCK != EAGAIN)
-			|| errno == EWOULDBLOCK
-#endif
-			)
+		CHECK_FOR_INTERRUPTS();
+		if(errno == EINTR)
 		{
-			CHECK_FOR_INTERRUPTS();
 			goto retry_recvmsg_;
 		}
 		ereport(FATAL, (errcode_for_socket_access(),
@@ -603,31 +591,43 @@ retry_recvmsg_:
 	{
 		RESUME_CANCEL_INTERRUPTS();
 		return EOF;
-	}else if (rval != SEND_MSG_BUFFER_SIZE)
+	}else if (rval != 5)
 	{
-#ifdef ADB
-		if(buf[0] == 'E')
-			ereport(ERROR, (errmsg("got an error from pool process")));
-#endif /* ADB */
 		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 			errmsg("incomplete message pooler process")));
 	}
 
+	memmove(&msg_size, &buf[1], 4);
+
+	if(buf[0] == 'E')
+	{
+		/* poolmgr send us an error message */
+		msg_size = htonl(msg_size);
+		pool_report_error(Socket(*port), msg_size-4);
+		/* if run to here, socket is closed */
+		RESUME_CANCEL_INTERRUPTS();
+		return EOF;
+	}else if(buf[0] == 'f')
+	{
+		if(msg_size != 8)
+		{
+			ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+				errmsg("invalid message size from pooler process")));
+		}
+	}else
+	{
+		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+			errmsg("invalid message type from pooler process")));
+	}
+
+	/* read other message */
+	if(pool_block_recv(Socket(*port), &buf[5], sizeof(buf)-5) != sizeof(buf)-5)
+	{
+		RESUME_CANCEL_INTERRUPTS();
+		return EOF;
+	}
+	/* recv message end, resume cancle interrupts */
 	RESUME_CANCEL_INTERRUPTS();
-
-	/* Verify response */
-	if(buf[0] != 'f')
-	{
-		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-			errmsg("unexpected message code from pooler process")));
-	}
-
-	memcpy(&rval, buf + 1, 4);
-	if(rval != 8)
-	{
-		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-			errmsg("invalid message size from pooler process")));
-	}
 
 	memcpy(&rval, buf + 5, 4);
 	if(rval == 0)
@@ -677,7 +677,6 @@ int
 pool_recvres(PoolPort *port)
 {
 	int			r;
-	int			res = 0;
 	uint		n32;
 	char		buf[SEND_RES_BUFFER_SIZE];
 
@@ -704,12 +703,16 @@ pool_recvres(PoolPort *port)
 		goto failure;
 	}
 
+	memmove(&n32, &buf[1], 4);
+	n32 = htonl(n32);
+
 	/* Verify response */
 #ifdef ADB
 	if (buf[0] == 'E')
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			errmsg("pool process report an error")));
+		pool_report_error(Socket(*port), n32-4);
+		/* run to here socket is closed */
+		goto failure;
 	}else
 #endif /* ADB */
 	if (buf[0] != 's')
@@ -720,12 +723,7 @@ pool_recvres(PoolPort *port)
 		goto failure;
 	}
 
-	memcpy(&n32, buf + 1, 4);
-	n32 = ntohl(n32);
-	if (n32 != 0)
-		return EOF;
-
-	return res;
+	return n32;
 
 failure:
 	return EOF;
@@ -738,63 +736,45 @@ failure:
 int
 pool_recvpids(PoolPort *port, int **pids)
 {
-	int			r, i;
+	int			r;
 	uint		n32;
-	char		buf[SEND_PID_BUFFER_SIZE];
+	char		buf[5];
 
 	/*
 	 * Buffer size is upper bounded by the maximum number of connections,
 	 * as in the pooler each connection has one Pooler Agent.
 	 */
 
-	r = recv(Socket(*port), &buf, SEND_PID_BUFFER_SIZE, 0);
-	if (r < 0)
-	{
-		/*
-		 * Report broken connection
-		 */
-		ereport(ERROR,
-				(errcode_for_socket_access(),
-				 errmsg("could not receive data from client: %m")));
+	if(pool_block_recv(Socket(*port), buf, sizeof(buf)) != sizeof(buf))
 		goto failure;
-	}
-	else if (r == 0)
-	{
-		goto failure;
-	}
-	else if (r != SEND_PID_BUFFER_SIZE)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("incomplete message from client")));
-		goto failure;
-	}
+	memmove(&n32, &buf[1], 4);
+	n32 = htonl(n32);
 
-	/* Verify response */
-	if (buf[0] != 'p')
+	if(buf[0] == 'E')
 	{
-		ereport(ERROR,
+		pool_report_error(Socket(*port), n32-4);
+		goto failure;
+	}else if(buf[0] != 'p')
+	{
+		ereport(FATAL,
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("unexpected message code")));
-		goto failure;
 	}
 
-	memcpy(&n32, buf + 1, 4);
-	n32 = ntohl(n32);
 	if (n32 == 0)
 	{
 		elog(WARNING, "No transaction to abort");
 		return n32;
 	}
 
+	START_CRIT_SECTION();
 	*pids = (int *) palloc(sizeof(int) * n32);
+	END_CRIT_SECTION();
 
-	for (i = 0; i < n32; i++)
-	{
-		int n;
-		memcpy(&n, buf + 5 + i * sizeof(int), sizeof(int));
-		(*pids)[i] = ntohl(n);
-	}
+	r = n32*sizeof(int);
+	if(pool_block_recv(Socket(*port), *pids, r) != r)
+		goto failure;
+
 	return n32;
 
 failure:
@@ -808,21 +788,17 @@ int
 pool_sendpids(PoolPort *port, int *pids, int count)
 {
 	int res = 0;
-	int i;
 	char		buf[SEND_PID_BUFFER_SIZE];
 	uint		n32;
 
 	buf[0] = 'p';
 	n32 = htonl((uint32) count);
 	memcpy(buf + 1, &n32, 4);
-	for (i = 0; i < count; i++)
-	{
-		int n;
-		n = htonl((uint32) pids[i]);
-		memcpy(buf + 5 + i * sizeof(int), &n, 4);
-	}
+	n32 = count*4;
+	memcpy(buf + 5, pids, n32);
 
-	if (send(Socket(*port), &buf, SEND_PID_BUFFER_SIZE,0) != SEND_PID_BUFFER_SIZE)
+	n32 += 5;
+	if (send(Socket(*port), &buf, n32,0) != n32)
 	{
 		res = EOF;
 	}
@@ -833,4 +809,54 @@ pool_sendpids(PoolPort *port, int *pids, int count)
 const char* pool_get_sock_path(void)
 {
 	return sock_path;
+}
+
+static void pool_report_error(pgsocket sock, uint32 msg_len)
+{
+	char *err_msg;
+	uint32 recv_len;
+	if(msg_len > 0)
+	{
+		START_CRIT_SECTION();
+		err_msg = palloc(msg_len+1);
+		END_CRIT_SECTION();
+
+		recv_len = pool_block_recv(sock, err_msg, msg_len);
+		if(recv_len != msg_len)
+		{
+			pfree(err_msg);
+			return;
+		}
+		err_msg[msg_len] = '\0';
+	}
+	ereport(ERROR, (errmsg("error message from poolmgr:%s", msg_len>0 ? err_msg:"missing error text")));
+}
+
+/*
+ * EINTR continue
+ */
+static int pool_block_recv(pgsocket sock, void *ptr, uint32 size)
+{
+	uint32 recv_len;
+	int rval;
+
+	HOLD_CANCEL_INTERRUPTS();
+	for(recv_len=0;recv_len<size;)
+	{
+		rval = recv(sock, ((char*)ptr) + recv_len, size-recv_len, 0);
+		if(rval < 0)
+		{
+			CHECK_FOR_INTERRUPTS();
+			if(errno == EINTR)
+				continue;
+			ereport(FATAL, (errcode_for_socket_access(),
+				errmsg("could not receive pool data from client: %m")));
+		}else if(rval == 0)
+		{
+			break;
+		}
+		recv_len += rval;
+	}
+	RESUME_CANCEL_INTERRUPTS();
+	return recv_len;
 }
