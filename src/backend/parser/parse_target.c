@@ -520,7 +520,7 @@ transformAssignedExpr(ParseState *pstate,
 										  orig_expr, type_id,
 										  attrtype, attrtypmod,
 										  COERCION_ASSIGNMENT,
-										  COERCE_EXPLICIT_CAST,
+										  COERCE_IMPLICIT_CAST,
 										  -1);
 			} PG_CATCH();
 			{

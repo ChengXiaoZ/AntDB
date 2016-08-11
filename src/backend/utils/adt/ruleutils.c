@@ -4498,7 +4498,7 @@ deparse_query(Query *query, StringInfo buf, List *parentnamespace,
 	tmp_search_path->schemas = NIL;
 	PushOverrideSearchPath(tmp_search_path);
 
-    get_query_def(query, buf, parentnamespace, NULL, 0, WRAP_COLUMN_DEFAULT,
+	get_query_def(query, buf, parentnamespace, NULL, 0, WRAP_COLUMN_DEFAULT,
 				  0, finalise_aggs, sortgroup_colno);
 
 	PopOverrideSearchPath();

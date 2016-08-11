@@ -179,7 +179,7 @@ nvarchar2(PG_FUNCTION_ARGS)
 		if (len > maxmblen)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-						errmsg("input value too long for type nvarchar2(%d)", maxlen)));
+						errmsg("value too long for type nvarchar2(%d)", maxlen)));
 	}
 
 	PG_RETURN_VARCHAR_P((VarChar *) cstring_to_text_with_len(s_data, maxmblen));

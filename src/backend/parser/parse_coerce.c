@@ -232,7 +232,13 @@ coerce_type(ParseState *pstate, Node *node,
 			return node;
 		}
 	}
+#ifdef ADB
+	if ((inputTypeId == UNKNOWNOID ||
+		(IsOracleParseGram(pstate) && inputTypeId == TEXTOID))
+		&& IsA(node, Const))
+#else
 	if (inputTypeId == UNKNOWNOID && IsA(node, Const))
+#endif
 	{
 		/*
 		 * Input is a string constant with previously undetermined type. Apply
@@ -258,6 +264,9 @@ coerce_type(ParseState *pstate, Node *node,
 		int32		inputTypeMod;
 		Type		targetType;
 		ParseCallbackState pcbstate;
+#ifdef ADB
+		char	   *string;
+#endif
 
 		/*
 		 * If the target type is a domain, we want to call its base type's
@@ -306,13 +315,23 @@ coerce_type(ParseState *pstate, Node *node,
 		 */
 		setup_parser_errposition_callback(&pcbstate, pstate, con->location);
 
+#ifdef ADB
+		if (IsOracleParseGram(pstate) && inputTypeId == TEXTOID)
+			string = TextDatumGetCString(con->constvalue);
+		else
+			string = DatumGetCString(con->constvalue);
+#endif
 		/*
 		 * We assume here that UNKNOWN's internal representation is the same
 		 * as CSTRING.
 		 */
 		if (!con->constisnull)
 			newcon->constvalue = stringTypeDatum(targetType,
+#ifdef ADB
+												 string,
+#else
 											DatumGetCString(con->constvalue),
+#endif
 												 inputTypeMod);
 		else
 			newcon->constvalue = stringTypeDatum(targetType,
