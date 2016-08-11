@@ -5165,7 +5165,7 @@ DESCR("mgr stop gtm slave");
 DATA(insert OID = 3182 ( mgr_stop_gtm_slave_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_slave_i _null_ _null_ _null_ ));
 DESCR("mgr stop gtm slave");
 
-DATA(insert OID = 3463 ( mgr_failover_gtm      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_gtm _null_ _null_ _null_ ));
+DATA(insert OID = 3463 ( mgr_failover_gtm      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_gtm _null_ _null_ _null_ ));
 DESCR("mgr failover gtm");
 
 DATA(insert OID = 3460 ( mgr_stop_gtm_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_extra _null_ _null_ _null_ ));

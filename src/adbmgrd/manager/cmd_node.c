@@ -1060,7 +1060,7 @@ static bool mgr_start_one_gtm_master(void)
 	}
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "cache lookup failed for gtm master");
+		elog(ERROR, "lookup failed for gtm master");
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -1603,7 +1603,7 @@ Datum mgr_stop_one_gtm_master(PG_FUNCTION_ARGS)
 	}
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "cache lookup failed for gtm master");
+		elog(ERROR, "lookup failed for gtm master");
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -4077,50 +4077,122 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
 	char nodetypesecond;
+	ScanKeyData key[1];
+	HeapScanDesc scan;
 
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetype);
-	if (!HeapTupleIsValid(aimtuple))
+	/*failover datanode [slave|extra] dnname*/
+	if (AGT_CMD_DN_FAILOVER == cmdtype)
 	{
-		/*cannot find datanode slave, so find datanode extra*/
-		if (nodetypechange)
+		aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetype);
+		if (!HeapTupleIsValid(aimtuple))
 		{
-			switch(nodetype)
+			/*cannot find datanode slave, so find datanode extra*/
+			if (nodetypechange)
 			{
-				case CNDN_TYPE_DATANODE_SLAVE:
-					nodetypesecond = CNDN_TYPE_DATANODE_EXTRA;
-					break;
-				case CNDN_TYPE_DATANODE_EXTRA:
-					nodetypesecond = CNDN_TYPE_DATANODE_SLAVE;
-					break;
-				default:
-					ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-						,errmsg("no such node type: %c", nodetype)));
+				switch(nodetype)
+				{
+					case CNDN_TYPE_DATANODE_SLAVE:
+						nodetypesecond = CNDN_TYPE_DATANODE_EXTRA;
+						break;
+					case CNDN_TYPE_DATANODE_EXTRA:
+						nodetypesecond = CNDN_TYPE_DATANODE_SLAVE;
+						break;
+					default:
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+							,errmsg("no such node type: %c", nodetype)));
+				}
+				aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetypesecond);
 			}
-			aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetypesecond);
+			if (!HeapTupleIsValid(aimtuple))
+			{
+				heap_close(rel_node, RowExclusiveLock);
+				if (nodetype == CNDN_TYPE_DATANODE_SLAVE && !nodetypechange)
+					elog(ERROR, "lookup failed for datanode slave %s", nodename);
+				else if (nodetype == CNDN_TYPE_DATANODE_EXTRA && !nodetypechange)
+					elog(ERROR, "lookup failed for datanode extra %s", nodename);
+				else
+					elog(ERROR, "lookup failed for datanode slave and extra %s", nodename);
+			}
+		}
+	}
+	/*failover gtm [slave|extra]*/
+	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
+	{
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+		while ((aimtuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			break;
 		}
 		if (!HeapTupleIsValid(aimtuple))
 		{
-			heap_close(rel_node, RowExclusiveLock);
-			if (nodetype == CNDN_TYPE_DATANODE_SLAVE)
-				elog(ERROR, "lookup failed for datanode slave %s", nodename);
-			else if (nodetype == CNDN_TYPE_DATANODE_EXTRA)
-				elog(ERROR, "lookup failed for datanode extra %s", nodename);
-			else
-				elog(ERROR, "lookup failed for datanode slave and extra %s", nodename);
+			/*cannot find gtm slave, so find gtm extra*/
+			if (nodetypechange)
+			{
+				switch(nodetype)
+				{
+					case GTM_TYPE_GTM_SLAVE:
+						nodetypesecond = GTM_TYPE_GTM_EXTRA;
+						break;
+					case GTM_TYPE_GTM_EXTRA:
+						nodetypesecond = GTM_TYPE_GTM_SLAVE;
+						break;
+					default:
+						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+							,errmsg("no such node type: %c", nodetype)));
+				}
+			}
+			ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(nodetypesecond));
+			heap_endscan(scan);
+			scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+			while ((aimtuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+			{
+				break;
+			}
+			if (!HeapTupleIsValid(aimtuple))
+			{
+				heap_close(rel_node, RowExclusiveLock);
+				if (nodetype == GTM_TYPE_GTM_SLAVE && !nodetypechange)
+					elog(ERROR, "lookup failed for gtm slave");
+				else if (nodetype == GTM_TYPE_GTM_EXTRA && !nodetypechange)
+					elog(ERROR, "lookup failed for gtm extra");
+				else
+					elog(ERROR, "lookup failed for gtm slave and extra");				
+			}
 		}
 	}
+	/* not support the comamnd type*/
+	else
+	{
+		elog(ERROR, "not support this command: %c", cmdtype);
+	}
+	
 	initStringInfo(&(getAgentCmdRst.description));
 	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
 		, getAgentCmdRst.description.data);
-	heap_freetuple(aimtuple);
+	if (AGT_CMD_DN_FAILOVER == cmdtype)
+	{
+		heap_freetuple(aimtuple);
+	}
+	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
+	{
+		heap_endscan(scan);
+	}
 	pfree(getAgentCmdRst.description.data);
 	heap_close(rel_node, RowExclusiveLock);
 	return HeapTupleGetDatum(tup_result);
-
 }
 
 /*check all the given nodename are datanode slaves*/
@@ -4980,31 +5052,32 @@ void mgr_mark_node_in_cluster(Relation rel)
 */
 Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 {
-	Relation rel;
-	HeapScanDesc scan;
-	HeapTuple tuple;
-	ScanKeyData key[1];
-	bool getgtmslave = false;
+	char *typestr = PG_GETARG_CSTRING(0);
+	char cmdtype = AGT_CMD_GTM_SLAVE_FAILOVER;
+	char nodetype = GTM_TYPE_GTM_SLAVE;
+	bool nodetypechange = false;
+	char *nodename = "gtm"; /*just use for input parameter*/
 	
-	/*check the node systbl has gtm slave, if not, use gtm extra*/
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(GTM_TYPE_GTM_SLAVE));
-	rel = heap_open(NodeRelationId, RowExclusiveLock);
-	scan = heap_beginscan(rel, SnapshotNow, 1, key);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	if (strcmp(typestr, "slave") == 0)
 	{
-		getgtmslave = true;
+		nodetype = GTM_TYPE_GTM_SLAVE;
 	}
-	heap_endscan(scan);
-	heap_close(rel, RowExclusiveLock);
-	if (getgtmslave)
-		return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_SLAVE_FAILOVER, fcinfo, takeplaparm_n);
+	else if (strcmp(typestr, "extra") == 0)
+	{
+		nodetype = GTM_TYPE_GTM_EXTRA;
+	}
+	else if (strcmp(typestr, "either") == 0)
+	{
+		nodetype = GTM_TYPE_GTM_SLAVE;
+		nodetypechange = true;
+	}
 	else
-		return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_SLAVE_FAILOVER, fcinfo, takeplaparm_n);
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("no such gtm type: %s", typestr)));
+	}
 	
+	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, nodetypechange);
 }
 
 /*
