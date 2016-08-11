@@ -1300,11 +1300,11 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	if (AGT_CMD_CNDN_CNDN_INIT == cmdtype)
 	{
 		appendStringInfo(&infosendmsg, " -D %s", cndnPath);
-		appendStringInfo(&infosendmsg, " --nodename %s --locale=C", cndnname);
+		appendStringInfo(&infosendmsg, " --nodename %s -E UTF8 --locale=C", cndnname);
 	} /*init gtm*/
 	else if (AGT_CMD_GTM_INIT == cmdtype)
 	{
-		appendStringInfo(&infosendmsg, " -D %s --locale=C", cndnPath);
+		appendStringInfo(&infosendmsg, " -D %s -E UTF8 --locale=C", cndnPath);
 	} /*init gtm slave*/
 	else if (AGT_CMD_GTM_SLAVE_INIT == cmdtype)
 	{
@@ -4000,7 +4000,7 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 
 	/*init datanode*/
 	appendStringInfo(&infosendmsg, " -D %s", appendnodeinfo->nodepath);
-	appendStringInfo(&infosendmsg, " --nodename %s --locale=C", appendnodeinfo->nodename);
+	appendStringInfo(&infosendmsg, " --nodename %s -E UTF8 --locale=C", appendnodeinfo->nodename);
 
 	/* connection agent */
 	ma = ma_connect_hostoid(appendnodeinfo->nodehost);
