@@ -234,8 +234,8 @@ coerce_type(ParseState *pstate, Node *node,
 	}
 #ifdef ADB
 	if ((inputTypeId == UNKNOWNOID ||
-		(IsOracleParseGram(pstate) && inputTypeId == TEXTOID))
-		&& IsA(node, Const))
+		(IsOracleParseGram(pstate) && inputTypeId == TEXTOID &&
+		IS_CHARACTER_TYPE(targetTypeId))) && IsA(node, Const))
 #else
 	if (inputTypeId == UNKNOWNOID && IsA(node, Const))
 #endif

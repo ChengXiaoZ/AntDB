@@ -510,8 +510,12 @@ transformAssignedExpr(ParseState *pstate,
 		if (IsOracleParseGram(pstate) &&
 			exprKind == EXPR_KIND_INSERT_TARGET)
 		{
+			CoercionForm cformat = COERCE_EXPLICIT_CAST;
 			OraCoerceKind sv_coerce_kind = current_coerce_kind;
 			current_coerce_kind = ORA_COERCE_COMMON_FUNCTION;
+			
+			if (IS_CHARACTER_TYPE(attrtype))
+				cformat = COERCE_IMPLICIT_CAST;
 
 			PG_TRY();
 			{
@@ -520,7 +524,7 @@ transformAssignedExpr(ParseState *pstate,
 										  orig_expr, type_id,
 										  attrtype, attrtypmod,
 										  COERCION_ASSIGNMENT,
-										  COERCE_IMPLICIT_CAST,
+										  cformat,
 										  -1);
 			} PG_CATCH();
 			{
