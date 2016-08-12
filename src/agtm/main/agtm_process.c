@@ -86,7 +86,7 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 				PG_RE_THROW();
 			} PG_END_TRY();
 			break;
-			
+
 		case AGTM_MSG_SEQUENCE_GET_CUR:
 			output = ProcessCurSeqCommand(input_message, &buf);
 			break;

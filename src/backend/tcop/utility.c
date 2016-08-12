@@ -875,20 +875,26 @@ standard_ProcessUtility(Node *parsetree,
 					sprintf(query, "CLEAN CONNECTION TO ALL FOR DATABASE %s;", stmt->dbname);
 
 					ExecUtilityStmtOnNodes(query, NULL, sentToRemote, true, EXEC_ON_COORDS, false);
-
-					/* execute drop database on  */
-					agtm_Database(queryString);
+					
 				}
 #endif
 
 #ifdef PGXC
 				/* Allow this to be run inside transaction block on remote nodes */
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-#endif
 					/* no event triggers for global objects */
 					PreventTransactionChain(isTopLevel, "DROP DATABASE");
+#endif
 				dropdb(stmt->dbname, stmt->missing_ok);
 			}
+#ifdef ADB
+			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+			{
+				/* execute drop database on  agtm */
+					agtm_Database(queryString);
+			}
+#endif
+
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
