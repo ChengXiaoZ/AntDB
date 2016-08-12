@@ -2631,10 +2631,29 @@ pgxcNodeCopyFinish(PGXCNodeHandle** copy_connections, int primary_dn_index,
 		combiner = CreateResponseCombiner(conn_count, combine_type);
 	error = (pgxc_node_receive_responses(conn_count, connections, timeout, combiner) != 0) || error;
 
+#ifdef ADB
+	PG_TRY();
+	{
+		if (!validate_combiner(combiner) || error)
+		{
+			pgxc_node_report_error(combiner);
+			ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Error while running COPY")));
+		}
+	} PG_CATCH();
+	{
+		CloseCombiner(combiner);
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	CloseCombiner(combiner);
+#else
 	if (!ValidateAndCloseCombiner(combiner) || error)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("Error while running COPY")));
+#endif
 }
 
 /*
