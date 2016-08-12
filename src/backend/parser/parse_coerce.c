@@ -315,24 +315,26 @@ coerce_type(ParseState *pstate, Node *node,
 		 */
 		setup_parser_errposition_callback(&pcbstate, pstate, con->location);
 
-#ifdef ADB
-		if (IsOracleParseGram(pstate) && inputTypeId == TEXTOID)
-			string = TextDatumGetCString(con->constvalue);
-		else
-			string = DatumGetCString(con->constvalue);
-#endif
 		/*
 		 * We assume here that UNKNOWN's internal representation is the same
 		 * as CSTRING.
 		 */
 		if (!con->constisnull)
-			newcon->constvalue = stringTypeDatum(targetType,
 #ifdef ADB
+		{
+			if (IsOracleParseGram(pstate) && inputTypeId == TEXTOID)
+				string = TextDatumGetCString(con->constvalue);
+			else
+				string = DatumGetCString(con->constvalue);
+			newcon->constvalue = stringTypeDatum(targetType,
 												 string,
-#else
-											DatumGetCString(con->constvalue),
-#endif
 												 inputTypeMod);
+		}
+#else
+			newcon->constvalue = stringTypeDatum(targetType,
+											DatumGetCString(con->constvalue),
+												 inputTypeMod);
+#endif
 		else
 			newcon->constvalue = stringTypeDatum(targetType,
 												 NULL,
