@@ -2226,8 +2226,8 @@ dumpNodeGroups(PGconn *conn)
 	query = createPQExpBuffer();
 
 	appendPQExpBuffer(query,
-						"select 'CREATE NODE GROUP \"' || pgxc_group.group_name || '\"'"
-						" || ' WITH(' || string_agg(node_name,',') || ');'"
+						"select 'CREATE NODE GROUP ' || pgxc_group.group_name"
+						" || ' WITH(\"' || string_agg(node_name,'\",\"') || '\");'"
 						" as group_query from pg_catalog.pgxc_node, pg_catalog.pgxc_group"
 						" where pgxc_node.oid = any (pgxc_group.group_members)"
 						" group by pgxc_group.group_name"
