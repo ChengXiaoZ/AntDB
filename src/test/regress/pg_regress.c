@@ -127,12 +127,6 @@ static int	port_coord2 = -1;
 static int	port_dn1 = -1;
 static int	port_dn2 = -1;
 static int	port_gtm = -1;
-/*
- * Poolers of Coordinators 1 and 2 need an additional port value
- * taken as the default value and the next value.
- */
-static int	co1_pooler_port = -1;
-static int	co2_pooler_port = -1;
 
 /* Data folder of each node */
 const char *data_co1 = "data_co1"; /* Coordinator 1 */
@@ -402,7 +396,7 @@ stop_gtm(void)
 	fflush(stderr);
 
 	snprintf(buf, sizeof(buf),
-			 SYSTEMQUOTE "\"%s/gtm_ctl\" stop -Z gtm -D \"%s/%s\" -m fast" SYSTEMQUOTE,
+			 SYSTEMQUOTE "\"%s/agtm_ctl\" stop -D \"%s/%s\" -m fast" SYSTEMQUOTE,
 			 bindir, temp_install, data_folder);
 	r = system(buf);
 	if (r != 0)
@@ -543,26 +537,6 @@ get_node_name(PGXCNodeTypeNum node)
 		default:
 			/* Should not happen */
 			return NULL;
-	}
-}
-
-/*
- * Get pooler port number
- */
-static int
-get_pooler_port(PGXCNodeTypeNum node)
-{
-	switch (node)
-	{
-		case PGXC_COORD_1:
-			return co1_pooler_port;
-		case PGXC_COORD_2:
-			return co2_pooler_port;
-		case PGXC_DATANODE_1:
-		case PGXC_DATANODE_2:
-		default:
-			/* Should not happen */
-			return -1;
 	}
 }
 
@@ -741,9 +715,17 @@ start_node(PGXCNodeTypeNum node, bool is_coord, bool is_main)
 	{
 		/* Case of a GTM start */
 		snprintf(buf, sizeof(buf),
-				 SYSTEMQUOTE "\"%s/gtm\" -D \"%s/%s\" -p %d -x 10000 > \"%s/log/gtm.log\" 2>&1" SYSTEMQUOTE,
-				 bindir, temp_install, data_folder, port_number,
-				 outputdir);
+				 SYSTEMQUOTE "\"%s/agtm\" -i -p %d -D \"%s/%s\" -F %s "
+				 " -c \"listen_addresses=%s\" -k \"%s\" "
+				 "> \"%s/log/postmaster_%d.log\" 2>&1" SYSTEMQUOTE,
+				 bindir,
+				 port_number,
+				 temp_install, data_folder,
+				 debug ? " -d 5" : "",
+				 hostname ? hostname : "*",
+				 sockdir ? sockdir : "",
+				 outputdir,
+				 node);
 	}
 	else
 	{
@@ -758,7 +740,7 @@ start_node(PGXCNodeTypeNum node, bool is_coord, bool is_main)
 					 port_number,
 					 temp_install, data_folder,
 					 debug ? " -d 5" : "",
-					 hostname ? hostname : "",
+					 hostname ? hostname : "*",
 					 sockdir ? sockdir : "",
 					 outputdir,
 					 node);
@@ -781,7 +763,7 @@ start_node(PGXCNodeTypeNum node, bool is_coord, bool is_main)
 	if (node_pid == INVALID_PID)
 	{
 		if (node == PGXC_GTM)
-			fprintf(stderr, _("\n%s: could not spawn GTM: %s\n"),
+			fprintf(stderr, _("\n%s: could not spawn AGTM: %s\n"),
 				progname, strerror(errno));
 		else
 			fprintf(stderr, _("\n%s: could not spawn postmaster: %s\n"),
@@ -808,13 +790,14 @@ initdb_node(PGXCNodeTypeNum node)
 	if (node == PGXC_GTM)
 	{
 		snprintf(buf, sizeof(buf),
-				 SYSTEMQUOTE "\"%s/initgtm\" -Z gtm -D \"%s/%s\" --noclean%s > \"%s/log/initgtm.log\" 2>&1" SYSTEMQUOTE,
-				 bindir, temp_install, data_folder,
+				 SYSTEMQUOTE "\"%s/initagtm\" -D \"%s/%s\" -L \"%s\" --noclean%s%s > \"%s/log/initagtm.log\" 2>&1" SYSTEMQUOTE,
+				 bindir, temp_install, data_folder, datadir,
 				 debug ? " --debug" : "",
+				 nolocale ? " --no-locale" : "",
 				 outputdir);
 		if (system(buf))
 		{
-			fprintf(stderr, _("\n%s: initgtm failed\nExamine %s/log/initgtm.log for the reason.\nCommand was: %s\n"), progname, outputdir, buf);
+			fprintf(stderr, _("\n%s: initagtm failed\nExamine %s/log/initagtm.log for the reason.\nCommand was: %s\n"), progname, outputdir, buf);
 			exit(2);
 		}
 	}
@@ -858,30 +841,24 @@ set_node_config_file(PGXCNodeTypeNum node)
 	 */
 	fputs("max_prepared_transactions = 50\n", pg_conf);
 
-	/*
-	 * By default non-FQS update and delete to a replicated table without
-	 * any primary key or unique index is an error, but regression tests
-	 * have many examples where updates and deletes are non-FQS but table
-	 * is replicated, so let those DMLs run without error during regression
-	 * tests
-	 */
-	fputs("require_replicated_table_pkey = false\n", pg_conf);
-
-	/* Set GTM connection information */
-	fputs("gtm_host = 'localhost'\n", pg_conf);
-	snprintf(buf, sizeof(buf), "gtm_port = %d\n", get_port_number(PGXC_GTM));
-	fputs(buf, pg_conf);
-
-	/* Set pgxcnode_cancel_delay to 100msec only for this test */
-	fputs("pgxcnode_cancel_delay = 100\n", pg_conf);
-	fputs("xc_gtm_commit_sync_test = on\n", pg_conf);
-
-	/* Set pooler port for Coordinators */
-	if (node == PGXC_COORD_1 ||
-		node == PGXC_COORD_2)
+	if(node != PGXC_GTM)
 	{
-		snprintf(buf, sizeof(buf), "pooler_port = %d\n", get_pooler_port(node));
+		/*
+		 * By default non-FQS update and delete to a replicated table without
+		 * any primary key or unique index is an error, but regression tests
+		 * have many examples where updates and deletes are non-FQS but table
+		 * is replicated, so let those DMLs run without error during regression
+		 * tests
+		 */
+		fputs("require_replicated_table_pkey = false\n", pg_conf);
+
+		/* Set GTM connection information */
+		fputs("agtm_host = 'localhost'\n", pg_conf);
+		snprintf(buf, sizeof(buf), "agtm_port = %d\n", get_port_number(PGXC_GTM));
 		fputs(buf, pg_conf);
+
+		/* Set pgxcnode_cancel_delay to 100msec only for this test */
+		fputs("pgxcnode_cancel_delay = 100\n", pg_conf);
 	}
 
 	if (temp_config != NULL)
@@ -3115,8 +3092,6 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 	port_dn1 = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 2;
 	port_dn2 = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 3;
 	port_gtm = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 4;
-	co1_pooler_port = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 5;
-	co2_pooler_port = (0xC000 | (PG_VERSION_NUM & 0x3FFF)) + 6;
 #endif
 
 	inputdir = make_absolute_path(inputdir);
@@ -3240,6 +3215,7 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 		 * and 2PC related information.
 		 * PGXCTODO: calculate port of GTM before setting configuration files
 		 */
+		set_node_config_file(PGXC_GTM);
 		set_node_config_file(PGXC_COORD_1);
 		set_node_config_file(PGXC_COORD_2);
 		set_node_config_file(PGXC_DATANODE_1);
@@ -3465,10 +3441,10 @@ regression_main(int argc, char *argv[], init_function ifunc, test_function tfunc
 
 #ifdef PGXC
 		/* Print info for each node */
-		printf(_("running on port %d, pooler port %d with PID %lu for Coordinator 1\n"),
-			   get_port_number(PGXC_COORD_1), get_pooler_port(PGXC_COORD_1), ULONGPID(get_node_pid(PGXC_COORD_1)));
-		printf(_("running on port %d, pooler port %d with PID %lu for Coordinator 2\n"),
-			   get_port_number(PGXC_COORD_2), get_pooler_port(PGXC_COORD_2), ULONGPID(get_node_pid(PGXC_COORD_2)));
+		printf(_("running on port %d with PID %lu for Coordinator 1\n"),
+			   get_port_number(PGXC_COORD_1), ULONGPID(get_node_pid(PGXC_COORD_1)));
+		printf(_("running on port %d with PID %lu for Coordinator 2\n"),
+			   get_port_number(PGXC_COORD_2), ULONGPID(get_node_pid(PGXC_COORD_2)));
 		printf(_("running on port %d with PID %lu for Datanode 1\n"),
 			   get_port_number(PGXC_DATANODE_1), ULONGPID(get_node_pid(PGXC_DATANODE_1)));
 		printf(_("running on port %d with PID %lu for Datanode 2\n"),
