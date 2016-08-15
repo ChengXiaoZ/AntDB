@@ -4190,9 +4190,9 @@ getFuncs(Archive *fout, int *numFuncs)
 						  "(%s proowner) AS rolname "
 						  "FROM pg_proc p "
 						  "WHERE NOT proisagg AND ("
-						  "pronamespace != "
+						  "pronamespace NOT IN "
 						  "(SELECT oid FROM pg_namespace "
-						  "WHERE nspname = 'pg_catalog' AND nspname = 'oracle')",
+						  "WHERE nspname IN ('pg_catalog', 'oracle', 'information_schema', 'dbms_random'))",
 						  username_subquery);
 		if (fout->remoteVersion >= 90200)
 			appendPQExpBuffer(query,
