@@ -15,7 +15,7 @@ OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
        pg_constraint.o pg_conversion.o \
        pg_depend.o pg_enum.o pg_inherits.o pg_largeobject.o pg_namespace.o \
        pg_operator.o pg_proc.o pg_range.o pg_db_role_setting.o pg_shdepend.o \
-       pg_type.o storage.o toasting.o
+       pg_type.o storage.o toasting.o agtm_sequence.o
 
 BKIFILES = agtm.bki agtm.description agtm.shdescription
 
@@ -40,6 +40,7 @@ POSTGRES_BKI_SRCS = pg_proc.h pg_type.h pg_attribute.h pg_class.h \
 	pg_foreign_data_wrapper.h pg_foreign_server.h pg_user_mapping.h \
 	pg_foreign_table.h \
 	pg_default_acl.h pg_seclabel.h pg_shseclabel.h pg_collation.h pg_range.h \
+	agtm_sequence.h \
 	toasting.h indexing.h 
 
 $(POSTGRES_BKI_SRCS): % : $(top_srcdir)/src/include/catalog/%

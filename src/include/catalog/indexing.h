@@ -402,6 +402,10 @@ DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using b
 
 #endif /* ADBMGRD */
 
+#ifdef AGTM
+DECLARE_UNIQUE_INDEX(agtm_sequence_oid_index, 9999, on agtm_sequence using btree(oid oid_ops));
+#endif
+
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES
 

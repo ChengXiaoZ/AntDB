@@ -20,6 +20,7 @@
 #include "access/transam.h"
 #include "access/xact.h"
 #include "access/xlogutils.h"
+#include "catalog/agtm_sequence.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
 #include "catalog/objectaccess.h"
@@ -132,6 +133,11 @@ DefineSequence(CreateSeqStmt *seq)
 	int			i;
 	NameData	name;
 	
+#ifdef AGTM
+	const char* dbName = NULL;
+	const char* schemaName = NULL;
+#endif
+	
 #ifdef ADB
 	bool			is_restart;
 #endif
@@ -233,6 +239,12 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
 	stmt->if_not_exists = false;
+	
+#ifdef AGTM
+	dbName = seq->sequence->catalogname;
+	schemaName = seq->sequence->schemaname;
+	AddAgtmSequence(dbName,schemaName,seq->sequence->relname);
+#endif
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE, seq->ownerId);
 	Assert(seqoid != InvalidOid);

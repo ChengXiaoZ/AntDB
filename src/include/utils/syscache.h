@@ -114,6 +114,9 @@ enum SysCacheIdentifier
 	,MONTIORDATABASEITEMOID
 	,MONTIORSLOWLOGOID
 #endif /* ADBMGRD */
+#ifdef AGTM
+	,AGTMSEQOID
+#endif
 };
 
 extern void InitCatalogCache(void);
