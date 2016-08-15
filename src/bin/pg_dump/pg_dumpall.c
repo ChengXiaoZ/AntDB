@@ -2189,7 +2189,7 @@ dumpNodes(PGconn *conn)
 
 	query = createPQExpBuffer();
 
-	appendPQExpBuffer(query, "select 'CREATE NODE ' || node_name || '"
+	appendPQExpBuffer(query, "select 'CREATE NODE \"' || node_name || '\"' || '"
 					" WITH (TYPE = ' || chr(39) || (case when node_type='C'"
 					" then 'coordinator' else 'datanode' end) || chr(39)"
 					" || ' , HOST = ' || chr(39) || node_host || chr(39)"
@@ -2226,7 +2226,7 @@ dumpNodeGroups(PGconn *conn)
 	query = createPQExpBuffer();
 
 	appendPQExpBuffer(query,
-						"select 'CREATE NODE GROUP ' || pgxc_group.group_name"
+						"select 'CREATE NODE GROUP \"' || pgxc_group.group_name || '\"'"
 						" || ' WITH(' || string_agg(node_name,',') || ');'"
 						" as group_query from pg_catalog.pgxc_node, pg_catalog.pgxc_group"
 						" where pgxc_node.oid = any (pgxc_group.group_members)"

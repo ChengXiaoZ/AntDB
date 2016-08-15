@@ -1772,7 +1772,7 @@ setup_nodeself(void)
 
 	PG_CMD_OPEN;
 
-	PG_CMD_PRINTF1("CREATE NODE %s WITH (type = 'coordinator');\n",
+	PG_CMD_PRINTF1("CREATE NODE \"%s\" WITH (type = 'coordinator');\n",
 				   nodename);
 
 	PG_CMD_CLOSE;

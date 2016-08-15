@@ -3159,7 +3159,7 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 					,DEFAULT_DB
 					,get_hostuser_from_hostoid(nodehostoid));
 
-	appendStringInfo(&psql_cmd, " ALTER NODE %s WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
+	appendStringInfo(&psql_cmd, " ALTER NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
 					,nodename
 					,get_hostname_from_hostoid(nodehostoid)
 					,nodeport);
@@ -3504,7 +3504,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 						,DEFAULT_DB
 						,get_hostuser_from_hostoid(mgr_node->nodehost));
 		
-		appendStringInfo(&psql_cmd, " CREATE NODE %s WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
+		appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
 						,dnname
 						,get_hostname_from_hostoid(dnhostoid)
 						,dnport);
@@ -4304,7 +4304,7 @@ bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&(getAgentCmdRst->description));
 		appendStringInfo(&infosendmsg, " -p %d -d postgres -c \"",  cnmasterport);
-		appendStringInfo(&infosendmsg, "alter node %s with(host='%s',port=%d, primary = %s);", cndnname, cndnaddress, cndnport, isprimary != 0 ? "true":"false");
+		appendStringInfo(&infosendmsg, "alter node \\\"%s\\\" with(host='%s',port=%d, primary = %s);", cndnname, cndnaddress, cndnport, isprimary != 0 ? "true":"false");
 		appendStringInfoString(&infosendmsg, "select pgxc_pool_reload();\"");
 		/* connection agent */
 		ma = ma_connect_hostoid(mgr_node->nodehost);
@@ -4440,14 +4440,14 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 
 		if (strcmp(NameStr(mgr_node_in->nodename), NameStr(mgr_node_out->nodename)) == 0)
 		{
-			appendStringInfo(&cmdstring, "ALTER NODE %s WITH (HOST='%s', PORT=%d);"
+			appendStringInfo(&cmdstring, "ALTER NODE \\\"%s\\\" WITH (HOST='%s', PORT=%d);"
 							,NameStr(mgr_node_in->nodename)
 							,get_hostname_from_hostoid(mgr_node_in->nodehost)
 							,mgr_node_in->nodeport);
 		}
 		else
 		{
-			appendStringInfo(&cmdstring, " CREATE NODE %s WITH (TYPE='coordinator', HOST='%s', PORT=%d);"
+			appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='coordinator', HOST='%s', PORT=%d);"
 							,NameStr(mgr_node_in->nodename)
 							,get_hostname_from_hostoid(mgr_node_in->nodehost)
 							,mgr_node_in->nodeport);
@@ -4477,14 +4477,14 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		{
 			if (strcmp(get_hostname_from_hostoid(mgr_node_dn->nodehost), get_hostname_from_hostoid(mgr_node_out->nodehost)) == 0)
 			{
-				appendStringInfo(&cmdstring, " CREATE NODE %s WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY, PREFERRED);"
+				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY, PREFERRED);"
 								,NameStr(mgr_node_dn->nodename)
 								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
 								,mgr_node_dn->nodeport);
 			}
 			else
 			{
-				appendStringInfo(&cmdstring, " CREATE NODE %s WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY);"
+				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY);"
 								,NameStr(mgr_node_dn->nodename)
 								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
 								,mgr_node_dn->nodeport);
@@ -4494,14 +4494,14 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		{
 			if (strcmp(get_hostname_from_hostoid(mgr_node_dn->nodehost), get_hostname_from_hostoid(mgr_node_out->nodehost)) == 0)
 			{
-				appendStringInfo(&cmdstring, " CREATE NODE %s WITH (TYPE='datanode', HOST='%s', PORT=%d,PREFERRED);"
+				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d,PREFERRED);"
 								,NameStr(mgr_node_dn->nodename)
 								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
 								,mgr_node_dn->nodeport);
 			}
 			else
 			{
-				appendStringInfo(&cmdstring, " CREATE NODE %s WITH (TYPE='datanode', HOST='%s', PORT=%d);"
+				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d);"
 								,NameStr(mgr_node_dn->nodename)
 								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
 								,mgr_node_dn->nodeport);
