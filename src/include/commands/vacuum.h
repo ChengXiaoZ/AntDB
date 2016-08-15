@@ -171,7 +171,7 @@ extern void vac_update_datfrozenxid(void);
 extern void vacuum_delay_point(void);
 
 #ifdef ADB
-extern void vacuum_rel_coordinator(Relation onerel);
+extern void vacuum_rel_coordinator(Relation onerel, bool is_outer);
 extern TargetEntry *make_relation_tle(Oid reloid, const char *relname,
 						const char *column, AttrNumber attnum);
 #endif

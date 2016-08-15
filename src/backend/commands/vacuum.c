@@ -1355,7 +1355,7 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, bool do_toast, bool for_wraparound)
 	 */
 	if (IS_PGXC_COORDINATOR && onerel->rd_locator_info)
 	{
-		vacuum_rel_coordinator(onerel);
+		vacuum_rel_coordinator(onerel, true);
 	}
 	else
 #endif
@@ -1704,16 +1704,16 @@ get_remote_relstat(char *nspname, char *relname, bool replicated,
  * data nodes.
  */
 void
-vacuum_rel_coordinator(Relation onerel)
+vacuum_rel_coordinator(Relation onerel, bool is_outer)
 {
-	char 	   *nspname;
-	char 	   *relname;
+	char	   *nspname;
+	char	   *relname;
 	/* fields to combine relation statistics */
 	int32		num_pages;
 	float4		num_tuples;
 	TransactionId min_frozenxid;
 	bool		hasindex;
-	bool 		replicated;
+	bool		replicated;
 	int 		rel_nodes;
 
 	/* Get the relation identifier */
@@ -1731,7 +1731,7 @@ vacuum_rel_coordinator(Relation onerel)
 								   &num_pages, &num_tuples, &min_frozenxid);
 	if (rel_nodes > 0)
 	{
-		int			nindexes;
+		int 		nindexes;
 		Relation   *Irel;
 		int 		nodes = list_length(RelationGetLocInfo(onerel)->nodeList);
 
@@ -1767,6 +1767,7 @@ vacuum_rel_coordinator(Relation onerel)
 						idx_frozenxid = InvalidTransactionId;
 					}
 					/* save changes */
+					/* !!TODO Get multi-xid from remote nodes */
 					vac_update_relstats(Irel[i],
 										(BlockNumber) idx_pages,
 										(double) idx_tuples,
@@ -1774,7 +1775,7 @@ vacuum_rel_coordinator(Relation onerel)
 										false,
 										idx_frozenxid,
 										InvalidMultiXactId,
-										false);
+										is_outer);
 				}
 			}
 		}
@@ -1799,7 +1800,7 @@ vacuum_rel_coordinator(Relation onerel)
 							hasindex,
 							min_frozenxid,
 							InvalidMultiXactId,
-							false);
+							is_outer);
 	}
 }
 #endif

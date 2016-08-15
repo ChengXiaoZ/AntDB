@@ -860,16 +860,15 @@ do_analyze_rel(Relation onerel, VacuumStmt *vacstmt,
 	if (IS_PGXC_COORDINATOR && onerel->rd_locator_info)
 	{
 		/*
+		 * Fetch relation statistics from remote nodes and update
+		 */
+		vacuum_rel_coordinator(onerel, in_outer_xact);
+
+		/*
 		 * Fetch attribute statistics from remote nodes.
 		 */
 		analyze_rel_coordinator(onerel, inh, attr_cnt, vacattrstats);
-		/*
-		 * If it is a VACUUM or doing inherited relation precise values for
-		 * relpages and reltuples are set in other place. Otherwise request
-		 * doing it now.
-		 */
-		if (!inh && !(vacstmt->options & VACOPT_VACUUM))
-			vacuum_rel_coordinator(onerel);
+
 		/*
 		 * Skip acquiring local stats. Coordinator does not store data of
 		 * distributed tables.
