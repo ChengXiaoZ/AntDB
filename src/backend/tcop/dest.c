@@ -151,7 +151,9 @@ EndCommand(const char *commandTag, CommandDest dest)
 			 * We assume the commandTag is plain ASCII and therefore requires
 			 * no encoding conversion.
 			 */
+#ifdef DEBUG_ADB
 			elog(DEBUG1, "[ADB]Send Command(C): %s", commandTag);
+#endif
 			pq_putmessage('C', commandTag, strlen(commandTag) + 1);
 			break;
 
@@ -227,6 +229,9 @@ ReadyForQuery(CommandDest dest)
 	{
 		case DestRemote:
 		case DestRemoteExecute:
+#ifdef DEBUG_ADB
+			elog(DEBUG1, "[ADB]Send Command(Z)");
+#endif
 			if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 			{
 				StringInfoData buf;

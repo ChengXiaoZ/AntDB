@@ -1249,7 +1249,7 @@ FetchTuple(RemoteQueryState *combiner, TupleTableSlot *slot)
 
 #ifdef ADB
 static const char *
-RequestTypeAsCString(RequestType type)
+RequestTypeAsString(RequestType type)
 {
 	switch(type)
 	{
@@ -1270,7 +1270,7 @@ RequestTypeAsCString(RequestType type)
 }
 
 static const char *
-ResponseResultAsCString(int result)
+ResponseResultAsString(int result)
 {
 	switch(result)
 	{
@@ -1293,9 +1293,11 @@ ResponseResultAsCString(int result)
 	}
 	return "UNKNOWN RESPONSE RESULT";
 }
+#endif
 
+#ifdef DEBUG_ADB
 static const char *
-DNConnectionStateAsCString(DNConnectionState state)
+DNConnectionStateAsString(DNConnectionState state)
 {
 	switch (state)
 	{
@@ -1362,8 +1364,8 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 					/* Inconsistent responses */
 					{
 						const char *nodeName = NameStr(to_receive[i]->name);
-						const char *requestType = RequestTypeAsCString(combiner->request_type);
-						const char *resultStr = ResponseResultAsCString(result);
+						const char *requestType = RequestTypeAsString(combiner->request_type);
+						const char *resultStr = ResponseResultAsString(result);
 
 						add_error_message(to_receive[i],
 							"[From node '%s']Unexpected response: result = %s, request type %s",
@@ -1450,10 +1452,10 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 					   MyProcPid,
 					   NameStr(conn->name),
 					   conn->sock,
-					   DNConnectionStateAsCString(conn->state),
+					   DNConnectionStateAsString(conn->state),
 					   msg_type,
 					   combiner,
-					   RequestTypeAsCString(combiner->request_type))
+					   RequestTypeAsString(combiner->request_type))
 				));
 #endif
 		switch (msg_type)
@@ -1591,12 +1593,25 @@ is_data_node_ready(PGXCNodeHandle * conn)
 			return false;
 
 		msg_type = get_message(conn, &msg_len, &msg);
+#ifdef DEBUG_ADB
+		ereport(DEBUG1,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("[process] %d [handle] %s [sock] %d [state] %s "
+					   "[msg_type] %c",
+					   MyProcPid,
+					   NameStr(conn->name),
+					   conn->sock,
+					   DNConnectionStateAsString(conn->state),
+					   msg_type)
+				));
+#endif
 		switch (msg_type)
 		{
 			case 's':			/* PortalSuspended */
 				break;
 
 			case 'Z':			/* ReadyForQuery */
+
 				/*
 				 * Return result depends on previous connection state.
 				 * If it was PORTAL_SUSPENDED Coordinator want to send down
@@ -3169,16 +3184,22 @@ IsReturningDMLOnReplicatedTable(RemoteQuery *rq)
 void
 do_query(RemoteQueryState *node)
 {
-	RemoteQuery		*step = (RemoteQuery *) node->ss.ps.plan;
+	RemoteQuery			*step = (RemoteQuery *) node->ss.ps.plan;
 	TupleTableSlot		*scanslot = node->ss.ss_ScanTupleSlot;
-	bool			force_autocommit = step->force_autocommit;
-	bool			is_read_only = step->read_only;
+	bool				 force_autocommit = step->force_autocommit;
+	bool				 is_read_only = step->read_only;
 	PGXCNodeHandle		**connections = NULL;
 	PGXCNodeHandle		*primaryconnection = NULL;
-	int			i;
-	int			regular_conn_count = 0;
-	bool			need_tran_block;
+	int					 i;
+	int					 regular_conn_count = 0;
+	bool				 need_tran_block;
 	PGXCNodeAllHandles	*pgxc_connections;
+#ifdef ADB
+	PGXCNodeHandle		**dnhandles = NULL;
+	PGXCNodeHandle		**cohandles = NULL;
+	int					 num_dnhandles = 0;
+	int					 num_cohandles = 0;
+#endif
 
 	/*
 	 * A Postgres-XC node cannot run transactions while in recovery as
@@ -3222,11 +3243,25 @@ do_query(RemoteQueryState *node)
 	{
 		connections = pgxc_connections->datanode_handles;
 		regular_conn_count = pgxc_connections->dn_conn_count;
+#ifdef ADB
+		dnhandles = (PGXCNodeHandle **)
+			palloc0(regular_conn_count * sizeof(PGXCNodeHandle *));
+		memcpy(dnhandles, connections,
+			regular_conn_count * sizeof(PGXCNodeHandle *));
+		num_dnhandles = regular_conn_count;
+#endif
 	}
 	else if (step->exec_type == EXEC_ON_COORDS)
 	{
 		connections = pgxc_connections->coord_handles;
 		regular_conn_count = pgxc_connections->co_conn_count;
+#ifdef ADB
+		cohandles = (PGXCNodeHandle **)
+			palloc0(regular_conn_count * sizeof(PGXCNodeHandle *));
+		memcpy(cohandles, connections,
+			regular_conn_count * sizeof(PGXCNodeHandle *));
+		num_cohandles = regular_conn_count;
+#endif
 	}
 
 	primaryconnection = pgxc_connections->primary_handle;
@@ -3236,6 +3271,9 @@ do_query(RemoteQueryState *node)
 		regular_conn_count--;
 
 	pfree(pgxc_connections);
+#ifdef ADB
+	pgxc_connections = NULL;
+#endif
 
 	/*
 	 * We save only regular connections, at the time we exit the function
@@ -3256,6 +3294,9 @@ do_query(RemoteQueryState *node)
 	 */
 	if (need_tran_block)
 		agtm_BeginTransaction();
+
+	PG_TRY();
+	{
 #endif
 
 	/*
@@ -3469,6 +3510,21 @@ do_query(RemoteQueryState *node)
 		memcpy(connections, node->cursor_connections, node->cursor_count * sizeof(PGXCNodeHandle *));
 		node->connections = connections;
 	}
+#ifdef ADB
+	} PG_CATCH();
+	{
+		clear_some_handle(num_dnhandles, dnhandles, num_cohandles, cohandles);
+		if (dnhandles)
+			pfree(dnhandles);
+		if (cohandles)
+			pfree(cohandles);
+		PG_RE_THROW();
+	} PG_END_TRY();
+	if (dnhandles)
+		pfree(dnhandles);
+	if (cohandles)
+		pfree(cohandles);
+#endif
 }
 
 /*
