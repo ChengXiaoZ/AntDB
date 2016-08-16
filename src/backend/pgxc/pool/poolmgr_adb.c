@@ -636,7 +636,7 @@ PoolManagerSetCommand(PoolCommandType command_type, const char *set_command)
 		/* Get result */
 		res = pool_recvres(&poolHandle->port);
 	}
-	return res;
+	return res == 0 ? 0:-1;
 }
 
 /*
@@ -726,7 +726,7 @@ agent_init(PoolAgent *agent, const char *database, const char *user_name,
 	oldcontext = MemoryContextSwitchTo(agent->mctx);
 
 	has_error = false;
-	PG_TRY();
+	PG_TRY_HOLD();
 	{
 		/* Get needed info and allocate memory */
 		PgxcNodeGetOids(&(agent->coord_oids), &(agent->datanode_oids)
@@ -741,10 +741,11 @@ agent_init(PoolAgent *agent, const char *database, const char *user_name,
 
 		agent->num_coord_connections = num_coord;
 		agent->num_dn_connections = num_datanode;
-	}PG_CATCH();
+	}PG_CATCH_HOLD();
 	{
 		has_error = true;
-	}PG_END_TRY();
+		errdump();
+	}PG_END_TRY_HOLD();
 
 	MemoryContextSwitchTo(oldcontext);
 	return has_error == false ? true:false;
