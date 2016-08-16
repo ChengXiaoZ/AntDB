@@ -183,7 +183,7 @@ static void agent_lock_connect_list(PGXCNodePoolSlot **slots, const List *node_l
 static void cancel_query_on_connections(PoolAgent *agent, Size count, PGXCNodePoolSlot **slots, const List *nodelist);
 static void reload_database_pools(PoolAgent *agent);
 static int node_info_check(PoolAgent *agent);
-static int agent_session_command(PoolAgent *agent, const char *set_command, PoolCommandType command_type);
+static int agent_session_command(PoolAgent *agent, const char *set_command, PoolCommandType command_type, StringInfo errMsg);
 static int send_local_commands(PoolAgent *agent, List *datanodelist, List *coordlist);
 
 static void destroy_slot(PGXCNodePoolSlot *slot, bool send_cancel);
@@ -193,7 +193,7 @@ static void destroy_node_pool(PGXCNodePool *node_pool, bool bfree);
 static bool node_pool_in_using(PGXCNodePool *node_pool);
 static time_t close_timeout_idle_slots(time_t timeout);
 static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port);
-static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query);
+static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query, StringInfo errMsg);
 static int pool_wait_pq(PGconn *conn);
 
 /* for hash DatabasePool */
@@ -1371,12 +1371,18 @@ static void agent_handle_input(PoolAgent * agent, StringInfo s)
 			break;
 		case PM_MSG_SET_COMMAND:
 			{
+				StringInfoData msg;
 				PoolCommandType cmd_type;
 				const char *set_cmd;
 				cmd_type = (PoolCommandType)pool_getint(s);
 				set_cmd = pool_getstring(s);
-				res = agent_session_command(agent, set_cmd, cmd_type);
+				msg.data = NULL;
+				res = agent_session_command(agent, set_cmd, cmd_type, &msg);
+				if(res != 0 && msg.data)
+					ereport(ERROR, (errmsg("%s", msg.data)));
 				pool_sendres(&agent->port, res);
+				if(msg.data)
+					pfree(msg.data);
 			}
 			break;
 		default:
@@ -1759,7 +1765,7 @@ static void release_slot(PGXCNodePoolSlot *slot, bool force_close)
 static void idle_slot(PGXCNodePoolSlot *slot)
 {
 	AssertArg(slot);
-	if(pool_exec_set_query(slot->conn, "RESET ALL;") == false
+	if(pool_exec_set_query(slot->conn, "RESET ALL;", NULL) == false
 		|| send_agtm_listen_port(slot->conn, 0) == false)
 	{
 		destroy_slot(slot, true);
@@ -2048,8 +2054,8 @@ retry_get_connection_:
 				/* we need reset it and send agtm listen port */
 
 				if((agent->agtm_port != slot->last_agtm_port && send_agtm_listen_port(slot->conn, agent->agtm_port) == false)
-					|| pool_exec_set_query(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;") == false
-					|| (agent->session_params && pool_exec_set_query(slot->conn, agent->session_params) == false))
+					|| pool_exec_set_query(slot->conn, "SET SESSION AUTHORIZATION DEFAULT;RESET ALL;", lastError) == false
+					|| (agent->session_params && pool_exec_set_query(slot->conn, agent->session_params, lastError) == false))
 				{
 					destroy_slot(slot, true);
 					goto retry_get_connection_;
@@ -2067,7 +2073,7 @@ retry_get_connection_:
 		if(slot->last_user_pid != agent->pid)
 		{
 			if(agent->local_params 
-				&& pool_exec_set_query(slot->conn, agent->local_params) == false)
+				&& pool_exec_set_query(slot->conn, agent->local_params, lastError) == false)
 			{
 				destroy_slot(slot, true);
 				slots[lfirst_int(lc)] = NULL;
@@ -2301,7 +2307,7 @@ node_info_check_end_:
 	return res;
 }
 
-static int agent_session_command(PoolAgent *agent, const char *set_command, PoolCommandType command_type)
+static int agent_session_command(PoolAgent *agent, const char *set_command, PoolCommandType command_type, StringInfo errMsg)
 {
 	char **ppstr;
 	Size i;
@@ -2349,13 +2355,15 @@ static int agent_session_command(PoolAgent *agent, const char *set_command, Pool
 	res = 0;
 	for(i=0;i<agent->num_dn_connections;++i)
 	{
-		if(agent->dn_connections[i] && agent->dn_connections[i]->conn)
-			res |= PGXCNodeSendSetQuery(agent->dn_connections[i]->conn, set_command);
+		if(agent->dn_connections[i] && agent->dn_connections[i]->conn
+			&& pool_exec_set_query(agent->dn_connections[i]->conn, set_command, errMsg) == false)
+			res = 1;
 	}
 	for (i = 0; i < agent->num_coord_connections; i++)
 	{
-		if (agent->coord_connections[i] && agent->coord_connections[i]->conn)
-			res |= PGXCNodeSendSetQuery(agent->coord_connections[i]->conn, set_command);
+		if (agent->coord_connections[i] && agent->coord_connections[i]->conn
+			&& pool_exec_set_query(agent->coord_connections[i]->conn, set_command, errMsg) == false)
+			res = 1;
 	}
 	return res;
 }
@@ -2549,7 +2557,7 @@ static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port)
 	return success;
 }
 
-static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query)
+static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query, StringInfo errMsg)
 {
 	PGresult *result;
 	bool res;
@@ -2570,7 +2578,15 @@ static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query)
 		if(result == NULL)
 			break;
 		if(PQresultStatus(result) == PGRES_FATAL_ERROR)
+		{
 			res = false;
+			if(errMsg)
+			{
+				if(errMsg->data == NULL)
+					initStringInfo(errMsg);
+				appendStringInfoString(errMsg, PQresultErrorMessage(result));
+			}
+		}
 		PQclear(result);
 	}
 	return res;
