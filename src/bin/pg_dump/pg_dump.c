@@ -4392,7 +4392,7 @@ getTables(Archive *fout, int *numTables)
 #ifdef PGXC
 						  "(SELECT pclocatortype from pgxc_class v where v.pcrelid = c.oid) AS pgxclocatortype,"
 						  "(SELECT pcattnum from pgxc_class v where v.pcrelid = c.oid) AS pgxcattnum,"
-						  "(SELECT string_agg(node_name,',') AS pgxc_node_names from pgxc_node n where n.oid in (select unnest(nodeoids) from pgxc_class v where v.pcrelid=c.oid) ) , "
+						  "(SELECT '\"' || string_agg(node_name,'\",\"') || '\"' AS pgxc_node_names from pgxc_node n where n.oid in (select unnest(nodeoids) from pgxc_class v where v.pcrelid=c.oid) ) , "
 #endif
 						  "c.reloptions AS reloptions, "
 						  "tc.reloptions AS toast_reloptions "
