@@ -1330,6 +1330,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		initStringInfo(&strinfoport);
 		appendStringInfo(&strinfoport, "%d", masterport);
 		ismasterrunning = pingNode(masterhostaddress, strinfoport.data);
+		pfree(masterhostaddress);
 		pfree(strinfoport.data);	
 		if(ismasterrunning != 0)
 		{
@@ -3886,6 +3887,7 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
+	pfree(agtm_host);
 }
 
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg)
@@ -4385,6 +4387,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	ManagerAgent *ma;
 	bool execok = false;
 	char *address = NULL;
+	char *addressout = NULL;
 
 
 	if (SRF_IS_FIRSTCALL())
@@ -4485,7 +4488,8 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 				,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
 	info_dn->rel_scan = heap_beginscan(info_dn->rel_node, SnapshotNow, 1, key_dn);
 	info_dn->lcp =NULL;
-
+	
+	addressout = get_hostaddress_from_hostoid(mgr_node_out->nodehost);
 	while ((tuple_dn = heap_getnext(info_dn->rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node_dn = (Form_mgr_node)GETSTRUCT(tuple_dn);
@@ -4494,7 +4498,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		address = get_hostaddress_from_hostoid(mgr_node_dn->nodehost);
 		if (mgr_node_dn->nodeprimary)
 		{
-			if (strcmp(get_hostname_from_hostoid(mgr_node_dn->nodehost), get_hostname_from_hostoid(mgr_node_out->nodehost)) == 0)
+			if (strcmp(address, addressout) == 0)
 			{
 				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY, PREFERRED);"
 								,NameStr(mgr_node_dn->nodename)
@@ -4511,7 +4515,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			if (strcmp(get_hostname_from_hostoid(mgr_node_dn->nodehost), get_hostname_from_hostoid(mgr_node_out->nodehost)) == 0)
+			if (strcmp(address, addressout) == 0)
 			{
 				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d,PREFERRED);"
 								,NameStr(mgr_node_dn->nodename)
@@ -4529,6 +4533,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		pfree(address);
 	}
 
+	pfree(addressout);
 	heap_endscan(info_dn->rel_scan);
 	heap_close(info_dn->rel_node, AccessShareLock);
 	pfree(info_dn);
