@@ -234,7 +234,6 @@ static int flushPGXCNodeHandleData(PGXCNodeHandle *handle);
 #ifdef ADB
 static ExecNodes *reget_exec_nodes_by_en_expr(RemoteQueryState *planstate,
 											  ExecNodes *exec_nodes);
-static void PreClearQueryInvolved(void);
 #endif
 
 /*
@@ -3513,7 +3512,7 @@ do_query(RemoteQueryState *node)
 #ifdef ADB
 	} PG_CATCH();
 	{
-		clear_some_handle(num_dnhandles, dnhandles, num_cohandles, cohandles);
+		clear_some_handles(num_dnhandles, dnhandles, num_cohandles, cohandles);
 		if (dnhandles)
 			pfree(dnhandles);
 		if (cohandles)
@@ -4965,58 +4964,6 @@ init_RemoteXactStateByNodes(int node_cnt, Oid *nodeIds, bool isPrepared)
 	}
 }
 
-static void
-PreClearQueryInvolved(void)
-{
-	PGXCNodeHandle		**handles = remoteXactState.remoteNodeHandles;
-	int					  num_write = remoteXactState.numWriteRemoteNodes;
-	int					  num_read = remoteXactState.numReadRemoteNodes;
-	int					  num_all = num_write + num_read;
-	PGXCNodeHandle		**dnhandles = NULL;
-	PGXCNodeHandle		**cohandles = NULL;
-	PGXCNodeHandle		 *handle;
-	int					  num_dnhandles = 0;
-	int					  num_cohandles = 0;
-	int					  i;
-
-	if (num_all > 0)
-	{
-		dnhandles = (PGXCNodeHandle **) palloc0 (num_all * sizeof(PGXCNodeHandle *));
-		cohandles = (PGXCNodeHandle **) palloc0 (num_all * sizeof(PGXCNodeHandle *));
-
-		for (i = 0; i < num_all; i++)
-		{
-			handle = handles[i];
-			switch(handle->type)
-			{
-				case PGXC_NODE_COORDINATOR:
-					cohandles[num_cohandles++] = handle;
-					break;
-				case PGXC_NODE_DATANODE:
-					dnhandles[num_dnhandles++] = handle;
-					break;
-				default:
-					Assert(0);
-					break;
-			}
-		}
-
-		PG_TRY();
-		{
-			cancel_some_handle(num_dnhandles, dnhandles, num_cohandles, cohandles);
-			clear_some_handle(num_dnhandles, dnhandles, num_cohandles, cohandles);
-		} PG_CATCH();
-		{
-			pfree(dnhandles);
-			pfree(cohandles);
-			PG_RE_THROW();
-		} PG_END_TRY();
-
-		pfree(dnhandles);
-		pfree(cohandles);
-	}
-}
-
 void
 AbnormalAbort_Remote(void)
 {
@@ -5036,10 +4983,10 @@ AbnormalAbort_Remote(void)
 	if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
 		return ;
 
+	clear_all_handles();
+
 	if (remoteXactState.status == RXACT_NONE)
 		init_RemoteXactState(false);
-
-	PreClearQueryInvolved();
 
 	connections = remoteXactState.remoteNodeHandles;
 	write_conn_count = remoteXactState.numWriteRemoteNodes;

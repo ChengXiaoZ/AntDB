@@ -1045,8 +1045,8 @@ clear_all_data(void)
 
 #ifdef ADB
 void
-cancel_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
-				   int num_cohandles, PGXCNodeHandle **cohandles)
+cancel_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
+					int num_cohandles, PGXCNodeHandle **cohandles)
 {
 	PGXCNodeHandle	*handle;
 	PGXCNodeHandle **new_dnhandles = NULL;
@@ -1178,8 +1178,8 @@ cancel_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
 }
 
 void
-clear_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
-				  int num_cohandles, PGXCNodeHandle **cohandles)
+clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
+				   int num_cohandles, PGXCNodeHandle **cohandles)
 {
 	PGXCNodeHandle *handle;
 	int				i;
@@ -1245,7 +1245,7 @@ clear_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
 }
 
 void
-clear_all_handle(void)
+clear_all_handles(void)
 {
 	PGXCNodeHandle *handle;
 	int 			i;
@@ -1306,10 +1306,8 @@ clear_all_handle(void)
 	}
 
 	/*
-	 * Notice pool manager to release handles if any connection
-	 * is invalid.
+	 * We cannot release handle here, it is decided with the caller. 
 	 */
-	release_handles();
 }
 #endif
 

@@ -4562,7 +4562,10 @@ PostgresMain(int argc, char *argv[],
 	{
 #ifdef ADB
 		if (!IsTransactionState())
-			clear_all_handle();
+		{
+			clear_all_handles();
+			release_handles();
+		}
 #endif
 		/*
 		 * At top of loop, reset extended-query-message flag, so that any

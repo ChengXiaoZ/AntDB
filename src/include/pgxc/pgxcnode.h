@@ -163,11 +163,11 @@ extern void release_handles(void);
 
 #ifdef ADB
 extern void release_handles2(bool force_close);
-extern void cancel_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
-							  int num_cohandles, PGXCNodeHandle **cohandles);
-extern void clear_some_handle(int num_dnhandles, PGXCNodeHandle **dnhandles,
-							 int num_cohandles, PGXCNodeHandle **cohandles);
-extern void clear_all_handle(void);
+extern void cancel_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
+								int num_cohandles, PGXCNodeHandle **cohandles);
+extern void clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
+								int num_cohandles, PGXCNodeHandle **cohandles);
+extern void clear_all_handles(void);
 #endif /* ADB */
 
 extern void cancel_query(void);
