@@ -1207,7 +1207,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Assert(mgr_node);
 	hostOid = mgr_node->nodehost;
 	/*get host address*/
-	hostaddress = get_hostname_from_hostoid(hostOid);
+	hostaddress = get_hostaddress_from_hostoid(hostOid);
 	Assert(hostaddress);
 	/*get nodename*/
 	cndnname = NameStr(mgr_node->nodename);
@@ -3108,6 +3108,8 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 	StringInfoData psql_cmd;
 	bool execok = false;
 	StringInfoData buf;
+	char *user = NULL;
+	char *address = NULL;
 
 	GetAgentCmdRst getAgentCmdRst;
 
@@ -3153,16 +3155,20 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 	}
 
 	initStringInfo(&psql_cmd);
+	user = get_hostuser_from_hostoid(nodehostoid);
+	address = get_hostaddress_from_hostoid(nodehostoid);
 	appendStringInfo(&psql_cmd, " -h %s -p %u -d %s -U %s -a -c \""
-					,get_hostaddress_from_hostoid(nodehostoid)
+					,address
 					,nodeport
 					,DEFAULT_DB
-					,get_hostuser_from_hostoid(nodehostoid));
+					,user);
 
 	appendStringInfo(&psql_cmd, " ALTER NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
 					,nodename
-					,get_hostname_from_hostoid(nodehostoid)
+					,address
 					,nodeport);
+	pfree(user);
+	pfree(address);
 	appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
 
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -3461,6 +3467,9 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 	StringInfoData psql_cmd;
 	bool execok = false;
 	StringInfoData buf;
+	char *addressconnect = NULL;
+	char *addressnode = NULL;
+	char *user = NULL;
 
 	GetAgentCmdRst getAgentCmdRst;
 
@@ -3498,15 +3507,18 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 		}
 
 		initStringInfo(&psql_cmd);
+		addressconnect = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
 		appendStringInfo(&psql_cmd, " -h %s -p %u -d %s -U %s -a -c \""
-						,get_hostaddress_from_hostoid(mgr_node->nodehost)
+						,addressconnect
 						,mgr_node->nodeport
 						,DEFAULT_DB
-						,get_hostuser_from_hostoid(mgr_node->nodehost));
+						,user);
 		
+		addressnode = get_hostaddress_from_hostoid(dnhostoid);
 		appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
 						,dnname
-						,get_hostname_from_hostoid(dnhostoid)
+						,addressnode
 						,dnport);
 		appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
 
@@ -3514,6 +3526,9 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 		ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
 		ma_sendstring(&buf, psql_cmd.data);
 		pfree(psql_cmd.data);
+		pfree(addressconnect);
+		pfree(addressnode);
+		pfree(user);
 		ma_endmessage(&buf, ma);
 
 		if (! ma_flush(ma, true))
@@ -4112,7 +4127,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 				else if (nodetype == CNDN_TYPE_DATANODE_EXTRA && !nodetypechange)
 					elog(ERROR, "lookup failed for datanode extra %s", nodename);
 				else
-					elog(ERROR, "lookup failed for datanode slave and extra %s", nodename);
+					elog(ERROR, "lookup failed for datanode slave or extra %s", nodename);
 			}
 		}
 	}
@@ -4166,7 +4181,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 				else if (nodetype == GTM_TYPE_GTM_EXTRA && !nodetypechange)
 					elog(ERROR, "lookup failed for gtm extra");
 				else
-					elog(ERROR, "lookup failed for gtm slave and extra");				
+					elog(ERROR, "lookup failed for gtm slave or extra");				
 			}
 		}
 	}
@@ -4369,6 +4384,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	StringInfoData buf;
 	ManagerAgent *ma;
 	bool execok = false;
+	char *address = NULL;
 
 
 	if (SRF_IS_FIRSTCALL())
@@ -4438,20 +4454,22 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		mgr_node_in = (Form_mgr_node)GETSTRUCT(tuple_in);
 		Assert(mgr_node_in);
 
+		address = get_hostaddress_from_hostoid(mgr_node_in->nodehost);
 		if (strcmp(NameStr(mgr_node_in->nodename), NameStr(mgr_node_out->nodename)) == 0)
 		{
 			appendStringInfo(&cmdstring, "ALTER NODE \\\"%s\\\" WITH (HOST='%s', PORT=%d);"
 							,NameStr(mgr_node_in->nodename)
-							,get_hostname_from_hostoid(mgr_node_in->nodehost)
+							,address
 							,mgr_node_in->nodeport);
 		}
 		else
 		{
 			appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='coordinator', HOST='%s', PORT=%d);"
 							,NameStr(mgr_node_in->nodename)
-							,get_hostname_from_hostoid(mgr_node_in->nodehost)
+							,address
 							,mgr_node_in->nodeport);
 		}
+		pfree(address);
 	}
 
 	heap_endscan(info_in->rel_scan);
@@ -4473,20 +4491,21 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		mgr_node_dn = (Form_mgr_node)GETSTRUCT(tuple_dn);
 		Assert(mgr_node_dn);
 
+		address = get_hostaddress_from_hostoid(mgr_node_dn->nodehost);
 		if (mgr_node_dn->nodeprimary)
 		{
 			if (strcmp(get_hostname_from_hostoid(mgr_node_dn->nodehost), get_hostname_from_hostoid(mgr_node_out->nodehost)) == 0)
 			{
 				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY, PREFERRED);"
 								,NameStr(mgr_node_dn->nodename)
-								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
+								,address
 								,mgr_node_dn->nodeport);
 			}
 			else
 			{
 				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY);"
 								,NameStr(mgr_node_dn->nodename)
-								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
+								,address
 								,mgr_node_dn->nodeport);
 			}
 		}
@@ -4496,17 +4515,18 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 			{
 				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d,PREFERRED);"
 								,NameStr(mgr_node_dn->nodename)
-								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
+								,address
 								,mgr_node_dn->nodeport);
 			}
 			else
 			{
 				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d);"
 								,NameStr(mgr_node_dn->nodename)
-								,get_hostname_from_hostoid(mgr_node_dn->nodehost)
+								,address
 								,mgr_node_dn->nodeport);
 			}
 		}
+		pfree(address);
 	}
 
 	heap_endscan(info_dn->rel_scan);
