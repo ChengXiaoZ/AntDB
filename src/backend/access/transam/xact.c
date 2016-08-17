@@ -5643,6 +5643,9 @@ ReportCommandIdChange(CommandId cid)
 	StringInfoData buf;
 
 	/* Send command Id change to Coordinator */
+#ifdef DEBUG_ADB
+	elog(DEBUG1, "[ADB]Send Command(M)");
+#endif
 	pq_beginmessage(&buf, 'M');
 	pq_sendint(&buf, cid, 4);
 	pq_endmessage(&buf);
