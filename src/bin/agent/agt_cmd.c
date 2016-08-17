@@ -26,7 +26,7 @@
 #define PSQL_VERSION "psql (Postgres-XC) " PGXC_VERSION "\n"
 #define PG_DUMPALL_VERSION "pg_dumpall (PostgreSQL) " PG_VERSION "\n"
 
-static void cmd_node_init(StringInfo msg, char *cmdfile, char* VERSION);
+static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VERSION);
 static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg);
 static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info);
 static void writefile(char *path, ConfInfo *info);
@@ -53,14 +53,14 @@ void do_agent_command(StringInfo buf)
 	switch(cmd_type)
 	{
 	case AGT_CMD_GTM_INIT:
-		cmd_node_init(buf, "initagtm", INITGTM_VERSION);
+		cmd_node_init(cmd_type, buf, "initagtm", INITGTM_VERSION);
 		break;
 	case AGT_CMD_CNDN_CNDN_INIT:
-	 	cmd_node_init(buf, "initdb", INITDB_VERSION);
+	 	cmd_node_init(cmd_type, buf, "initdb", INITDB_VERSION);
 		break;
 	case AGT_CMD_GTM_SLAVE_INIT:
 	case AGT_CMD_CNDN_SLAVE_INIT:
-		cmd_node_init(buf, "pg_basebackup", PG_BASEBACKUP_VERSION);
+		cmd_node_init(cmd_type, buf, "pg_basebackup", PG_BASEBACKUP_VERSION);
 		break;
 	case AGT_CMD_CN_START:
 	case AGT_CMD_CN_STOP:
@@ -69,11 +69,11 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_DN_FAILOVER:
 	case AGT_CMD_DN_RESTART:
 	case AGT_CMD_CN_RESTART:
-    case AGT_CMD_NODE_RELOAD:
-		cmd_node_init(buf, "pg_ctl", PG_CTL_VERSION);
+	case AGT_CMD_NODE_RELOAD:
+		cmd_node_init(cmd_type, buf, "pg_ctl", PG_CTL_VERSION);
 		break;
 	case AGT_CMD_PGDUMPALL:
-		cmd_node_init(buf, "pg_dumpall", PG_DUMPALL_VERSION);
+		cmd_node_init(cmd_type, buf, "pg_dumpall", PG_DUMPALL_VERSION);
 		break;
 	case AGT_CMD_GTM_START_MASTER:
 	case AGT_CMD_GTM_STOP_MASTER:
@@ -81,10 +81,10 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_GTM_STOP_SLAVE:
 	case AGT_CMD_GTM_SLAVE_FAILOVER:
 	case AGT_CMD_AGTM_RESTART:
-		cmd_node_init(buf, "agtm_ctl", GTM_CTL_VERSION);
+		cmd_node_init(cmd_type, buf, "agtm_ctl", GTM_CTL_VERSION);
 		break;
 	case AGT_CMD_PSQL_CMD:
-		cmd_node_init(buf, "psql", PSQL_VERSION);
+		cmd_node_init(cmd_type, buf, "psql", PSQL_VERSION);
 		break;
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF:
 		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF, buf);
@@ -127,11 +127,15 @@ static void cmd_rm_temp_file(StringInfo msg)
     }
 }
 
-static void cmd_node_init(StringInfo msg, char *cmdfile, char* VERSION)
+static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VERSION)
 {
 	const char *rec_msg_string;
 	StringInfoData output;
 	StringInfoData exec;
+	char path[MAXPGPATH];
+	char recoveryfile[MAXPGPATH];
+	char *ppath = NULL;
+	int iloop = 0;
 
 	initStringInfo(&exec);
 	enlargeStringInfo(&exec, MAXPGPATH);
@@ -143,6 +147,46 @@ static void cmd_node_init(StringInfo msg, char *cmdfile, char* VERSION)
 	initStringInfo(&output);
 	if(exec_shell(exec.data, &output) != 0)
 		ereport(ERROR, (errmsg("%s", output.data)));
+	/*for datanode failover*/
+	if (AGT_CMD_DN_FAILOVER == cmdtype || AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
+	{
+		/*get path from msg: .... -D path ...*/
+		ppath =  strstr(msg->data, " -D ");
+		Assert(ppath != NULL);
+		ppath = ppath + strlen(" -D");
+		while(*ppath == ' ')
+		{
+			ppath++;
+		}
+		iloop = 0;
+		while (*ppath != ' ' && *ppath != '\0')
+		{
+			path[iloop++] = *ppath++;
+		}
+		path[iloop++] = 0;
+		/*check the path exist*/
+		if (access(path, F_OK) != 0)
+		{
+			ereport(ERROR, (errmsg("%s does not exist", path)));
+		}
+		/*check path/recovery.done, if recovry.conf not update to recovery.done, sleep 3 then check it again
+		* , just do this, because it should wait the pg_ctl promote execute finish, otherwise maybe get the funciton
+		* which update recovery.conf to recovery.done not execute, for example: pg_ctl promote then shutdown the node
+		*/
+		memset(recoveryfile, 0, MAXPGPATH*sizeof(char));
+		strcpy(recoveryfile, path);
+		strcat(recoveryfile, "/recovery.done");
+		sleep(1);
+		if (access(recoveryfile, F_OK) != 0)
+		{
+			sleep(2);
+			if (access(recoveryfile, F_OK) != 0)
+			{
+				ereport(ERROR, (errmsg("could not update recovery.conf to recovery.done in %s", path)));
+			}
+		}
+		
+	}
 	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
 	agt_flush();
 	pfree(exec.data);

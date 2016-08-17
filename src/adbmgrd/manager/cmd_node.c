@@ -1377,6 +1377,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 
 	/*send cmd*/
+	ereport(LOG,
+		(errmsg("%s, cmdtype=%d, %s", hostaddress, cmdtype, infosendmsg.data)));
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
 	ma_sendbyte(&buf, cmdtype);
 	ma_sendstring(&buf,infosendmsg.data);
@@ -3902,7 +3904,7 @@ static void mgr_get_other_parm(char node_type, StringInfo infosendmsg)
 	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendmsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendmsg);
-	mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %t %e %x", infosendmsg);
+	mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %m %e %x", infosendmsg);
 }
 
 static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinfo)
@@ -4739,7 +4741,7 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendparamsg);
-	mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %t %e %x", infosendparamsg);
+	mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %m %e %x", infosendparamsg);
 	/*agtm postgresql.conf does not need these*/
 	if(GTM_TYPE_GTM_MASTER != nodetype && GTM_TYPE_GTM_SLAVE != nodetype && GTM_TYPE_GTM_EXTRA != nodetype)
 	{
@@ -5171,7 +5173,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 			}
 			cndnPathtmp = TextDatumGetCString(datumPath);
 			resetStringInfo(&(getAgentCmdRst->description));		
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);	
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);	
 		}
 	}
 	heap_endscan(rel_scan);
