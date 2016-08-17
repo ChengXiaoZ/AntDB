@@ -5144,10 +5144,22 @@ int try_decode_date(const char *str, struct pg_tm *tm)
 		tm->tm_year = digit_val4(str[0], str[1], str[2], str[3]);
 		tm->tm_mon = digit_val2(str[5], str[6]);
 		tm->tm_mday = digit_val2(str[8], str[9]);
+		
+		if (tm->tm_year <= 0 || (tm->tm_mon < 1 || tm->tm_mon > MONTHS_PER_YEAR) || (tm->tm_mday < 1 || tm->tm_mday > 31) )
+			return 0;
+		/*
+		 * Check for valid day of month, now that we know for sure the month
+		 * and year.  Note we don't use MD_FIELD_OVERFLOW here, since it seems
+		 * unlikely that "Feb 29" is a YMD-order error.
+		 */
+		if (tm->tm_mday > day_tab[isleap(tm->tm_year)][tm->tm_mon - 1] )
+			return 0;
+			
 		return 10;
 	}
 	return 0;
 }
+
 
 /* HH:mm:ss[.nn][+n] */
 int try_decode_time(const char *str, struct pg_tm *tm, fsec_t *fsec, int *tzp)
