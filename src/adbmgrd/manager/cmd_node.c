@@ -347,7 +347,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 			if(!HeapTupleIsValid(searchHostTuple))
 			{
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-					, errmsg("host \"%s\" not exists", defGetString(def))));
+					, errmsg("host \"%s\" does not exist", defGetString(def))));
 			}
 			datum[Anum_mgr_node_nodehost-1] = ObjectIdGetDatum(HeapTupleGetOid(searchHostTuple));
 			got[Anum_mgr_node_nodehost-1] = true;
@@ -428,7 +428,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 				continue;
 			else
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					,errmsg("%s \"%s\" dose not exists", nodestring, NameStr(name))));
+					,errmsg("%s \"%s\" does not exist", nodestring, NameStr(name))));
 		}
 		/*check this tuple initd or not, if it has inited and in cluster, cannot be dropped*/
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -561,7 +561,7 @@ mgr_init_dn_slave(PG_FUNCTION_ARGS)
 				if(mgr_node->nodetype != CNDN_TYPE_DATANODE_SLAVE)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-						, errmsg("the type is not datanode slave, use \"list node\" to check")));
+						, errmsg("the type of \"%s\" is not datanode slave, use \"list node\" to check", nodename)));
 				}
 				aimtuple = tuple;
 				gettuple = true;
@@ -571,15 +571,15 @@ mgr_init_dn_slave(PG_FUNCTION_ARGS)
 		}
 		if(gettuple == false)
 		{
-			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-				, errmsg("the need infomation does not in system table of node, use \"list node\" to check")));
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("datanode slave \"%s\" does not exist", nodename)));
 		}
 		/*get the master port, master host address*/
 		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
 		if(!HeapTupleIsValid(mastertuple))
 		{
-			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("node master dosen't exist")));
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("datanode master \"%s\" dosen't exist", nodename)));
 		}
 		mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 		Assert(mastertuple);
@@ -658,7 +658,7 @@ mgr_init_dn_extra(PG_FUNCTION_ARGS)
 				if(mgr_node->nodetype != CNDN_TYPE_DATANODE_EXTRA)
 				{
 					ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-						, errmsg("the type is not datanode extra, use \"list node\" to check")));
+						, errmsg("the type of \"%s\" is not datanode extra, use \"list node\" to check", nodename)));
 				}
 				aimtuple = tuple;
 				gettuple = true;
@@ -668,15 +668,15 @@ mgr_init_dn_extra(PG_FUNCTION_ARGS)
 		}
 		if(gettuple == false)
 		{
-			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-				, errmsg("the need infomation does not in system table of node, use \"list node\" to check")));
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("datanode slave \"%s\" does not exist", nodename)));
 		}
 		/*get the master port, master host address*/
 		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
 		if(!HeapTupleIsValid(mastertuple))
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("node master dosen't exist")));
+				, errmsg("datanode master \"%s\" does not exist", nodename)));
 		}
 		mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 		Assert(mastertuple);
@@ -760,8 +760,8 @@ mgr_init_dn_slave_all(PG_FUNCTION_ARGS)
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
 	if(!HeapTupleIsValid(tuple))
 	{
-		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("node master dosen't exist")));
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("datanode master \"%s\" does not exist", NameStr(mgr_node->nodename))));
 	}
 	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 	Assert(mastertuple);
@@ -836,8 +836,8 @@ mgr_init_dn_extra_all(PG_FUNCTION_ARGS)
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
 	if(!HeapTupleIsValid(tuple))
 	{
-		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("node master dosen't exist")));
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("datanode master \"%s\" does not exist", NameStr(mgr_node->nodename))));
 	}
 	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 	Assert(mastertuple);
@@ -921,7 +921,8 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		/*it need start datanode master*/
 		DatumStartDnMaster = DirectFunctionCall1(mgr_start_one_dn_master, CStringGetDatum(mastername));
 		if(DatumGetObjectId(DatumStartDnMaster) == InvalidOid)
-			elog(ERROR, "start datanode master \"%s\" fail", mastername);
+			ereport(ERROR,
+				(errmsg("start datanode master \"%s\" fail", mastername)));
 	}
 	cndnPath = TextDatumGetCString(datumPath);		
 	appendStringInfo(&infosendmsg, " -p %u", masterport);
@@ -959,7 +960,8 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		/*it need start datanode master*/
 		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(mastername));
 		if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
-			elog(ERROR, "stop datanode master \"%s\" fail", mastername);
+			ereport(ERROR,
+				(errmsg("stop datanode master \"%s\" fail", mastername)));
 	}
 	/*update node system table's column to set initial is true*/
 	if (initdone)
@@ -1016,7 +1018,8 @@ get_fcinfo_namelist(const char *sepstr, int argidx,
 			/* call the appropriate type output function*/
 			valtype = get_fn_expr_argtype(fcinfo->flinfo, i);
 			if (!OidIsValid(valtype))
-				elog(ERROR, "could not determine data type of mgr_start_cn_master() input");
+				ereport(ERROR,
+					(errmsg("could not determine data type of mgr_start_cn_master() input")));
 			getTypeOutputInfo(valtype, &typOutput, &typIsVarlena);
 			nodename = OidOutputFunctionCall(typOutput, value);
 			nodenamelist = lappend(nodenamelist, nodename);
@@ -1060,7 +1063,8 @@ static bool mgr_start_one_gtm_master(void)
 	}
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "lookup failed for gtm master");
+		ereport(ERROR,
+			(errmsg("gtm master does not exist")));
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -1126,7 +1130,8 @@ Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS)
 	aimtuple = mgr_get_tuple_node_from_name_type(info->rel_node, nodename, CNDN_TYPE_DATANODE_MASTER);
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "cache lookup failed for datanode master %s", nodename);
+		ereport(ERROR,
+			(errmsg("datanode master \"%s\" does not exist", nodename)));
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -1312,7 +1317,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		gtmmastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		if(!HeapTupleIsValid(gtmmastertuple))
 		{
-			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				, errmsg("gtm master dosen't exist")));
 		}
 		mgr_node_gtm = (Form_mgr_node)GETSTRUCT(gtmmastertuple);
@@ -1335,7 +1340,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		if(ismasterrunning != 0)
 		{
 			if(!mgr_start_one_gtm_master())
-				elog(ERROR, "start gtm master \"%s\" fail", mastername);			
+				ereport(ERROR,
+						(errmsg("start gtm master \"%s\" fail", mastername)));		
 		}
 	}
 	else if (AGT_CMD_GTM_START_MASTER == cmdtype || AGT_CMD_GTM_START_SLAVE == cmdtype)
@@ -1403,7 +1409,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 			/*it need stop gtm master*/
 			DatumMaster = DirectFunctionCall1(mgr_stop_one_gtm_master, (Datum)0);
 			if(DatumGetObjectId(DatumMaster) == InvalidOid)
-				elog(ERROR, "stop gtm master \"%s\" fail", mastername);
+				ereport(ERROR,
+						(errmsg("stop gtm master \"%s\" fail", mastername)));
 		}
 	}
 	/*when init, 1. update gtm system table's column to set initial is true 2. refresh postgresql.conf*/
@@ -1470,7 +1477,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, aimtuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode fail: path=%s", cndnPath);
+			ereport(LOG,
+				(errmsg("pg_ctl restart datanode fail: path=%s", cndnPath)));
 			return;
 		}
 		/*1.refresh pgxc_node systable */
@@ -1496,7 +1504,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		dnmastername = NameStr(mgr_node_dnmaster->nodename);
 		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(dnmastername));
 		if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
-			elog(ERROR, "stop datanode master \"%s\" fail", dnmastername);
+			ereport(ERROR, (errmsg("stop datanode master \"%s\" fail", dnmastername)));
 		/*3.delete old master record in node systbl*/
 		simple_heap_delete(noderel, &mastertuple->t_self);
 		CatalogUpdateIndexes(noderel, mastertuple);
@@ -1606,7 +1614,7 @@ Datum mgr_stop_one_gtm_master(PG_FUNCTION_ARGS)
 	}
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "lookup failed for gtm master");
+		ereport(ERROR, (errmsg("gtm master does not exist")));
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -1710,7 +1718,7 @@ Datum mgr_stop_one_dn_master(PG_FUNCTION_ARGS)
 	aimtuple = mgr_get_tuple_node_from_name_type(info->rel_node, nodename, CNDN_TYPE_DATANODE_MASTER);
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "cache lookup failed for datanode master %s", nodename);
+		ereport(ERROR, (errmsg("datanode master \"%s\" does not exist", nodename)));
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -1840,12 +1848,14 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shut
 	*lcp = lnext(*lcp);
 	if(namestrcpy(&nodenamedata, nodestrname) != 0)
 	{
-		elog(ERROR, "namestrcpy %s fail", nodestrname);
+		ereport(ERROR, (errmsg("namestrcpy %s fail", nodestrname)));
 	}
 	aimtuple = mgr_get_tuple_node_from_name_type(info->rel_node, NameStr(nodenamedata), nodetype);
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		elog(ERROR, "cache lookup failed for %s", nodestrname);
+		ereport(ERROR, 
+		(errcode(ERRCODE_UNDEFINED_OBJECT), 
+			errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), nodestrname)));
 	}
 	/*check the type is given type*/
 	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
@@ -1853,7 +1863,8 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shut
 	if(nodetype != mgr_node->nodetype)
 	{
 		heap_freetuple(aimtuple);
-		elog(ERROR, "the type of  %s is not right, use \"list node\" to check", nodestrname);
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR), 
+			errmsg("the type of  %s is not right, use \"list node\" to check", nodestrname)));
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
@@ -2065,13 +2076,13 @@ Datum mgr_monitor_coord_namelist(PG_FUNCTION_ARGS)
 	*lcp = lnext(*lcp);
 	tup = mgr_get_tuple_node_from_name_type(info->rel_node, coordname, CNDN_TYPE_COORDINATOR_MASTER);
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "node name is invalid: %s", coordname);
+		ereport(ERROR, (errmsg("node name is invalid: %s", coordname)));
 
     mgr_node = (Form_mgr_node)GETSTRUCT(tup);
     Assert(mgr_node);
 	
 	if (CNDN_TYPE_COORDINATOR_MASTER != mgr_node->nodetype)
-		elog(ERROR, "node type is not coordinator: %s", coordname);
+		ereport(ERROR, (errmsg("node type is not coordinator: %s", coordname)));
 
     host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
     initStringInfo(&port);
@@ -2149,13 +2160,13 @@ Datum mgr_monitor_dnmaster_namelist(PG_FUNCTION_ARGS)
 	*lcp = lnext(*lcp);
 	tup = mgr_get_tuple_node_from_name_type(info->rel_node, dnmastername, CNDN_TYPE_DATANODE_MASTER);
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "node name is invalid: %s", dnmastername);
+		ereport(ERROR, (errmsg("node name is invalid: %s", dnmastername)));
 
     mgr_node = (Form_mgr_node)GETSTRUCT(tup);
     Assert(mgr_node);
 	
 	if (CNDN_TYPE_DATANODE_MASTER != mgr_node->nodetype)
-		elog(ERROR, "node type is not datanode master: %s", dnmastername);
+		ereport(ERROR, (errmsg("node type is not datanode master: %s", dnmastername)));
 
     host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
     initStringInfo(&port);
@@ -2232,13 +2243,13 @@ Datum mgr_monitor_dnslave_namelist(PG_FUNCTION_ARGS)
 	*lcp = lnext(*lcp);
 	tup = mgr_get_tuple_node_from_name_type(info->rel_node, dnslavename, CNDN_TYPE_DATANODE_SLAVE);
 	if (!HeapTupleIsValid(tup))
-		elog(ERROR, "node name is invalid: %s", dnslavename);
+		ereport(ERROR, (errmsg("node name is invalid: %s", dnslavename)));
 
     mgr_node = (Form_mgr_node)GETSTRUCT(tup);
     Assert(mgr_node);
 	
 	if (CNDN_TYPE_DATANODE_SLAVE != mgr_node->nodetype)
-		elog(ERROR, "node type is not datanode slave: %s", dnslavename);
+		ereport(ERROR, (errmsg("node type is not datanode slave: %s", dnslavename)));
 
     host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
     initStringInfo(&port);
@@ -3071,7 +3082,7 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
 	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_NAME)
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			,errmsg("can not find datanode master."))); 
 	}
 
@@ -4127,11 +4138,11 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 			{
 				heap_close(rel_node, RowExclusiveLock);
 				if (nodetype == CNDN_TYPE_DATANODE_SLAVE && !nodetypechange)
-					elog(ERROR, "lookup failed for datanode slave %s", nodename);
+					ereport(ERROR, (errmsg("datanode slave \"%s\" does not exist", nodename)));
 				else if (nodetype == CNDN_TYPE_DATANODE_EXTRA && !nodetypechange)
-					elog(ERROR, "lookup failed for datanode extra %s", nodename);
+					ereport(ERROR, (errmsg("datanode extra \"%s\" does not exist", nodename)));
 				else
-					elog(ERROR, "lookup failed for datanode slave or extra %s", nodename);
+					ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist", nodename)));
 			}
 		}
 	}
@@ -4181,18 +4192,18 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 			{
 				heap_close(rel_node, RowExclusiveLock);
 				if (nodetype == GTM_TYPE_GTM_SLAVE && !nodetypechange)
-					elog(ERROR, "lookup failed for gtm slave");
+					ereport(ERROR, (errmsg("gtm slave does not exist")));
 				else if (nodetype == GTM_TYPE_GTM_EXTRA && !nodetypechange)
-					elog(ERROR, "lookup failed for gtm extra");
+					ereport(ERROR, (errmsg("gtm extra does not exist")));
 				else
-					elog(ERROR, "lookup failed for gtm slave or extra");				
+					ereport(ERROR, (errmsg("gtm slave or extra does not exist")));				
 			}
 		}
 	}
 	/* not support the comamnd type*/
 	else
 	{
-		elog(ERROR, "not support this command: %c", cmdtype);
+		ereport(ERROR, (errmsg("not support this command: %c", cmdtype)));
 	}
 	
 	initStringInfo(&(getAgentCmdRst.description));
@@ -4689,8 +4700,8 @@ void mgr_get_gtm_host_port(StringInfo infosendmsg)
 	heap_close(rel_node, RowExclusiveLock);
 	if(!gettuple)
 	{
-		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-			,errmsg("can't find the gtm master information in the system table of node")));
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			,errmsg("gtm master does not exist")));
 	}
 	mgr_append_pgconf_paras_str_quotastr("agtm_host", gtm_host, infosendmsg);
 	mgr_append_pgconf_paras_str_int("agtm_port", mgr_node->nodeport, infosendmsg);
@@ -4785,7 +4796,7 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoi
 	{
 		ereport(ERROR, (errmsg("host oid \"%u\" not exist", masterhostOid)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-			, errcode(ERRCODE_INTERNAL_ERROR)));
+			, errcode(ERRCODE_UNDEFINED_OBJECT)));
 	}
 	mgr_host= (Form_mgr_host)GETSTRUCT(tup);
 	Assert(mgr_host);
@@ -5191,7 +5202,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	dnmastername = NameStr(mgr_node_dnmaster->nodename);
 	DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_gtm_master, (Datum)0);
 	if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
-		elog(ERROR, "stop gtm master \"%s\" fail", dnmastername);
+		ereport(ERROR, (errmsg("stop gtm master \"%s\" fail", dnmastername)));
 	/*2.delete old master record in node systbl*/
 	simple_heap_delete(noderel, &mastertuple->t_self);
 	CatalogUpdateIndexes(noderel, mastertuple);
@@ -5247,14 +5258,14 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPathtmp, &infosendmsg, mgr_nodetmp->nodehost, getAgentCmdRst);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "refresh agtm extra fail");
+			ereport(LOG, (errmsg("refresh agtm extra fail")));
 		}
 		/*restart gtm extra*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "agtm_ctl restart gtm extra fail");
+			ereport(LOG, (errmsg("agtm_ctl restart gtm extra fail")));
 		}	
 	}
 	heap_endscan(rel_scan);	
@@ -5274,7 +5285,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart coordinator %s fail", NameStr(mgr_nodetmp->nodename));
+			ereport(LOG, (errmsg("pg_ctl restart coordinator %s fail", NameStr(mgr_nodetmp->nodename))));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -5293,7 +5304,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode %s master fail", NameStr(mgr_nodetmp->nodename));
+			ereport(LOG, (errmsg("pg_ctl restart datanode %s master fail", NameStr(mgr_nodetmp->nodename))));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -5312,7 +5323,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode %s slave fail", NameStr(mgr_nodetmp->nodename));
+			ereport(LOG, (errmsg("pg_ctl restart datanode %s slave fail", NameStr(mgr_nodetmp->nodename))));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -5331,7 +5342,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
-			elog(LOG, "pg_ctl restart datanode %s extra fail", NameStr(mgr_nodetmp->nodename));
+			ereport(LOG, (errmsg("pg_ctl restart datanode %s extra fail", NameStr(mgr_nodetmp->nodename))));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -5373,7 +5384,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPath, &infosendmsg, masterhostOid, getAgentCmdRst);
 	if(!getAgentCmdRst->ret)
 	{
-		elog(LOG, "refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename));
+		ereport(LOG, (errmsg("refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename))));
 	}
 	/*2.update datanode extra/slave nodemasternameoid, refresh recovery.conf, restart the node*/
 	nodetype = (mgr_node_master->nodetype == CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
@@ -5409,14 +5420,14 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPathtmp, &infosendmsg, mgr_nodetmp->nodehost, getAgentCmdRst);
 			if(!getAgentCmdRst->ret)
 			{
-				elog(LOG, "refresh recovery.conf of datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp);
+				ereport(LOG, (errmsg("refresh recovery.conf of datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp)));
 			}
 			/*restart datanode extra/slave*/
 			resetStringInfo(&(getAgentCmdRst->description));
 			mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 			if(!getAgentCmdRst->ret)
 			{
-				elog(LOG, "pg_ctl restart datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp);
+				ereport(LOG, (errmsg("pg_ctl restart datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp)));
 			}
 		
 		}
