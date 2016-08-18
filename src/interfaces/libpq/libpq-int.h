@@ -291,6 +291,13 @@ typedef struct pgDataValue
 	const char *value;			/* data value, without zero-termination */
 } PGdataValue;
 
+#ifdef ADB
+typedef struct PGcustumFuns
+{
+	int (*getRowDesc)();
+	int (*getAnotherTuple)();
+}PGcustumFuns;
+#endif /* ADB */
 /*
  * PGconn stores all the state data associated with a single connection
  * to a backend.
@@ -464,8 +471,8 @@ struct pg_conn
 	PQExpBufferData workBuffer; /* expansible string */
 #ifdef ADB
 	void *custom;				/* user custom data */
+	const PGcustumFuns *funs;	/* custom functions */
 	bool is_attached;
-	bool use_custom;			/* use custom functions ? */
 	bool close_sock_on_end;		/* attached conn, close socket when error or finish */
 #endif /* ADB */
 };
@@ -647,13 +654,6 @@ __attribute__((format_arg(1)));
 #endif
 
 #ifdef ADB
-
-/* user custom functions, see protocol*.c getParamDescriptions and getAnotherTuple */
-typedef int(*type_getParamDescriptions)();
-typedef int(*type_getAnotherTuple)();
-
-extern PGDLLIMPORT type_getParamDescriptions custom_getParamDescriptions;
-extern PGDLLIMPORT type_getAnotherTuple custom_getAnotherTuple;
 
 extern PGconn *PQattach(pgsocket sock, void *custom, int close_sock_on_end);
 /* async interface

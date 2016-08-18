@@ -327,11 +327,6 @@ static const PQEnvironmentOption EnvironmentOptions[] =
 static const char uri_designator[] = "postgresql://";
 static const char short_uri_designator[] = "postgres://";
 
-#ifdef ADB
-PGDLLIMPORT type_getParamDescriptions custom_getParamDescriptions;
-PGDLLIMPORT type_getAnotherTuple custom_getAnotherTuple;
-#endif /* ADB */
-
 static bool connectOptions1(PGconn *conn, const char *conninfo);
 static bool connectOptions2(PGconn *conn);
 static int	connectDBStart(PGconn *conn);
@@ -2844,8 +2839,9 @@ makeEmptyPGconn(void)
 
 #ifdef ADB
 	conn->custom = NULL;
+	conn->funs = NULL;
 	conn->is_attached = false;
-	conn->use_custom = false;
+	conn->close_sock_on_end = true;
 #endif /* ADB */
 
 	return conn;

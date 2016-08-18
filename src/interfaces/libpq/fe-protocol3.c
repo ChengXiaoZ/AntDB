@@ -291,9 +291,9 @@ pqParseInput3(PGconn *conn)
 							 conn->queryclass == PGQUERY_DESCRIBE)
 					{
 #ifdef ADB
-						if(conn->use_custom && custom_getParamDescriptions)
+						if(conn->funs && conn->funs->getRowDesc)
 						{
-							if((*custom_getParamDescriptions)(conn, msgLength))
+							if((*conn->funs->getRowDesc)(conn, msgLength))
 								return;
 						}else
 #endif /* ADB */
@@ -354,9 +354,9 @@ pqParseInput3(PGconn *conn)
 						conn->result->resultStatus == PGRES_TUPLES_OK)
 					{
 #ifdef ADB
-						if(conn->use_custom && custom_getAnotherTuple)
+						if(conn->funs && conn->funs->getAnotherTuple)
 						{
-							if((*custom_getAnotherTuple)(conn, msgLength))
+							if((*conn->funs->getAnotherTuple)(conn, msgLength))
 								return;
 						}else
 #endif
