@@ -1823,11 +1823,44 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shut
 		}
 		else
 		{
-			#ifdef ADB
-				nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-			#else
-				nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-			#endif
+			/*check init gtm master/slave/extra; start|stop gtm master/slave/extra */
+			if ((GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+					&& (AGT_CMD_GTM_INIT == cmdtype || AGT_CMD_GTM_SLAVE_INIT == cmdtype || AGT_CMD_GTM_START_MASTER == cmdtype 
+					|| AGT_CMD_GTM_START_SLAVE == cmdtype || AGT_CMD_GTM_STOP_MASTER == cmdtype || AGT_CMD_GTM_STOP_SLAVE == cmdtype))
+			{
+				/*get gtm name*/
+				ScanKeyInit(&key[0],
+					Anum_mgr_node_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(nodetype));
+				info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+				while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+				{
+						mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+						Assert(mgr_node);
+						nodestrname = NameStr(mgr_node->nodename);
+						nodenamelist = lappend(nodenamelist, nodestrname);
+						break;
+				}
+				heap_endscan(info->rel_scan);
+				/*check gtm master/slave/extra exist*/
+				if (nodenamelist == NIL)
+				{
+					heap_close(info->rel_node, RowExclusiveLock);
+					ereport(ERROR, 
+					(errcode(ERRCODE_UNDEFINED_OBJECT), 
+						errmsg("%s does not exist", mgr_nodetype_str(nodetype))));
+				}
+			}
+			else
+			{
+				#ifdef ADB
+					nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+				#else
+					nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+				#endif
+			}
 		}
 		*(info->lcp) = list_head(nodenamelist);
 		funcctx->user_fctx = info;
