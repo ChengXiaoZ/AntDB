@@ -136,6 +136,7 @@ static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VER
 	char recoveryfile[MAXPGPATH];
 	char *ppath = NULL;
 	int iloop = 0;
+	const int maxchecknum = 120;
 
 	initStringInfo(&exec);
 	enlargeStringInfo(&exec, MAXPGPATH);
@@ -177,9 +178,15 @@ static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VER
 		strcpy(recoveryfile, path);
 		strcat(recoveryfile, "/recovery.done");
 		sleep(1);
+		iloop = 0;
 		if (access(recoveryfile, F_OK) != 0)
 		{
-			sleep(2);
+			/*the max check time is maxchecknum * 2 */
+			while(access(recoveryfile, F_OK) != 0 && iloop++ < maxchecknum)
+			{
+				sleep(2);
+			}
+			/*check recovery.done exist*/
 			if (access(recoveryfile, F_OK) != 0)
 			{
 				ereport(ERROR, (errmsg("could not update recovery.conf to recovery.done in %s", path)));

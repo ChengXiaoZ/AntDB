@@ -2453,6 +2453,9 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
         case CNDN_TYPE_DATANODE_SLAVE:
                 datums[1] = NameGetDatum(pstrdup("datanode slave"));
                 break;
+        case CNDN_TYPE_DATANODE_EXTRA:
+                datums[1] = NameGetDatum(pstrdup("datanode extra"));
+                break;
         default:
                 datums[1] = NameGetDatum(pstrdup("unknown type"));
                 break;
