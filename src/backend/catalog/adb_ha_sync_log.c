@@ -33,6 +33,7 @@
 
 extern bool enable_adb_ha_sync;
 extern bool enable_adb_ha_sync_select;
+extern char *adb_ha_param_delimiter;
 
 static int time2tm(TimeADT time, struct pg_tm * tm, fsec_t *fsec);
 static int timetz2tm(TimeTzADT *time, struct pg_tm * tm, fsec_t *fsec, int *tzp);
@@ -346,7 +347,7 @@ deparseParamListInfo(ParamListInfo params, StringInfo buf)
 			char			*pstring = NULL;
 
 			appendStringInfo(buf, "%s$%d",
-							 paramno > 0 ? ", " : "",
+							 paramno > 0 ? adb_ha_param_delimiter : "",
 							 paramno + 1);
 
 			switch (prm->ptype)

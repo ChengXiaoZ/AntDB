@@ -516,6 +516,7 @@ char		*nls_timestamp_format;
 char		*nls_timestamp_tz_format;
 bool		enable_adb_ha_sync;
 bool		enable_adb_ha_sync_select;
+char		*adb_ha_param_delimiter;
 char		*AGtmHost;
 int			AGtmPort;
 #endif
@@ -3568,6 +3569,17 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&nls_timestamp_tz_format,
 		"YYYY-MM-DD HH24:MI:SS.US TZ",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"adb_ha_param_delimiter", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Parameter delimiter for record ADB execute sql."),
+			NULL,
+			GUC_REPORT
+		},
+		&adb_ha_param_delimiter,
+		"$&#$",
 		NULL, NULL, NULL
 	},
 #endif
