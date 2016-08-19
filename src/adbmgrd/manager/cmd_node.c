@@ -2472,7 +2472,7 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
                 datums[1] = NameGetDatum(pstrdup("gtm master"));
                 break;
         case GTM_TYPE_GTM_SLAVE:
-                datums[1] = NameGetDatum(pstrdup("gtm standby"));
+                datums[1] = NameGetDatum(pstrdup("gtm slave"));
                 break;
         case GTM_TYPE_GTM_EXTRA:
                 datums[1] = NameGetDatum(pstrdup("gtm extra"));
@@ -4145,6 +4145,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 	char nodetypesecond;
 	ScanKeyData key[1];
 	HeapScanDesc scan;
+	Form_mgr_node mgr_node;
 
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	/*failover datanode [slave|extra] dnname*/
@@ -4244,6 +4245,18 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 	
 	initStringInfo(&(getAgentCmdRst.description));
 	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
+	/*get nodename of the return result*/
+	if (AGT_CMD_DN_FAILOVER == cmdtype)
+	{
+		namestrcpy(&(getAgentCmdRst.nodename), nodename);
+	}
+	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
+		Assert(mgr_node);
+		namestrcpy(&(getAgentCmdRst.nodename),NameStr(mgr_node->nodename));
+	}
+	
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
@@ -5375,7 +5388,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
+		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
 		if(!getAgentCmdRst->ret)
 		{
 			ereport(LOG, (errmsg("pg_ctl restart datanode %s extra fail", NameStr(mgr_nodetmp->nodename))));
