@@ -2760,7 +2760,7 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
-		{"agtm_port", PGC_POSTMASTER, GTM,
+		{"agtm_port", PGC_SIGHUP, GTM,
 			gettext_noop("Port of GTM."),
 			NULL
 		},
@@ -3492,7 +3492,7 @@ static struct config_string ConfigureNamesString[] =
 
 #ifdef PGXC
 	{
-		{"agtm_host", PGC_POSTMASTER, GTM,
+		{"agtm_host", PGC_SIGHUP, GTM,
 			gettext_noop("Host name or address of GTM"),
 			NULL
 		},
