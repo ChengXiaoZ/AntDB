@@ -403,7 +403,11 @@ DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using b
 #endif /* ADBMGRD */
 
 #ifdef AGTM
-DECLARE_UNIQUE_INDEX(agtm_sequence_oid_index, 9999, on agtm_sequence using btree(oid oid_ops));
+DECLARE_UNIQUE_INDEX(agtm_sequence_oid_index, 4054, on agtm_sequence using btree(oid oid_ops));
+#define AgtmSequenceOidIndexId 4054
+
+DECLARE_UNIQUE_INDEX(agtm_sequence_fields_index, 4055, on agtm_sequence using btree(database name_ops,schema name_ops,sequence name_ops));
+#define AgtmSequenceFieldsIndexId 4055
 #endif
 
 /* last step of initialization script: build the indexes declared above */

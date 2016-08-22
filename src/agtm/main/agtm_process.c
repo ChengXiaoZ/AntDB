@@ -64,7 +64,12 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 		case AGTM_MSG_GET_XACT_STATUS:
 			output = ProcessGetXactStatus(input_message, &buf);
 			break;
-
+		case AGTM_MSG_SEQUENCE_INIT:
+			output = ProcessSequenceInit(input_message, &buf);
+			break;
+		case AGTM_MSG_SEQUENCE_DROP:
+			output = ProcessSequenceDrop(input_message, &buf);
+			break;
 		case AGTM_MSG_SEQUENCE_SET_VAL:
 			PG_TRY();
 			{

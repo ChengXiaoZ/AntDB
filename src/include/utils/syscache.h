@@ -115,7 +115,8 @@ enum SysCacheIdentifier
 	,MONTIORSLOWLOGOID
 #endif /* ADBMGRD */
 #ifdef AGTM
-	,AGTMSEQOID
+	,AGTMSEQUENCEOID
+	,AGTMSEQUENCEFIELDS
 #endif
 };
 

@@ -76,6 +76,9 @@
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
+#ifdef AGTM
+#include "catalog/agtm_sequence.h"
+#endif
 
 
 /*---------------------------------------------------------------------------
@@ -966,6 +969,30 @@ static const struct cachedesc cacheinfo[] = {
 		32
 	}
 #endif /* ADBMGRD */
+#ifdef AGTM
+	,{AgtmSequenceRelationId,		/* AGTMSEQUENCEOID */
+		AgtmSequenceOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		32
+	}
+    ,{AgtmSequenceRelationId,		/* AGTMSEQUENCEFIELDS */
+		AgtmSequenceFieldsIndexId,
+		3,
+		{
+			Anum_agtm_sequence_database,
+			Anum_agtm_sequence_schema,
+			Anum_agtm_sequence_sequence,
+			0
+		},
+		32
+	}	
+#endif
 };
 
 #define SysCacheSize	((int) lengthof(cacheinfo))

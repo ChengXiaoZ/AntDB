@@ -106,7 +106,6 @@ static Form_pg_sequence read_seq_tuple(SeqTable elm, Relation rel,
 #ifdef ADB
 static void init_params(List *options, bool isInit,
 						Form_pg_sequence new, List **owned_by, bool *is_restart);
-
 #else
 static void init_params(List *options, bool isInit,
 						Form_pg_sequence new, List **owned_by);
@@ -132,14 +131,10 @@ DefineSequence(CreateSeqStmt *seq)
 	bool		null[SEQ_COL_LASTCOL];
 	int			i;
 	NameData	name;
-	
-#ifdef AGTM
-	const char* dbName = NULL;
-	const char* schemaName = NULL;
-#endif
-	
+
 #ifdef ADB
 	bool			is_restart;
+	List			*seqOptions;
 #endif
 	/* Unlogged sequences are not implemented -- not clear if useful. */
 	if (seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED)
@@ -149,6 +144,7 @@ DefineSequence(CreateSeqStmt *seq)
 
 	/* Check and set all option values */
 #ifdef ADB
+	seqOptions = seq->options;
 	init_params(seq->options, true, &new, &owned_by, &is_restart);
 #else
 	init_params(seq->options, true, &new, &owned_by);
@@ -239,12 +235,6 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
 	stmt->if_not_exists = false;
-	
-#ifdef AGTM
-	dbName = seq->sequence->catalogname;
-	schemaName = seq->sequence->schemaname;
-	AddAgtmSequence(dbName,schemaName,seq->sequence->relname);
-#endif
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE, seq->ownerId);
 	Assert(seqoid != InvalidOid);
@@ -272,41 +262,15 @@ DefineSequence(CreateSeqStmt *seq)
 		(seq->sequence->relpersistence == RELPERSISTENCE_PERMANENT ||
 		 seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED))
 	{
-		StringInfoData	buf;
+		StringInfoData	strOption;
+
 		char *seqname = GetGlobalSeqName(rel, NULL, NULL);
-
-		initStringInfo(&buf);
-		appendStringInfoString(&buf,"CREATE SEQUENCE ");
-
-		appendStringInfoString(&buf, seqname);
-
-		appendStringInfoString(&buf, " INCREMENT BY ");
-		appendStringInfo(&buf, INT64_FORMAT, new.increment_by);
-
-		appendStringInfoString(&buf, " MAXVALUE ");
-		appendStringInfo(&buf, INT64_FORMAT, new.max_value);
-
-		appendStringInfoString(&buf, " MINVALUE ");
-		appendStringInfo(&buf, INT64_FORMAT, new.min_value);
-
-		appendStringInfoString(&buf, " CACHE ");
-		appendStringInfo(&buf, INT64_FORMAT, new.cache_value);
-
-		if(new.is_cycled)					
-			appendStringInfoString(&buf, " CYCLE ");
-		else
-			appendStringInfoString(&buf, " NO CYCLE ");
-
-		appendStringInfoString(&buf, " START WITH ");
-		appendStringInfo(&buf, INT64_FORMAT, new.start_value);
-
-		/* create sequence on agtm */
-		agtm_sequence(buf.data);
-
-		pfree(buf.data);
+		
+		initStringInfo(&strOption);
+		parse_seqOption_to_string(seqOptions, seq->sequence, &strOption);		
+		agtm_CreateSequence(seqname, strOption.data, strOption.len);
 	}
 #endif
-
 	return seqoid;
 }
 
@@ -390,7 +354,8 @@ register_sequence_cb(char *seqname, AGTM_SequenceKeyType key, AGTM_SequenceDropT
 				initStringInfo(&buf);
 				appendStringInfoString(&buf, "DROP SEQUENCE ");
 				appendStringInfo(&buf, "%s", seqname);
-				agtm_sequence(buf.data);
+//				agtm_sequence(buf.data);
+				agtm_DropSequence(seqname);
 				pfree(buf.data);
 				break;
 			}
@@ -399,7 +364,7 @@ register_sequence_cb(char *seqname, AGTM_SequenceKeyType key, AGTM_SequenceDropT
 		default:
 			break;
 	}
-	
+
 }
 
 #endif

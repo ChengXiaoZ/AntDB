@@ -1195,13 +1195,13 @@ doDeletion(const ObjectAddress *object, int flags)
 							 * all the data remains intact on AGTM.
 							 */
 							 register_sequence_cb(seqname, AGTM_SEQ_FULL_NAME, AGTM_DROP_SEQ);
-							
+
 							 pfree(seqname);
 							 /* Then close the relation opened previously */
 							 relation_close(relseq, AccessShareLock);
 						 }
 						break;
-						
+
 					case RELKIND_RELATION:
 					case RELKIND_VIEW:
 						/*
@@ -1214,7 +1214,7 @@ doDeletion(const ObjectAddress *object, int flags)
 						if (IsTempTable(object->objectId))
 							ExecSetTempObjectIncluded();
 						break;
-						
+
 					default:
 						break;
 				}

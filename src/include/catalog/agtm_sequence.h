@@ -33,11 +33,13 @@ typedef FormData_agtm_sequence *Form_agtm_sequence;
 #define Anum_agtm_sequence_schema		2
 #define Anum_agtm_sequence_sequence		3
 
-extern void AddAgtmSequence(const char* database,
+extern Oid AddAgtmSequence(const char* database,
 				const char* schema, const char* sequence);
 
+extern Oid DelAgtmSequence(const char* database,
+				const char* schema, const char* sequence);
 
-extern void DelAgtmSequence(const char* database,
+extern bool SequenceIsExist(const char* database,
 				const char* schema, const char* sequence);
 #endif
 

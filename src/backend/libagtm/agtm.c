@@ -8,6 +8,7 @@
 #include "agtm/agtm_utils.h"
 #include "agtm/agtm_client.h"
 #include "agtm/agtm_transaction.h"
+#include "nodes/parsenodes.h"
 #include "libpq/libpq-fe.h"
 #include "libpq/libpq-int.h"
 #include "libpq/pqformat.h"
@@ -20,6 +21,17 @@ static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType typ
 static PGresult* agtm_get_result(AGTM_MessageType msg_type);
 static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 			__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
+
+typedef enum AgtmNodeTag
+{
+	T_AgtmInvalid = 0,
+	T_AgtmInteger,
+	T_AgtmFloat,
+	T_AgtmString,
+	T_AgtmBitString,
+	T_AgtmNull,
+	T_AgtmDropStmt
+} AgtmNodeTag;
 
 TransactionId
 agtm_GetGlobalTransactionId(bool isSubXact)
@@ -42,6 +54,46 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 
 	agtm_use_result_end(&buf);
 	return gxid;
+}
+
+void
+agtm_CreateSequence(const char * seqName, const char* seqOption, int optionSize)
+{
+	PGresult 		*res;
+	StringInfoData	buf;
+	int				nameLen;
+	if(!IsUnderAGTM())
+		return;
+
+	nameLen = strlen(seqName);
+	
+	agtm_send_message(AGTM_MSG_SEQUENCE_INIT, "%d%d %p%d %p%d", nameLen, 4, seqName, nameLen, seqOption, optionSize);
+	res = agtm_get_result(AGTM_MSG_SEQUENCE_INIT);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_INIT_RESULT);
+	
+	ereport(DEBUG1,
+		(errmsg("create sequence on agtm :%s", seqName)));
+	
+}
+
+void
+agtm_DropSequence(const char * seqName)
+{
+	PGresult 		*res;
+	StringInfoData	buf;
+	int				nameLen;
+	if(!IsUnderAGTM())
+		return;
+
+	nameLen = strlen(seqName);
+	agtm_send_message(AGTM_MSG_SEQUENCE_DROP, "%d%d %p%d", nameLen, 4, seqName, nameLen);
+	res = agtm_get_result(AGTM_MSG_SEQUENCE_DROP);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_RESULT);
+
+	ereport(DEBUG1,
+		(errmsg("drop sequence on agtm :%s", seqName)));
 }
 
 Timestamp
@@ -399,3 +451,107 @@ static PGresult* agtm_get_result(AGTM_MessageType msg_type)
 
 	return result;
 }
+
+
+void
+parse_seqOption_to_string(List * seqOptions, RangeVar *var, StringInfo strOption)
+{
+	ListCell   *option;
+	int listSize = list_length(seqOptions);
+	
+	appendBinaryStringInfo(strOption, (const char *) &listSize, sizeof(listSize));
+	
+	foreach(option, seqOptions)
+	{
+		DefElem    *defel = (DefElem *) lfirst(option);
+
+		if(defel->defnamespace)
+		{
+			int defnamespaceSize = strlen(defel->defnamespace);
+			appendBinaryStringInfo(strOption, (const char *)&defnamespaceSize, sizeof(defnamespaceSize));
+			appendStringInfo(strOption, "%s", defel->defnamespace);
+		}
+		else
+		{
+			int defnamespaceSize = 0;
+			appendBinaryStringInfo(strOption, (const char *)&defnamespaceSize, sizeof(defnamespaceSize));
+		}
+
+		if (defel->defname)
+		{
+			int defnameSize = strlen(defel->defname);
+			appendBinaryStringInfo(strOption, (const char *)&defnameSize, sizeof(defnameSize));
+			appendStringInfo(strOption, "%s", defel->defname);
+		}
+		else
+		{
+			int defnameSize = 0;
+			appendBinaryStringInfo(strOption, (const char *)&defnameSize, sizeof(defnameSize));
+		}
+
+		if (defel->arg)
+		{
+			AgtmNodeTag type = T_AgtmInvalid;
+
+			switch(nodeTag(defel->arg))
+			{
+				case T_Integer:
+				{
+					long ival = intVal(defel->arg);
+					type = T_AgtmInteger;
+					appendBinaryStringInfo(strOption, (const char *)&type, sizeof(type));
+					appendBinaryStringInfo(strOption, (const char *)&ival, sizeof(ival));
+					break;
+				}
+				case T_Float:
+				{
+					char *str = strVal(defel->arg);
+					int strSize = strlen(str);
+					type = T_AgtmFloat;
+					appendBinaryStringInfo(strOption, (const char *)&type, sizeof(type));
+					appendBinaryStringInfo(strOption, (const char *)&strSize, sizeof(strSize));
+					appendStringInfo(strOption, "%s", str);
+					break;
+				}
+				case T_String:
+				{
+					char *str = strVal(defel->arg);
+					int strSize = strlen(str);
+					type = T_AgtmString;
+					appendBinaryStringInfo(strOption, (const char *)&type, sizeof(type));
+					appendBinaryStringInfo(strOption, (const char *)&strSize, sizeof(strSize));
+					appendStringInfo(strOption, "%s", str);
+					break;
+				}
+				case T_BitString:
+				{
+					ereport(ERROR,
+						(errmsg("T_BitString is not support")));
+					break;
+				}
+				case T_Null:
+				{
+					type = T_AgtmNull;
+					appendBinaryStringInfo(strOption, (const char *)&type, sizeof(type));
+					break;
+				}
+				default:
+				{
+					ereport(ERROR,
+						(errmsg("sequence DefElem type error : %d", nodeTag(defel->arg))));
+					break;
+				}
+			}
+		}
+		else
+		{
+			int argSize = 0;
+			appendBinaryStringInfo(strOption, (const char *)&argSize, sizeof(argSize));
+		}
+
+		appendBinaryStringInfo(strOption, (const char *)&defel->defaction, sizeof(defel->defaction));
+	}
+	appendBinaryStringInfo(strOption, (const char *)&var->inhOpt, sizeof(var->inhOpt));
+	appendBinaryStringInfo(strOption, (const char *)&var->relpersistence, sizeof(var->relpersistence));
+}
+

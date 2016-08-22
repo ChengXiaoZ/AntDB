@@ -10,6 +10,7 @@
 #include "catalog/pg_database.h"
 #include "datatype/timestamp.h"
 #include "lib/stringinfo.h"
+#include "nodes/primnodes.h"
 #include "tcop/dest.h"
 #include "utils/snapshot.h"
 
@@ -48,6 +49,22 @@ extern Snapshot agtm_GetGlobalSnapShot(Snapshot snapshot);
  * get transaction status from AGTM by transaction ID.
  */
 extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
+
+/*
+ * create sequence on agtm
+ */
+ extern void agtm_CreateSequence(const char * seqName, const char* seqOption, int optionSize);
+
+/*
+ * alter sequence on agtm
+ */
+ extern void agtm_AlterSequence(const char * seqName, const char* seqOption);
+
+/*
+ * delete sequence on agtm
+ */
+ extern void agtm_DropSequence(const char * seqName);
+
 
 /*
  * get next Sequence from AGTM
@@ -130,4 +147,9 @@ extern void agtm_User(const char *dmlUser);
  */
 void ProcessAGtmCommand(StringInfo input_message, CommandDest dest);
 
+/*-------------------------------------- tool function --------------------------------------*/
+
+extern void parse_seqOption_to_string(List * seqOptions, RangeVar *var, StringInfo strOption);
+
 #endif
+
