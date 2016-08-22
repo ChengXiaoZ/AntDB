@@ -128,6 +128,7 @@ static HTAB *htab_remote_node = NULL;	/* RemoteNode */
 static HTAB *htab_db_node = NULL;		/* DatabaseNode */
 static HTAB *htab_node_conn = NULL;		/* NodeConn */
 static HTAB *htab_rxid = NULL;			/* GlobalTransactionInfo */
+static NodeConn agtm_conn = {{0,AGTM_OID}, NULL, 0, PGRES_POLLING_FAILED};
 
 /* remote xact log files */
 static File rxlf_remote_node = -1;
@@ -147,6 +148,14 @@ static volatile unsigned int agentCount = 0;
 /*static volatile bool rxact_has_filed_gid = false;*/
 
 static volatile pgsocket rxact_client_fd = PGINVALID_SOCKET;
+
+/*
+ * Flag to mark SIGHUP. Whenever the main loop comes around it
+ * will reread the configuration file. (Better than doing the
+ * reading in the signal handler, ey?)
+ */
+static volatile sig_atomic_t got_SIGHUP = false;
+static void RxactHupHandler(SIGNAL_ARGS);
 
 static void CreateRxactAgent(int agent_fd);
 static void RxactMgrQuickdie(SIGNAL_ARGS);
@@ -365,6 +374,18 @@ static void RxactLoop(void)
 		}
 
 re_poll_:
+		if(got_SIGHUP)
+		{
+			got_SIGHUP = false;
+			ProcessConfigFile(PGC_SIGHUP);
+			if(agtm_conn.conn != NULL
+				&& (strcmp(PQhost(agtm_conn.conn), AGtmHost) != 0
+					|| atoi(PQport(agtm_conn.conn)) != AGtmPort))
+			{
+				rxact_finish_node_conn(&agtm_conn);
+				continue;
+			}
+		}
 		/* for we wait 1 second */
 		pollres = poll(pollfds, poll_count, 1000);
 		CHECK_FOR_INTERRUPTS();
@@ -473,7 +494,7 @@ static void RemoteXactBaseInit(void)
 	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, die);
 	pqsignal(SIGQUIT, RxactMgrQuickdie);
-	pqsignal(SIGHUP, SIG_IGN);
+	pqsignal(SIGHUP, RxactHupHandler);
 	/* TODO other signal handlers */
 
 	/* We allow SIGQUIT (quickdie) at all times */
@@ -528,9 +549,6 @@ static void RemoteXactMgrInit(void)
 	hctl.hcxt = TopMemoryContext;
 	htab_db_node = hash_create("DatabaseNode"
 		, 64, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
-
-	/* insert AGTM info */
-	rxact_insert_node_info(AGTM_OID, (short)AGtmPort, AGtmHost, true);
 
 	/* create HTAB for NodeConn */
 	Assert(htab_node_conn == NULL);
@@ -1114,8 +1132,7 @@ static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_upd
 		hash_seq_init(&seq_status, htab_remote_node);
 		while((rnode = hash_seq_search(&seq_status)) != NULL)
 		{
-			if(rnode->nodeOid != AGTM_OID)
-				hash_search(htab_remote_node, &(rnode->nodeOid), HASH_REMOVE, NULL);
+			hash_search(htab_remote_node, &(rnode->nodeOid), HASH_REMOVE, NULL);
 		}
 
 		Assert(rxlf_remote_node != -1);
@@ -1529,39 +1546,59 @@ static void rxact_2pc_do(void)
 static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 {
 	NodeConn *conn;
-	DbAndNodeOid key;
-	bool found;
 
-	key.db_oid = db_oid;
-	key.node_oid = node_oid;
-	conn = hash_search(htab_node_conn, &key, HASH_ENTER, &found);
-	if(!found)
+	if(node_oid == AGTM_OID)
 	{
-		conn->conn = NULL;
-		conn->last_use = cur_time;
-		conn->status = PGRES_POLLING_FAILED;
+		conn = &agtm_conn;
+	}else
+	{
+		DbAndNodeOid key;
+		bool found;
+
+		key.db_oid = db_oid;
+		key.node_oid = node_oid;
+		conn = hash_search(htab_node_conn, &key, HASH_ENTER, &found);
+		if(!found)
+		{
+			conn->conn = NULL;
+			conn->last_use = cur_time;
+			conn->status = PGRES_POLLING_FAILED;
+		}
+
+		Assert(conn && conn->oids.db_oid == db_oid && conn->oids.node_oid == node_oid);
 	}
 
-	Assert(conn && conn->oids.db_oid == db_oid && conn->oids.node_oid == node_oid);
 	if(conn->conn != NULL && PQstatus(conn->conn) == CONNECTION_BAD)
 		rxact_finish_node_conn(conn);
 
 	if(conn->conn == NULL && conn->last_use < cur_time)
 	{
-		/* connection to remote node */
-		RemoteNode *rnode;
-		DatabaseNode *dnode;
 		StringInfoData buf;
-
-		rnode = hash_search(htab_remote_node, &key.node_oid, HASH_FIND, NULL);
-		dnode = hash_search(htab_db_node, &key.db_oid, HASH_FIND, NULL);
-		if(rnode && dnode)
+		buf.data = NULL;
+		/* connection to remote node */
+		if(node_oid == AGTM_OID)
 		{
 			initStringInfo(&buf);
-			appendStringInfo(&buf, "host='%s' port=%u user='%s' dbname='%s'"
-				,rnode->nodeHost, rnode->nodePort, dnode->owner, dnode->dbname);
-			if(key.node_oid != AGTM_OID)
+			appendStringInfo(&buf, "host='%s' port=%u", AGtmHost, AGtmPort);
+			appendStringInfoString(&buf, " user='" AGTM_USER "'"
+									" dbname='" AGTM_DBNAME "'");
+		}else
+		{
+			RemoteNode *rnode;
+			DatabaseNode *dnode;
+
+			rnode = hash_search(htab_remote_node, &node_oid, HASH_FIND, NULL);
+			dnode = hash_search(htab_db_node, &db_oid, HASH_FIND, NULL);
+			if(rnode && dnode)
+			{
+				initStringInfo(&buf);
+				appendStringInfo(&buf, "host='%s' port=%u user='%s' dbname='%s'"
+					,rnode->nodeHost, rnode->nodePort, dnode->owner, dnode->dbname);
 				appendStringInfoString(&buf, " options='-c remotetype=rxactmgr'");
+			}
+		}
+		if(buf.data)
+		{
 			conn->conn = PQconnectStart(buf.data);
 			conn->status = PGRES_POLLING_WRITING;
 			pfree(buf.data);
@@ -1659,6 +1696,11 @@ static void rxact_close_timeout_remote_conn(time_t cur_time)
 		{
 			rxact_finish_node_conn(node_conn);
 		}
+	}
+	if(PQstatus(agtm_conn.conn) == CONNECTION_OK
+		&& cur_time - agtm_conn.last_use >= REMOTE_IDLE_TIMEOUT)
+	{
+		rxact_finish_node_conn(&agtm_conn);
 	}
 }
 
@@ -2450,4 +2492,9 @@ void DisconnectRemoteXact(void)
 		closesocket(rxact_client_fd);
 		rxact_client_fd = PGINVALID_SOCKET;
 	}
+}
+
+static void RxactHupHandler(SIGNAL_ARGS)
+{
+	got_SIGHUP = true;
 }

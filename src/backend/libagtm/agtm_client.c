@@ -39,8 +39,6 @@ static void agtm_Connect(void);
 static void
 agtm_Connect(void)
 {
-	const char 		*dbName;
-	char 			*userName;
 	PGconn volatile	*pg_conn;
 	StringInfoData 	 agtmOption;
 	char			 port_buf[10];
@@ -51,8 +49,6 @@ agtm_Connect(void)
 	agtm_Close();
 
 	SaveDefaultAGtmPort(AGtmPort);
-	dbName = get_database_name(MyDatabaseId);
-	userName = GetUserNameFromId(GetUserId());
 
 	sprintf(port_buf, "%d", AGtmPort);
 	initStringInfo(&agtmOption);
@@ -62,8 +58,8 @@ agtm_Connect(void)
 						   port_buf,
 						   agtmOption.data,
 						   NULL,
-						   dbName,
-						   userName,
+						   AGTM_DBNAME,
+						   AGTM_USER,
 						   NULL);
 	pfree(agtmOption.data);
 
@@ -71,7 +67,7 @@ agtm_Connect(void)
 		ereport(ERROR,
 			(errmsg("Fail to connect to AGTM(return NULL pointer)."),
 			 errhint("AGTM info(host=%s port=%d dbname=%s user=%s)",
-		 		AGtmHost, AGtmPort, dbName, userName)));
+		 		AGtmHost, AGtmPort, AGTM_DBNAME, AGTM_USER)));
 
 	PG_TRY();
 	{
@@ -81,7 +77,7 @@ agtm_Connect(void)
 				(errmsg("Fail to connect to AGTM %s",
 					PQerrorMessage((PGconn*)pg_conn)),
 				 errhint("AGTM info(host=%s port=%d dbname=%s user=%s)",
-					AGtmHost, AGtmPort, dbName, userName)));
+					AGtmHost, AGtmPort, AGTM_DBNAME, AGTM_USER)));
 		}
 
 		/*
@@ -106,7 +102,7 @@ agtm_Connect(void)
 
 	ereport(LOG,
 		(errmsg("Connect to AGTM(host=%s port=%d dbname=%s user=%s) successfully.",
-		AGtmHost, AGtmPort, dbName, userName)));
+		AGtmHost, AGtmPort, AGTM_DBNAME, AGTM_USER)));
 }
 
 int

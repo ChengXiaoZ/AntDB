@@ -1309,7 +1309,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	} /*init gtm*/
 	else if (AGT_CMD_GTM_INIT == cmdtype)
 	{
-		appendStringInfo(&infosendmsg, " -D %s -E UTF8 --locale=C", cndnPath);
+		appendStringInfo(&infosendmsg, "-U \"" AGTM_USER "\" -D %s -E UTF8 --locale=C", cndnPath);
 	} /*init gtm slave*/
 	else if (AGT_CMD_GTM_SLAVE_INIT == cmdtype)
 	{

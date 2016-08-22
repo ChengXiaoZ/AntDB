@@ -1039,6 +1039,11 @@ extern int	fdatasync(int fildes);
 #define NON_EXEC_STATIC static
 #endif
 
+#if defined(ADB) || defined(ADBMGRD)
+#define AGTM_DBNAME "postgres"
+#define AGTM_USER "postgres"
+#endif
+
 /* /port compatibility functions */
 #include "port.h"
 
