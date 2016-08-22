@@ -1329,6 +1329,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		appendStringInfo(&infosendmsg, " -p %u", masterport);
 		appendStringInfo(&infosendmsg, " -h %s", masterhostaddress);
 		appendStringInfo(&infosendmsg, " -D %s", cndnPath);
+		appendStringInfo(&infosendmsg, " -U %s", AGTM_USER);
 		appendStringInfo(&infosendmsg, " -x");
 		ReleaseSysCache(gtmmastertuple);
 		/*check it need start gtm master*/
@@ -4926,7 +4927,12 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 				{
 					masterOid = HeapTupleGetOid(aimtuple);
 					if (masterOid == mgr_node->nodemasternameoid)
-						mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+					{
+						if (GTM_TYPE_GTM_MASTER == nodetype)
+							mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
+						else
+							mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+					}
 				}
 			}
 			pfree(cnuser);
@@ -4956,7 +4962,10 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 				cnuser = get_hostuser_from_hostoid(hostoid);
 				/*get address*/
 				cnaddress = get_hostaddress_from_hostoid(hostoid);
-				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				if (GTM_TYPE_GTM_MASTER == nodetype)
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
+				else
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
 				pfree(cnuser);
 				pfree(cnaddress);
 			}
