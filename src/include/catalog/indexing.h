@@ -369,8 +369,8 @@ DECLARE_UNIQUE_INDEX(monitor_databaseitem_oid_index, 4953, on monitor_databaseit
 DECLARE_UNIQUE_INDEX(monitor_slowlog_oid_index, 4955, on monitor_slowlog using btree(oid oid_ops));
 #define MonitorslowlogOidIndexId 4955
 
-/* DECLARE_UNIQUE_INDEX(monitor_host_threshold_oid_index, 4954, on monitor_host_threshold using btree(oid oid_ops));
-#define MonitorhostthresholdOidIndexId 4954 */
+DECLARE_UNIQUE_INDEX(monitor_host_threshold_oid_index, 4932, on monitor_host_threshold using btree(oid oid_ops));
+#define MonitorhostthresholdOidIndexId 4932
 
 DECLARE_UNIQUE_INDEX(monitor_host_threshold_mt_type_index, 4962, on monitor_host_threshold using btree(mt_type int2_ops));
 #define MonitorhostthresholdmttypeIndexId 4962
@@ -399,6 +399,8 @@ DECLARE_UNIQUE_INDEX(monitor_alarm_oid_index, 3177, on monitor_alarm using btree
 DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using btree(oid oid_ops));
 #define MonitorResolveOidIndexId 5022
 
+DECLARE_UNIQUE_INDEX(monitor_user_oid_index, 4933, on monitor_user using btree(oid oid_ops));
+#define MonitorUserOidIndexId 4933
 
 #endif /* ADBMGRD */
 
