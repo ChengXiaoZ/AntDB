@@ -5184,7 +5184,6 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 * 3.change slave type to master type
 * 4. new gtm master: refresh postgresql.conf
 * 5.refresh gtm extra recovery.conf and restart gtm extra
-* 6. restart all coordinators and datanodes
 */
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath)
 {
@@ -5242,7 +5241,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 			}
 			cndnPathtmp = TextDatumGetCString(datumPath);
 			resetStringInfo(&(getAgentCmdRst->description));		
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);	
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);	
 		}
 	}
 	heap_endscan(rel_scan);
@@ -5327,83 +5326,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		}	
 	}
 	heap_endscan(rel_scan);	
-	/*6. restart all coordinators and datanodes*/
-	/*restart coordinator*/
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_nodetmp);
-		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
-		if(!getAgentCmdRst->ret)
-		{
-			ereport(LOG, (errmsg("pg_ctl restart coordinator %s fail", NameStr(mgr_nodetmp->nodename))));
-		}
-	}
-	heap_endscan(rel_scan);
-	/*restart datanode master*/
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_nodetmp);
-		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
-		if(!getAgentCmdRst->ret)
-		{
-			ereport(LOG, (errmsg("pg_ctl restart datanode %s master fail", NameStr(mgr_nodetmp->nodename))));
-		}
-	}
-	heap_endscan(rel_scan);
-	/*restart datanode slave*/
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(CNDN_TYPE_DATANODE_SLAVE));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_nodetmp);
-		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
-		if(!getAgentCmdRst->ret)
-		{
-			ereport(LOG, (errmsg("pg_ctl restart datanode %s slave fail", NameStr(mgr_nodetmp->nodename))));
-		}
-	}
-	heap_endscan(rel_scan);
-	/*restart datanode extra*/
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(CNDN_TYPE_DATANODE_EXTRA));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_nodetmp);
-		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
-		if(!getAgentCmdRst->ret)
-		{
-			ereport(LOG, (errmsg("pg_ctl restart datanode %s extra fail", NameStr(mgr_nodetmp->nodename))));
-		}
-	}
-	heap_endscan(rel_scan);
+
 	pfree(infosendmsg.data);
 }
 
