@@ -31,7 +31,8 @@ static int noneGetCopyData(PGconn *conn);
 static const PGcustumFuns pq_none_funs =
 {
 	noneGetRowDesc,
-	noneGetAnotherTuple
+	noneGetAnotherTuple,
+	NULL
 };
 
 /*

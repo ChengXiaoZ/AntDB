@@ -421,6 +421,19 @@ pqParseInput3(PGconn *conn)
 					 */
 					break;
 				default:
+#ifdef ADB
+					/* we use avail for temp */
+					if(conn->funs && conn->funs->getUnknownMsg)
+						avail = (*conn->funs->getUnknownMsg)(conn, id, msgLength);
+					else
+						avail = -1;
+					if(avail > 0)
+						return;
+					else if(avail == 0)
+						break;
+					else
+					{
+#endif
 					printfPQExpBuffer(&conn->errorMessage,
 									  libpq_gettext(
 													"unexpected response from server; first received character was \"%c\"\n"),
@@ -432,6 +445,9 @@ pqParseInput3(PGconn *conn)
 					/* Discard the unexpected message */
 					conn->inCursor += msgLength;
 					break;
+#ifdef ADB
+					}
+#endif
 			}					/* switch on protocol character */
 		}
 		/* Successfully consumed this message */

@@ -296,6 +296,8 @@ typedef struct PGcustumFuns
 {
 	int (*getRowDesc)();
 	int (*getAnotherTuple)();
+	/* return -1 for unknown message, 0 for continue, 1 for error */
+	int (*getUnknownMsg)(PGconn *conn, char c, int msgLength);
 }PGcustumFuns;
 #endif /* ADB */
 /*

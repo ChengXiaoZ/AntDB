@@ -195,6 +195,7 @@ static time_t close_timeout_idle_slots(time_t timeout);
 static bool send_agtm_listen_port(NODE_CONNECTION *conn, int port);
 static bool pool_exec_set_query(NODE_CONNECTION *conn, const char *query, StringInfo errMsg);
 static int pool_wait_pq(PGconn *conn);
+static int pq_custom_msg(PGconn *conn, char id, int msgLength);
 
 /* for hash DatabasePool */
 static HTAB *htab_database;
@@ -880,7 +881,9 @@ static PGXCNodePoolSlot *acquire_connection(DatabasePool *dbPool, Oid node, cons
 		uninit_slot->conn = PGXCNodeConnect(node_pool->connstr);
 		if(PGXCNodeConnected(uninit_slot->conn))
 		{
+			static const PGcustumFuns funs = {NULL, NULL, pq_custom_msg};
 			uninit_slot->state = SLOT_STATE_IDLE;
+			((PGconn*)(uninit_slot->conn))->funs = &funs;
 			return uninit_slot;
 		}else
 		{
@@ -2613,4 +2616,14 @@ static int pool_wait_pq(PGconn *conn)
 		finish_time += PoolRemoteCmdTimeout;
 	}
 	return pqWaitTimed(1, 0, conn, finish_time);
+}
+
+int pq_custom_msg(PGconn *conn, char id, int msgLength)
+{
+	if(id == 'M')
+	{
+		conn->inCursor += msgLength;
+		return 0;
+	}
+	return -1;
 }
