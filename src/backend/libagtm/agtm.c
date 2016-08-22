@@ -22,17 +22,6 @@ static PGresult* agtm_get_result(AGTM_MessageType msg_type);
 static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 			__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
 
-typedef enum AgtmNodeTag
-{
-	T_AgtmInvalid = 0,
-	T_AgtmInteger,
-	T_AgtmFloat,
-	T_AgtmString,
-	T_AgtmBitString,
-	T_AgtmNull,
-	T_AgtmDropStmt
-} AgtmNodeTag;
-
 TransactionId
 agtm_GetGlobalTransactionId(bool isSubXact)
 {
@@ -57,37 +46,83 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 }
 
 void
-agtm_CreateSequence(const char * seqName, const char* seqOption, int optionSize)
+agtm_CreateSequence(const char * seqName, const char * database,
+						const char * schema ,const char* seqOption, int optionSize)
 {
 	PGresult 		*res;
+
+	int				nameSize;
+	int				databaseSize;
+	int				schemaSize;
 	StringInfoData	buf;
-	int				nameLen;
+
 	if(!IsUnderAGTM())
 		return;
 
-	nameLen = strlen(seqName);
-	
-	agtm_send_message(AGTM_MSG_SEQUENCE_INIT, "%d%d %p%d %p%d", nameLen, 4, seqName, nameLen, seqOption, optionSize);
+	nameSize = strlen(seqName);
+	databaseSize = strlen(database);
+	schemaSize = strlen(schema);
+
+	agtm_send_message(AGTM_MSG_SEQUENCE_INIT, "%d%d %p%d %d%d %p%d %d%d %p%d %p%d", nameSize, 4, seqName, nameSize, 
+		databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, seqOption, optionSize);
+
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_INIT);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_INIT_RESULT);
-	
+
 	ereport(DEBUG1,
 		(errmsg("create sequence on agtm :%s", seqName)));
 	
 }
 
 void
-agtm_DropSequence(const char * seqName)
+agtm_AlterSequence(const char * seqName, const char * database,
+						const char * schema , const char* seqOption, int optionSize)
 {
 	PGresult 		*res;
+
+	int				nameSize;
+	int				databaseSize;
+	int				schemaSize;
 	StringInfoData	buf;
-	int				nameLen;
+
 	if(!IsUnderAGTM())
 		return;
 
-	nameLen = strlen(seqName);
-	agtm_send_message(AGTM_MSG_SEQUENCE_DROP, "%d%d %p%d", nameLen, 4, seqName, nameLen);
+	nameSize = strlen(seqName);
+	databaseSize = strlen(database);
+	schemaSize = strlen(schema);
+
+	agtm_send_message(AGTM_MSG_SEQUENCE_ALTER, "%d%d %p%d %d%d %p%d %d%d %p%d %p%d", nameSize, 4, seqName, nameSize, 
+			databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, seqOption, optionSize);
+	res = agtm_get_result(AGTM_MSG_SEQUENCE_ALTER);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_ALTER_RESULT);
+
+	ereport(DEBUG1,
+	(errmsg("alter sequence on agtm :%s", seqName)));
+
+}
+
+void
+agtm_DropSequence(const char * seqName, const char * database, const char * schema)
+{
+	int				seqNameSize;
+	int				dbNameSize;
+	int				schemaNameSize;
+	StringInfoData	buf;
+
+	PGresult 		*res;
+
+	if(!IsUnderAGTM())
+		return;
+
+	seqNameSize = strlen(seqName);
+	dbNameSize = strlen(database);
+	schemaNameSize = strlen(schema);
+
+	agtm_send_message(AGTM_MSG_SEQUENCE_DROP, "%d%d %p%d %d%d %p%d %d%d %p%d", seqNameSize, 4, seqName, seqNameSize,
+		dbNameSize, 4, database, dbNameSize, schemaNameSize, 4, schema, schemaNameSize);
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_DROP);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_RESULT);

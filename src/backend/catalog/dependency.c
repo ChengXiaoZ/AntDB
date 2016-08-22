@@ -1181,22 +1181,19 @@ doDeletion(const ObjectAddress *object, int flags)
 							 * finish the stuff on AGTM too
 							 */
 							 Relation relseq;
-							 char *seqname;
-							 /*
+								 /*
 							 * A relation is opened to get the schema and database name as
 							 * such data is not available before when dropping a function.
 							 */
 							 relseq = relation_open(object->objectId, AccessShareLock);
-							 seqname = GetGlobalSeqName(relseq, NULL, NULL);
 
 							/*
 							 * Sequence is not immediately removed on AGTM, but at the end
 							 * of the transaction block. In case this transaction fails,
 							 * all the data remains intact on AGTM.
 							 */
-							 register_sequence_cb(seqname, AGTM_SEQ_FULL_NAME, AGTM_DROP_SEQ);
+							 register_sequence_cb(relseq, AGTM_SEQ_FULL_NAME, AGTM_DROP_SEQ);
 
-							 pfree(seqname);
 							 /* Then close the relation opened previously */
 							 relation_close(relseq, AccessShareLock);
 						 }

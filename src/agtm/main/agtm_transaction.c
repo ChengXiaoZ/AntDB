@@ -18,22 +18,13 @@
 #include "nodes/value.h"
 #include "storage/lock.h"
 #include "utils/elog.h"
+#include "utils/memutils.h"
+#include "utils/palloc.h"
 #include "utils/snapmgr.h"
 
 static List* parse_string_to_seqOption(StringInfo strOption, RangeVar *var);
 static	void parse_seqFullName_to_details(StringInfo message, char ** dbName, 
 							char ** schemaName, char ** sequenceName);
-static	void free_Sequence_init_list(List * option_list);
-
-typedef enum AgtmNodeTag
-{
-	T_AgtmInvalid = 0,
-	T_AgtmInteger,
-	T_AgtmFloat,
-	T_AgtmString,
-	T_AgtmBitString,
-	T_AgtmNull
-} AgtmNodeTag;
 
 StringInfo ProcessGetGXIDCommand(StringInfo message, StringInfo output)
 {
@@ -133,16 +124,28 @@ ProcessSequenceInit(StringInfo message, StringInfo output)
 	char* schemaName = NULL;
 	char* sequenceName = NULL;
 	bool  isExist = FALSE;
+
 	RangeVar * rangeVar = NULL;
 	CreateSeqStmt * seqStmt = NULL;
 	StringInfoData	buf;
 
+	MemoryContext sequece_Context;
+	MemoryContext oldctx = NULL;
+
+	sequece_Context = AllocSetContextCreate(CurrentMemoryContext,
+											 "sequence deal",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldctx = MemoryContextSwitchTo(sequece_Context);
+
 	initStringInfo(&buf);
-	rangeVar = palloc0(sizeof(RangeVar));
+	rangeVar = makeNode(RangeVar);
 
 	parse_seqFullName_to_details(message, &dbName, &schemaName, &sequenceName);
 	option = parse_string_to_seqOption(message, rangeVar);
-	pq_getmsgend(message);	
+	pq_getmsgend(message);
 	/* check info in system table */
 	isExist = SequenceIsExist(dbName, schemaName, sequenceName);
 	if(isExist)
@@ -152,7 +155,7 @@ ProcessSequenceInit(StringInfo message, StringInfo output)
 	/* insert database schema sequence into agtm_sequence */
 	lineOid = AddAgtmSequence(dbName,schemaName,sequenceName);
 
-	seqStmt = palloc0(sizeof(CreateSeqStmt));
+	seqStmt = makeNode(CreateSeqStmt);
 	seqStmt->type = T_CreateSeqStmt;
 	rangeVar->type = T_RangeVar;
 	rangeVar->catalogname = NULL;
@@ -164,19 +167,76 @@ ProcessSequenceInit(StringInfo message, StringInfo output)
 
 	seqStmt->sequence = rangeVar;
 	seqStmt->options = option;
-	DefineSequence(seqStmt);
+	DefineSequence(seqStmt);	
 
-	pfree(rangeVar);
-	pfree(seqStmt);
-	pfree(buf.data);
+	(void)MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(sequece_Context);
 
-	pfree(dbName);
-	pfree(schemaName);
-	pfree(sequenceName);
-
-	free_Sequence_init_list(option);
 	/* Respond to the client */
 	pq_sendint(output, AGTM_MSG_SEQUENCE_INIT_RESULT, 4);
+	return output;
+}
+
+StringInfo
+ProcessSequenceAlter(StringInfo message, StringInfo output)
+{
+	List *option;	
+	/* system table agtm_sequence info */
+	Oid			lineOid;
+	char* dbName = NULL;
+	char* schemaName = NULL;
+	char* sequenceName = NULL;
+	bool  isExist = FALSE;
+
+	RangeVar * rangeVar = NULL;
+	AlterSeqStmt * seqStmt = NULL;
+	StringInfoData	buf;
+
+	MemoryContext sequece_Context;
+	MemoryContext oldctx = NULL;
+
+	sequece_Context = AllocSetContextCreate(CurrentMemoryContext,
+											 "sequence deal",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldctx = MemoryContextSwitchTo(sequece_Context);
+
+	initStringInfo(&buf);
+	rangeVar = makeNode(RangeVar);
+
+	parse_seqFullName_to_details(message, &dbName, &schemaName, &sequenceName);
+	option = parse_string_to_seqOption(message, rangeVar);
+	pq_getmsgend(message);
+
+	/* check info in system table */
+	isExist = SequenceIsExist(dbName, schemaName, sequenceName);
+	if(!isExist)
+		ereport(ERROR,
+			(errmsg("%s, %s, %s not exist!",dbName, schemaName, sequenceName)));
+	
+	lineOid = SequenceSystemClassOid(dbName, schemaName, sequenceName);
+	seqStmt = makeNode(AlterSeqStmt);
+	seqStmt->type = T_AlterSeqStmt;
+	rangeVar->type = T_RangeVar;
+	rangeVar->catalogname = NULL;
+	rangeVar->schemaname = NULL;
+	appendStringInfo(&buf, "%s", "seq");
+	appendStringInfo(&buf, "%u", lineOid);
+	rangeVar->relname = buf.data;
+	rangeVar->alias = NULL;
+
+	seqStmt->sequence = rangeVar;
+	seqStmt->options = option;
+
+	AlterSequence(seqStmt);
+
+	(void)MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(sequece_Context);
+
+	/* Respond to the client */
+	pq_sendint(output, AGTM_MSG_SEQUENCE_ALTER_RESULT, 4);
 	return output;
 }
 
@@ -192,7 +252,18 @@ ProcessSequenceDrop(StringInfo message, StringInfo output)
 	RangeVar * rangeVar = NULL;
 	StringInfoData	buf;
 	List	*rangValList = NULL;
-	
+
+	MemoryContext sequece_Context;
+	MemoryContext oldctx = NULL;
+
+	sequece_Context = AllocSetContextCreate(CurrentMemoryContext,
+											 "sequence deal",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldctx = MemoryContextSwitchTo(sequece_Context);
+
 	initStringInfo(&buf);
 	parse_seqFullName_to_details(message, &dbName, &schemaName, &sequenceName);
 	pq_getmsgend(message);
@@ -204,8 +275,8 @@ ProcessSequenceDrop(StringInfo message, StringInfo output)
 	/* delete sequence on agtm */
 	oid = DelAgtmSequence(dbName, schemaName, sequenceName);
 
-	drop = palloc0(sizeof(DropStmt));
-	rangeVar = palloc0(sizeof(RangeVar));
+	drop = makeNode(DropStmt);
+	rangeVar = makeNode(RangeVar);
 
 	drop->type = T_DropStmt;
 	drop->removeType = OBJECT_SEQUENCE;
@@ -227,98 +298,38 @@ ProcessSequenceDrop(StringInfo message, StringInfo output)
 
 	RemoveRelations((void *)drop);
 
-	pfree(dbName);
-	pfree(schemaName);
-	pfree(sequenceName);
-
-	pfree(rangeVar);
-	pfree(drop);
-	pfree(buf.data);
+	(void)MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(sequece_Context);
 
 	/* Respond to the client */
 	pq_sendint(output, AGTM_MSG_SEQUENCE_DROP_RESULT, 4);
 	return output;
 }
 
-static	void free_Sequence_init_list(List * option_list)
-{
-	ListCell   *option;
-	if(option_list == NULL)
-		return;
-
-	foreach(option, option_list)
-	{
-		DefElem    *defel = (DefElem *) lfirst(option);
-		if(defel->defnamespace)
-		{
-			pfree(defel->defnamespace);
-		}
-
-		if (defel->defname)
-		{
-			pfree(defel->defname);
-		}
-
-		if (defel->arg)
-		{
-			switch(nodeTag(defel->arg))
-			{
-				case T_Integer:
-				{	
-					pfree(defel->arg);
-					break;
-				}
-				
-				case T_Float:
-				case T_String:
-				{
-					char *str = strVal(defel->arg);
-					pfree(str);
-					pfree(defel->arg);
-					break;				
-				}
-				case T_BitString:
-				case T_Null:
-					break;
-				default:
-					break;
-			}
-		}
-		pfree(defel);
-	}
-	list_free(option_list);
-}
-
 static	void parse_seqFullName_to_details(StringInfo message, char ** dbName, 
 							char ** schemaName, char ** sequenceName)
 {
-	int  seqNameSize = 0;
-	char * seqFullName = NULL;
+	int	 sequenceSize = 0;
+	int  dbNameSize = 0;
+	int  schemaSize = 0;
 
-	seqNameSize = pq_getmsgint(message, sizeof(seqNameSize));
-	seqFullName = pnstrdup(pq_getmsgbytes(message, seqNameSize), seqNameSize);
-
-	*dbName = strtok(seqFullName,".");
-	if(dbName == NULL)
-		ereport(ERROR,
-			(errmsg("sequence database name is null")));
-	*dbName = pnstrdup(*dbName, strlen(*dbName));
-
-	*schemaName = strtok(NULL,".");
-	if(schemaName == NULL)
-		ereport(ERROR,
-			(errmsg("sequence schemaName name is null")));
-	*schemaName = pnstrdup(*schemaName, strlen(*schemaName));
-
-	*sequenceName = strtok(NULL,".");
-	if(sequenceName == NULL)
+	sequenceSize = pq_getmsgint(message, sizeof(sequenceSize));
+	*sequenceName = pnstrdup(pq_getmsgbytes(message, sequenceSize), sequenceSize);
+	if(*sequenceName == NULL)
 		ereport(ERROR,
 			(errmsg("sequence name is null")));
-	*sequenceName = pnstrdup(*sequenceName, strlen(*sequenceName));
 
-	Assert(strtok(NULL,".") == NULL);
+	dbNameSize = pq_getmsgint(message, sizeof(dbNameSize));
+	*dbName = pnstrdup(pq_getmsgbytes(message, dbNameSize), dbNameSize);
+	if(*dbName == NULL)
+		ereport(ERROR,
+			(errmsg("sequence database name is null")));
 
-	pfree(seqFullName);
+	schemaSize = pq_getmsgint(message, sizeof(schemaSize));
+	*schemaName = pnstrdup(pq_getmsgbytes(message, schemaSize), schemaSize);
+	if(*schemaName == NULL)
+		ereport(ERROR,
+			(errmsg("sequence schemaName name is null")));
 }
 
 static List *

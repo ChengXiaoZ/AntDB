@@ -12,6 +12,7 @@
 Oid AddAgtmSequence(const char* database,
 				const char* schema, const char* sequence)
 {
+	Oid			oid;
 	Relation	adbSequence;
 	HeapTuple	htup;
 	Datum		values[Natts_agtm_sequence];
@@ -19,7 +20,6 @@ Oid AddAgtmSequence(const char* database,
 	NameData    nameDatabase;
 	NameData    nameSchema;
 	NameData    nameSequence;
-	Oid			oid;
 
 	if(database == NULL || schema == NULL || sequence == NULL)
 		elog(ERROR, "AddAgtmSequence database schema sequence must no null");
@@ -89,12 +89,9 @@ Oid DelAgtmSequence(const char* database,
 bool SequenceIsExist(const char* database,
 				const char* schema, const char* sequence)
 {
-	Relation	adbSequence;
-	HeapTuple	htup;
 	NameData    nameDatabase;
 	NameData    nameSchema;
 	NameData    nameSequence;
-	bool		isExist = FALSE;
 
 	if(database == NULL || schema == NULL || sequence == NULL)
 		elog(ERROR, "SequenceIsExist database schema sequence must no null");
@@ -103,22 +100,37 @@ bool SequenceIsExist(const char* database,
 	namestrcpy(&nameSchema, schema);
 	namestrcpy(&nameSequence, sequence);
 
-	adbSequence = heap_open(AgtmSequenceRelationId, RowExclusiveLock);
-
-	htup = SearchSysCache3(AGTMSEQUENCEFIELDS, NameGetDatum(&nameDatabase),
-		NameGetDatum(&nameSchema), NameGetDatum(&nameSequence));
-
-	if (HeapTupleIsValid(htup))
-	{
-		isExist = TRUE;
-		ReleaseSysCache(htup);
-	}
-	else
-		isExist = FALSE;
-
-	heap_close(adbSequence, RowExclusiveLock);
-
-	return isExist;
+	return (SearchSysCacheExists3(AGTMSEQUENCEFIELDS, NameGetDatum(&nameDatabase),
+		NameGetDatum(&nameSchema), NameGetDatum(&nameSequence)));
 }
 
+Oid SequenceSystemClassOid(const char* database,
+				const char* schema, const char* sequence)
+{
+	Oid			oid;
+	HeapTuple	htup;
+	NameData    nameDatabase;
+	NameData    nameSchema;
+	NameData    nameSequence;
+
+	if(database == NULL || schema == NULL || sequence == NULL)
+		elog(ERROR, "SequenceIsExist database schema sequence must no null");
+
+	namestrcpy(&nameDatabase, database);
+	namestrcpy(&nameSchema, schema);
+	namestrcpy(&nameSequence, sequence);
+
+	htup = SearchSysCache3(AGTMSEQUENCEFIELDS, NameGetDatum(&nameDatabase),
+	NameGetDatum(&nameSchema), NameGetDatum(&nameSequence));
+
+	if (!HeapTupleIsValid(htup)) /* should not happen */
+		elog(ERROR, "cache lookup failed for relation agtm_sequence, database :%s,schema :%s,sequence :%s",
+			database, schema, sequence);
+
+	oid = HeapTupleGetOid(htup);
+
+	ReleaseSysCache(htup);
+
+	return oid;
+}
 

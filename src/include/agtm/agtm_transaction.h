@@ -28,6 +28,8 @@ StringInfo ProcessGetXactStatus(StringInfo message, StringInfo output);
 
 StringInfo ProcessSequenceInit(StringInfo message, StringInfo output);
 
+StringInfo ProcessSequenceAlter(StringInfo message, StringInfo output);
+
 StringInfo ProcessSequenceDrop(StringInfo message, StringInfo output);
 
 #endif

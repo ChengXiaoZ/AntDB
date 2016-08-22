@@ -41,5 +41,8 @@ extern Oid DelAgtmSequence(const char* database,
 
 extern bool SequenceIsExist(const char* database,
 				const char* schema, const char* sequence);
+
+extern Oid SequenceSystemClassOid(const char* database,
+				const char* schema, const char* sequence);
 #endif
 

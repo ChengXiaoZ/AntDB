@@ -27,6 +27,7 @@ typedef enum AGTM_MessageType
 	AGTM_MSG_SNAPSHOT_GET,		/* Get a global snapshot */
 	AGTM_MSG_GET_XACT_STATUS,		/* Get transaction status by xid */
 	AGTM_MSG_SEQUENCE_INIT,
+	AGTM_MSG_SEQUENCE_ALTER,
 	AGTM_MSG_SEQUENCE_DROP,
 	AGTM_MSG_SEQUENCE_GET_NEXT,	/* Get the next sequence value of sequence */
 	AGTM_MSG_SEQUENCE_GET_CUR,
@@ -49,6 +50,7 @@ typedef enum AGTM_ResultType
 	AGTM_SNAPSHOT_GET_RESULT,
 	AGTM_GET_XACT_STATUS_RESULT,
 	AGTM_MSG_SEQUENCE_INIT_RESULT,
+	AGTM_MSG_SEQUENCE_ALTER_RESULT,
 	AGTM_MSG_SEQUENCE_DROP_RESULT,
 	AGTM_SEQUENCE_GET_NEXT_RESULT,
 	AGTM_MSG_SEQUENCE_GET_CUR_RESULT,
@@ -57,5 +59,15 @@ typedef enum AGTM_ResultType
 	AGTM_COMPLETE_RESULT			/* for no message result */
 } AGTM_ResultType;
 #define AGTM_RESULT_TYPE_COUNT (AGTM_COMPLETE_RESULT+1)
+
+typedef enum AgtmNodeTag
+{
+	T_AgtmInvalid = 0,
+	T_AgtmInteger,
+	T_AgtmFloat,
+	T_AgtmString,
+	T_AgtmBitString,
+	T_AgtmNull
+} AgtmNodeTag;
 
 #endif

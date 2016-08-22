@@ -263,12 +263,18 @@ DefineSequence(CreateSeqStmt *seq)
 		 seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED))
 	{
 		StringInfoData	strOption;
+		char * databaseName = NULL;
+		char * schemaName = NULL;
 
-		char *seqname = GetGlobalSeqName(rel, NULL, NULL);
-		
+		databaseName = get_database_name(rel->rd_node.dbNode);
+		schemaName = get_namespace_name(RelationGetNamespace(rel));
+
 		initStringInfo(&strOption);
-		parse_seqOption_to_string(seqOptions, seq->sequence, &strOption);		
-		agtm_CreateSequence(seqname, strOption.data, strOption.len);
+		parse_seqOption_to_string(seqOptions, seq->sequence, &strOption);
+		agtm_CreateSequence(seq->sequence->relname, databaseName, schemaName,
+			strOption.data, strOption.len);
+
+		pfree(strOption.data);
 	}
 #endif
 	return seqoid;
@@ -341,22 +347,28 @@ GetGlobalSeqName(Relation seqrel, const char *new_seqname, const char *new_schem
 	return seqname;
 }
 
-void
-register_sequence_cb(char *seqname, AGTM_SequenceKeyType key, AGTM_SequenceDropType type)
+extern void GetSequenceInfoByName(Relation seqrel, char ** dbname, char ** schemaName)
 {
-	StringInfoData	buf;
+	*dbname = get_database_name(seqrel->rd_node.dbNode);
+	*schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+}
 
+void
+register_sequence_cb(Relation rel, AGTM_SequenceKeyType key, AGTM_SequenceDropType type)
+{
 	switch(type)
 	{
 		case AGTM_DROP_SEQ:
 			{
-				/* drop sequence on agtm */
-				initStringInfo(&buf);
-				appendStringInfoString(&buf, "DROP SEQUENCE ");
-				appendStringInfo(&buf, "%s", seqname);
-//				agtm_sequence(buf.data);
-				agtm_DropSequence(seqname);
-				pfree(buf.data);
+				char * seqName = NULL;
+				char * databaseName = NULL;
+				char * schemaName = NULL;
+
+				seqName = RelationGetRelationName(rel);
+				databaseName = get_database_name(rel->rd_node.dbNode);
+				schemaName = get_namespace_name(RelationGetNamespace(rel));
+
+				agtm_DropSequence(seqName, databaseName, schemaName);
 				break;
 			}
 		case AGTM_CREATE_SEQ:
@@ -557,13 +569,8 @@ AlterSequence(AlterSeqStmt *stmt)
 	List	   *owned_by;
 
 #ifdef ADB
-	AGTM_Sequence	start_value;
-	AGTM_Sequence	last_value;
-	AGTM_Sequence	min_value;
-	AGTM_Sequence	max_value;
-	AGTM_Sequence	increment;
-	bool			cycle;
 	bool			is_restart;
+	List			*seqOptions;
 #endif
 
 	/* Open and lock sequence. */
@@ -591,6 +598,7 @@ AlterSequence(AlterSeqStmt *stmt)
 
 	/* Check and set new values */
 #ifdef ADB
+	seqOptions = stmt->options;
 	init_params(stmt->options, false, &new, &owned_by, &is_restart);
 #else
 	init_params(stmt->options, false, &new, &owned_by);
@@ -608,15 +616,6 @@ AlterSequence(AlterSeqStmt *stmt)
 	START_CRIT_SECTION();
 
 	memcpy(seq, &new, sizeof(FormData_pg_sequence));
-
-#ifdef ADB
-	increment = new.increment_by;
-	min_value = new.min_value;
-	max_value = new.max_value;
-	start_value = new.start_value;
-	last_value = new.last_value;
-	cycle = new.is_cycled;
-#endif
 
 	MarkBufferDirty(buf);
 
@@ -665,44 +664,19 @@ AlterSequence(AlterSeqStmt *stmt)
 		!IsConnFromCoord() &&
 		seqrel->rd_backend != MyBackendId)
 	{
-		StringInfoData	buf;
-		char *seqname = GetGlobalSeqName(seqrel, NULL, NULL);
+		StringInfoData	strOption;
 
-		initStringInfo(&buf);
-		appendStringInfoString(&buf,"ALTER SEQUENCE ");
+		char * databaseName = NULL;
+		char * schemaName = NULL;
 
-		appendStringInfoString(&buf, seqname);
+		databaseName = get_database_name(seqrel->rd_node.dbNode);
+		schemaName = get_namespace_name(RelationGetNamespace(seqrel));
 
-		appendStringInfoString(&buf, " INCREMENT BY ");
-		appendStringInfo(&buf, INT64_FORMAT, increment);
-
-		appendStringInfoString(&buf, " MAXVALUE ");
-		appendStringInfo(&buf, INT64_FORMAT, max_value);
-
-		appendStringInfoString(&buf, " MINVALUE ");
-		appendStringInfo(&buf, INT64_FORMAT, min_value);
-
-		appendStringInfoString(&buf, " CACHE ");
-		appendStringInfo(&buf, INT64_FORMAT, new.cache_value);
-
-		if(cycle)					
-			appendStringInfoString(&buf, " CYCLE ");
-		else
-			appendStringInfoString(&buf, " NO CYCLE ");
-
-		appendStringInfoString(&buf, " START WITH ");
-		appendStringInfo(&buf, INT64_FORMAT, start_value);
-
-		if(is_restart)
-		{
-			appendStringInfoString(&buf, " RESTART WITH ");
-			appendStringInfo(&buf, INT64_FORMAT, last_value);
-		}
-
-		/* alter sequence on agtm */
-		agtm_sequence(buf.data);
-
-		pfree(buf.data);
+		initStringInfo(&strOption);
+		parse_seqOption_to_string(seqOptions, stmt->sequence, &strOption);		
+		agtm_AlterSequence(RelationGetRelationName(seqrel), databaseName, schemaName,
+			strOption.data, strOption.len);
+		pfree(strOption.data);
 	}
 #endif
 

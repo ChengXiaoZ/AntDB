@@ -53,17 +53,19 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 /*
  * create sequence on agtm
  */
- extern void agtm_CreateSequence(const char * seqName, const char* seqOption, int optionSize);
+ extern void agtm_CreateSequence(const char * seqName, const char * database,
+ 					const char * schema , const char* seqOption, int optionSize);
 
 /*
  * alter sequence on agtm
  */
- extern void agtm_AlterSequence(const char * seqName, const char* seqOption);
+ extern void agtm_AlterSequence(const char * seqName, const char * database,
+ 					const char * schema , const char* seqOption, int optionSize);
 
 /*
  * delete sequence on agtm
  */
- extern void agtm_DropSequence(const char * seqName);
+ extern void agtm_DropSequence(const char * seqName, const char * database, const char * schema);
 
 
 /*

@@ -908,14 +908,7 @@ RemoveRelations(DropStmt *drop)
 		state.relkind = relkind;
 		state.heapOid = InvalidOid;
 		state.concurrent = drop->concurrent;
-		
-#ifdef AGTM
-/*		if (relkind == RELKIND_SEQUENCE) */
-		{
-			/* TODO: get relOid from your own systable */
-			/*relOid = ?*/
-		} 
-#endif
+
 		relOid = RangeVarGetRelidExtended(rel, lockmode, true,
 										  false,
 										  RangeVarCallbackForDropRelation,
