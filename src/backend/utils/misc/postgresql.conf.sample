@@ -627,8 +627,8 @@
 ##------------------------------------------------------------------------------
 # ADB OPTIONS
 ##------------------------------------------------------------------------------
-#enable_adb_ha_sync_log = on			# Enable record each commit sql for HA synchronization
-#enable_adb_ha_sync_log_select = off	# Disable record SELECT SQL
+#enable_adb_ha_sync = on			# Enable record each commit sql for HA synchronization
+#enable_adb_ha_sync_select = off	# Disable record SELECT SQL
 #adb_ha_param_delimiter = '$&#$'		# Delimiter for recording execute sql
 
 #------------------------------------------------------------------------------
