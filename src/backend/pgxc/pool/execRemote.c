@@ -1454,7 +1454,8 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 					   DNConnectionStateAsString(conn->state),
 					   msg_type,
 					   combiner,
-					   RequestTypeAsString(combiner->request_type))
+					   combiner ? RequestTypeAsString(combiner->request_type) :
+					   "UNKNOWN REQUEST TYPE")
 				));
 #endif
 		switch (msg_type)
