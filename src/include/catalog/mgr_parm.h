@@ -13,12 +13,14 @@
 
 CATALOG(mgr_parm,4928)
 {
-	NameData	parmnode;			/* parm type:c/d/g */
-	NameData	parmkey;			/* parm name */
+	char		parmnodetype;		/* parm type:c/d/g/'*' for all/'#' for datanode and coordinator*/
+	NameData	parmname;			/* parm name */
 #ifdef CATALOG_VARLEN
-	text		parmvalue;			/* parm value */
-	text		parmconfigtype;		/* parm type */	
-	text		parmcomment;		/* parm comment */	
+	text		parmunit;
+	text		parmcontext;		/*backend, user, internal, postmaster, superuser, sighup*/
+	text		parmvartype;		/*bool, enum, string, integer, real*/	
+	text		parmminval;			/* parm comment */
+	text		parmmaxval;
 #endif								/* CATALOG_VARLEN */
 } FormData_mgr_parm;
 
@@ -33,10 +35,12 @@ typedef FormData_mgr_parm *Form_mgr_parm;
  *		compiler constants for mgr_parm
  * ----------------
  */
-#define Natts_mgr_parm			 		5
-#define Anum_mgr_parm_parmnode			1
-#define Anum_mgr_parm_parmkey			2
-#define Anum_mgr_parm_parmvalue			3
-#define Anum_mgr_parm_parmconfigtype	4
-#define Anum_mgr_parm_parmcomment		5
+#define Natts_mgr_parm				7
+#define Anum_mgr_parm_nodetype		1
+#define Anum_mgr_parm_name			2
+#define Anum_mgr_parm_unit			3
+#define Anum_mgr_parm_context		4
+#define Anum_mgr_parm_vartype		5
+#define Anum_mgr_parm_minval		6
+#define Anum_mgr_parm_maxval		7
 #endif /* MGR_GTM_H */

@@ -54,16 +54,13 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define CNDN_TYPE_DATANODE_SLAVE			'b'
 #define CNDN_TYPE_DATANODE_EXTRA			'n'
 
-#define MAX_WAL_SENDERS_NUM					5
-#define WAL_KEEP_SEGMENTS_NUM				32
-#define WAL_LEVEL_MODE						"hot_standby"
 
 #define GTM_TYPE_GTM_MASTER			'g'
 #define GTM_TYPE_GTM_SLAVE			'p'
 #define GTM_TYPE_GTM_EXTRA			'e'
 
-#ifndef GTM_DEFAULT_PORT
-#	define GTM_DEFAULT_PORT 6666
-#endif
+#define NODE_TYPE_GTM 				'G'
+#define NODE_TYPE_COORDINATOR		'C'
+#define NODE_TYPE_DATANODE			'D'
 
 #endif /* MGR_CNDNNODE_H */

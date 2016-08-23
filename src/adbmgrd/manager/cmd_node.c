@@ -39,6 +39,9 @@
 #define takeplaparm_n  "none"
 #define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
 #define PG_DUMPALL_TEMP_FILE "/tmp/pg_dumpall_temp.txt"
+#define MAX_WAL_SENDERS_NUM	5
+#define WAL_KEEP_SEGMENTS_NUM	32
+#define WAL_LEVEL_MODE	"hot_standby"
 #define APPEND_DNMASTER  1
 #define APPEND_CNMASTER  2
 
@@ -972,6 +975,7 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
+		mgr_add_parm(cndnnametmp, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh recovry.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -1424,6 +1428,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
+		mgr_add_parm(cndnname, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -1441,6 +1446,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
+		mgr_add_parm(cndnname, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -1463,6 +1469,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
+		mgr_add_parm(cndnname, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));

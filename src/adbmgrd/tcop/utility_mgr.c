@@ -23,9 +23,6 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRAlterHost:
 		tag = "ALTER HOST";
 		break;
-	case T_MGRAlterParm:
-		tag = "ALTER PARM";
-		break;
 	case T_MGRAddNode:
 		tag = "ADD NODE";
 		break;
@@ -37,6 +34,9 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 		break;
 	case T_MGRDeplory:
 		tag = "DEPLORY";
+		break;
+	case T_MGRUpdateparm:
+		tag = "SET PARM";
 		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
@@ -63,9 +63,6 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 	case T_MGRAlterHost:
 		mgr_alter_host((MGRAlterHost*)parsetree, params, dest);
 		break;
-	case T_MGRAlterParm:
-		mgr_alter_parm((MGRAlterParm*)parsetree, params, dest);
-		break;
 	case T_MGRAddNode:
 		mgr_add_node((MGRAddNode*)parsetree, params, dest);
 		break;
@@ -77,6 +74,9 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRDeplory:
 		mgr_deplory((MGRDeplory*)parsetree, params, dest);
+		break;
+	case T_MGRUpdateparm:
+		mgr_add_updateparm((MGRUpdateparm*)parsetree, params, dest);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)

@@ -108,15 +108,16 @@ extern char *defGetString(DefElem *def);
 %type <list>	stmtblock stmtmulti
 %type <node>	stmt
 %type <node>	AddHostStmt DropHostStmt ListHostStmt AlterHostStmt
-				AlterParmStmt ListParmStmt StartAgentStmt AddNodeStmt 
+				ListParmStmt StartAgentStmt AddNodeStmt 
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
+				AddUpdataparmStmt
 
 %type <list>	general_options opt_general_options general_option_list
-				AConstList targetList ObjList var_list NodeConstList
+				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
 
@@ -181,7 +182,6 @@ stmt :
 	| ListHostStmt
 	| AlterHostStmt
 	| StartAgentStmt
-	| AlterParmStmt
 	| ListMonitor
 	| ListParmStmt
 	| AddNodeStmt
@@ -202,6 +202,7 @@ stmt :
 	| Get_host_threshold
 	| Get_alarm_info
 	| AppendNodeStmt
+	| AddUpdataparmStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -561,6 +562,10 @@ opt_general_options:
 	| /* empty */		{ $$ = NIL; }
 	;
 
+set_parm_general_options:
+	  general_options	{ $$ = $1; }
+	;
+	
 general_options: '(' general_option_list ')'
 		{
 			$$ = $2;
@@ -733,47 +738,65 @@ StartAgentStmt:
 		;
  
 /* parm start*/
-AlterParmStmt:
-	  ALTER PARM Ident Ident opt_general_options
+AddUpdataparmStmt:
+		SET GTM opt_gtm_inner_type Ident set_parm_general_options
 		{
-			MGRAlterParm *node = makeNode(MGRAlterParm);
-			node->if_not_exists = false;
-			node->parmkey = $3;
-			node->parmnode = $4;
-			node->options = $5;
-			$$ = (Node*)node;
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->nodetype = NODE_TYPE_GTM;
+				node->innertype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				$$ = (Node*)node;
 		}
-	;
-
+	| SET DATANODE opt_dn_inner_type Ident set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->nodetype = NODE_TYPE_DATANODE;
+				node->innertype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				$$ = (Node*)node;
+		}
+	| SET COORDINATOR MASTER Ident set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->nodetype = NODE_TYPE_COORDINATOR;
+				node->innertype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->nodename = $4;
+				node->options = $5;
+				$$ = (Node*)node;
+		}
+		;
+	
 ListParmStmt:
 	  LIST PARM
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("parm"), -1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 			$$ = (Node*)stmt;
 		}
 	| LIST PARM '(' targetList ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = $4;
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("parm"), -1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 			$$ = (Node*)stmt;
 		}
 	| LIST PARM AConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("parm"), -1));
-			stmt->whereClause = make_column_in("parmkey", $3);
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
+			stmt->whereClause = make_column_in("nodename", $3);
 			$$ = (Node*)stmt;
 		}
 	| LIST PARM '(' targetList ')' AConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = $4;
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("parm"), -1));
-			stmt->whereClause = make_column_in("parmkey", $6);
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
+			stmt->whereClause = make_column_in("nodename", $6);
 			$$ = (Node*)stmt;
 		}
 	;

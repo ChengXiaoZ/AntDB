@@ -4097,15 +4097,6 @@ BEGIN_NODE(MGRAlterHost)
 END_NODE(MGRAlterHost)
 #endif /* NO_NODE_MGRAlterHost */
 
-#ifndef NO_NODE_MGRAlterParm
-BEGIN_NODE(MGRAlterParm)
-	NODE_SCALAR(bool, if_not_exists)
-	NODE_STRING(parmkey)
-	NODE_STRING(parmnode)
-	NODE_NODE(List, options)
-END_NODE(MGRAlterParm)
-#endif /* NO_NODE_MGRAlterParm */
-
 #ifndef NO_NODE_MGRAddNode
 BEGIN_NODE(MGRAddNode)
 	NODE_SCALAR(bool, if_not_exists)
@@ -4135,5 +4126,17 @@ BEGIN_NODE(MGRDeplory)
 	NODE_STRING(password)
 END_NODE(MGRDeplory)
 #endif /* NO_NODE_MGRDeplory */
+
+#ifndef NO_NODE_MGRUpdateparm
+BEGIN_NODE(MGRUpdateparm)
+	NODE_SCALAR(char, nodetype)
+	NODE_STRING(nodename)
+	NODE_SCALAR(char, innertype)
+	NODE_STRING(key)
+	NODE_STRING(value)
+	NODE_NODE(List, options)
+END_NODE(MGRUpdateparm)
+#endif /* NO_NODE_MGRUpdateparm */
+
 
 #endif /* ADBMGRD */

@@ -201,4 +201,8 @@ extern Datum get_dbthreshold(PG_FUNCTION_ARGS);
 extern char *monitor_get_timestamptz_onenode(char *user, char *address, int port);
 extern bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len);
 
+/*mgr_updateparm*/
+extern void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest);
+extern void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg);
+
 #endif /* MGR_CMDS_H */

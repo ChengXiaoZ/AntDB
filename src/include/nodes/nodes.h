@@ -471,13 +471,13 @@ typedef enum NodeTag
 	,T_MGRAlterGtm
 	,T_MGRDropGtm
 	,T_MGRListGtm
-	,T_MGRAlterParm
 	,T_MGRListParm
 	,T_MGRAddNode
 	,T_MGRAlterNode
 	,T_MGRDropNode
 	,T_MGRListNode
 	,T_MGRDeplory
+	,T_MGRUpdateparm
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor

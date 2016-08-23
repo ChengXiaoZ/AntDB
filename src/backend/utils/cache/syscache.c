@@ -68,6 +68,7 @@
 #ifdef ADBMGRD
 #include "catalog/mgr_host.h"
 #include "catalog/mgr_parm.h"
+#include "catalog/mgr_updateparm.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/monitor_databasetps.h"
 #include "catalog/monitor_databaseitem.h"
@@ -914,11 +915,11 @@ static const struct cachedesc cacheinfo[] = {
 		32
 	}
 	,{ParmRelationId,		/* PARMPARMNODE */
-		ParmParmkeyIndexId,
+		ParmTypeNameIndexId,
 		2,
 		{
-			Anum_mgr_parm_parmkey,
-			Anum_mgr_parm_parmnode,
+			Anum_mgr_parm_nodetype,
+			Anum_mgr_parm_name,
 			0,
 			0
 		},
@@ -964,6 +965,17 @@ static const struct cachedesc cacheinfo[] = {
 			ObjectIdAttributeNumber,
 			0,
 			0,
+			0
+		},
+		32
+	}
+	,{UpdateparmRelationId,		/* MONITORNAMEINNERTYPEKEY */
+		MonitorUpdataparmNameInnertypeKeyIndexId,
+		3,
+		{
+			Anum_mgr_updateparm_name,
+			Anum_mgr_updateparm_innertype,
+			Anum_mgr_updateparm_key,
 			0
 		},
 		32

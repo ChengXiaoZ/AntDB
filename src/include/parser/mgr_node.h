@@ -74,4 +74,15 @@ typedef struct MGRDeplory
 	char		*password;
 }MGRDeplory;
 
+typedef struct MGRUpdateparm
+{
+	NodeTag		type;
+	char		nodetype;
+	char		*nodename;
+	char		innertype;
+	char		*key;
+	char		*value;
+	List		*options;		/* list of DefElem */
+}MGRUpdateparm;
+
 #endif /* MGR_NODE_H */
