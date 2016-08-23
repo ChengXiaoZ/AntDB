@@ -47,6 +47,7 @@
 #include "catalog/toasting.h"
 #include "commands/cluster.h"
 #include "commands/comment.h"
+#include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/sequence.h"
 #include "commands/tablecmds.h"
@@ -2686,19 +2687,14 @@ RenameRelationInternal(Oid myrelid, const char *newrelname, bool is_internal)
 		 targetrelation->rd_rel->relkind == RELKIND_SEQUENCE) &&
 		!IsTempSequence(myrelid)) /* It is possible to rename a sequence with ALTER TABLE */
 		{
-			StringInfoData	buf;
-			char *seqname = GetGlobalSeqName(targetrelation, NULL, NULL);
+			char * seqName = NULL;
+			char * databaseName = NULL;
+			char * schemaName = NULL;
 
-			initStringInfo(&buf);
-			appendStringInfoString(&buf,"ALTER SEQUENCE ");
-			appendStringInfo(&buf, "%s", seqname);
-			appendStringInfoString(&buf," RENAME TO ");
-			appendStringInfo(&buf, "%s", newrelname);			
-			/* rename sequence on agtm */
-			agtm_sequence(buf.data);
-
-			pfree(seqname);
-			pfree(buf.data);
+			seqName = RelationGetRelationName(targetrelation);
+			databaseName = get_database_name(targetrelation->rd_node.dbNode);
+			schemaName = get_namespace_name(RelationGetNamespace(targetrelation));
+			agtm_RenameSequence(seqName, databaseName, schemaName, newrelname, T_RENAME_SEQUENCE);
 		}
 #endif
 

@@ -301,6 +301,63 @@ ProcessSequenceDrop(StringInfo message, StringInfo output)
 	return output;
 }
 
+StringInfo
+ProcessSequenceRename(StringInfo message, StringInfo output)
+{
+	char* dbName = NULL;
+	char* schemaName = NULL;
+	char* sequenceName = NULL;
+	char* newName = NULL;
+	int	  newNameSize;
+	SequenceRenameType type;
+
+	MemoryContext sequece_Context;
+	MemoryContext oldctx = NULL;
+
+	sequece_Context = AllocSetContextCreate(CurrentMemoryContext,
+											 "sequence deal",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldctx = MemoryContextSwitchTo(sequece_Context);
+
+	parse_seqFullName_to_details(message, &dbName, &schemaName, &sequenceName);
+
+	newNameSize = pq_getmsgint(message, sizeof(newNameSize));
+	newName = pnstrdup(pq_getmsgbytes(message, newNameSize), newNameSize);
+	if(newNameSize == 0)
+		ereport(ERROR,
+			(errmsg("sequence new name is null")));
+
+	type = pq_getmsgint(message, sizeof(type));
+	pq_getmsgend(message);
+
+	switch(type)
+	{
+		case T_RENAME_SEQUENCE:
+			UpdateSequenceInfo(dbName, schemaName, sequenceName, newName, T_AgtmSeqName);
+			break;
+		case T_RENAME_SCHEMA:
+			UpdateSequenceInfo(dbName, schemaName, sequenceName, newName, T_AgtmSeqSchema);
+			break;
+		case T_RENAME_DATABASE:
+			UpdateSequenceInfo(dbName, schemaName, sequenceName, newName, T_AgtmseqDatabase);
+			break;
+		default:
+			ereport(ERROR,
+			(errmsg("sequence rename type error")));
+			break;
+	}	
+
+	(void)MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(sequece_Context);
+
+	/* Respond to the client */
+	pq_sendint(output, AGTM_MSG_SEQUENCE_RENAME_RESULT, 4);
+	return output;
+}
+
 static	void parse_seqFullName_to_details(StringInfo message, char ** dbName, 
 							char ** schemaName, char ** sequenceName)
 {

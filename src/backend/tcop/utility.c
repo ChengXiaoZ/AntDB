@@ -1342,9 +1342,9 @@ standard_ProcessUtility(Node *parsetree,
 
 		case T_AlterObjectSchemaStmt:
 			{
-				AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *) parsetree;
-
+				AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *) parsetree;				
 #ifdef PGXC
+				Oid oid;
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 				{
 					RemoteQueryExecType exec_type;
@@ -1362,9 +1362,12 @@ standard_ProcessUtility(Node *parsetree,
 						Oid relid = RangeVarGetRelid(stmt->relation, NoLock, true);
 
 						if (OidIsValid(relid))
+						{
+							oid = relid;
 							exec_type = ExecUtilityFindNodes(stmt->objectType,
 															 relid,
 															 &is_temp);
+						}
 						else
 							exec_type = EXEC_ON_NONE;
 					}
@@ -1384,7 +1387,23 @@ standard_ProcessUtility(Node *parsetree,
 					
 					/* execute alter sequecne (set schema)  on agtm */
 					if (stmt->objectType == OBJECT_SEQUENCE)
-						agtm_sequence(queryString);
+					{
+						Relation	targetrelation;
+						char * seqName = NULL;
+						char * databaseName = NULL;
+						char * schemaName = NULL;
+
+						targetrelation = relation_open(oid, AccessExclusiveLock);
+
+						seqName = RelationGetRelationName(targetrelation);
+						databaseName = get_database_name(targetrelation->rd_node.dbNode);
+						schemaName = get_namespace_name(RelationGetNamespace(targetrelation));
+
+						agtm_RenameSequence(seqName, databaseName,
+							schemaName, stmt->newschema, T_RENAME_SCHEMA);
+
+						relation_close(targetrelation, NoLock);
+					}
 				}
 #endif
 				if (EventTriggerSupportsObjectType(stmt->objectType))

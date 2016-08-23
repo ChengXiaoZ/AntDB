@@ -32,4 +32,6 @@ StringInfo ProcessSequenceAlter(StringInfo message, StringInfo output);
 
 StringInfo ProcessSequenceDrop(StringInfo message, StringInfo output);
 
+StringInfo ProcessSequenceRename(StringInfo message, StringInfo output);
+
 #endif

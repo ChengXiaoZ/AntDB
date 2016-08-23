@@ -73,6 +73,9 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 		case AGTM_MSG_SEQUENCE_DROP:
 			output = ProcessSequenceDrop(input_message, &buf);
 			break;
+		case AGTM_MSG_SEQUENCE_RENAME:
+			output = ProcessSequenceRename(input_message, &buf);
+			break;
 		case AGTM_MSG_SEQUENCE_SET_VAL:
 			PG_TRY();
 			{

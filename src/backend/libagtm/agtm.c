@@ -58,6 +58,8 @@ agtm_CreateSequence(const char * seqName, const char * database,
 	StringInfoData	buf;
 	StringInfoData	strOption;
 
+	Assert(seqName != NULL && database != NULL && schema != NULL);
+
 	if(!IsUnderAGTM())
 		return;
 
@@ -92,6 +94,8 @@ agtm_AlterSequence(const char * seqName, const char * database,
 	StringInfoData	buf;
 	StringInfoData	strOption;
 
+	Assert(seqName != NULL && database != NULL && schema != NULL);
+
 	if(!IsUnderAGTM())
 		return;
 
@@ -123,6 +127,8 @@ agtm_DropSequence(const char * seqName, const char * database, const char * sche
 
 	PGresult 		*res;
 
+	Assert(seqName != NULL && database != NULL && schema != NULL);
+
 	if(!IsUnderAGTM())
 		return;
 
@@ -138,6 +144,36 @@ agtm_DropSequence(const char * seqName, const char * database, const char * sche
 
 	ereport(DEBUG1,
 		(errmsg("drop sequence on agtm :%s", seqName)));
+}
+
+void agtm_RenameSequence(const char * seqName, const char * database,
+							const char * schema, const char* newName, SequenceRenameType type)
+{
+	int	seqNameSize;
+	int	dbNameSize;
+	int	schemaNameSize;
+	int	newNameSize;	
+
+	PGresult 		*res;
+	StringInfoData	buf;
+	Assert(seqName != NULL && database != NULL && schema != NULL && newName != NULL);
+	if(!IsUnderAGTM())
+		return;
+
+	seqNameSize = strlen(seqName);
+	dbNameSize = strlen(database);
+	schemaNameSize = strlen(schema);
+	newNameSize = strlen(newName);
+
+	agtm_send_message(AGTM_MSG_SEQUENCE_RENAME, "%d%d %p%d %d%d %p%d %d%d %p%d %d%d %p%d %d%d", seqNameSize, 4, seqName, seqNameSize,
+	dbNameSize, 4, database, dbNameSize, schemaNameSize, 4, schema, schemaNameSize, newNameSize, 4, newName, newNameSize, type ,4);
+
+	res = agtm_get_result(AGTM_MSG_SEQUENCE_RENAME);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_RENAME_RESULT);
+
+	ereport(DEBUG1,
+		(errmsg("rename sequence %s rename to %s", seqName, newName)));
 }
 
 Timestamp
@@ -291,7 +327,6 @@ agtm_GetSeqLastVal(const char *seqname, const char * database,	const char * sche
 	return agtm_DealSequence(seqname, database, schema, AGTM_MSG_SEQUENCE_GET_LAST
 			, AGTM_SEQUENCE_GET_LAST_RESULT);
 }
-
 
 AGTM_Sequence
 agtm_SetSeqVal(const char *seqname, const char * database,

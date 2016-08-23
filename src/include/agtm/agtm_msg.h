@@ -29,6 +29,7 @@ typedef enum AGTM_MessageType
 	AGTM_MSG_SEQUENCE_INIT,
 	AGTM_MSG_SEQUENCE_ALTER,
 	AGTM_MSG_SEQUENCE_DROP,
+	AGTM_MSG_SEQUENCE_RENAME,
 	AGTM_MSG_SEQUENCE_GET_NEXT,	/* Get the next sequence value of sequence */
 	AGTM_MSG_SEQUENCE_GET_CUR,
 	AGTM_MSG_SEQUENCE_GET_LAST,	/* Get the last sequence value of sequence */
@@ -52,6 +53,7 @@ typedef enum AGTM_ResultType
 	AGTM_MSG_SEQUENCE_INIT_RESULT,
 	AGTM_MSG_SEQUENCE_ALTER_RESULT,
 	AGTM_MSG_SEQUENCE_DROP_RESULT,
+	AGTM_MSG_SEQUENCE_RENAME_RESULT,
 	AGTM_SEQUENCE_GET_NEXT_RESULT,
 	AGTM_MSG_SEQUENCE_GET_CUR_RESULT,
 	AGTM_SEQUENCE_GET_LAST_RESULT,
@@ -67,7 +69,18 @@ typedef enum AgtmNodeTag
 	T_AgtmFloat,
 	T_AgtmString,
 	T_AgtmBitString,
+	T_AgtmSeqName,
+	T_AgtmSeqSchema,
+	T_AgtmseqDatabase,
 	T_AgtmNull
 } AgtmNodeTag;
+
+typedef enum SequenceRenameType
+{
+	T_RENAME_SEQUENCE,
+	T_RENAME_SCHEMA,
+	T_RENAME_DATABASE,
+	T_NULL
+}SequenceRenameType;
 
 #endif

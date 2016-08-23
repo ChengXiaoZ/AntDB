@@ -7,6 +7,8 @@
 #include "catalog/genbki.h"
 #endif /* BUILD_BKI */
 
+#include "agtm/agtm_msg.h"
+
 #define AgtmSequenceRelationId 4053
 
 CATALOG(agtm_sequence,4053) //BKI_SHARED_RELATION
@@ -44,5 +46,9 @@ extern bool SequenceIsExist(const char* database,
 
 extern Oid SequenceSystemClassOid(const char* database,
 				const char* schema, const char* sequence);
+
+extern void UpdateSequenceInfo(const char* database,
+				const char* schema, const char* sequence, const char * value, AgtmNodeTag type);
+
 #endif
 
