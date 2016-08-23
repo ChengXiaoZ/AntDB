@@ -10086,19 +10086,12 @@ table_ref:	relation_expr opt_alias_clause
 				}
 			| LATERAL_P func_table func_alias_clause
 				{
-#ifdef ADB
-					ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR)
-						,errmsg("lateral no support yet!")
-						,parser_errposition(@1)));
-#else /* ADB */
 					RangeFunction *n = makeNode(RangeFunction);
 					n->lateral = true;
 					n->funccallnode = $2;
 					n->alias = linitial($3);
 					n->coldeflist = lsecond($3);
 					$$ = (Node *) n;
-#endif /* ADB */
 				}
 			| select_with_parens opt_alias_clause
 				{
@@ -10140,7 +10133,7 @@ table_ref:	relation_expr opt_alias_clause
 #ifdef ADB
 					ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR)
-						,errmsg("lateral no support yet!")
+						,errmsg("lateral (select...) no support yet!")
 						,parser_errposition(@1)));
 #else /* ADB */
 					RangeSubselect *n = makeNode(RangeSubselect);
