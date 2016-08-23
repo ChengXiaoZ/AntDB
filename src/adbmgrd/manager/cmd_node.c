@@ -4868,7 +4868,7 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoi
 
 /*
 * the parameters which need refresh for pg_hba.conf
-* gtm : include all gtm master/slave/extra ip and all coordinators ip and datanode masters ip
+* gtm : include all gtm master/slave/extra ip and all coordinators ip and datanode masters/slave/extra ip
 * coordinator: include all coordinators ip
 * datanode master: include all coordinators ip
 */
@@ -4910,6 +4910,7 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 	{
 		rel_node = heap_open(NodeRelationId, AccessShareLock);
 		rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
+		/*for datanode or gtm replication*/
 		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -4950,11 +4951,15 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 				cnuser = get_hostuser_from_hostoid(hostoid);
 				/*get address*/
 				cnaddress = get_hostaddress_from_hostoid(hostoid);
-				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				if (GTM_TYPE_GTM_MASTER == nodetype)
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
+				else
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
 				pfree(cnuser);
 				pfree(cnaddress);
 			}
-			else if (CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype && GTM_TYPE_GTM_MASTER == nodetype)
+			else if ((CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype || CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype 
+				|| CNDN_TYPE_DATANODE_EXTRA == mgr_node->nodetype) && GTM_TYPE_GTM_MASTER == nodetype)
 			{
 				/*hostoid*/
 				hostoid = mgr_node->nodehost;
@@ -4962,10 +4967,7 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 				cnuser = get_hostuser_from_hostoid(hostoid);
 				/*get address*/
 				cnaddress = get_hostaddress_from_hostoid(hostoid);
-				if (GTM_TYPE_GTM_MASTER == nodetype)
-					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
-				else
-					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
 				pfree(cnuser);
 				pfree(cnaddress);
 			}
