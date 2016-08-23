@@ -54,13 +54,13 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
  * create sequence on agtm
  */
  extern void agtm_CreateSequence(const char * seqName, const char * database,
- 					const char * schema , const char* seqOption, int optionSize);
+ 					const char * schema , List * seqOptions, RangeVar * rangVar);
 
 /*
  * alter sequence on agtm
  */
  extern void agtm_AlterSequence(const char * seqName, const char * database,
- 					const char * schema , const char* seqOption, int optionSize);
+ 					const char * schema , List * seqOptions, RangeVar * rangVar);
 
 /*
  * delete sequence on agtm
@@ -71,26 +71,27 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 /*
  * get next Sequence from AGTM
  */
-extern AGTM_Sequence agtm_GetSeqNextVal(const char *seqname);
+extern AGTM_Sequence agtm_GetSeqNextVal(const char *seqname, const char * database,	const char * schema);
 
 /*
  * get current Sequence from AGTM
  */
-extern AGTM_Sequence agtm_GetSeqCurrVal(const char *seqname);
+extern AGTM_Sequence agtm_GetSeqCurrVal(const char *seqname, const char * database,	const char * schema);
 
 /*
  * get last Sequence from AGTM
  */
-extern AGTM_Sequence agtm_GetSeqLastVal(const char *seqname);
+extern AGTM_Sequence agtm_GetSeqLastVal(const char *seqname, const char * database,	const char * schema);
 
 /*
  * set Sequence current value
  */
 
-extern AGTM_Sequence agtm_SetSeqVal(const char *seqname, AGTM_Sequence nextval);
+extern AGTM_Sequence agtm_SetSeqVal(const char *seqname, const char * database,
+			const char * schema, AGTM_Sequence nextval);
 
-extern AGTM_Sequence agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval,
-									bool iscalled);
+extern AGTM_Sequence agtm_SetSeqValCalled(const char *seqname, const char * database,
+			const char * schema, AGTM_Sequence nextval, bool iscalled);
 
 /*
  * get timestamp from AGTM

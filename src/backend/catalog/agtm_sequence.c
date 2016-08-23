@@ -22,7 +22,7 @@ Oid AddAgtmSequence(const char* database,
 	NameData    nameSequence;
 
 	if(database == NULL || schema == NULL || sequence == NULL)
-		elog(ERROR, "AddAgtmSequence database schema sequence must no null");
+		ereport(ERROR,( errmsg("SequenceIsExist database schema sequence must no null")));
 
 	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, false, sizeof(nulls));
@@ -72,8 +72,9 @@ Oid DelAgtmSequence(const char* database,
 		NameGetDatum(&nameSchema), NameGetDatum(&nameSequence));
 
 	if (!HeapTupleIsValid(htup)) /* should not happen */
-		elog(ERROR, "cache lookup failed for relation agtm_sequence, database :%s,schema :%s,sequence :%s",
-			database, schema, sequence);
+		ereport(ERROR,
+			( errmsg("cache lookup failed for relation agtm_sequence, database :%s,schema :%s,sequence :%s",
+			database, schema, sequence)));
 
 	oid = HeapTupleGetOid(htup);
 
@@ -94,7 +95,8 @@ bool SequenceIsExist(const char* database,
 	NameData    nameSequence;
 
 	if(database == NULL || schema == NULL || sequence == NULL)
-		elog(ERROR, "SequenceIsExist database schema sequence must no null");
+		ereport(ERROR,
+				( errmsg("SequenceIsExist database schema sequence must no null")));
 
 	namestrcpy(&nameDatabase, database);
 	namestrcpy(&nameSchema, schema);
@@ -114,18 +116,20 @@ Oid SequenceSystemClassOid(const char* database,
 	NameData    nameSequence;
 
 	if(database == NULL || schema == NULL || sequence == NULL)
-		elog(ERROR, "SequenceIsExist database schema sequence must no null");
+		ereport(ERROR,
+				( errmsg("SequenceIsExist database schema sequence must no null")));
 
 	namestrcpy(&nameDatabase, database);
 	namestrcpy(&nameSchema, schema);
 	namestrcpy(&nameSequence, sequence);
 
 	htup = SearchSysCache3(AGTMSEQUENCEFIELDS, NameGetDatum(&nameDatabase),
-	NameGetDatum(&nameSchema), NameGetDatum(&nameSequence));
+							NameGetDatum(&nameSchema), NameGetDatum(&nameSequence));
 
 	if (!HeapTupleIsValid(htup)) /* should not happen */
-		elog(ERROR, "cache lookup failed for relation agtm_sequence, database :%s,schema :%s,sequence :%s",
-			database, schema, sequence);
+		ereport(ERROR,
+				( errmsg("cache lookup failed for relation agtm_sequence, database :%s,schema :%s,sequence :%s",
+			database, schema, sequence)));
 
 	oid = HeapTupleGetOid(htup);
 

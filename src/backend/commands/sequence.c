@@ -262,19 +262,14 @@ DefineSequence(CreateSeqStmt *seq)
 		(seq->sequence->relpersistence == RELPERSISTENCE_PERMANENT ||
 		 seq->sequence->relpersistence == RELPERSISTENCE_UNLOGGED))
 	{
-		StringInfoData	strOption;
 		char * databaseName = NULL;
 		char * schemaName = NULL;
 
 		databaseName = get_database_name(rel->rd_node.dbNode);
 		schemaName = get_namespace_name(RelationGetNamespace(rel));
 
-		initStringInfo(&strOption);
-		parse_seqOption_to_string(seqOptions, seq->sequence, &strOption);
-		agtm_CreateSequence(seq->sequence->relname, databaseName, schemaName,
-			strOption.data, strOption.len);
-
-		pfree(strOption.data);
+		agtm_CreateSequence(seq->sequence->relname, databaseName,
+			schemaName, seqOptions, seq->sequence);
 	}
 #endif
 	return seqoid;
@@ -664,22 +659,16 @@ AlterSequence(AlterSeqStmt *stmt)
 		!IsConnFromCoord() &&
 		seqrel->rd_backend != MyBackendId)
 	{
-		StringInfoData	strOption;
-
 		char * databaseName = NULL;
 		char * schemaName = NULL;
 
 		databaseName = get_database_name(seqrel->rd_node.dbNode);
 		schemaName = get_namespace_name(RelationGetNamespace(seqrel));
 
-		initStringInfo(&strOption);
-		parse_seqOption_to_string(seqOptions, stmt->sequence, &strOption);		
 		agtm_AlterSequence(RelationGetRelationName(seqrel), databaseName, schemaName,
-			strOption.data, strOption.len);
-		pfree(strOption.data);
+			seqOptions, stmt->sequence);
 	}
 #endif
-
 	return relid;
 }
 
@@ -775,9 +764,18 @@ nextval_internal(Oid relid)
 	is_temp = seqrel->rd_backend == MyBackendId;
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && !is_temp)
 	{
-		char *seqname = GetGlobalSeqName(seqrel, NULL, NULL);
-		result = agtm_GetSeqNextVal(seqname);
-		pfree(seqname);
+		char * seqName = NULL;
+		char * databaseName = NULL;
+		char * schemaName = NULL;
+
+		seqName = RelationGetRelationName(seqrel);
+		databaseName = get_database_name(seqrel->rd_node.dbNode);
+		schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+
+		result = agtm_GetSeqNextVal(seqName, databaseName, schemaName);
+
+		pfree(databaseName);
+		pfree(schemaName);
 
 		/* Update the on-disk data */
 		seq->last_value = result; /* last fetched number */
@@ -1020,18 +1018,26 @@ currval_oid(PG_FUNCTION_ARGS)
 	SeqTable	elm;
 	Relation	seqrel;
 	
-#ifdef ADB
-	Datum		class_name;
-	char		*seq_key;
-	int64		seq_val;
-	class_name = DirectFunctionCall1(regclassout, relid);
-	seq_key = DatumGetCString(class_name);
-	seq_val = agtm_GetSeqCurrVal(seq_key);
-	PG_RETURN_INT64(seq_val);
-#endif
-
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
+
+#ifdef ADB
+{
+		int64		seq_val;
+
+		char * seqName = NULL;
+		char * databaseName = NULL;
+		char * schemaName = NULL;
+
+		seqName = RelationGetRelationName(seqrel);
+		databaseName = get_database_name(seqrel->rd_node.dbNode);
+		schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+		
+		seq_val = agtm_GetSeqCurrVal(seqName, databaseName, schemaName);
+		relation_close(seqrel, NoLock);
+		PG_RETURN_INT64(seq_val);
+}
+#endif
 
 	if (pg_class_aclcheck(elm->relid, GetUserId(), ACL_SELECT) != ACLCHECK_OK &&
 		pg_class_aclcheck(elm->relid, GetUserId(), ACL_USAGE) != ACLCHECK_OK)
@@ -1060,7 +1066,7 @@ lastval(PG_FUNCTION_ARGS)
 	
 #ifdef ADB
 	int64		seq_val;
-	seq_val = agtm_GetSeqLastVal(" ");
+	seq_val = agtm_GetSeqLastVal(" "," "," ");
 	PG_RETURN_INT64(seq_val);
 #endif
 
@@ -1212,12 +1218,22 @@ setval_oid(PG_FUNCTION_ARGS)
 	int64		next = PG_GETARG_INT64(1);
 	
 #ifdef ADB
-	Datum		class_name;
-	char		*seq_key;
+	Relation	seqrel;
+	SeqTable	elm;
 	int64		seq_val;
-	class_name = DirectFunctionCall1(regclassout, relid);
-	seq_key = DatumGetCString(class_name);
-	seq_val = agtm_SetSeqVal(seq_key,next);
+
+	char * seqName = NULL;
+	char * databaseName = NULL;
+	char * schemaName = NULL;
+
+	init_sequence(relid, &elm, &seqrel);
+
+	seqName = RelationGetRelationName(seqrel);
+	databaseName = get_database_name(seqrel->rd_node.dbNode);
+	schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+
+	seq_val = agtm_SetSeqVal(seqName, databaseName, schemaName, next);
+	relation_close(seqrel, NoLock);
 	PG_RETURN_INT64(seq_val);
 #endif
 
@@ -1238,12 +1254,22 @@ setval3_oid(PG_FUNCTION_ARGS)
 	bool		iscalled = PG_GETARG_BOOL(2);
 	
 #ifdef ADB
-	Datum		class_name;
-	char		*seq_key;
+	Relation	seqrel;
+	SeqTable	elm;
 	int64		seq_val;
-	class_name = DirectFunctionCall1(regclassout, relid);
-	seq_key = DatumGetCString(class_name);
-	seq_val = agtm_SetSeqValCalled(seq_key,next,iscalled);
+	char * seqName = NULL;
+	char * databaseName = NULL;
+	char * schemaName = NULL;
+
+	/* open and AccessShareLock sequence */
+	init_sequence(relid, &elm, &seqrel);
+
+	seqName = RelationGetRelationName(seqrel);
+	databaseName = get_database_name(seqrel->rd_node.dbNode);
+	schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+
+	seq_val = agtm_SetSeqValCalled(seqName, databaseName, schemaName, next, iscalled);
+	relation_close(seqrel, NoLock);
 	PG_RETURN_INT64(seq_val);
 #endif
 

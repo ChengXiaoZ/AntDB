@@ -17,7 +17,8 @@
 
 #include <unistd.h>
 
-static AGTM_Sequence agtm_DealSequence(const char *seqname, AGTM_MessageType type, AGTM_ResultType rtype);
+static AGTM_Sequence agtm_DealSequence(const char *seqname, const char * database,
+								const char * schema, AGTM_MessageType type, AGTM_ResultType rtype);
 static PGresult* agtm_get_result(AGTM_MessageType msg_type);
 static void agtm_send_message(AGTM_MessageType msg, const char *fmt, ...)
 			__attribute__((format(PG_PRINTF_ATTRIBUTE, 2, 3)));
@@ -47,7 +48,7 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 
 void
 agtm_CreateSequence(const char * seqName, const char * database,
-						const char * schema ,const char* seqOption, int optionSize)
+						const char * schema , List * seqOptions, RangeVar * rangVar)
 {
 	PGresult 		*res;
 
@@ -55,29 +56,33 @@ agtm_CreateSequence(const char * seqName, const char * database,
 	int				databaseSize;
 	int				schemaSize;
 	StringInfoData	buf;
+	StringInfoData	strOption;
 
 	if(!IsUnderAGTM())
 		return;
+
+	initStringInfo(&strOption);
+	parse_seqOption_to_string(seqOptions, rangVar, &strOption);
 
 	nameSize = strlen(seqName);
 	databaseSize = strlen(database);
 	schemaSize = strlen(schema);
 
 	agtm_send_message(AGTM_MSG_SEQUENCE_INIT, "%d%d %p%d %d%d %p%d %d%d %p%d %p%d", nameSize, 4, seqName, nameSize, 
-		databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, seqOption, optionSize);
+		databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, strOption.data, strOption.len);
 
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_INIT);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_INIT_RESULT);
 
+	pfree(strOption.data);
 	ereport(DEBUG1,
 		(errmsg("create sequence on agtm :%s", seqName)));
-	
 }
 
 void
 agtm_AlterSequence(const char * seqName, const char * database,
-						const char * schema , const char* seqOption, int optionSize)
+						const char * schema ,  List * seqOptions, RangeVar * rangVar)
 {
 	PGresult 		*res;
 
@@ -85,23 +90,27 @@ agtm_AlterSequence(const char * seqName, const char * database,
 	int				databaseSize;
 	int				schemaSize;
 	StringInfoData	buf;
+	StringInfoData	strOption;
 
 	if(!IsUnderAGTM())
 		return;
+
+	initStringInfo(&strOption);
+	parse_seqOption_to_string(seqOptions, rangVar, &strOption);
 
 	nameSize = strlen(seqName);
 	databaseSize = strlen(database);
 	schemaSize = strlen(schema);
 
 	agtm_send_message(AGTM_MSG_SEQUENCE_ALTER, "%d%d %p%d %d%d %p%d %d%d %p%d %p%d", nameSize, 4, seqName, nameSize, 
-			databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, seqOption, optionSize);
+			databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, strOption.data, strOption.len);
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_ALTER);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_ALTER_RESULT);
 
+	pfree(strOption.data);
 	ereport(DEBUG1,
-	(errmsg("alter sequence on agtm :%s", seqName)));
-
+		(errmsg("alter sequence on agtm :%s", seqName)));
 }
 
 void
@@ -142,7 +151,7 @@ agtm_GetTimestamptz(void)
 		ereport(ERROR,
 			(errmsg("agtm_GetTimestamptz function must under AGTM")));
 
-	agtm_send_message(AGTM_MSG_GET_TIMESTAMP, "");
+	agtm_send_message(AGTM_MSG_GET_TIMESTAMP, " ");
 	res = agtm_get_result(AGTM_MSG_GET_TIMESTAMP);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_GET_TIMESTAMP_RESULT);
@@ -167,7 +176,7 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 		ereport(ERROR,
 			(errmsg("agtm_GetGlobalSnapShot function must under AGTM")));
 
-	agtm_send_message(AGTM_MSG_SNAPSHOT_GET, "");
+	agtm_send_message(AGTM_MSG_SNAPSHOT_GET, " ");
 	res = agtm_get_result(AGTM_MSG_SNAPSHOT_GET);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_SNAPSHOT_GET_RESULT);
@@ -223,23 +232,30 @@ agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 }
 
 static AGTM_Sequence 
-agtm_DealSequence(const char *seqname, AGTM_MessageType type, AGTM_ResultType rtype)
+agtm_DealSequence(const char *seqname, const char * database,
+								const char * schema, AGTM_MessageType type, AGTM_ResultType rtype)
 {
 	PGresult		*res;
 	StringInfoData	buf;
-	int				seq_len;
+	int				seqNameSize;
+	int 			databaseSize;
+	int				schemaSize;
 	AGTM_Sequence	seq;
 
 	if(!IsUnderAGTM())
 		ereport(ERROR,
 			(errmsg("agtm_DealSequence function must under AGTM")));
 
-	if(seqname == NULL || seqname[0] == '\0')
+	if(seqname[0] == '\0' || database[0] == '\0' || schema[0] == '\0')
 		ereport(ERROR,
 			(errmsg("message type = (%s), parameter seqname is null", gtm_util_message_name(type))));
 
-	seq_len = strlen(seqname);
-	agtm_send_message(type, "%d%d %p%d", seq_len, 4, seqname, seq_len);
+	seqNameSize = strlen(seqname);
+	databaseSize = strlen(database);
+	schemaSize = strlen(schema);
+	agtm_send_message(type, "%d%d %p%d %d%d %p%d %d%d %p%d", seqNameSize, 4, seqname, seqNameSize,
+		databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize);
+
 	res = agtm_get_result(type);
 	Assert(res);
 	agtm_use_result_type(res, &buf, rtype);
@@ -250,40 +266,55 @@ agtm_DealSequence(const char *seqname, AGTM_MessageType type, AGTM_ResultType rt
 }
 
 AGTM_Sequence 
-agtm_GetSeqNextVal(const char *seqname)
+agtm_GetSeqNextVal(const char *seqname, const char * database,	const char * schema)
 {
-	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_NEXT
+	Assert(seqname != NULL && database != NULL && schema != NULL);
+
+	return agtm_DealSequence(seqname, database, schema, AGTM_MSG_SEQUENCE_GET_NEXT
 			, AGTM_SEQUENCE_GET_NEXT_RESULT);
 }
 
 AGTM_Sequence 
-agtm_GetSeqCurrVal(const char *seqname)
+agtm_GetSeqCurrVal(const char *seqname, const char * database,	const char * schema)
 {
-	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_CUR
+	Assert(seqname != NULL && database != NULL && schema != NULL);
+	
+	return agtm_DealSequence(seqname, database, schema, AGTM_MSG_SEQUENCE_GET_CUR
 			, AGTM_MSG_SEQUENCE_GET_CUR_RESULT);
 }
 
 AGTM_Sequence
-agtm_GetSeqLastVal(const char *seqname)
+agtm_GetSeqLastVal(const char *seqname, const char * database,	const char * schema)
 {
-	return agtm_DealSequence(seqname, AGTM_MSG_SEQUENCE_GET_LAST
+	Assert(seqname != NULL && database != NULL && schema != NULL);
+	
+	return agtm_DealSequence(seqname, database, schema, AGTM_MSG_SEQUENCE_GET_LAST
 			, AGTM_SEQUENCE_GET_LAST_RESULT);
 }
 
 
 AGTM_Sequence
-agtm_SetSeqVal(const char *seqname, AGTM_Sequence nextval)
+agtm_SetSeqVal(const char *seqname, const char * database,
+			const char * schema, AGTM_Sequence nextval)
 {
-	return (agtm_SetSeqValCalled(seqname, nextval, true));
+	Assert(seqname != NULL && database != NULL && schema != NULL);
+
+	return (agtm_SetSeqValCalled(seqname, database, schema, nextval, true));
 }
 
 AGTM_Sequence
-agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
+agtm_SetSeqValCalled(const char *seqname, const char * database,
+			const char * schema, AGTM_Sequence nextval, bool iscalled)
 {
 	PGresult		*res;
 	StringInfoData	buf;
-	int				len;
 	AGTM_Sequence	seq;
+
+	int				seqNameSize;
+	int 			databaseSize;
+	int				schemaSize;
+
+	Assert(seqname != NULL && database != NULL && schema != NULL);
 
 	if(!IsUnderAGTM())
 		ereport(ERROR,
@@ -294,9 +325,14 @@ agtm_SetSeqValCalled(const char *seqname, AGTM_Sequence nextval, bool iscalled)
 			(errmsg("message type = %s, parameter seqname is null",
 			"AGTM_MSG_SEQUENCE_SET_VAL")));
 
-	len = strlen(seqname);
-	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL, "%d%d %p%d" INT64_FORMAT "%c"
-		, len, 4, seqname, len, nextval, iscalled);
+	seqNameSize = strlen(seqname);
+	databaseSize = strlen(database);
+	schemaSize = strlen(schema);
+
+	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL, "%d%d %p%d %d%d %p%d %d%d %p%d" INT64_FORMAT "%c",
+			seqNameSize, 4, seqname, seqNameSize, databaseSize, 4, database, databaseSize, 
+			schemaSize, 4, schema, schemaSize, nextval, iscalled);
+
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_SET_VAL);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_SEQUENCE_SET_VAL_RESULT);

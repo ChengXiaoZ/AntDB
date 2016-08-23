@@ -23,6 +23,7 @@
 #include "utils/snapmgr.h"
 
 static List* parse_string_to_seqOption(StringInfo strOption, RangeVar *var);
+
 static	void parse_seqFullName_to_details(StringInfo message, char ** dbName, 
 							char ** schemaName, char ** sequenceName);
 
@@ -156,8 +157,6 @@ ProcessSequenceInit(StringInfo message, StringInfo output)
 	lineOid = AddAgtmSequence(dbName,schemaName,sequenceName);
 
 	seqStmt = makeNode(CreateSeqStmt);
-	seqStmt->type = T_CreateSeqStmt;
-	rangeVar->type = T_RangeVar;
 	rangeVar->catalogname = NULL;
 	rangeVar->schemaname = NULL;
 	appendStringInfo(&buf, "%s", "seq");
@@ -218,8 +217,6 @@ ProcessSequenceAlter(StringInfo message, StringInfo output)
 	
 	lineOid = SequenceSystemClassOid(dbName, schemaName, sequenceName);
 	seqStmt = makeNode(AlterSeqStmt);
-	seqStmt->type = T_AlterSeqStmt;
-	rangeVar->type = T_RangeVar;
 	rangeVar->catalogname = NULL;
 	rangeVar->schemaname = NULL;
 	appendStringInfo(&buf, "%s", "seq");
@@ -278,13 +275,11 @@ ProcessSequenceDrop(StringInfo message, StringInfo output)
 	drop = makeNode(DropStmt);
 	rangeVar = makeNode(RangeVar);
 
-	drop->type = T_DropStmt;
 	drop->removeType = OBJECT_SEQUENCE;
 	drop->behavior = DROP_RESTRICT;
 	drop->missing_ok = 0;
 	drop->concurrent = 0;
 
-	rangeVar->type = T_RangeVar;
 	rangeVar->catalogname = NULL;
 	rangeVar->schemaname = NULL;
 	appendStringInfo(&buf, "%s", "seq");
@@ -315,19 +310,19 @@ static	void parse_seqFullName_to_details(StringInfo message, char ** dbName,
 
 	sequenceSize = pq_getmsgint(message, sizeof(sequenceSize));
 	*sequenceName = pnstrdup(pq_getmsgbytes(message, sequenceSize), sequenceSize);
-	if(*sequenceName == NULL)
+	if(sequenceSize == 0 || *sequenceName == NULL)
 		ereport(ERROR,
 			(errmsg("sequence name is null")));
 
 	dbNameSize = pq_getmsgint(message, sizeof(dbNameSize));
 	*dbName = pnstrdup(pq_getmsgbytes(message, dbNameSize), dbNameSize);
-	if(*dbName == NULL)
+	if(dbNameSize == 0 || *dbName == NULL)
 		ereport(ERROR,
 			(errmsg("sequence database name is null")));
 
 	schemaSize = pq_getmsgint(message, sizeof(schemaSize));
 	*schemaName = pnstrdup(pq_getmsgbytes(message, schemaSize), schemaSize);
-	if(*schemaName == NULL)
+	if(schemaSize == 0 || *schemaName == NULL)
 		ereport(ERROR,
 			(errmsg("sequence schemaName name is null")));
 }

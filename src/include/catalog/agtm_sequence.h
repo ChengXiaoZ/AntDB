@@ -1,5 +1,5 @@
-#ifndef AGTM_SEQUENCE_H
-#define AGTM_SEQUENCE_H
+#ifndef AGTM_CATALOG_SEQUENCE_H
+#define AGTM_CATALOG_SEQUENCE_H
 
 #ifdef BUILD_BKI
 #include "catalog/buildbki.h"
