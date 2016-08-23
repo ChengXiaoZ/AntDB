@@ -351,29 +351,11 @@ DECLARE_UNIQUE_INDEX(mgr_host_oid_index, 4909, on mgr_host using btree(oid oid_o
 DECLARE_UNIQUE_INDEX(mgr_host_hostname_index, 4910, on mgr_host using btree(hostname name_ops));
 #define HostHostnameIndexId					4910
 
-DECLARE_UNIQUE_INDEX(mgr_parm_oid_index, 4929, on mgr_parm using btree(oid oid_ops));
-#define ParmOidIndexId 4929
-
-DECLARE_UNIQUE_INDEX(mgr_parm_typename_index, 4930, on mgr_parm using btree(parmnodetype char_ops,parmname name_ops));
-#define ParmTypeNameIndexId 4930
+DECLARE_UNIQUE_INDEX(mgr_parm_typename_index, 4951, on mgr_parm using btree(parmnodetype char_ops,parmname name_ops));
+#define ParmTypeNameIndexId 4951
 
 DECLARE_UNIQUE_INDEX(mgr_node_oid_index, 4949, on mgr_node using btree(oid oid_ops));
 #define NodeOidIndexId 4949
-
-DECLARE_UNIQUE_INDEX(monitor_databasetps_oid_index, 4951, on monitor_databasetps using btree(oid oid_ops));
-#define MonitordatabasetpsOidIndexId 4951
-
-DECLARE_UNIQUE_INDEX(monitor_databaseitem_oid_index, 4953, on monitor_databaseitem using btree(oid oid_ops));
-#define MonitordatabaseitemOidIndexId 4953
-
-DECLARE_UNIQUE_INDEX(monitor_slowlog_oid_index, 4955, on monitor_slowlog using btree(oid oid_ops));
-#define MonitorslowlogOidIndexId 4955
-
-DECLARE_UNIQUE_INDEX(monitor_host_threshold_oid_index, 4932, on monitor_host_threshold using btree(oid oid_ops));
-#define MonitorhostthresholdOidIndexId 4932
-
-DECLARE_UNIQUE_INDEX(monitor_host_threshold_mt_type_index, 4962, on monitor_host_threshold using btree(mt_type int2_ops));
-#define MonitorhostthresholdmttypeIndexId 4962
 
 DECLARE_UNIQUE_INDEX(monitor_cpu_oid_index, 4956, on monitor_cpu using btree(oid oid_ops));
 #define MonitorCpuOidIndexId 4956
@@ -399,11 +381,11 @@ DECLARE_UNIQUE_INDEX(monitor_alarm_oid_index, 3177, on monitor_alarm using btree
 DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using btree(oid oid_ops));
 #define MonitorResolveOidIndexId 5022
 
-DECLARE_UNIQUE_INDEX(monitor_user_oid_index, 4933, on monitor_user using btree(oid oid_ops));
-#define MonitorUserOidIndexId 4933
+DECLARE_UNIQUE_INDEX(monitor_user_oid_index, 4955, on monitor_user using btree(oid oid_ops));
+#define MonitorUserOidIndexId 4955
 
-DECLARE_UNIQUE_INDEX(monitor_updataparm_name_inntertype_key_index, 3847, on mgr_updateparm using btree(updateparmname name_ops, updateparminnertype char_ops, updateparmkey name_ops));
-#define MonitorUpdataparmNameInnertypeKeyIndexId 3847
+DECLARE_UNIQUE_INDEX(mgr_updataparm_name_inntertype_key_index, 3847, on mgr_updateparm using btree(updateparmname name_ops, updateparminnertype char_ops, updateparmkey name_ops));
+#define MgrUpdataparmNameInnertypeKeyIndexId 3847
 
 #endif /* ADBMGRD */
 

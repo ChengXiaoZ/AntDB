@@ -16,7 +16,7 @@
 
 #define MonitorHostThresholdRelationId 4927
 
-CATALOG(monitor_host_threshold,4927)
+CATALOG(monitor_host_threshold,4927) BKI_WITHOUT_OIDS
 {
     int16       mt_type;                /* host alarm type */
     int16       mt_direction;              /*0 is '<', 1 is '>'*/

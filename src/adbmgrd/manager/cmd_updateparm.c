@@ -176,7 +176,7 @@ static bool check_parm_in_updatetbl(Relation noderel, char nodetype, char innert
 	HeapTuple tuple;
 	Form_mgr_updateparm mgr_updateparm;
 
-	tuple = SearchSysCache3(MONITORNAMEINNERTYPEKEY, NameGetDatum(nodename), CharGetDatum(innertype), NameGetDatum(parmname));
+	tuple = SearchSysCache3(MGRUPDATAPARMNAMEINNERTYPEKEY, NameGetDatum(nodename), CharGetDatum(innertype), NameGetDatum(parmname));
 	if(!HeapTupleIsValid(tuple))
 	{
 		return false;

@@ -13,7 +13,7 @@
 #define MdatabaseitemRelationId 4952
 
 
-CATALOG(monitor_databaseitem,4952)
+CATALOG(monitor_databaseitem,4952) BKI_WITHOUT_OIDS
 {
 	timestamptz		monitor_databaseitem_time;		/* monitor timestamp */
 	NameData		monitor_databaseitem_dbname;

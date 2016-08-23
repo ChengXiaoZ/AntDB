@@ -936,41 +936,8 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		32
 	}
-	,{MdatabasetpsRelationId,		/* MONTIORDATABASETPSOID */
-		MonitordatabasetpsOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0
-		},
-		32
-	}
-	,{MdatabaseitemRelationId,		/* MONTIORDATABASETPSOID */
-		MonitordatabaseitemOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0
-		},
-		32
-	}
-	,{MslowlogRelationId,		/* MONTIORSLOWLOGOID */
-		MonitorslowlogOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0
-		},
-		32
-	}
-	,{UpdateparmRelationId,		/* MONITORNAMEINNERTYPEKEY */
-		MonitorUpdataparmNameInnertypeKeyIndexId,
+	,{UpdateparmRelationId,		/* MGRUPDATAPARMNAMEINNERTYPEKEY */
+		MgrUpdataparmNameInnertypeKeyIndexId,
 		3,
 		{
 			Anum_mgr_updateparm_name,

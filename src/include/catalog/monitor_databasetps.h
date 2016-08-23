@@ -13,7 +13,7 @@
 #define MdatabasetpsRelationId 4950
 
 
-CATALOG(monitor_databasetps,4950)
+CATALOG(monitor_databasetps,4950) BKI_WITHOUT_OIDS
 {
 	timestamptz		monitor_databasetps_time;		/* monitor tps timestamp */
 	NameData		monitor_databasetps_dbname;

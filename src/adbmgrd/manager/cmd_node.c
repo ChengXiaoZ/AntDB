@@ -1482,24 +1482,14 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	{
 		/*0. restart datanode*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, aimtuple, takeplaparm_n);
+		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
 		if(!getAgentCmdRst->ret)
 		{
 			ereport(LOG,
 				(errmsg("pg_ctl restart datanode fail: path=%s", cndnPath)));
 			return;
 		}
-		/*1.refresh pgxc_node systable */
-		resetStringInfo(&(getAgentCmdRst->description));
-		getrefresh = mgr_refresh_pgxc_node_tbl(cndnname, cndnport, hostaddress, isprimary, nodemasternameoid, getAgentCmdRst);
-		if(!getrefresh)
-		{
-			resetStringInfo(&(getAgentCmdRst->description));
-			appendStringInfoString(&(getAgentCmdRst->description),"ERROR: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
-			getAgentCmdRst->ret = getrefresh;
-			return;
-		}
-		/*2.stop the old datanode master*/
+		/*1.stop the old datanode master*/
 		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		if(!HeapTupleIsValid(mastertuple))
 		{
@@ -1513,17 +1503,27 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(dnmastername));
 		if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
 			ereport(ERROR, (errmsg("stop datanode master \"%s\" fail", dnmastername)));
+		/*2.refresh pgxc_node systable */
+		resetStringInfo(&(getAgentCmdRst->description));
+		getrefresh = mgr_refresh_pgxc_node_tbl(cndnname, cndnport, hostaddress, isprimary, nodemasternameoid, getAgentCmdRst);
+		if(!getrefresh)
+		{
+			resetStringInfo(&(getAgentCmdRst->description));
+			appendStringInfoString(&(getAgentCmdRst->description),"ERROR: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
+			getAgentCmdRst->ret = getrefresh;
+			return;
+		}
 		/*3.delete old master record in node systbl*/
 		simple_heap_delete(noderel, &mastertuple->t_self);
 		CatalogUpdateIndexes(noderel, mastertuple);
 		ReleaseSysCache(mastertuple);
-		/*4.refresh extra recovery.conf*/
-		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath);
-		/*5.change slave type to master type*/
+		/*4.change slave type to master type*/
 		mgr_node->nodeinited = true;
 		mgr_node->nodetype = CNDN_TYPE_DATANODE_MASTER;
 		mgr_node->nodemasternameoid = 0;
 		heap_inplace_update(noderel, aimtuple);
+		/*5.refresh extra recovery.conf*/
+		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath);
 	}
 	/*if stop datanode slave, we should refresh its datanode master's 
 	*postgresql.conf:synchronous_standby_names = '' 
@@ -1696,17 +1696,17 @@ Datum mgr_stop_cn_master_i(PG_FUNCTION_ARGS)
 */
 Datum mgr_stop_dn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_CN_STOP, fcinfo, shutdown_s);
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, fcinfo, shutdown_s);
 }
 
 Datum mgr_stop_dn_master_f(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_CN_STOP, fcinfo, shutdown_f);
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, fcinfo, shutdown_f);
 }
 
 Datum mgr_stop_dn_master_i(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_CN_STOP, fcinfo, shutdown_i);
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, fcinfo, shutdown_i);
 }
 
 /*
@@ -5414,7 +5414,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 			}
 			/*restart datanode extra/slave*/
 			resetStringInfo(&(getAgentCmdRst->description));
-			mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
+			mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, shutdown_f);
 			if(!getAgentCmdRst->ret)
 			{
 				ereport(LOG, (errmsg("pg_ctl restart datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp)));

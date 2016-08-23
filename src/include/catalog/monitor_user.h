@@ -10,9 +10,9 @@
 #define timestamptz int
 #endif /* BUILD_BKI */
 
-#define MuserRelationId 4931
+#define MuserRelationId 4953
 
-CATALOG(monitor_user,4931)
+CATALOG(monitor_user,4953)
 {
 	NameData				username;				/*the user name*/
 	int32					usertype;				/*1: ordinary users, 2: db manager*/

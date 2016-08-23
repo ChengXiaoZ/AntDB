@@ -12,7 +12,7 @@
 
 #define MslowlogRelationId 4954
 
-CATALOG(monitor_slowlog,4954)
+CATALOG(monitor_slowlog,4954) BKI_WITHOUT_OIDS
 {
 	NameData				slowlogdbname;				/*the database name*/
 	NameData				slowloguser;

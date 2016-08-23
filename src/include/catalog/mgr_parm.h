@@ -11,7 +11,7 @@
 
 #define ParmRelationId 4928
 
-CATALOG(mgr_parm,4928)
+CATALOG(mgr_parm,4928) BKI_WITHOUT_OIDS
 {
 	char		parmnodetype;		/* parm type:c/d/g/'*' for all/'#' for datanode and coordinator*/
 	NameData	parmname;			/* parm name */
