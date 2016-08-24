@@ -232,6 +232,9 @@ void UpdateSequenceInfo(const char* database,
 	newTuple = heap_modify_tuple(htup, RelationGetDescr(rel), values,nulls, doReplace);
 	simple_heap_update(rel, &htup->t_self, newTuple);
 	CatalogUpdateIndexes(rel,newTuple);
+
+	ReleaseSysCache(htup);
+
 	heap_close(rel, RowExclusiveLock);
 }
 
