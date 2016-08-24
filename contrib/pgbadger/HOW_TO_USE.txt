@@ -1,0 +1,60 @@
+NAME:
+	pgBadger - a fast PostgreSQL log analysis report
+	
+github: https://github.com/dalibo/pgbadger
+======================================================================
+
+How To Use Pgbadger?
+
+1,install pgbadger
+	Download the tarball from github and unpack the archive as follow:
+		unzip pgbadger-master.zip
+		cd pgbadger-master/
+		perl Makefile.PL
+		make && sudo make install
+
+2,config your postgresql.conf file
+	log_min_duration_statement = 0
+	log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+	log_checkpoints = on
+	log_connections = on
+	log_disconnections = on
+	log_lock_waits = on
+	log_temp_files = 0
+	log_autovacuum_min_duration = 0
+	log_error_verbosity = default
+	lc_messages='C'
+
+3,reload your postgresql.conf file
+	pg_ctl reload -D data_dir
+
+4,run pgbadger command, for example:
+	pgbadger /var/log/postgresql.log -o out.html
+	pgbadger /var/log/postgres.log.2.gz /var/log/postgres.log.1.gz /var/log/postgres.log
+	pgbadger /var/log/postgresql/postgresql-2012-05-*
+	pgbadger --exclude-query="^(COPY|COMMIT)" /var/log/postgresql.log
+	# Log prefix with stderr log output
+	pgbadger --prefix '%t [%p]: [%l-1] user=%u,db=%d,client=%h' /pglog/postgresql-2012-08-21*
+	pgbadger --prefix '%m %u@%d %p %r %a : ' /pglog/postgresql.log
+	# Log line prefix with syslog log output
+	pgbadger --prefix 'user=%u,db=%d,client=%h,appname=%a' /pglog/postgresql-2012-08-21*
+	# Use my 8 CPUs to parse my 10GB file faster, much faster
+	pgbadger -j 8 /pglog/postgresql-9.1-main.log
+
+
+NOTE:
+	If you planned to parse PostgreSQL CSV log files you might need some
+	Perl Modules:
+
+		Text::CSV_XS - to parse PostgreSQL CSV log files.
+
+	This module is optional, if you don't have PostgreSQL log in the CSV
+	format you don't need to install it.
+	
+	How to build/installation?
+		1, unzip Text-CSV_XS-master.zip
+		2, cd Text-CSV_XS-master/
+		3, perl Makefile.PL
+		4, make test
+		5, make install
+
