@@ -103,8 +103,11 @@
 #endif
 
 #ifdef ADB
+#include "agtm/agtm.h"
 #include "catalog/pg_proc.h"
+#include "pgxc/pgxc.h"
 #endif
+
 /*
  * ON COMMIT action list
  */
@@ -11067,13 +11070,26 @@ AlterSeqNamespaces(Relation classRel, Relation rel,
 		 */
 		AlterTypeNamespaceInternal(RelationGetForm(seqRel)->reltype,
 								   newNspOid, false, false, objsMoved);
+#ifdef ADB
+		if(IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		{
+			char * seqName = NULL;
+			char * databaseName = NULL;
+			char * schemaName = NULL;
+			char * schemaNewName = NULL;
 
+			seqName = RelationGetRelationName(seqRel);
+			databaseName = get_database_name(seqRel->rd_node.dbNode);
+			schemaName = get_namespace_name(RelationGetNamespace(seqRel));
+			schemaNewName = get_namespace_name(newNspOid);
+			agtm_RenameSequence(seqName, databaseName, schemaName, schemaNewName, T_RENAME_SCHEMA);
+		}
+#endif
 		/* Now we can close it.  Keep the lock till end of transaction. */
 		relation_close(seqRel, NoLock);
 	}
 
 	systable_endscan(scan);
-
 	relation_close(depRel, AccessShareLock);
 }
 
