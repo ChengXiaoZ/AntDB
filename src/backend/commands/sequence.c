@@ -269,7 +269,7 @@ DefineSequence(CreateSeqStmt *seq)
 		schemaName = get_namespace_name(RelationGetNamespace(rel));
 
 		agtm_CreateSequence(seq->sequence->relname, databaseName,
-			schemaName, seqOptions, seq->sequence);
+			schemaName, seqOptions);
 	}
 #endif
 	return seqoid;
@@ -665,8 +665,8 @@ AlterSequence(AlterSeqStmt *stmt)
 		databaseName = get_database_name(seqrel->rd_node.dbNode);
 		schemaName = get_namespace_name(RelationGetNamespace(seqrel));
 
-		agtm_AlterSequence(RelationGetRelationName(seqrel), databaseName, schemaName,
-			seqOptions, stmt->sequence);
+		agtm_AlterSequence(RelationGetRelationName(seqrel), databaseName,
+			schemaName, seqOptions);
 	}
 #endif
 	return relid;

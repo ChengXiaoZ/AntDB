@@ -22,7 +22,7 @@
 #include "utils/palloc.h"
 #include "utils/snapmgr.h"
 
-static List* parse_string_to_seqOption(StringInfo strOption, RangeVar *var);
+static List* parse_string_to_seqOption(StringInfo strOption);
 
 static	void parse_seqFullName_to_details(StringInfo message, char ** dbName, 
 							char ** schemaName, char ** sequenceName);
@@ -145,7 +145,7 @@ ProcessSequenceInit(StringInfo message, StringInfo output)
 	rangeVar = makeNode(RangeVar);
 
 	parse_seqFullName_to_details(message, &dbName, &schemaName, &sequenceName);
-	option = parse_string_to_seqOption(message, rangeVar);
+	option = parse_string_to_seqOption(message);
 	pq_getmsgend(message);
 	/* check info in system table */
 	isExist = SequenceIsExist(dbName, schemaName, sequenceName);
@@ -162,6 +162,8 @@ ProcessSequenceInit(StringInfo message, StringInfo output)
 	appendStringInfo(&buf, "%s", "seq");
 	appendStringInfo(&buf, "%u", lineOid);
 	rangeVar->relname = buf.data;
+	rangeVar->inhOpt = INH_DEFAULT;
+	rangeVar->relpersistence = 'p';
 	rangeVar->alias = NULL;
 
 	seqStmt->sequence = rangeVar;
@@ -206,7 +208,7 @@ ProcessSequenceAlter(StringInfo message, StringInfo output)
 	rangeVar = makeNode(RangeVar);
 
 	parse_seqFullName_to_details(message, &dbName, &schemaName, &sequenceName);
-	option = parse_string_to_seqOption(message, rangeVar);
+	option = parse_string_to_seqOption(message);
 	pq_getmsgend(message);
 
 	/* check info in system table */
@@ -222,6 +224,8 @@ ProcessSequenceAlter(StringInfo message, StringInfo output)
 	appendStringInfo(&buf, "%s", "seq");
 	appendStringInfo(&buf, "%u", lineOid);
 	rangeVar->relname = buf.data;
+	rangeVar->inhOpt = INH_DEFAULT;
+	rangeVar->relpersistence = 'p';
 	rangeVar->alias = NULL;
 
 	seqStmt->sequence = rangeVar;
@@ -385,7 +389,7 @@ static	void parse_seqFullName_to_details(StringInfo message, char ** dbName,
 }
 
 static List *
-parse_string_to_seqOption(StringInfo strOption, RangeVar *var)
+parse_string_to_seqOption(StringInfo strOption)
 {
 	int				flag = 0;
 	AgtmNodeTag		type;
@@ -393,6 +397,10 @@ parse_string_to_seqOption(StringInfo strOption, RangeVar *var)
 	List			*options = NIL;
 
 	memcpy(&listSize, pq_getmsgbytes(strOption, sizeof(int)), sizeof(listSize));
+
+	if(listSize == 0)
+		return NULL;
+
 	for(flag = 0; flag < listSize; flag++)
 	{
 		int defnamespaceSize;
@@ -468,8 +476,5 @@ parse_string_to_seqOption(StringInfo strOption, RangeVar *var)
 		memcpy(&defel->defaction, pq_getmsgbytes(strOption, sizeof(defel->defaction)), sizeof(defel->defaction));
 		options = lappend(options,defel);
 	}
-
-	memcpy(&var->inhOpt, pq_getmsgbytes(strOption, sizeof(var->inhOpt)), sizeof(var->inhOpt));
-	memcpy(&var->relpersistence, pq_getmsgbytes(strOption, sizeof(var->relpersistence)), sizeof(var->relpersistence));
 	return options;
 }

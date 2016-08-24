@@ -48,7 +48,7 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 
 void
 agtm_CreateSequence(const char * seqName, const char * database,
-						const char * schema , List * seqOptions, RangeVar * rangVar)
+						const char * schema , List * seqOptions)
 {
 	PGresult 		*res;
 
@@ -64,7 +64,7 @@ agtm_CreateSequence(const char * seqName, const char * database,
 		return;
 
 	initStringInfo(&strOption);
-	parse_seqOption_to_string(seqOptions, rangVar, &strOption);
+	parse_seqOption_to_string(seqOptions, &strOption);
 
 	nameSize = strlen(seqName);
 	databaseSize = strlen(database);
@@ -84,7 +84,7 @@ agtm_CreateSequence(const char * seqName, const char * database,
 
 void
 agtm_AlterSequence(const char * seqName, const char * database,
-						const char * schema ,  List * seqOptions, RangeVar * rangVar)
+						const char * schema ,  List * seqOptions)
 {
 	PGresult 		*res;
 
@@ -100,7 +100,7 @@ agtm_AlterSequence(const char * seqName, const char * database,
 		return;
 
 	initStringInfo(&strOption);
-	parse_seqOption_to_string(seqOptions, rangVar, &strOption);
+	parse_seqOption_to_string(seqOptions, &strOption);
 
 	nameSize = strlen(seqName);
 	databaseSize = strlen(database);
@@ -560,13 +560,16 @@ static PGresult* agtm_get_result(AGTM_MessageType msg_type)
 
 
 void
-parse_seqOption_to_string(List * seqOptions, RangeVar *var, StringInfo strOption)
+parse_seqOption_to_string(List * seqOptions, StringInfo strOption)
 {
 	ListCell   *option;
 	int listSize = list_length(seqOptions);
-	
+
 	appendBinaryStringInfo(strOption, (const char *) &listSize, sizeof(listSize));
-	
+
+	if(listSize == 0)
+		return;
+
 	foreach(option, seqOptions)
 	{
 		DefElem    *defel = (DefElem *) lfirst(option);
@@ -641,6 +644,19 @@ parse_seqOption_to_string(List * seqOptions, RangeVar *var, StringInfo strOption
 					appendBinaryStringInfo(strOption, (const char *)&type, sizeof(type));
 					break;
 				}
+				case T_List:
+				{
+					if (strcmp(defel->defname, "owned_by") == 0)
+						listSize = listSize -1;
+
+					if (listSize == 0)
+					{
+						initStringInfo(strOption);
+						appendBinaryStringInfo(strOption, (const char *) &listSize, sizeof(listSize));
+						return;
+					}
+					break;
+				}
 				default:
 				{
 					ereport(ERROR,
@@ -657,7 +673,5 @@ parse_seqOption_to_string(List * seqOptions, RangeVar *var, StringInfo strOption
 
 		appendBinaryStringInfo(strOption, (const char *)&defel->defaction, sizeof(defel->defaction));
 	}
-	appendBinaryStringInfo(strOption, (const char *)&var->inhOpt, sizeof(var->inhOpt));
-	appendBinaryStringInfo(strOption, (const char *)&var->relpersistence, sizeof(var->relpersistence));
 }
 

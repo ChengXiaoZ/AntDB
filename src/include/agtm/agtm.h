@@ -54,13 +54,13 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
  * create sequence on agtm
  */
  extern void agtm_CreateSequence(const char * seqName, const char * database,
- 					const char * schema , List * seqOptions, RangeVar * rangVar);
+ 					const char * schema , List * seqOptions);
 
 /*
  * alter sequence on agtm
  */
  extern void agtm_AlterSequence(const char * seqName, const char * database,
- 					const char * schema , List * seqOptions, RangeVar * rangVar);
+ 					const char * schema , List * seqOptions);
 
 /*
  * delete sequence on agtm
@@ -157,7 +157,7 @@ void ProcessAGtmCommand(StringInfo input_message, CommandDest dest);
 
 /*-------------------------------------- tool function --------------------------------------*/
 
-extern void parse_seqOption_to_string(List * seqOptions, RangeVar *var, StringInfo strOption);
+extern void parse_seqOption_to_string(List * seqOptions, StringInfo strOption);
 
 #endif
 
