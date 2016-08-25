@@ -202,11 +202,6 @@ RemoveSchemaById(Oid schemaOid)
 	Relation	relation;
 	HeapTuple	tup;
 
-#ifdef ADB
-	char * schemaName = NULL;
-	StringInfoData	buf;
-#endif
-
 	relation = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache1(NAMESPACEOID,
