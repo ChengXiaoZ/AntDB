@@ -131,27 +131,6 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
 
-#ifdef ADB
-	/* create schema on agtm */
-	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-	{
-		StringInfoData	buf;
-		initStringInfo(&buf);
-		appendStringInfoString(&buf,"CREATE SCHEMA ");
-		appendStringInfo(&buf, "%s", schemaName);
-
-		if (authId != NULL)
-		{
-			appendStringInfoString(&buf," AUTHORIZATION ");
-			appendStringInfo(&buf, "%s", authId);
-		}
-
-		agtm_Schema(buf.data);
-
-		pfree(buf.data);
-	}
-#endif
-
 	/*
 	 * Temporarily make the new namespace be the front of the search path, as
 	 * well as the default creation target namespace.  This will be undone at
@@ -234,21 +213,6 @@ RemoveSchemaById(Oid schemaOid)
 						  ObjectIdGetDatum(schemaOid));
 	if (!HeapTupleIsValid(tup)) /* should not happen */
 		elog(ERROR, "cache lookup failed for namespace %u", schemaOid);
-
-#ifdef ADB
-	if(IS_PGXC_COORDINATOR && !IsConnFromCoord())
-	{
-		schemaName = pstrdup(NameStr(((Form_pg_namespace) GETSTRUCT(tup))->nspname));
-
-		initStringInfo(&buf);
-		appendStringInfoString(&buf, "DROP SCHEMA ");
-		appendStringInfo(&buf, "%s", schemaName);
-
-		agtm_Schema(buf.data);
-		pfree(buf.data);
-		pfree(schemaName);
-	}
-#endif
 
 	simple_heap_delete(relation, &tup->t_self);
 

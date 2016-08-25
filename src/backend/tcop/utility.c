@@ -642,10 +642,6 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 				ExecUtilityWithMessage(queryString, sentToRemote, false);
-			
-			/* execute create tablespace on agtm */
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				agtm_TableSpace(queryString);
 #endif
 			break;
 
@@ -665,9 +661,6 @@ standard_ProcessUtility(Node *parsetree,
 			if (IS_PGXC_COORDINATOR)
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
 
-			/* execute drop tablespace on agtm */
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				agtm_TableSpace(queryString);
 #endif
 			break;
 
@@ -819,7 +812,6 @@ standard_ProcessUtility(Node *parsetree,
 			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 			{
 				ExecUtilityWithMessage(queryString, sentToRemote, false);
-				agtm_Database(queryString);
 			}
 #endif
 			break;
@@ -838,9 +830,6 @@ standard_ProcessUtility(Node *parsetree,
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
 			else
 				ExecUtilityWithMessage(queryString, sentToRemote, false);
-
-			/* exectue alter database tablespace on agtm */
-			agtm_Database(queryString);
 		}
 #endif
 			break;
@@ -851,12 +840,6 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
-			
-			/* execute set database configuration on agtm */
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-			{
-				agtm_Database(queryString);
-			}
 #endif
 			break;
 
@@ -887,13 +870,6 @@ standard_ProcessUtility(Node *parsetree,
 #endif
 				dropdb(stmt->dbname, stmt->missing_ok);
 			}
-#ifdef ADB
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-			{
-				/* execute drop database on  agtm */
-					agtm_Database(queryString);
-			}
-#endif
 
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
@@ -1071,10 +1047,6 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
-			
-			/* execute on agtm */
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				agtm_User(queryString);
 #endif
 			break;
 
@@ -1102,10 +1074,6 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
 				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
-
-			/* execute drop user/role on agtm */
-			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				agtm_User(queryString);
 #endif
 			break;
 
@@ -1308,23 +1276,7 @@ standard_ProcessUtility(Node *parsetree,
 										   sentToRemote,
 										   false,
 										   exec_type,
-										   is_temp);
-					
-					/* execute rename user/role on agtm */
-					if(stmt->renameType == OBJECT_ROLE)
-						agtm_User(queryString);
-					
-					/* execute rename schema on agtm */
-					else if(stmt->renameType == OBJECT_SCHEMA)
-						 agtm_Schema(queryString);
-
-					/*	execute rename tablespace on agtm */
-					else if(stmt->renameType == OBJECT_TABLESPACE)
-						agtm_TableSpace(queryString);
-
-					/* execute rename database on agtm */
-					else if(stmt->renameType == OBJECT_DATABASE)
-						agtm_Database(queryString);						
+										   is_temp);					
 				}
 #endif
 				if (EventTriggerSupportsObjectType(stmt->renameType))
@@ -1433,24 +1385,6 @@ standard_ProcessUtility(Node *parsetree,
 									   completionTag);
 				else
 					ExecAlterOwnerStmt(stmt);
-				
-#ifdef PGXC
-				
-				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-				{
-					/* execute alter schema owner  on agtm */
-					if (stmt->objectType == OBJECT_SCHEMA)
-						agtm_Schema(queryString);
-
-					/* execute alter tablespace owner  on agtm */
-					else if (stmt->objectType == OBJECT_TABLESPACE)
-						agtm_TableSpace(queryString);
-
-					/* execute alter database owner on agtm */
-					else if (stmt->objectType == OBJECT_DATABASE)
-						agtm_Database(queryString);
-				}
-#endif
 			}
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
