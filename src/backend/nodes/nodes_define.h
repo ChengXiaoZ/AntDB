@@ -4129,9 +4129,9 @@ END_NODE(MGRDeplory)
 
 #ifndef NO_NODE_MGRUpdateparm
 BEGIN_NODE(MGRUpdateparm)
-	NODE_SCALAR(char, nodetype)
+	NODE_SCALAR(char, parmtype)
 	NODE_STRING(nodename)
-	NODE_SCALAR(char, innertype)
+	NODE_SCALAR(char, nodetype)
 	NODE_STRING(key)
 	NODE_STRING(value)
 	NODE_NODE(List, options)

@@ -59,8 +59,4 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define GTM_TYPE_GTM_SLAVE			'p'
 #define GTM_TYPE_GTM_EXTRA			'e'
 
-#define NODE_TYPE_GTM 				'G'
-#define NODE_TYPE_COORDINATOR		'C'
-#define NODE_TYPE_DATANODE			'D'
-
 #endif /* MGR_CNDNNODE_H */

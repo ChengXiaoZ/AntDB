@@ -83,7 +83,6 @@ static void mgr_reload_conf(Oid hostoid, char *nodepath);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport);
 static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
-static char *mgr_nodetype_str(char nodetype);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static void makesure_dnmaster_running(char *hostaddr, int32 hostport);
 static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
@@ -316,7 +315,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 	if(!(HeapTupleIsValid(oldtuple)))
 	{
 		 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				 ,errmsg("%s \"%s\" doesnot exists", nodestring, NameStr(name))));
+				 ,errmsg("%s \"%s\" does not exist", nodestring, NameStr(name))));
 	}
 	/*check this tuple initd or not, if it has inited and in cluster, cannot be alter*/
 	mgr_node = (Form_mgr_node)GETSTRUCT(oldtuple);
@@ -5426,7 +5425,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	pfree(infosendmsg.data);
 }
 
-static char *mgr_nodetype_str(char nodetype)
+char *mgr_nodetype_str(char nodetype)
 {
 	char *nodestring;
 	char *retstr;

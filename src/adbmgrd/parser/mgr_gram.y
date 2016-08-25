@@ -10,7 +10,7 @@
 #include "parser/parser.h"
 #include "parser/scanner.h"
 #include "catalog/mgr_cndnnode.h"
-
+#include "catalog/mgr_parm.h"
 /*
  * The YY_EXTRA data that a flex scanner allows us to pass around.  Private
  * state needed for raw parsing/lexing goes here.
@@ -742,8 +742,8 @@ AddUpdataparmStmt:
 		SET GTM opt_gtm_inner_type Ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
-				node->nodetype = NODE_TYPE_GTM;
-				node->innertype = $3;
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
 				$$ = (Node*)node;
@@ -751,8 +751,8 @@ AddUpdataparmStmt:
 	| SET DATANODE opt_dn_inner_type Ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
-				node->nodetype = NODE_TYPE_DATANODE;
-				node->innertype = $3;
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
 				$$ = (Node*)node;
@@ -760,8 +760,8 @@ AddUpdataparmStmt:
 	| SET COORDINATOR MASTER Ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
-				node->nodetype = NODE_TYPE_COORDINATOR;
-				node->innertype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 				node->nodename = $4;
 				node->options = $5;
 				$$ = (Node*)node;

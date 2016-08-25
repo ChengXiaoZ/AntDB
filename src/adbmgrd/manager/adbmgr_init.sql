@@ -15,7 +15,7 @@ CREATE VIEW adbmgr.host AS
 
 CREATE VIEW adbmgr.parm AS
 SELECT
-	parmnodetype	AS	nodetype,
+	parmtype		AS	type,
 	parmname		AS	name,
 	parmunit		AS	unit,
 	parmcontext		AS	context,
@@ -26,9 +26,9 @@ FROM pg_catalog.mgr_parm;
 
 CREATE VIEW adbmgr.updateparm AS
 SELECT
-	updateparmnodetype	AS	nodetype,
-	updateparmname		AS	nodename,
-	CASE updateparminnertype
+	updateparmparmtype		AS	parmtype,
+	updateparmnodename		AS	nodename,
+	CASE updateparmnodetype
 		WHEN 'c' THEN 'coordinator'::text
 		WHEN 'd' THEN 'datanode master'::text
 		WHEN 'b' THEN 'datanode slave'::text
@@ -36,11 +36,10 @@ SELECT
 		WHEN 'g' THEN 'gtm master'::text
 		WHEN 'p' THEN 'gtm slave'::text
 		WHEN 'e' THEN 'gtm extra'::text
-	end AS innnertype,
-	updateparminnertype		AS	innertype,
+	END AS nodetype,
 	updateparmkey			AS	key,
 	updateparmvalue			AS	value
-FROM pg_catalog.mgr_updateparm order by updateparmname;
+FROM pg_catalog.mgr_updateparm order by updateparmnodename;
 
 CREATE VIEW adbmgr.node AS
   SELECT

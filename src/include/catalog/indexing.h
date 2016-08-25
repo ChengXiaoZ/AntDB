@@ -351,7 +351,7 @@ DECLARE_UNIQUE_INDEX(mgr_host_oid_index, 4909, on mgr_host using btree(oid oid_o
 DECLARE_UNIQUE_INDEX(mgr_host_hostname_index, 4910, on mgr_host using btree(hostname name_ops));
 #define HostHostnameIndexId					4910
 
-DECLARE_UNIQUE_INDEX(mgr_parm_typename_index, 4951, on mgr_parm using btree(parmnodetype char_ops,parmname name_ops));
+DECLARE_UNIQUE_INDEX(mgr_parm_typename_index, 4951, on mgr_parm using btree(parmtype char_ops,parmname name_ops));
 #define ParmTypeNameIndexId 4951
 
 DECLARE_UNIQUE_INDEX(mgr_node_oid_index, 4949, on mgr_node using btree(oid oid_ops));
@@ -384,8 +384,8 @@ DECLARE_UNIQUE_INDEX(monitor_resolve_oid_index, 5022, on monitor_resolve using b
 DECLARE_UNIQUE_INDEX(monitor_user_oid_index, 4955, on monitor_user using btree(oid oid_ops));
 #define MonitorUserOidIndexId 4955
 
-DECLARE_UNIQUE_INDEX(mgr_updataparm_name_inntertype_key_index, 3847, on mgr_updateparm using btree(updateparmname name_ops, updateparminnertype char_ops, updateparmkey name_ops));
-#define MgrUpdataparmNameInnertypeKeyIndexId 3847
+DECLARE_UNIQUE_INDEX(mgr_updataparm_nodename_nodetype_key_index, 3847, on mgr_updateparm using btree(updateparmnodename name_ops, updateparmnodetype char_ops, updateparmkey name_ops));
+#define MgrUpdataparmNodenameNodetypeKeyIndexId 3847
 
 #endif /* ADBMGRD */
 

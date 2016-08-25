@@ -77,9 +77,9 @@ typedef struct MGRDeplory
 typedef struct MGRUpdateparm
 {
 	NodeTag		type;
-	char		nodetype;
+	char		parmtype;
 	char		*nodename;
-	char		innertype;
+	char		nodetype;
 	char		*key;
 	char		*value;
 	List		*options;		/* list of DefElem */

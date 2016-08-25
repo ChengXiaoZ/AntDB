@@ -918,7 +918,7 @@ static const struct cachedesc cacheinfo[] = {
 		ParmTypeNameIndexId,
 		2,
 		{
-			Anum_mgr_parm_nodetype,
+			Anum_mgr_parm_type,
 			Anum_mgr_parm_name,
 			0,
 			0
@@ -936,12 +936,12 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		32
 	}
-	,{UpdateparmRelationId,		/* MGRUPDATAPARMNAMEINNERTYPEKEY */
-		MgrUpdataparmNameInnertypeKeyIndexId,
+	,{UpdateparmRelationId,		/* MGRUPDATAPARMNODENAMENODETYPEKEY */
+		MgrUpdataparmNodenameNodetypeKeyIndexId,
 		3,
 		{
-			Anum_mgr_updateparm_name,
-			Anum_mgr_updateparm_innertype,
+			Anum_mgr_updateparm_nodename,
+			Anum_mgr_updateparm_nodetype,
 			Anum_mgr_updateparm_key,
 			0
 		},
