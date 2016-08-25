@@ -37,6 +37,8 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 		break;
 	case T_MGRUpdateparm:
 		tag = "SET PARM";
+	case T_MGRUpdateparmRmparm:
+		tag = "DROP PARM";
 		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
@@ -77,6 +79,9 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRUpdateparm:
 		mgr_add_updateparm((MGRUpdateparm*)parsetree, params, dest);
+		break;
+	case T_MGRUpdateparmRmparm:
+		mgr_rmparm_updateparm((MGRUpdateparmRmparm*)parsetree, params, dest);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)

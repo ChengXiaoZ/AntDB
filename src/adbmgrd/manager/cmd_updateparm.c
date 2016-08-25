@@ -65,6 +65,7 @@ const char *const GucContext_Parmnames[] =
 static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, char *value, int *effectparmstatus);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
 static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus);
+static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus);
 
 /* 
 * for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
@@ -265,7 +266,8 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 }
 
 /*
-*get the paremeters from mgr_updateparm, then add them to infosendparamsg
+*get the parameters from mgr_updateparm, then add them to infosendparamsg,  used for initdb
+*first, add the parameter which the nodename is '*' with given nodetype; second, add the parameter for given name with given nodetype 
 */
 void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 {
@@ -278,7 +280,8 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	char *parmvalue;
 	NameData nodenamedata;
 	
-	namestrcpy(&nodenamedata, nodename);
+	/*first: add the parameter which the nodename is '*' with given nodetype*/
+	namestrcpy(&nodenamedata, "*");
 	ScanKeyInit(&key[0],
 		Anum_mgr_updateparm_nodetype
 		,BTEqualStrategyNumber
@@ -290,7 +293,6 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		,F_NAMEEQ
 		,NameGetDatum(&nodenamedata));	
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
-	/*first, get */
 	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
@@ -301,7 +303,29 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		parmvalue = NameStr(mgr_updateparm->updateparmvalue);
 		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
 	}
-	
+	heap_endscan(rel_scan);
+	/*second: add the parameter for given name with given nodetype*/
+	namestrcpy(&nodenamedata, nodename);
+	ScanKeyInit(&key[0],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	ScanKeyInit(&key[1],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&nodenamedata));
+	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
+		Assert(mgr_updateparm);
+		/*get key, value*/
+		parmkey = NameStr(mgr_updateparm->updateparmkey);
+		parmvalue = NameStr(mgr_updateparm->updateparmvalue);
+		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
+	}
 	heap_endscan(rel_scan);
 	heap_close(rel_updateparm, RowExclusiveLock);
 }
@@ -319,46 +343,161 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 	StringInfoData infosendmsg;
 	GetAgentCmdRst getAgentCmdRst;
 	Datum datumpath;
+	HeapScanDesc rel_scan;
+	ScanKeyData key[1];
 	char *nodepath;
 	char *nodetypestr;
 	bool isNull;
-	
-	/*get ip and node path*/
-	tuple = mgr_get_tuple_node_from_name_type(noderel, nodename, nodetype);
-	if(!(HeapTupleIsValid(tuple)))
-	{
-		nodetypestr = mgr_nodetype_str(nodetype);
-		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			 ,errmsg("%s \"%s\" does not exist", nodetypestr, nodename)));
-	}
-	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-	Assert(mgr_node);
-	if(!mgr_node->nodeincluster)
-	return;
-	/*get path*/
-	datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
-	if(isNull)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-			, errmsg("column cndnpath is null")));
-	}
-	nodepath = TextDatumGetCString(datumpath);	
-	/*send the parameter to node path, then reload it*/
+
 	initStringInfo(&infosendmsg);
 	initStringInfo(&(getAgentCmdRst.description));
-	mgr_append_pgconf_paras_str_str(parmkey, parmvalue, &infosendmsg);
-	if(effectparmstatus == PGC_SIGHUP)
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
-	else
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
-	if (getAgentCmdRst.ret != true)
+	/*get all node, which nodetype is "nodetype" in node systbl*/
+	if (strcmp(nodename, "*") == 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE)
-			 ,errmsg("Error: reload parameter fail: %s", getAgentCmdRst.description.data))); 
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			if(!mgr_node->nodeincluster)
+				continue;
+			datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
+			if(isNull)
+			{
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+					, errmsg("column cndnpath is null")));
+			}
+			nodepath = TextDatumGetCString(datumpath);
+			mgr_updateparm_send_parm(&infosendmsg, &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
+		}
+		heap_endscan(rel_scan);
 	}
-	
-	heap_freetuple(tuple);
+	else	/*for given nodename*/
+	{
+		tuple = mgr_get_tuple_node_from_name_type(noderel, nodename, nodetype);
+		if(!(HeapTupleIsValid(tuple)))
+		{
+			nodetypestr = mgr_nodetype_str(nodetype);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				 ,errmsg("%s \"%s\" does not exist", nodetypestr, nodename)));
+		}
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if(!mgr_node->nodeincluster)
+		{
+			pfree(infosendmsg.data);
+			pfree(getAgentCmdRst.description.data);
+			heap_freetuple(tuple);
+			return;
+		}
+		/*get path*/
+		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column cndnpath is null")));
+		}
+		nodepath = TextDatumGetCString(datumpath);	
+		/*send the parameter to node path, then reload it*/
+		mgr_updateparm_send_parm(&infosendmsg , &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
+		heap_freetuple(tuple);
+	}
 	pfree(infosendmsg.data);
 	pfree(getAgentCmdRst.description.data);
+}
+
+/*
+* send parameter to node, refresh its postgresql.conf, if the guccontent of parameter is superuser/user/sighup, will reload the parameter
+*/
+static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus)
+{	
+	/*send the parameter to node path, then reload it*/
+	resetStringInfo(infosendmsg);
+	resetStringInfo(&(getAgentCmdRst->description));
+	mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendmsg);
+	if(effectparmstatus == PGC_SIGHUP)
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+	else
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+	if (getAgentCmdRst->ret != true)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE)
+			 ,errmsg("reload parameter fail: %s", (getAgentCmdRst->description).data))); 
+	}
+}
+
+/* 
+* for command: drop parm {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to remove record the parameter in mgr_updateparm
+*/
+void mgr_rmparm_updateparm(MGRUpdateparmRmparm *node, ParamListInfo params, DestReceiver *dest)
+{
+	Relation rel;
+	HeapTuple tuple;
+	MemoryContext context, old_context;
+	NameData nodename;
+	NameData key;
+	char nodetype;
+	char *nodestring;
+	ListCell *lc;
+	DefElem *def;
+
+	Assert(node->nodename && node->type);
+	namestrcpy(&nodename,node->nodename);
+	nodetype = node->nodetype;
+	context = AllocSetContextCreate(CurrentMemoryContext
+			,"DROP PARM"
+			,ALLOCSET_DEFAULT_MINSIZE
+			,ALLOCSET_DEFAULT_INITSIZE
+			,ALLOCSET_DEFAULT_MAXSIZE);
+	rel = heap_open(UpdateparmRelationId, RowExclusiveLock);
+	old_context = MemoryContextSwitchTo(context);
+
+	/* first we need check is it all exists and used by other */
+	foreach(lc,node->options)
+	{
+		def = lfirst(lc);
+		Assert(def && IsA(def, DefElem));
+		MemoryContextReset(context);
+		namestrcpy(&key, def->defname);	
+		tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(&nodename), CharGetDatum(nodetype), NameGetDatum(&key));
+		if(!HeapTupleIsValid(tuple))
+		{
+			if(node->if_exists)
+				continue;
+			else
+			{
+				nodestring = mgr_nodetype_str(nodetype);
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					,errmsg("parameter \"%s\" does not exist", key.data)));
+			}
+		}
+		/* todo chech used by other */
+		ReleaseSysCache(tuple);
+	}
+
+	/* now we can delete node(s) */
+	foreach(lc, node->options)
+	{
+		def = lfirst(lc);
+		Assert(def && IsA(def, DefElem));
+		MemoryContextReset(context);
+		namestrcpy(&key, def->defname);
+		tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(&nodename), CharGetDatum(nodetype), NameGetDatum(&key));
+		if(HeapTupleIsValid(tuple))
+		{
+			simple_heap_delete(rel, &(tuple->t_self));
+			ReleaseSysCache(tuple);
+		}
+	}
+
+	heap_close(rel, RowExclusiveLock);
+	(void)MemoryContextSwitchTo(old_context);
+	MemoryContextDelete(context);
 }

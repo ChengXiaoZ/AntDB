@@ -85,4 +85,16 @@ typedef struct MGRUpdateparm
 	List		*options;		/* list of DefElem */
 }MGRUpdateparm;
 
+typedef struct MGRUpdateparmRmparm
+{
+	NodeTag		type;
+	char		parmtype;
+	bool		if_exists;
+	char		*nodename;
+	char		nodetype;
+	char		*key;
+	char		*value;
+	List		*options;		/* list of DefElem */
+}MGRUpdateparmRmparm;
+
 #endif /* MGR_NODE_H */

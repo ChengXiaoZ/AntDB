@@ -114,7 +114,7 @@ extern char *defGetString(DefElem *def);
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
-				AddUpdataparmStmt
+				AddUpdataparmStmt DropUpdataparmStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -127,7 +127,7 @@ extern char *defGetString(DefElem *def);
 
 %type <keyword>	unreserved_keyword reserved_keyword
 %type <str>		Ident SConst ColLabel var_name opt_boolean_or_string
-				NonReservedWord NonReservedWord_or_Sconst
+				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
 
 %token<keyword>	ADD_P DEPLOY DROP ALTER LIST
@@ -203,6 +203,7 @@ stmt :
 	| Get_alarm_info
 	| AppendNodeStmt
 	| AddUpdataparmStmt
+	| DropUpdataparmStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -692,7 +693,10 @@ Ident:
 	  IDENT					{ $$ = $1; }
 	| unreserved_keyword	{ $$ = pstrdup($1); }
 	;
-
+set_ident:
+	 Ident					{ $$ = $1; }
+	|	ALL					{ $$ = pstrdup("*"); }
+	;
 SConst: SCONST				{ $$ = $1; }
 Iconst: ICONST				{ $$ = $1; }
 
@@ -748,7 +752,7 @@ AddUpdataparmStmt:
 				node->options = $5;
 				$$ = (Node*)node;
 		}
-	| SET DATANODE opt_dn_inner_type Ident set_parm_general_options
+	| SET DATANODE opt_dn_inner_type set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
 				node->parmtype = PARM_TYPE_DATANODE;
@@ -757,7 +761,7 @@ AddUpdataparmStmt:
 				node->options = $5;
 				$$ = (Node*)node;
 		}
-	| SET COORDINATOR MASTER Ident set_parm_general_options
+	| SET COORDINATOR MASTER set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
 				node->parmtype = PARM_TYPE_COORDINATOR;
@@ -767,7 +771,63 @@ AddUpdataparmStmt:
 				$$ = (Node*)node;
 		}
 		;
-	
+DropUpdataparmStmt:
+		DROP PARM GTM opt_gtm_inner_type Ident set_parm_general_options
+		{
+				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $4;
+				node->nodename = $5;
+				node->options = $6;
+				$$ = (Node*)node;
+		}
+	|	DROP PARM GTM opt_gtm_inner_type IF_P EXISTS Ident set_parm_general_options
+		{
+				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $4;
+				node->nodename = $7;
+				node->options = $8;
+				$$ = (Node*)node;
+		}
+	|	DROP PARM DATANODE opt_dn_inner_type set_ident set_parm_general_options
+		{
+				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = $4;
+				node->nodename = $5;
+				node->options = $6;
+				$$ = (Node*)node;
+		}
+	|	DROP PARM DATANODE opt_dn_inner_type IF_P EXISTS set_ident set_parm_general_options
+		{
+				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = $4;
+				node->nodename = $7;
+				node->options = $8;
+				$$ = (Node*)node;
+		}
+	|	DROP PARM COORDINATOR MASTER set_ident set_parm_general_options
+		{
+				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->nodename = $5;
+				node->options = $6;
+				$$ = (Node*)node;
+		}
+	|	DROP PARM COORDINATOR MASTER IF_P EXISTS set_ident set_parm_general_options
+		{
+				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->nodename = $7;
+				node->options = $8;
+				$$ = (Node*)node;
+		}
+		;
+
 ListParmStmt:
 	  LIST PARM
 		{
