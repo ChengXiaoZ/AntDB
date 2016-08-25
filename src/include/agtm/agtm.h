@@ -67,6 +67,8 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
  */
  extern void agtm_DropSequence(const char * seqName, const char * database, const char * schema);
 
+ extern void agtms_DropSequenceByDataBase(const char * database);
+
 /*
  * rename sequence on agtm
  */

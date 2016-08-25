@@ -8,6 +8,7 @@
 #endif /* BUILD_BKI */
 
 #include "agtm/agtm_msg.h"
+#include "nodes/pg_list.h"
 
 #define AgtmSequenceRelationId 4053
 
@@ -40,6 +41,10 @@ extern Oid AddAgtmSequence(const char* database,
 
 extern Oid DelAgtmSequence(const char* database,
 				const char* schema, const char* sequence);
+
+extern void DelAgtmSequenceByOid(Oid oid);
+
+extern List * DelAgtmSequenceByDatabse(const char* database);
 
 extern bool SequenceIsExist(const char* database,
 				const char* schema, const char* sequence);

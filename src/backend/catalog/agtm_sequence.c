@@ -6,8 +6,10 @@
 #include "catalog/indexing.h"
 #include "storage/lock.h"
 #include "utils/builtins.h"
+#include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#include "utils/tqual.h"
 
 Oid AddAgtmSequence(const char* database,
 				const char* schema, const char* sequence)
@@ -85,6 +87,60 @@ Oid DelAgtmSequence(const char* database,
 	heap_close(adbSequence, RowExclusiveLock);
 
 	return oid;
+}
+
+void 
+DelAgtmSequenceByOid(Oid oid)
+{
+	Relation	adbSequence;
+	HeapTuple	htup;
+
+	adbSequence = heap_open(AgtmSequenceRelationId, RowExclusiveLock);
+	htup = SearchSysCache1(AGTMSEQUENCEOID,oid);
+
+	if (!HeapTupleIsValid(htup))
+		ereport(ERROR,
+			( errmsg("cache lookup failed for relation agtm_sequence,oid :%d",oid)));
+
+	simple_heap_delete(adbSequence, &htup->t_self);
+
+	ReleaseSysCache(htup);
+	heap_close(adbSequence, RowExclusiveLock);
+}
+
+List *
+DelAgtmSequenceByDatabse(const char* database)
+{
+	Relation	adbSequence;
+	HeapTuple	htup;
+	HeapScanDesc	scan;
+	ScanKeyData key[1];
+	Oid			oid;
+	List		*list = NULL;
+
+	ScanKeyInit(&key[0]
+		,Anum_agtm_sequence_database
+		,BTEqualStrategyNumber, F_NAMEEQ
+		,NameGetDatum(database));
+
+	adbSequence = heap_open(AgtmSequenceRelationId, RowExclusiveLock);
+	scan = heap_beginscan(adbSequence, SnapshotNow, 1, key);
+
+	while ((htup = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		StringInfoData	buf;
+		initStringInfo(&buf);
+		oid = HeapTupleGetOid(htup);
+		DelAgtmSequenceByOid(oid);
+		appendStringInfo(&buf, "%s", "seq");
+		appendStringInfo(&buf, "%u", oid);
+		list = lappend(list, buf.data);
+	}
+
+	heap_endscan(scan);
+	heap_close(adbSequence, RowExclusiveLock);
+
+	return list;
 }
 
 bool SequenceIsExist(const char* database,

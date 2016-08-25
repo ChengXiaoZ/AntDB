@@ -869,11 +869,15 @@ standard_ProcessUtility(Node *parsetree,
 					PreventTransactionChain(isTopLevel, "DROP DATABASE");
 #endif
 				dropdb(stmt->dbname, stmt->missing_ok);
+#ifdef ADB
+				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+					agtms_DropSequenceByDataBase(stmt->dbname);
+#endif
 			}
 
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
-				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);				
 #endif
 			break;
 

@@ -305,6 +305,70 @@ ProcessSequenceDrop(StringInfo message, StringInfo output)
 	return output;
 }
 
+StringInfo 
+ProcessSequenceDropByDatabase(StringInfo message, StringInfo output)
+{
+	char * database = NULL;
+	int	   dbNameSize = 0;
+	List   *list = NULL;
+
+	MemoryContext sequece_Context;
+	MemoryContext oldctx = NULL;
+
+	sequece_Context = AllocSetContextCreate(CurrentMemoryContext,
+											 "sequence deal",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldctx = MemoryContextSwitchTo(sequece_Context);
+
+	dbNameSize = pq_getmsgint(message, sizeof(dbNameSize));
+	database = pnstrdup(pq_getmsgbytes(message, dbNameSize), dbNameSize);
+	if(dbNameSize == 0 || database == NULL)
+		ereport(ERROR,
+			(errmsg("sequence database name is null")));
+
+	list = DelAgtmSequenceByDatabse(database);
+
+	if(list != NULL)
+	{
+		ListCell   *option;
+		foreach(option, list)
+		{
+			DropStmt *drop = NULL;
+			RangeVar * rangeVar = NULL;
+			List	*rangValList = NULL;
+			char    *seq = (char *) lfirst(option);
+			drop = makeNode(DropStmt);
+			rangeVar = makeNode(RangeVar);
+
+			drop->removeType = OBJECT_SEQUENCE;
+			drop->behavior = DROP_RESTRICT;
+			drop->missing_ok = 0;
+			drop->concurrent = 0;
+
+			rangeVar->catalogname = NULL;
+			rangeVar->schemaname = NULL;
+			rangeVar->relname = seq;
+			rangeVar->inhOpt = INH_DEFAULT;
+			rangeVar->relpersistence = 'p';
+
+			rangValList = lappend(rangValList, makeString(seq));
+			drop->objects = lappend(drop->objects, (void*)rangValList);
+
+			RemoveRelations((void *)drop);
+		}
+	}
+
+	(void)MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(sequece_Context);
+
+	/* Respond to the client */
+	pq_sendint(output, AGTM_MSG_SEQUENCE_DROP_BYDB_RESULT, 4);
+	return output;
+}
+
 StringInfo
 ProcessSequenceRename(StringInfo message, StringInfo output)
 {

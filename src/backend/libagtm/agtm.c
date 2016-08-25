@@ -146,6 +146,29 @@ agtm_DropSequence(const char * seqName, const char * database, const char * sche
 		(errmsg("drop sequence on agtm :%s", seqName)));
 }
 
+void 
+agtms_DropSequenceByDataBase(const char * database)
+{
+	int				dbNameSize;
+	StringInfoData	buf;
+
+	PGresult 		*res;
+
+	Assert(database != NULL);
+
+	if(!IsUnderAGTM())
+		return;
+
+	dbNameSize = strlen(database);
+	agtm_send_message(AGTM_MSG_SEQUENCE_DROP_BYDB, "%d%d %p%d", dbNameSize, 4, database, dbNameSize);
+	res = agtm_get_result(AGTM_MSG_SEQUENCE_DROP_BYDB);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_BYDB_RESULT);
+
+	ereport(DEBUG1,
+		(errmsg("drop sequence on agtm by database :%s", database)));
+}
+
 void agtm_RenameSequence(const char * seqName, const char * database,
 							const char * schema, const char* newName, SequenceRenameType type)
 {
