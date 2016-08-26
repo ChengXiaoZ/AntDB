@@ -49,9 +49,6 @@
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "utils/ps_status.h"
-#ifdef ADB
-#include "access/rxact_mgr.h"
-#endif
 
 
 const char *progname;
@@ -194,10 +191,6 @@ main(int argc, char *argv[])
 		 */
 		if (strcmp(argv[1], "--describe-config") == 0)
 			do_check_root = false;
-#ifdef ADB
-		else if (strcmp(argv[1], "--describe-rlog") == 0)
-			do_check_root = false;
-#endif /* ADB */
 		else if (argc > 2 && strcmp(argv[1], "-C") == 0)
 			do_check_root = false;
 	}
@@ -233,10 +226,6 @@ main(int argc, char *argv[])
 		AuxiliaryProcessMain(argc, argv);		/* does not return */
 	else if (argc > 1 && strcmp(argv[1], "--describe-config") == 0)
 		GucInfoMain();			/* does not return */
-#ifdef ADB
-	else if(argc > 1 && strcmp(argv[1], "--describe-rlog") == 0)
-		rlog_desc(argc > 2 ? argv[2] : NULL);	/* does not return */
-#endif /* ADB */
 	else if (argc > 1 && strcmp(argv[1], "--single") == 0)
 		PostgresMain(argc, argv,
 					 NULL,		/* no dbname */
@@ -385,10 +374,6 @@ help(const char *progname)
 	printf(_("  -V, --version      output version information, then exit\n"));
 	printf(_("  --NAME=VALUE       set run-time parameter\n"));
 	printf(_("  --describe-config  describe configuration parameters, then exit\n"));
-#ifdef ADB
-	printf(_("  --describe-rlog file_name\n"));
-	printf(_("                     describe remote xact log file\n"));
-#endif /* ADB */
 	printf(_("  -?, --help         show this help, then exit\n"));
 
 	printf(_("\nDeveloper options:\n"));
