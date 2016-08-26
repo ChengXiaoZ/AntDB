@@ -114,7 +114,7 @@ extern char *defGetString(DefElem *def);
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
-				AddUpdataparmStmt DropUpdataparmStmt
+				AddUpdataparmStmt DropUpdataparmStmt CleanAllStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -135,7 +135,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARM
 %token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
-%token<keyword> PASSWORD
+%token<keyword> PASSWORD CLEAN
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
@@ -204,6 +204,7 @@ stmt :
 	| AppendNodeStmt
 	| AddUpdataparmStmt
 	| DropUpdataparmStmt
+	| CleanAllStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -861,6 +862,15 @@ ListParmStmt:
 		}
 	;
 /* parm end*/
+
+CleanAllStmt:
+		CLEAN ALL
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_all", NULL));
+			$$ = (Node*)stmt;
+	}
 
 /* gtm/coordinator/datanode 
 */
@@ -1757,6 +1767,7 @@ unreserved_keyword:
 	| APPEND
 	| CHECK_PASSWORD
 	| CHECK_USER
+	| CLEAN
 	| CONFIG
 	| COORDINATOR
 	| DATANODE

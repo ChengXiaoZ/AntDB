@@ -75,7 +75,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid);
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_start_node(const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport);
-static void mgr_set_inited_incluster_true(char *nodename, char nodetype);
+static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
@@ -87,6 +87,8 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 static void makesure_dnmaster_running(char *hostaddr, int32 hostport);
 static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
 static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange);
+static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
+static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -2650,7 +2652,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		pg_conn = NULL;
 
 		/* step10: update node system table's column to set initial is true when cmd is init*/
-		mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER);
+		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, false, true);
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
@@ -3023,7 +3025,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
         pg_conn = NULL;
 
 		/* step 11: update node system table's column to set initial is true when cmd is init*/
-		mgr_set_inited_incluster_true(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER);
+		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, false, true);
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
@@ -3414,7 +3416,7 @@ static void mgr_reload_conf(Oid hostoid, char *nodepath)
 	ma_close(ma);
 }
 
-static void mgr_set_inited_incluster_true(char *nodename, char nodetype)
+static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[4];
@@ -3437,13 +3439,13 @@ static void mgr_set_inited_incluster_true(char *nodename, char nodetype)
 				,Anum_mgr_node_nodeinited
 				,BTEqualStrategyNumber
 				,F_BOOLEQ
-				,BoolGetDatum(false));
+				,BoolGetDatum(checkvalue));
 
 	ScanKeyInit(&key[3]
 				,Anum_mgr_node_nodeincluster
 				,BTEqualStrategyNumber
 				,F_BOOLEQ
-				,BoolGetDatum(false));
+				,BoolGetDatum(checkvalue));
 
 	info = palloc(sizeof(*info));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
@@ -3463,8 +3465,8 @@ static void mgr_set_inited_incluster_true(char *nodename, char nodetype)
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
 
-	mgr_node->nodeinited = true;
-	mgr_node->nodeincluster = true;
+	mgr_node->nodeinited = setvalue;
+	mgr_node->nodeincluster = setvalue;
 	heap_inplace_update(info->rel_node, tuple);
 
 	heap_endscan(info->rel_scan);
@@ -5465,4 +5467,170 @@ char *mgr_nodetype_str(char nodetype)
 	}
 	retstr = pstrdup(nodestring);
 	return retstr;
+}
+
+/*
+* clean all: 1. check the database cluster running, if it running(check gtm master), give the tip: stop cluster first; if not 
+* running, clean node. clean gtm, clean coordinator, clean datanode master, clean datanode slave
+*/
+Datum mgr_clean_all(PG_FUNCTION_ARGS)
+{
+	Relation rel_node;
+	Form_mgr_node mgr_node;
+	ScanKeyData key[1];
+	HeapScanDesc rel_scan;
+	StringInfoData strinfoport;
+	HeapTuple tuple;
+	int ismasterrunning;
+	char *hostaddress;
+
+	/*check the cluster running or not, if it is running, stop the dbcluster first*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(GTM_TYPE_GTM_MASTER));
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		hostaddress = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		initStringInfo(&strinfoport);
+		appendStringInfo(&strinfoport, "%d", mgr_node->nodeport);
+		ismasterrunning = pingNode(hostaddress, strinfoport.data);
+		pfree(hostaddress);
+		pfree(strinfoport.data);
+		if (0 == ismasterrunning)
+		{
+			ereport(ERROR, (errmsg("The ADB cluster is still running. Please stop it first!")));
+		}
+		break;
+	}
+	heap_endscan(rel_scan);
+	heap_close(rel_node, RowExclusiveLock);
+	/*clean gtm master/slave/extra, clean coordinator, clean datanode master/slave/extra*/
+	return mgr_prepare_clean_all(fcinfo);
+}
+
+/*clean the node folder*/
+static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst)
+{
+	StringInfoData buf;
+	StringInfoData infosendmsg;
+	ManagerAgent *ma;
+	
+	getAgentCmdRst->ret = false;
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst->description));
+	initStringInfo(&buf);
+	appendStringInfo(&infosendmsg, "rm -rf %s; mkdir -p %s; chmod 0700 %s", nodepath, nodepath, nodepath);
+	/* connection agent */
+	ma = ma_connect_hostoid(hostoid);
+	if(!ma_isconnected(ma))
+	{
+		/* report error message */
+		getAgentCmdRst->ret = false;
+		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		return;
+	}
+
+	/*send cmd*/
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, cmdtype);
+	ma_sendstring(&buf,infosendmsg.data);
+	pfree(infosendmsg.data);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
+	{
+		getAgentCmdRst->ret = false;
+		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		ma_close(ma);
+		return;
+	}
+	/*check the receive msg*/
+	mgr_recv_msg(ma, getAgentCmdRst);
+	ma_close(ma);
+}
+
+/*clean all node: gtm/datanode/coordinator which in cluster*/
+static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	InitNodeInfo *info;
+	HeapTuple tuple;
+	HeapTuple tup_result;
+	Form_mgr_node mgr_node;
+		Datum datumpath;
+		GetAgentCmdRst getAgentCmdRst;
+		ScanKeyData key[1];
+		char *nodepath;
+		bool isNull;
+		char cmdtype = AGT_CMD_CLEAN_NODE;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		info = palloc(sizeof(*info));
+					ScanKeyInit(&key[0],
+						Anum_mgr_node_nodeincluster
+						,BTEqualStrategyNumber
+						,F_BOOLEQ
+						,BoolGetDatum(true));
+		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+		info->lcp =NULL;
+
+		/* save info */
+		funcctx->user_fctx = info;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tuple == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, RowExclusiveLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
+		/*clean one node folder*/
+		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("%s %s column cndnpath is null", mgr_nodetype_str(mgr_node->nodetype),  NameStr(mgr_node->nodename))));
+		}
+		/*get nodepath from tuple*/
+		nodepath = TextDatumGetCString(datumpath);
+	mgr_clean_node_folder(cmdtype, mgr_node->nodehost, nodepath, &getAgentCmdRst);
+		/*update node systbl, set inited and incluster to false*/
+		if ( true == getAgentCmdRst.ret)
+		{
+			mgr_set_inited_incluster(NameStr(mgr_node->nodename), mgr_node->nodetype, true, false);
+		}
+	tup_result = build_common_command_tuple_for_monitor(
+				&(mgr_node->nodename)
+				,mgr_node->nodetype
+				,getAgentCmdRst.ret
+				,getAgentCmdRst.description.data
+				);
+	pfree(getAgentCmdRst.description.data);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }

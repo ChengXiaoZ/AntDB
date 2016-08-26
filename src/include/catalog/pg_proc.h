@@ -5264,6 +5264,9 @@ DESCR("mgr stop dn extra immediate");
 DATA(insert OID = 3479 (  mgr_init_dn_extra_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_extra_all _null_ _null_ _null_ ));
 DESCR("init datanode extra all");
 
+DATA(insert OID = 3846 (  mgr_clean_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_clean_all _null_ _null_ _null_ ));
+DESCR("clean all");
+
 #endif
 
 /*

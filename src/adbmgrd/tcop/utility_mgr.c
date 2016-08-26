@@ -37,6 +37,7 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 		break;
 	case T_MGRUpdateparm:
 		tag = "SET PARM";
+		break;
 	case T_MGRUpdateparmRmparm:
 		tag = "DROP PARM";
 		break;

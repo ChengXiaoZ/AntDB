@@ -44,6 +44,7 @@ extern bool get_net_info(StringInfo hostinfostring);
 extern bool get_host_info(StringInfo hostinfostring);
 extern bool get_disk_iops_info(StringInfo hostinfostring);
 static void cmd_rm_temp_file(StringInfo msg);
+static void cmd_clean_node_folder(StringInfo buf);
 
 void do_agent_command(StringInfo buf)
 {
@@ -104,9 +105,12 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_MONITOR_GETS_HOST_INFO:
 		cmd_monitor_gets_hostinfo();
 		break;
-    case AGT_CMD_RM:
-        cmd_rm_temp_file(buf);
-        break;
+	case AGT_CMD_RM:
+		cmd_rm_temp_file(buf);
+		break;
+	case AGT_CMD_CLEAN_NODE:
+		cmd_clean_node_folder(buf);
+		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
 			,errmsg("unknown agent command %d", cmd_type)));
@@ -830,4 +834,24 @@ static void cmd_monitor_gets_hostinfo(void)
 	agt_put_msg(AGT_MSG_RESULT, hostinfostring.data, hostinfostring.len);
 	agt_flush();
 	pfree(hostinfostring.data);
+}
+
+/*clean gtm/coordinator/datanode folder*/
+void cmd_clean_node_folder(StringInfo buf)
+{
+	const char *rec_msg_string;
+	StringInfoData output;
+	
+	rec_msg_string = agt_getmsgstring(buf);
+	initStringInfo(&output);
+	if (system(rec_msg_string) != 0)
+	{
+		appendStringInfo(&output, "do command fail: %s", rec_msg_string);
+		ereport(LOG, (errmsg("do command fail: %s", rec_msg_string)));
+	}
+	else
+		appendStringInfoString(&output, "success");
+	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	agt_flush();
+	pfree(output.data);
 }
