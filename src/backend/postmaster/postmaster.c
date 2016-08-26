@@ -96,9 +96,6 @@
 #include <pthread.h>
 #endif
 
-#ifdef ADB
-#include "access/rxact_mgr.h"
-#endif /* ADB */
 #include "access/transam.h"
 #include "access/xlog.h"
 #include "bootstrap/bootstrap.h"
@@ -612,6 +609,10 @@ Datum xc_lockForBackupKey1;
 Datum xc_lockForBackupKey2;
 
 #define StartPoolManager()		StartChildProcess(PoolerProcess)
+#endif
+
+#ifdef ADB
+#define StartRemoteXactMgr()	StartChildProcess(RemoteXactMgrProcess)
 #endif
 
 #define StartupDataBase()		StartChildProcess(StartupProcess)
@@ -3121,8 +3122,8 @@ reaper(SIGNAL_ARGS)
 		{
 			RemoteXactMgrPID = StartRemoteXactMgr();
 			if (!EXIT_STATUS_0(exitstatus))
-				LogChildExit(LOG, _("remote xact manager process"),
-							 pid, exitstatus);
+				HandleChildCrash(pid, exitstatus,
+								 _("remote xact manager process"));
 			continue;
 		}
 #endif /* ADB */
@@ -3532,6 +3533,22 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 	}
 #endif
 
+#ifdef ADB
+	/* Take care of the remote xact manager too */
+	if (IS_PGXC_COORDINATOR)
+	{
+		if (pid == RemoteXactMgrPID)
+			RemoteXactMgrPID = 0;
+		else if (RemoteXactMgrPID != 0 && !FatalError)
+		{
+			ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) RemoteXactMgrPID)));
+			signal_child(RemoteXactMgrPID, (SendStop ? SIGSTOP : SIGQUIT));
+		}
+	}
+#endif
 	/*
 	 * Force a power-cycle of the pgarch process too.  (This isn't absolutely
 	 * necessary, but it seems like a good idea for robustness, and it
@@ -5419,6 +5436,12 @@ StartChildProcess(AuxProcType type)
 				break;
 #endif
 
+#ifdef ADB
+			case RemoteXactMgrProcess:
+				ereport(LOG,
+						(errmsg("could not fork remote xact manager process: %m")));
+				break;
+#endif
 			case StartupProcess:
 				ereport(LOG,
 						(errmsg("could not fork startup process: %m")));

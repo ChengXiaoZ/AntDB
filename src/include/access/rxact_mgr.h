@@ -10,7 +10,7 @@ typedef enum RemoteXactType
 	,RX_ROLLBACK
 }RemoteXactType;
 
-extern pid_t StartRemoteXactMgr(void);
+extern void RemoteXactMgrMain(void) __attribute__((noreturn));
 
 extern void RecordRemoteXact(const char *gid, Oid *node_oids, int count, RemoteXactType type);
 extern void RecordRemoteXactSuccess(const char *gid, RemoteXactType type);

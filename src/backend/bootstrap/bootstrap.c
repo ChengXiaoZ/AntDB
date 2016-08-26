@@ -52,6 +52,10 @@
 #include "pgxc/poolmgr.h"
 #endif
 
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif
+
 extern int	optind;
 extern char *optarg;
 
@@ -324,6 +328,11 @@ AuxiliaryProcessMain(int argc, char *argv[])
 				statmsg = "pooler process";
 				break;
 #endif
+#ifdef ADB
+			case RemoteXactMgrProcess:
+				statmsg = "remote xact manager process";
+				break;
+#endif
 			case StartupProcess:
 				statmsg = "startup process";
 				break;
@@ -429,6 +438,11 @@ AuxiliaryProcessMain(int argc, char *argv[])
 			proc_exit(1);		/* should never return */
 #endif
 
+#ifdef ADB
+		case RemoteXactMgrProcess:
+			RemoteXactMgrMain();
+			proc_exit(1);
+#endif
 		case CheckerProcess:
 			/* don't set signals, they're useless here */
 			CheckerModeMain();

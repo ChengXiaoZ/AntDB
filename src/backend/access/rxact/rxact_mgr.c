@@ -12,16 +12,12 @@
 #include "libpq/libpq-fe.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
-#include "postmaster/fork_process.h"
-#include "postmaster/postmaster.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
-#include "storage/pg_shmem.h"
 #include "tcop/tcopprot.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
-#include "utils/ps_status.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
@@ -165,7 +161,6 @@ static void RemoteXactMgrInit(void);
 static void DestroyRemoteConnHashTab(void);
 static void RxactLoadLog(void);
 static void on_exit_rxact_mgr(int code, Datum arg);
-static void RemoteXactMgrMain(void) __attribute__((noreturn));
 
 static bool rxact_agent_recv_data(RxactAgent *agent);
 static void rxact_agent_input(RxactAgent *agent);
@@ -508,8 +503,6 @@ static void RemoteXactBaseInit(void)
 	 * Unblock signals (they were blocked when the postmaster forked us)
 	 */
 	PG_SETMASK(&UnBlockSig);
-
-	init_ps_display("remote xact manager process", "", "", "");
 }
 
 static void RemoteXactMgrInit(void)
@@ -597,33 +590,7 @@ DestroyRemoteConnHashTab(void)
 {
 }
 
-pid_t StartRemoteXactMgr(void)
-{
-	pid_t pid = fork_process();
-	if(pid == 0)
-	{
-		IsUnderPostmaster = true;
-		/* in postmaster child ... */
-		/* Close the postmaster's sockets */
-		ClosePostmasterPorts(true);
-
-		/* Lose the postmaster's on-exit routines */
-		on_exit_reset();
-		PGXC_init_lock_files();
-
-		/* Drop our connection to postmaster's shared memory, as well */
-		PGSharedMemoryDetach();
-
-		RemoteXactMgrMain();
-		proc_exit(1);
-	}
-
-	if(pid < 0)
-		ereport(LOG, (errmsg("could not fork system rxmgr: %m")));
-	return pid;
-}
-
-static void
+void
 RemoteXactMgrMain(void)
 {
 	PG_exception_stack = NULL;
@@ -634,7 +601,6 @@ RemoteXactMgrMain(void)
 	RemoteXactMgrInit();
 	(void)MemoryContextSwitchTo(MessageContext);
 
-	InitFileAccess();
 	RxactLoadLog();
 
 	enableFsync = true; /* force enable it */

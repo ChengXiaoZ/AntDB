@@ -223,7 +223,9 @@ extern PGPROC *PreparedXactProcs;
  *
  * PGXC needs another slot for the pool manager process
  */
-#if PGXC
+#ifdef ADB
+#define NUM_AUXILIARY_PROCS		6
+#elif defined(PGXC)
 #define NUM_AUXILIARY_PROCS		5
 #else
 #define NUM_AUXILIARY_PROCS		4
