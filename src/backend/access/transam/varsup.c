@@ -66,24 +66,14 @@ GetNewGlobalTransactionId(bool isSubXact)
 	 * During bootstrap initialization, we return the special bootstrap
 	 * transaction id.
 	 */
-	if (IsBootstrapProcessingMode())
-	{
-		Assert(!isSubXact);
-		MyPgXact->xid = BootstrapTransactionId;
-		return BootstrapTransactionId;
-	}
+	Assert(IsNormalProcessingMode());
 
 	/* safety check, we should never get this far in a HS slave */
 	if (RecoveryInProgress())
 		elog(ERROR, "cannot assign TransactionIds during recovery");
 
-	gxid = agtm_GetGlobalTransactionId(isSubXact);
-
-	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
-
-	xid = gxid;
-	if (TransactionIdFollowsOrEquals(gxid, ShmemVariableCache->nextXid))
-		ShmemVariableCache->nextXid = gxid;
+	/* Vacuum check */
+	xid = ReadNewTransactionId();
 
 	/*----------
 	 * Check to see if it's safe to assign another XID.  This protects against
@@ -111,8 +101,6 @@ GetNewGlobalTransactionId(bool isSubXact)
 		TransactionId xidStopLimit = ShmemVariableCache->xidStopLimit;
 		TransactionId xidWrapLimit = ShmemVariableCache->xidWrapLimit;
 		Oid			oldest_datoid = ShmemVariableCache->oldestXidDB;
-
-		LWLockRelease(XidGenLock);
 
 		/*
 		 * To avoid swamping the postmaster with signals, we issue the autovac
@@ -163,11 +151,15 @@ GetNewGlobalTransactionId(bool isSubXact)
 						 errhint("To avoid a database shutdown, execute a database-wide VACUUM in that database.\n"
 								 "You might also need to commit or roll back old prepared transactions.")));
 		}
-
-		/* Re-acquire lock and start over */
-		LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
-		xid = ShmemVariableCache->nextXid;
 	}
+
+	gxid = agtm_GetGlobalTransactionId(isSubXact);
+	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+	xid = gxid;
+	if (TransactionIdFollowsOrEquals(gxid, ShmemVariableCache->nextXid))
+		ShmemVariableCache->nextXid = gxid;
+	/* ADBQ: Will there be such a situation gxid < ShmemVariableCache->nextXid ? */
+
 	/*
 	 * If we are allocating the first XID of a new page of the commit log,
 	 * zero out that commit-log page before returning. We must do this while
