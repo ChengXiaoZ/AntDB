@@ -5562,12 +5562,12 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 	HeapTuple tuple;
 	HeapTuple tup_result;
 	Form_mgr_node mgr_node;
-		Datum datumpath;
-		GetAgentCmdRst getAgentCmdRst;
-		ScanKeyData key[1];
-		char *nodepath;
-		bool isNull;
-		char cmdtype = AGT_CMD_CLEAN_NODE;
+	Datum datumpath;
+	GetAgentCmdRst getAgentCmdRst;
+	ScanKeyData key[1];
+	char *nodepath;
+	bool isNull;
+	char cmdtype = AGT_CMD_CLEAN_NODE;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -5609,28 +5609,28 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
-		/*clean one node folder*/
-		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
-		if(isNull)
-		{
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-				, errmsg("%s %s column cndnpath is null", mgr_nodetype_str(mgr_node->nodetype),  NameStr(mgr_node->nodename))));
-		}
-		/*get nodepath from tuple*/
-		nodepath = TextDatumGetCString(datumpath);
+	/*clean one node folder*/
+	datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+	if(isNull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+			, errmsg("%s %s column cndnpath is null", mgr_nodetype_str(mgr_node->nodetype),  NameStr(mgr_node->nodename))));
+	}
+	/*get nodepath from tuple*/
+	nodepath = TextDatumGetCString(datumpath);
 	mgr_clean_node_folder(cmdtype, mgr_node->nodehost, nodepath, &getAgentCmdRst);
-		/*update node systbl, set inited and incluster to false*/
-		if ( true == getAgentCmdRst.ret)
-		{
-			mgr_set_inited_incluster(NameStr(mgr_node->nodename), mgr_node->nodetype, true, false);
-		}
+	/*update node systbl, set inited and incluster to false*/
+	if ( true == getAgentCmdRst.ret)
+	{
+		mgr_set_inited_incluster(NameStr(mgr_node->nodename), mgr_node->nodetype, true, false);
+	}
 	tup_result = build_common_command_tuple_for_monitor(
-				&(mgr_node->nodename)
-				,mgr_node->nodetype
-				,getAgentCmdRst.ret
-				,getAgentCmdRst.description.data
-				);
+		&(mgr_node->nodename)
+		,mgr_node->nodetype
+		,getAgentCmdRst.ret
+		,getAgentCmdRst.description.data
+		);
 	pfree(getAgentCmdRst.description.data);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }

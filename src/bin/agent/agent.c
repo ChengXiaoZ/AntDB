@@ -100,6 +100,7 @@ static void show_help(bool exit_succes)
 static void start_listen(void)
 {
 	struct sockaddr_in listen_addr;
+	int opt = 1;
 
 	listen_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if(listen_sock == PGINVALID_SOCKET)
@@ -108,6 +109,10 @@ static void start_listen(void)
 		exit(EXIT_FAILURE);
 	}
 
+	if(setsockopt( listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) != 0)
+	{
+		fprintf(stderr, _("could not reuse address"));
+	}
 	memset(&listen_addr, 0, sizeof(listen_addr));
 	listen_addr.sin_family = AF_INET;
 	listen_addr.sin_port = htons((unsigned short)listen_port);

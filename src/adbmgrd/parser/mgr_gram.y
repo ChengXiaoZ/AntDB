@@ -108,7 +108,7 @@ extern char *defGetString(DefElem *def);
 %type <list>	stmtblock stmtmulti
 %type <node>	stmt
 %type <node>	AddHostStmt DropHostStmt ListHostStmt AlterHostStmt
-				ListParmStmt StartAgentStmt AddNodeStmt 
+				ListParmStmt StartAgentStmt AddNodeStmt StopAgentStmt
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
@@ -182,6 +182,7 @@ stmt :
 	| ListHostStmt
 	| AlterHostStmt
 	| StartAgentStmt
+	| StopAgentStmt
 	| ListMonitor
 	| ListParmStmt
 	| AddNodeStmt
@@ -741,7 +742,25 @@ StartAgentStmt:
 			$$ = (Node*)stmt;
 		}
 		;
- 
+StopAgentStmt:
+		STOP AGENT ALL
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeNullAConst(-1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent", args));
+			$$ = (Node*)stmt;
+		}
+	|	STOP AGENT Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent", args));
+			$$ = (Node*)stmt;
+		}
+		;
+
 /* parm start*/
 AddUpdataparmStmt:
 		SET GTM opt_gtm_inner_type Ident set_parm_general_options

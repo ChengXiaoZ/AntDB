@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "agent.h"
 
 #include "agt_msg.h"
@@ -45,6 +46,7 @@ extern bool get_host_info(StringInfo hostinfostring);
 extern bool get_disk_iops_info(StringInfo hostinfostring);
 static void cmd_rm_temp_file(StringInfo msg);
 static void cmd_clean_node_folder(StringInfo buf);
+static void cmd_stop_agent(void);
 
 void do_agent_command(StringInfo buf)
 {
@@ -110,6 +112,9 @@ void do_agent_command(StringInfo buf)
 		break;
 	case AGT_CMD_CLEAN_NODE:
 		cmd_clean_node_folder(buf);
+		break;
+	case AGT_CMD_STOP_AGENT:
+		cmd_stop_agent();
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
@@ -854,4 +859,15 @@ void cmd_clean_node_folder(StringInfo buf)
 	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
 	agt_flush();
 	pfree(output.data);
+}
+
+/*stop agent*/
+static void cmd_stop_agent(void)
+{
+	pid_t pid;
+	pid=getppid();
+	if(kill(pid, SIGTERM) !=0)
+	{
+		perror("stop agent fail: ");
+	}
 }

@@ -19,6 +19,7 @@
 #include "libpq/ip.h"
 #include "mgr/mgr_agent.h"
 #include "mgr/mgr_cmds.h"
+#include "mgr/mgr_msg_type.h"
 #include "miscadmin.h"
 #include "nodes/parsenodes.h"
 #include "parser/mgr_node.h"
@@ -943,4 +944,115 @@ static void get_pghome(char *pghome)
 	strcpy(pghome, my_exec_path);
 	get_parent_directory(pghome);
 	get_parent_directory(pghome);
+}
+
+Datum mgr_stop_agent(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	StartAgentInfo *info;
+	HeapTuple tup;
+	HeapTuple tup_result;
+	Form_mgr_host mgr_host;
+	ManagerAgent *ma;
+	ScanKeyData	 key[1];
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData message;
+	Datum host_name;
+	char cmdtype = AGT_CMD_STOP_AGENT;
+	
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		
+		if(PG_ARGISNULL(0))
+			info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		else
+		{
+			host_name = DirectFunctionCall1(namein, PG_GETARG_DATUM(0));
+			ScanKeyInit(&key[0]
+				,Anum_mgr_host_hostname
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,host_name);
+			info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 1, key);
+		}
+		
+		/* save info */
+		funcctx->user_fctx = info;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	tup = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tup == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+	Assert(mgr_host);
+
+	/* test is running ? */
+	ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+	if(!ma_isconnected(ma))
+	{
+		tup_result = build_common_command_tuple(&(mgr_host->hostname)
+			, true, _("not running"));
+		ma_close(ma);
+	}else
+	{
+		initStringInfo(&message);
+		initStringInfo(&(getAgentCmdRst.description));
+		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+		/*send cmd*/
+		ma_beginmessage(&message, AGT_MSG_COMMAND);
+		ma_sendbyte(&message, cmdtype);
+		ma_endmessage(&message, ma);
+		if (!ma_flush(ma, true))
+		{
+			getAgentCmdRst.ret = false;
+			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		}
+		else
+		{
+			/*check the receive msg*/
+			mgr_recv_msg(ma, &getAgentCmdRst);
+		}
+		ma_close(ma);
+		/*check stop agent result*/
+		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+		if(!ma_isconnected(ma))
+		{
+			getAgentCmdRst.ret = 1;
+			appendStringInfoString(&(getAgentCmdRst.description), run_success);
+		}
+		else
+		{
+			appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
+		}
+		tup_result = build_common_command_tuple(
+			&(mgr_host->hostname)
+			, getAgentCmdRst.ret == 0 ? false:true
+			, getAgentCmdRst.description.data);
+		if(getAgentCmdRst.description.data)
+			pfree(getAgentCmdRst.description.data);
+		ma_close(ma);
+	}
+
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
