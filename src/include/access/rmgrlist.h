@@ -45,3 +45,6 @@ PG_RMGR(RM_SPGIST_ID, "SPGist", spg_redo, spg_desc, spg_xlog_startup, spg_xlog_c
 #ifdef PGXC
 PG_RMGR(RM_BARRIER_ID, "Barrier", barrier_redo, barrier_desc, NULL, NULL, NULL)
 #endif /* PGXC */
+#ifdef ADB
+PG_RMGR(RM_RXACT_MGR_ID, "Rxact", rxact_redo, rxact_desc, rxact_xlog_startup, rxact_xlog_cleanup, NULL)
+#endif /* ADB */

@@ -329,6 +329,21 @@ const char* rxact_log_get_string(RXactLog rlog)
 	return str;
 }
 
+void* rxact_log_get_bytes(RXactLog rlog , int n)
+{
+	void *p;
+	AssertArg(rlog && n >= 0);
+
+	while(rlog->buf.len - rlog->buf.cursor < n)
+	{
+		if(rxact_log_read_internal(rlog) == false)
+			rxact_report_log_error(rlog->fd, ERROR);
+	}
+	p = rlog->buf.data + rlog->buf.cursor;
+	rlog->buf.cursor += n;
+	return p;
+}
+
 static bool rxact_log_read_internal(RXactLog rlog)
 {
 	int read_res;
@@ -414,9 +429,16 @@ RXactLog rxact_begin_write_log(File fd)
 
 void rxact_end_write_log(RXactLog rlog)
 {
-	rxact_log_simple_write(rlog->fd, rlog->buf.data, rlog->buf.len);
+	if(rlog->buf.len > 0)
+		rxact_log_simple_write(rlog->fd, rlog->buf.data, rlog->buf.len);
 	pfree(rlog->buf.data);
 	pfree(rlog);
+}
+
+extern void rxact_write_log(RXactLog rlog)
+{
+	rxact_log_simple_write(rlog->fd, rlog->buf.data, rlog->buf.len);
+	resetStringInfo(&(rlog->buf));
 }
 
 void rxact_log_write_byte(RXactLog rlog, char c)

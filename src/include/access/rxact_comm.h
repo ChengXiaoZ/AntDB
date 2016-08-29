@@ -33,11 +33,13 @@ extern void rxact_log_reset(RXactLog rlog);
 extern int rxact_log_get_int(RXactLog rlog);
 extern short rxact_log_get_short(RXactLog rlog);
 extern const char* rxact_log_get_string(RXactLog rlog);
+extern void* rxact_log_get_bytes(RXactLog rlog , int n);
 extern void rxact_log_read_bytes(RXactLog rlog, void *p, int n);
 extern void rxact_log_seek_bytes(RXactLog rlog, int n);
 
 extern RXactLog rxact_begin_write_log(File fd);
 extern void rxact_end_write_log(RXactLog rlog);
+extern void rxact_write_log(RXactLog rlog);
 extern void rxact_log_write_byte(RXactLog rlog, char c);
 extern void rxact_log_write_int(RXactLog rlog, int n);
 extern void rxact_log_write_bytes(RXactLog rlog, const void *p, int n);

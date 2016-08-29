@@ -29,6 +29,9 @@
 #ifdef PGXC
 #include "pgxc/barrier.h"
 #endif
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif /* ADB */
 
 #define PG_RMGR(symname,name,redo,desc,startup,cleanup,restartpoint) \
 	{ name, desc, },

@@ -14,6 +14,9 @@
 #include "access/heapam_xlog.h"
 #include "access/multixact.h"
 #include "access/nbtree.h"
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif /* ADB */
 #include "access/spgist.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"

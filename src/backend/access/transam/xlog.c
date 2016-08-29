@@ -29,6 +29,9 @@
 #include "access/tuptoaster.h"
 #include "access/twophase.h"
 #include "access/xact.h"
+#ifdef ADB
+#include "access/rxact_mgr.h"
+#endif /* ADB */
 #include "access/xlog_internal.h"
 #include "access/xlogreader.h"
 #include "access/xlogutils.h"
@@ -7509,6 +7512,9 @@ CheckPointGuts(XLogRecPtr checkPointRedo, int flags)
 	CheckPointBuffers(flags);	/* performs all required fsyncs */
 	/* We deliberately delay 2PC checkpointing as long as possible */
 	CheckPointTwoPhase(checkPointRedo);
+#ifdef ADB
+	CheckPointRxact(flags);
+#endif /* ADB */
 }
 
 /*

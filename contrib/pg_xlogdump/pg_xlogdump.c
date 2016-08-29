@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <unistd.h>
 
+#include "access/rxact_mgr.h"
 #include "access/xlog.h"
 #include "access/xlogreader.h"
 #include "access/transam.h"
