@@ -29,7 +29,8 @@
 #define XC_NodeIdAttributeNumber				(-8)
 #ifdef ADB
 #define ADB_RowIdAttributeNumber				(-9)
-#define FirstLowInvalidHeapAttributeNumber		(-10)
+#define ADB_InfoMaskAttributeNumber				(-10)
+#define FirstLowInvalidHeapAttributeNumber		(-11)
 #else /* ADB */
 #define FirstLowInvalidHeapAttributeNumber		(-9)
 #endif /* ADB */

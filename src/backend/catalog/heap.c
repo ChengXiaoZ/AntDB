@@ -232,7 +232,14 @@ static FormData_pg_attribute a9 = {
 	ADB_RowIdAttributeNumber, 0, -1, -1,
 	false, 'p', 'i', true, false, false, true, 0
 };
-static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8, &a9};
+
+static FormData_pg_attribute a10 = {
+	0, {"infomask"}, INT2OID, 0, sizeof(int16),
+	ADB_InfoMaskAttributeNumber, 0, -1, -1,
+	true, 'p', 'i', true, false, false, true, 0
+};
+
+static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8, &a9, &a10};
 #else /* ADB */
 static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8};
 #endif /* ADB */

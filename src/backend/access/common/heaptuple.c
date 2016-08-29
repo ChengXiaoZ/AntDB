@@ -579,6 +579,9 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case ADB_RowIdAttributeNumber:
 			result = rowid_make(tup->t_xc_node_id, &tup->t_self);
 			break;
+		case ADB_InfoMaskAttributeNumber:
+			result = DatumGetUInt16(tup->t_data->t_infomask);
+			break;
 #endif /* ADB */
 #endif
 		default:

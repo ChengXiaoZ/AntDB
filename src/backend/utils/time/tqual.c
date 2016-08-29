@@ -1,59 +1,59 @@
 /*-------------------------------------------------------------------------
- *
- * tqual.c
- *	  POSTGRES "time qualification" code, ie, tuple visibility rules.
- *
- * NOTE: all the HeapTupleSatisfies routines will update the tuple's
- * "hint" status bits if we see that the inserting or deleting transaction
- * has now committed or aborted (and it is safe to set the hint bits).
- * If the hint bits are changed, MarkBufferDirtyHint is called on
- * the passed-in buffer.  The caller must hold not only a pin, but at least
- * shared buffer content lock on the buffer containing the tuple.
- *
- * NOTE: must check TransactionIdIsInProgress (which looks in PGXACT array)
- * before TransactionIdDidCommit/TransactionIdDidAbort (which look in
- * pg_clog).  Otherwise we have a race condition: we might decide that a
- * just-committed transaction crashed, because none of the tests succeed.
- * xact.c is careful to record commit/abort in pg_clog before it unsets
- * MyPgXact->xid in PGXACT array.  That fixes that problem, but it also
- * means there is a window where TransactionIdIsInProgress and
- * TransactionIdDidCommit will both return true.  If we check only
- * TransactionIdDidCommit, we could consider a tuple committed when a
- * later GetSnapshotData call will still think the originating transaction
- * is in progress, which leads to application-level inconsistency.  The
- * upshot is that we gotta check TransactionIdIsInProgress first in all
- * code paths, except for a few cases where we are looking at
- * subtransactions of our own main transaction and so there can't be any
- * race condition.
- *
- * Summary of visibility functions:
- *
- *	 HeapTupleSatisfiesMVCC()
- *		  visible to supplied snapshot, excludes current command
- *	 HeapTupleSatisfiesNow()
- *		  visible to instant snapshot, excludes current command
- *	 HeapTupleSatisfiesUpdate()
- *		  like HeapTupleSatisfiesNow(), but with user-supplied command
- *		  counter and more complex result
- *	 HeapTupleSatisfiesSelf()
- *		  visible to instant snapshot and current command
- *	 HeapTupleSatisfiesDirty()
- *		  like HeapTupleSatisfiesSelf(), but includes open transactions
- *	 HeapTupleSatisfiesVacuum()
- *		  visible to any running transaction, used by VACUUM
- *	 HeapTupleSatisfiesToast()
- *		  visible unless part of interrupted vacuum, used for TOAST
- *	 HeapTupleSatisfiesAny()
- *		  all tuples are visible
- *
- * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
- * IDENTIFICATION
- *	  src/backend/utils/time/tqual.c
- *
- *-------------------------------------------------------------------------
- */
+*
+* tqual.c
+*	  POSTGRES "time qualification" code, ie, tuple visibility rules.
+*
+* NOTE: all the HeapTupleSatisfies routines will update the tuple's
+* "hint" status bits if we see that the inserting or deleting transaction
+* has now committed or aborted (and it is safe to set the hint bits).
+* If the hint bits are changed, MarkBufferDirtyHint is called on
+* the passed-in buffer.  The caller must hold not only a pin, but at least
+* shared buffer content lock on the buffer containing the tuple.
+*
+* NOTE: must check TransactionIdIsInProgress (which looks in PGXACT array)
+* before TransactionIdDidCommit/TransactionIdDidAbort (which look in
+* pg_clog).  Otherwise we have a race condition: we might decide that a
+* just-committed transaction crashed, because none of the tests succeed.
+* xact.c is careful to record commit/abort in pg_clog before it unsets
+* MyPgXact->xid in PGXACT array.  That fixes that problem, but it also
+* means there is a window where TransactionIdIsInProgress and
+* TransactionIdDidCommit will both return true.  If we check only
+* TransactionIdDidCommit, we could consider a tuple committed when a
+* later GetSnapshotData call will still think the originating transaction
+* is in progress, which leads to application-level inconsistency.  The
+* upshot is that we gotta check TransactionIdIsInProgress first in all
+* code paths, except for a few cases where we are looking at
+* subtransactions of our own main transaction and so there can't be any
+* race condition.
+*
+* Summary of visibility functions:
+*
+*	 HeapTupleSatisfiesMVCC()
+*		  visible to supplied snapshot, excludes current command
+*	 HeapTupleSatisfiesNow()
+*		  visible to instant snapshot, excludes current command
+*	 HeapTupleSatisfiesUpdate()
+*		  like HeapTupleSatisfiesNow(), but with user-supplied command
+*		  counter and more complex result
+*	 HeapTupleSatisfiesSelf()
+*		  visible to instant snapshot and current command
+*	 HeapTupleSatisfiesDirty()
+*		  like HeapTupleSatisfiesSelf(), but includes open transactions
+*	 HeapTupleSatisfiesVacuum()
+*		  visible to any running transaction, used by VACUUM
+*	 HeapTupleSatisfiesToast()
+*		  visible unless part of interrupted vacuum, used for TOAST
+*	 HeapTupleSatisfiesAny()
+*		  all tuples are visible
+*
+* Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
+* Portions Copyright (c) 1994, Regents of the University of California
+*
+* IDENTIFICATION
+*	  src/backend/utils/time/tqual.c
+*
+*-------------------------------------------------------------------------
+*/
 
 #include "postgres.h"
 
@@ -65,6 +65,8 @@
 #include "storage/bufmgr.h"
 #include "storage/procarray.h"
 #include "utils/tqual.h"
+
+extern bool	debug_enable_satisfy_mvcc;
 
 /* Static variables representing various special snapshot semantics */
 SnapshotData SnapshotNowData = {HeapTupleSatisfiesNow};
@@ -1097,6 +1099,9 @@ bool
 HeapTupleSatisfiesMVCC(HeapTupleHeader tuple, Snapshot snapshot,
 					   Buffer buffer)
 {
+	if(debug_enable_satisfy_mvcc)
+		return true;
+
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
 		if (tuple->t_infomask & HEAP_XMIN_INVALID)

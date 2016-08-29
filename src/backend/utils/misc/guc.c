@@ -509,6 +509,7 @@ char		*nls_timestamp_tz_format;
 bool		enable_adb_ha_sync;
 bool		enable_adb_ha_sync_select;
 char		*adb_ha_param_delimiter;
+bool 		debug_enable_satisfy_mvcc;
 bool		enable_stable_func_shipping;
 char		*AGtmHost;
 int			AGtmPort;
@@ -1731,6 +1732,16 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"debug_enable_satisfy_mvcc", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Turn on HeapTupleSatisfiesMVCC always return true."),
+		 	gettext_noop("Can set ON by SET command by superuser.")
+		},
+		&debug_enable_satisfy_mvcc,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"log_parse_query", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Logs query if execute a Parse protocol message."),
 			NULL
@@ -2902,6 +2913,7 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 #endif /* AGTM */
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
