@@ -54,6 +54,8 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define CNDN_TYPE_DATANODE_SLAVE			'b'
 #define CNDN_TYPE_DATANODE_EXTRA			'n'
 
+/*no nodetype has this type '\0'*/
+#define CNDN_TYPE_NONE_TYPE '\0'
 
 #define GTM_TYPE_GTM_MASTER			'g'
 #define GTM_TYPE_GTM_SLAVE			'p'

@@ -4151,7 +4151,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 	HeapTuple aimtuple;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
-	char nodetypesecond;
+	char nodetypesecond = CNDN_TYPE_NONE_TYPE;
 	ScanKeyData key[1];
 	HeapScanDesc scan;
 	Form_mgr_node mgr_node;
@@ -4222,17 +4222,18 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 							,errmsg("no such node type: %c", nodetype)));
 				}
-			}
-			ScanKeyInit(&key[0]
-				,Anum_mgr_node_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(nodetypesecond));
-			heap_endscan(scan);
-			scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-			while ((aimtuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-			{
-				break;
+
+				ScanKeyInit(&key[0]
+					,Anum_mgr_node_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(nodetypesecond));
+				heap_endscan(scan);
+				scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+				while ((aimtuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+				{
+					break;
+				}
 			}
 			if (!HeapTupleIsValid(aimtuple))
 			{
