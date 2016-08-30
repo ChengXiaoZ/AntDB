@@ -242,7 +242,10 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value)
 {
 	HeapTuple tuple;
+	HeapTuple looptuple;
 	Form_mgr_updateparm mgr_updateparm;
+	ScanKeyData scankey[1];
+	HeapScanDesc rel_scan;
 
 	tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(nodename), CharGetDatum(nodetype), NameGetDatum(key));
 	if(!HeapTupleIsValid(tuple))
@@ -262,6 +265,34 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 		return PARM_NEED_UPDATE;
 	}
 	ReleaseSysCache(tuple);
+	/*check nodename is '*' and the mgr_updateparm has the nodename which has the same nodetype and key*/
+	if (namestrcmp(nodename, "*") == 0)
+	{
+		/*check the nodename in mgr_updateparm nodetype and key are not the same with "*"*/
+		ScanKeyInit(&scankey[0],
+			Anum_mgr_updateparm_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		rel_scan = heap_beginscan(noderel, SnapshotNow, 1, scankey);
+		while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+			Assert(mgr_updateparm);
+			if (strcmp(NameStr(mgr_updateparm->updateparmkey), key->data) != 0)
+				continue;
+			if (strcmp(NameStr(mgr_updateparm->updateparmnodename), "*") == 0)
+				continue;
+			/*check value*/
+			if (strcmp(NameStr(mgr_updateparm->updateparmvalue), value) !=0)
+			{
+				heap_endscan(rel_scan);
+				return PARM_NEED_UPDATE;
+			}
+		}
+		heap_endscan(rel_scan);
+	}
+
 	return PARM_NEED_NONE;
 }
 
