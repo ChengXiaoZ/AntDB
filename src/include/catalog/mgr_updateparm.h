@@ -39,4 +39,6 @@ typedef FormData_mgr_updateparm *Form_mgr_updateparm;
 #define Anum_mgr_updateparm_key				4
 #define Anum_mgr_updateparm_value			5
 
+#define MACRO_STAND_FOR_ALL_NODENAME "*"
+
 #endif /* MGR_UPDATEPARM_H */

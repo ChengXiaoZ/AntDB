@@ -1030,6 +1030,8 @@ Datum mgr_stop_agent(PG_FUNCTION_ARGS)
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 			ma_close(ma);
+			tup_result = build_common_command_tuple(&(mgr_host->hostname)
+			, true, getAgentCmdRst.description.data);
 		}
 		else
 		{

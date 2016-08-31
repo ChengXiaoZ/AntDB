@@ -1323,8 +1323,13 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		gtmmastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		if(!HeapTupleIsValid(gtmmastertuple))
 		{
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			appendStringInfo(&(getAgentCmdRst->description), "gtm master dosen't exist");
+			getAgentCmdRst->ret = false;
+			ereport(LOG, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				, errmsg("gtm master dosen't exist")));
+			pfree(infosendmsg.data);
+			pfree(hostaddress);
+			return;
 		}
 		mgr_node_gtm = (Form_mgr_node)GETSTRUCT(gtmmastertuple);
 		Assert(gtmmastertuple);
@@ -1347,8 +1352,15 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		if(ismasterrunning != 0)
 		{
 			if(!mgr_start_one_gtm_master())
-				ereport(ERROR,
-						(errmsg("start gtm master \"%s\" fail", mastername)));		
+			{
+				appendStringInfo(&(getAgentCmdRst->description), "start gtm master \"%s\" fail", mastername);
+				getAgentCmdRst->ret = false;
+				ereport(LOG,
+						(errmsg("start gtm master \"%s\" fail", mastername)));
+				pfree(infosendmsg.data);
+				pfree(hostaddress);
+				return;
+			}	
 		}
 	}
 	else if (AGT_CMD_GTM_START_MASTER == cmdtype || AGT_CMD_GTM_START_SLAVE == cmdtype)
@@ -3215,6 +3227,7 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		return;
 	}
 
 	initStringInfo(&psql_cmd);
@@ -3516,6 +3529,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		return;
 	}
 
 	/*check the receive msg*/
@@ -3572,6 +3586,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 			ma_close(ma);
+			return;
 		}
 
 		initStringInfo(&psql_cmd);
@@ -3604,6 +3619,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 			ma_close(ma);
+			return;
 		}
 
 		/*check the receive msg*/
@@ -3697,6 +3713,7 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		return;
 	}
 
 	/*check the receive msg*/
@@ -3743,6 +3760,7 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		return;
 	}
 
 	/*check the receive msg*/
@@ -3788,6 +3806,7 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		return;
 	}
 
 	/*check the receive msg*/
@@ -3834,6 +3853,7 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		return;
 	}
 
 	/*check the receive msg*/
@@ -4642,7 +4662,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-		ma_close(ma);
+		goto fun_end;
 	}
 
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -4654,16 +4674,16 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-		ma_close(ma);
+		goto fun_end;
 	}
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
-	
-	tup_result = build_common_command_tuple( &(getAgentCmdRst.nodename)
-											,getAgentCmdRst.ret
-											,getAgentCmdRst.ret == true ? "success":getAgentCmdRst.description.data);
+	fun_end:
+		tup_result = build_common_command_tuple( &(getAgentCmdRst.nodename)
+				,getAgentCmdRst.ret
+				,getAgentCmdRst.ret == true ? "success":getAgentCmdRst.description.data);
 
 	ma_close(ma);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));	
@@ -5175,8 +5195,11 @@ void mgr_mark_node_in_cluster(Relation rel)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		mgr_node->nodeincluster = true;
-		heap_inplace_update(rel, tuple);
+		if (mgr_node->nodeinited)
+		{
+			mgr_node->nodeincluster = true;
+			heap_inplace_update(rel, tuple);
+		}
 	}
 	heap_endscan(rel_scan);
 }

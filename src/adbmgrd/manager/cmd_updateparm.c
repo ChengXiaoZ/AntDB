@@ -66,9 +66,10 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
 static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus);
 static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus);
+static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 
 /* 
-* for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
+* for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the paremeter in mgr_updateparm
 */
 void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -113,7 +114,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table, use \"list node\" to get the gtm/coordinator/datanode port information")));
 		}
-		/*check the parameter is right for the type node of postgresql.conf*/
+		/*check the paremeter is right for the type node of postgresql.conf*/
 		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, value.data, &effectparmstatus);
 		/*check the parm exists already in mgr_updateparm systbl*/
 		insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, &nodename, &key, value.data);
@@ -146,7 +147,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 }
 
 /*
-*check the given parameter nodetype, key,value in mgr_parm, if not in, shows the parameter is not right in postgresql.conf
+*check the given paremeter nodetype, key,value in mgr_parm, if not in, shows the paremeter is not right in postgresql.conf
 */
 static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, char *value, int *effectparmstatus)
 {
@@ -157,7 +158,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	/*check the name of key exist in mgr_parm system table, if the key in gtm or cn or dn, the parmtype in 
 	* mgr_parm is '*'; if the key only in cn or dn, the parmtype in mgr_parm is '#', if the key only in 
 	* gtm/coordinator/datanode, the parmtype in mgr_parm is PARM_TYPE_GTM/PARM_TYPE_COORDINATOR/PARM_TYPE_DATANODE
-	* first: check the parmtype '*'; second: check the parmtype '#'; third check the parmtype the input parameter given
+	* first: check the parmtype '*'; second: check the parmtype '#'; third check the parmtype the input paremeter given
 	*/
 	/*check the parm in mgr_parm, type is '*'*/
 	tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_GTM_CN_DN), NameGetDatum(key));
@@ -172,7 +173,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 					tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(parmtype), NameGetDatum(key));
 					if(!HeapTupleIsValid(tuple))
 						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-							, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
+							, errmsg("unrecognized configuration paremeter \"%s\"", key->data)));
 					mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 					Assert(mgr_parm);
 					gucconntent = NameStr(mgr_parm->parmcontext);
@@ -185,7 +186,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 			if(!HeapTupleIsValid(tuple))
 			{
 					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-						, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
+						, errmsg("unrecognized configuration paremeter \"%s\"", key->data)));
 			}
 			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 		}
@@ -211,46 +212,85 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	{
 		*effectparmstatus = PGC_POSTMASTER;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
-			, errmsg("parameter \"%s\" cannot be changed without restarting the server", key->data)));
+			, errmsg("paremeter \"%s\" cannot be changed without restarting the server", key->data)));
 	}
 	else if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_INTERNAL]) == 0)
 	{
 		*effectparmstatus = PGC_INTERNAL;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
-			, errmsg("parameter \"%s\" cannot be changed", key->data)));
+			, errmsg("paremeter \"%s\" cannot be changed", key->data)));
 	}
 	else if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_POSTMASTER]) == 0)
 	{
 		*effectparmstatus = PGC_POSTMASTER;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
-			, errmsg("parameter \"%s\" cannot be set after connection start", key->data)));
+			, errmsg("paremeter \"%s\" cannot be set after connection start", key->data)));
 	}
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			, errmsg("unkown the content of this parameter \"%s\"", key->data)));
+			, errmsg("unkown the content of this paremeter \"%s\"", key->data)));
 	}
 	ReleaseSysCache(tuple);
 }
 
 
 /*
-* check the parmeter exist in mgr_updateparm systbl or not. if it is not in , return PARM_NEED_INSERT; if it is already in 
-* and the value does not need update, then return PARM_NEED_NONE; if t is already in and the value needs update, return PARM_NEED_UPDATE;
+* check the parmeter exist in mgr_updateparm systbl or not. if it is not in , and nodename is MACRO_STAND_FOR_ALL_NODENAME, return PARM_NEED_INSERT 
+* and delete the nodename which has same nodetype,key,value; if it is not in , and nodename is not MACRO_STAND_FOR_ALL_NODENAME, then check MACRO_STAND_FOR_ALL_NODENAME has 
+* the same nodetype,key,value, if not return PARM_NEED_INSERT, otherwis return PARM_NEED_NONE;if it is already in and the 
+* value does not need update, then return PARM_NEED_NONE; if it is already in and the value needs update, return 
+* PARM_NEED_UPDATE and if the nodename is MACRO_STAND_FOR_ALL_NODENAME delete the nodename which has same nodetype,key,value who's nodename is not MACRO_STAND_FOR_ALL_NODENAME;
 */
 
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value)
 {
 	HeapTuple tuple;
-	HeapTuple looptuple;
 	Form_mgr_updateparm mgr_updateparm;
-	ScanKeyData scankey[1];
-	HeapScanDesc rel_scan;
+	Form_mgr_updateparm mgr_updateparmtmp;
+	NameData nodenametmp;
+	int delnum = 0;
 
 	tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(nodename), CharGetDatum(nodetype), NameGetDatum(key));
 	if(!HeapTupleIsValid(tuple))
 	{
-		return PARM_NEED_INSERT;
+		/*if nodename is not MACRO_STAND_FOR_ALL_NODENAME*/
+		if (namestrcmp(nodename, MACRO_STAND_FOR_ALL_NODENAME) != 0)
+		{
+			namestrcpy(&nodenametmp, MACRO_STAND_FOR_ALL_NODENAME);
+			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(&nodenametmp), CharGetDatum(nodetype), NameGetDatum(key));
+			if(!HeapTupleIsValid(tuple))
+			{
+				return PARM_NEED_INSERT;
+			}
+			else
+			{
+				/*check the value*/
+				mgr_updateparmtmp = (Form_mgr_updateparm)GETSTRUCT(tuple);
+				if (strcmp(value, NameStr(mgr_updateparmtmp->updateparmvalue)) == 0)
+				{
+					ReleaseSysCache(tuple);
+					return PARM_NEED_NONE;
+				}
+				else
+				{
+					ReleaseSysCache(tuple);
+					return PARM_NEED_INSERT;
+				}
+			}
+		}
+		else
+		{
+			/*check the nodename in mgr_updateparm nodetype and key are not the same with MACRO_STAND_FOR_ALL_NODENAME, delete it*/
+			mgr_delete_tuple_not_all(noderel, nodetype, key);
+			return PARM_NEED_INSERT;
+		}
+	}
+	/*check nodename is MACRO_STAND_FOR_ALL_NODENAME and the mgr_updateparm has the nodename which has the same nodetype and key*/
+	if (namestrcmp(nodename, MACRO_STAND_FOR_ALL_NODENAME) == 0)
+	{
+		/*check the nodename in mgr_updateparm nodetype and key are not the same with MACRO_STAND_FOR_ALL_NODENAME, delete it*/
+		delnum = mgr_delete_tuple_not_all(noderel, nodetype, key);
 	}
 	/*check value*/
 	mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
@@ -263,42 +303,19 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 		heap_inplace_update(noderel, tuple);
 		ReleaseSysCache(tuple);
 		return PARM_NEED_UPDATE;
-	}
+	}	
 	ReleaseSysCache(tuple);
-	/*check nodename is '*' and the mgr_updateparm has the nodename which has the same nodetype and key*/
-	if (namestrcmp(nodename, "*") == 0)
+	if (delnum > 0)
 	{
-		/*check the nodename in mgr_updateparm nodetype and key are not the same with "*"*/
-		ScanKeyInit(&scankey[0],
-			Anum_mgr_updateparm_nodetype
-			,BTEqualStrategyNumber
-			,F_CHAREQ
-			,CharGetDatum(nodetype));
-		rel_scan = heap_beginscan(noderel, SnapshotNow, 1, scankey);
-		while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
-			Assert(mgr_updateparm);
-			if (strcmp(NameStr(mgr_updateparm->updateparmkey), key->data) != 0)
-				continue;
-			if (strcmp(NameStr(mgr_updateparm->updateparmnodename), "*") == 0)
-				continue;
-			/*check value*/
-			if (strcmp(NameStr(mgr_updateparm->updateparmvalue), value) !=0)
-			{
-				heap_endscan(rel_scan);
-				return PARM_NEED_UPDATE;
-			}
-		}
-		heap_endscan(rel_scan);
+		return PARM_NEED_UPDATE;
 	}
-
+	
 	return PARM_NEED_NONE;
 }
 
 /*
-*get the parameters from mgr_updateparm, then add them to infosendparamsg,  used for initdb
-*first, add the parameter which the nodename is '*' with given nodetype; second, add the parameter for given name with given nodetype 
+*get the paremeters from mgr_updateparm, then add them to infosendparamsg,  used for initdb
+*first, add the paremeter which the nodename is '*' with given nodetype; second, add the paremeter for given name with given nodetype 
 */
 void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 {
@@ -311,8 +328,8 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	char *parmvalue;
 	NameData nodenamedata;
 	
-	/*first: add the parameter which the nodename is '*' with given nodetype*/
-	namestrcpy(&nodenamedata, "*");
+	/*first: add the paremeter which the nodename is '*' with given nodetype*/
+	namestrcpy(&nodenamedata, MACRO_STAND_FOR_ALL_NODENAME);
 	ScanKeyInit(&key[0],
 		Anum_mgr_updateparm_nodetype
 		,BTEqualStrategyNumber
@@ -335,7 +352,7 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
 	}
 	heap_endscan(rel_scan);
-	/*second: add the parameter for given name with given nodetype*/
+	/*second: add the paremeter for given name with given nodetype*/
 	namestrcpy(&nodenamedata, nodename);
 	ScanKeyInit(&key[0],
 		Anum_mgr_updateparm_nodetype
@@ -383,7 +400,7 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 	initStringInfo(&infosendmsg);
 	initStringInfo(&(getAgentCmdRst.description));
 	/*get all node, which nodetype is "nodetype" in node systbl*/
-	if (strcmp(nodename, "*") == 0)
+	if (strcmp(nodename, MACRO_STAND_FOR_ALL_NODENAME) == 0)
 	{
 		ScanKeyInit(&key[0]
 			,Anum_mgr_node_nodetype
@@ -405,6 +422,8 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 					, errmsg("column cndnpath is null")));
 			}
 			nodepath = TextDatumGetCString(datumpath);
+			ereport(LOG,
+				(errmsg("send paremeter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
 			mgr_updateparm_send_parm(&infosendmsg, &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
 		}
 		heap_endscan(rel_scan);
@@ -436,7 +455,9 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 				, errmsg("column cndnpath is null")));
 		}
 		nodepath = TextDatumGetCString(datumpath);	
-		/*send the parameter to node path, then reload it*/
+		/*send the paremeter to node path, then reload it*/
+		ereport(LOG,
+			(errmsg("send paremeter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
 		mgr_updateparm_send_parm(&infosendmsg , &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
 		heap_freetuple(tuple);
 	}
@@ -445,11 +466,11 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 }
 
 /*
-* send parameter to node, refresh its postgresql.conf, if the guccontent of parameter is superuser/user/sighup, will reload the parameter
+* send paremeter to node, refresh its postgresql.conf, if the guccontent of paremeter is superuser/user/sighup, will reload the paremeter
 */
 static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus)
 {	
-	/*send the parameter to node path, then reload it*/
+	/*send the paremeter to node path, then reload it*/
 	resetStringInfo(infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendmsg);
@@ -460,12 +481,12 @@ static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *get
 	if (getAgentCmdRst->ret != true)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE)
-			 ,errmsg("reload parameter fail: %s", (getAgentCmdRst->description).data))); 
+			 ,errmsg("reload paremeter fail: %s", (getAgentCmdRst->description).data))); 
 	}
 }
 
 /* 
-* for command: drop parm {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to remove record the parameter in mgr_updateparm
+* for command: drop parm {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to remove record the paremeter in mgr_updateparm
 */
 void mgr_rmparm_updateparm(MGRUpdateparmRmparm *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -506,7 +527,7 @@ void mgr_rmparm_updateparm(MGRUpdateparmRmparm *node, ParamListInfo params, Dest
 			{
 				nodestring = mgr_nodetype_str(nodetype);
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					,errmsg("parameter \"%s\" does not exist", key.data)));
+					,errmsg("paremeter \"%s\" does not exist", key.data)));
 			}
 		}
 		/* todo chech used by other */
@@ -531,4 +552,36 @@ void mgr_rmparm_updateparm(MGRUpdateparmRmparm *node, ParamListInfo params, Dest
 	heap_close(rel, RowExclusiveLock);
 	(void)MemoryContextSwitchTo(old_context);
 	MemoryContextDelete(context);
+}
+
+static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
+{
+	HeapTuple looptuple;
+	Form_mgr_updateparm mgr_updateparm;
+	ScanKeyData scankey[1];
+	HeapScanDesc rel_scan;
+	int delnum = 0;
+	
+	/*check the nodename in mgr_updateparm nodetype and key are not the same with MACRO_STAND_FOR_ALL_NODENAME*/
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, scankey);
+	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+		Assert(mgr_updateparm);
+		if (strcmp(NameStr(mgr_updateparm->updateparmkey), key->data) != 0)
+			continue;
+		if (strcmp(NameStr(mgr_updateparm->updateparmnodename), MACRO_STAND_FOR_ALL_NODENAME) == 0)
+			continue;
+		/*delete the tuple which nodename is not MACRO_STAND_FOR_ALL_NODENAME and has the same nodetype and key*/
+		delnum++;
+		simple_heap_delete(noderel, &looptuple->t_self);
+		CatalogUpdateIndexes(noderel, looptuple);
+	}
+	heap_endscan(rel_scan);
+	return delnum;
 }
