@@ -959,6 +959,8 @@ Datum mgr_stop_agent(PG_FUNCTION_ARGS)
 	StringInfoData message;
 	Datum host_name;
 	char cmdtype = AGT_CMD_STOP_AGENT;
+	int retry = 0;
+	const int retrymax = 10;
 	
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -1018,40 +1020,51 @@ Datum mgr_stop_agent(PG_FUNCTION_ARGS)
 	{
 		initStringInfo(&message);
 		initStringInfo(&(getAgentCmdRst.description));
-		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
 		/*send cmd*/
 		ma_beginmessage(&message, AGT_MSG_COMMAND);
 		ma_sendbyte(&message, cmdtype);
+		ma_sendstring(&message, "stop agent");
 		ma_endmessage(&message, ma);
 		if (!ma_flush(ma, true))
 		{
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+			ma_close(ma);
 		}
 		else
 		{
-			/*check the receive msg*/
 			mgr_recv_msg(ma, &getAgentCmdRst);
+			ma_close(ma);
+			/*check stop agent result*/
+			retry = 0;
+			while (retry++ < retrymax)
+			{
+				/*sleep 0.2s, wait the agent process to be killed, max try retrymax times*/
+				usleep(200000);
+				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+				if(!ma_isconnected(ma))
+				{
+					getAgentCmdRst.ret = 1;
+					resetStringInfo(&(getAgentCmdRst.description));
+					appendStringInfoString(&(getAgentCmdRst.description), run_success);
+					ma_close(ma);
+					break;
+				}
+				else
+				{
+					getAgentCmdRst.ret = 0;
+					resetStringInfo(&(getAgentCmdRst.description));
+					appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
+					ma_close(ma);
+				}
+			}
+			tup_result = build_common_command_tuple(
+				&(mgr_host->hostname)
+				, getAgentCmdRst.ret == 0 ? false:true
+				, getAgentCmdRst.description.data);
+			if(getAgentCmdRst.description.data)
+				pfree(getAgentCmdRst.description.data);
 		}
-		ma_close(ma);
-		/*check stop agent result*/
-		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-		if(!ma_isconnected(ma))
-		{
-			getAgentCmdRst.ret = 1;
-			appendStringInfoString(&(getAgentCmdRst.description), run_success);
-		}
-		else
-		{
-			appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
-		}
-		tup_result = build_common_command_tuple(
-			&(mgr_host->hostname)
-			, getAgentCmdRst.ret == 0 ? false:true
-			, getAgentCmdRst.description.data);
-		if(getAgentCmdRst.description.data)
-			pfree(getAgentCmdRst.description.data);
-		ma_close(ma);
 	}
 
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));

@@ -940,6 +940,7 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 		/* report error message */
 		getAgentCmdRst->ret = false;
 		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -1385,6 +1386,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/* report error message */
 		getAgentCmdRst->ret = false;
 		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3075,6 +3077,7 @@ static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *par
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -3211,6 +3214,7 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	initStringInfo(&psql_cmd);
@@ -3240,12 +3244,13 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
-
+	ma_close(ma);
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
@@ -3395,6 +3400,7 @@ static void mgr_reload_conf(Oid hostoid, char *nodepath)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -3495,6 +3501,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3508,6 +3515,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -3563,6 +3571,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 			/* report error message */
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+			ma_close(ma);
 		}
 
 		initStringInfo(&psql_cmd);
@@ -3594,11 +3603,13 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 		{
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+			ma_close(ma);
 		}
 
 		/*check the receive msg*/
 		execok = mgr_recv_msg(ma, &getAgentCmdRst);
 		Assert(execok == getAgentCmdRst.ret);
+		ma_close(ma);
 	}
 
 	heap_endscan(info->rel_scan);
@@ -3627,6 +3638,7 @@ static void mgr_start_node(const char *nodepath, Oid hostoid)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3640,6 +3652,7 @@ static void mgr_start_node(const char *nodepath, Oid hostoid)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -3669,6 +3682,7 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3682,6 +3696,7 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -3713,6 +3728,7 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3726,6 +3742,7 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -3756,6 +3773,7 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3769,6 +3787,7 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -3800,6 +3819,7 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -3813,6 +3833,7 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -4084,6 +4105,7 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -4404,6 +4426,7 @@ bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress
 			appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
 			heap_endscan(rel_scan);
 			heap_close(rel_node, RowExclusiveLock);
+			ma_close(ma);
 			return false;
 		}
 		ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -4619,6 +4642,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -4630,6 +4654,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
 	}
 
 	/*check the receive msg*/
@@ -4669,6 +4694,7 @@ void mgr_send_conf_parameters(char filetype, char *datapath, StringInfo infosend
 		/* report error message */
 		getAgentCmdRst->ret = false;
 		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 	getAgentCmdRst->ret = false;
@@ -5083,6 +5109,7 @@ void mgr_rename_recovery_to_conf(char cmdtype, Oid hostOid, char* cndnpath, GetA
 		/* report error message */
 		getAgentCmdRst->ret = false;
 		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 
@@ -5534,6 +5561,7 @@ static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, Get
 		/* report error message */
 		getAgentCmdRst->ret = false;
 		appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
+		ma_close(ma);
 		return;
 	}
 

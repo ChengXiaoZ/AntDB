@@ -865,6 +865,13 @@ void cmd_clean_node_folder(StringInfo buf)
 static void cmd_stop_agent(void)
 {
 	pid_t pid;
+	StringInfoData output;
+	
+	initStringInfo(&output);
+	appendStringInfoString(&output, "receive the stop agent command");
+	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	agt_flush();
+	pfree(output.data);
 	pid=getppid();
 	if(kill(pid, SIGTERM) !=0)
 	{
