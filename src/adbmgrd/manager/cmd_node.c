@@ -4662,7 +4662,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		/* report error message */
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-		goto fun_end;
+		goto func_end;
 	}
 
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -4674,13 +4674,13 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	{
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-		goto fun_end;
+		goto func_end;
 	}
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
-	fun_end:
+	func_end:
 		tup_result = build_common_command_tuple( &(getAgentCmdRst.nodename)
 				,getAgentCmdRst.ret
 				,getAgentCmdRst.ret == true ? "success":getAgentCmdRst.description.data);

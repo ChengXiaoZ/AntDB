@@ -69,7 +69,7 @@ static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *get
 static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 
 /* 
-* for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the paremeter in mgr_updateparm
+* for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
 */
 void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -112,9 +112,9 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 		if (strcmp(key.data, "port") == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table, use \"list node\" to get the gtm/coordinator/datanode port information")));
+				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
 		}
-		/*check the paremeter is right for the type node of postgresql.conf*/
+		/*check the parameter is right for the type node of postgresql.conf*/
 		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, value.data, &effectparmstatus);
 		/*check the parm exists already in mgr_updateparm systbl*/
 		insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, &nodename, &key, value.data);
@@ -147,7 +147,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 }
 
 /*
-*check the given paremeter nodetype, key,value in mgr_parm, if not in, shows the paremeter is not right in postgresql.conf
+*check the given parameter nodetype, key,value in mgr_parm, if not in, shows the parameter is not right in postgresql.conf
 */
 static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, char *value, int *effectparmstatus)
 {
@@ -158,7 +158,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	/*check the name of key exist in mgr_parm system table, if the key in gtm or cn or dn, the parmtype in 
 	* mgr_parm is '*'; if the key only in cn or dn, the parmtype in mgr_parm is '#', if the key only in 
 	* gtm/coordinator/datanode, the parmtype in mgr_parm is PARM_TYPE_GTM/PARM_TYPE_COORDINATOR/PARM_TYPE_DATANODE
-	* first: check the parmtype '*'; second: check the parmtype '#'; third check the parmtype the input paremeter given
+	* first: check the parmtype '*'; second: check the parmtype '#'; third check the parmtype the input parameter given
 	*/
 	/*check the parm in mgr_parm, type is '*'*/
 	tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_GTM_CN_DN), NameGetDatum(key));
@@ -173,7 +173,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 					tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(parmtype), NameGetDatum(key));
 					if(!HeapTupleIsValid(tuple))
 						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-							, errmsg("unrecognized configuration paremeter \"%s\"", key->data)));
+							, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
 					mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 					Assert(mgr_parm);
 					gucconntent = NameStr(mgr_parm->parmcontext);
@@ -186,7 +186,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 			if(!HeapTupleIsValid(tuple))
 			{
 					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-						, errmsg("unrecognized configuration paremeter \"%s\"", key->data)));
+						, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
 			}
 			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 		}
@@ -212,24 +212,24 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	{
 		*effectparmstatus = PGC_POSTMASTER;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
-			, errmsg("paremeter \"%s\" cannot be changed without restarting the server", key->data)));
+			, errmsg("parameter \"%s\" cannot be changed without restarting the server", key->data)));
 	}
 	else if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_INTERNAL]) == 0)
 	{
 		*effectparmstatus = PGC_INTERNAL;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
-			, errmsg("paremeter \"%s\" cannot be changed", key->data)));
+			, errmsg("parameter \"%s\" cannot be changed", key->data)));
 	}
 	else if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_POSTMASTER]) == 0)
 	{
 		*effectparmstatus = PGC_POSTMASTER;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
-			, errmsg("paremeter \"%s\" cannot be set after connection start", key->data)));
+			, errmsg("parameter \"%s\" cannot be set after connection start", key->data)));
 	}
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			, errmsg("unkown the content of this paremeter \"%s\"", key->data)));
+			, errmsg("unkown the content of this parameter \"%s\"", key->data)));
 	}
 	ReleaseSysCache(tuple);
 }
@@ -314,8 +314,8 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 }
 
 /*
-*get the paremeters from mgr_updateparm, then add them to infosendparamsg,  used for initdb
-*first, add the paremeter which the nodename is '*' with given nodetype; second, add the paremeter for given name with given nodetype 
+*get the parameters from mgr_updateparm, then add them to infosendparamsg,  used for initdb
+*first, add the parameter which the nodename is '*' with given nodetype; second, add the parameter for given name with given nodetype 
 */
 void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 {
@@ -328,7 +328,7 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	char *parmvalue;
 	NameData nodenamedata;
 	
-	/*first: add the paremeter which the nodename is '*' with given nodetype*/
+	/*first: add the parameter which the nodename is '*' with given nodetype*/
 	namestrcpy(&nodenamedata, MACRO_STAND_FOR_ALL_NODENAME);
 	ScanKeyInit(&key[0],
 		Anum_mgr_updateparm_nodetype
@@ -352,7 +352,7 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
 	}
 	heap_endscan(rel_scan);
-	/*second: add the paremeter for given name with given nodetype*/
+	/*second: add the parameter for given name with given nodetype*/
 	namestrcpy(&nodenamedata, nodename);
 	ScanKeyInit(&key[0],
 		Anum_mgr_updateparm_nodetype
@@ -423,7 +423,7 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 			}
 			nodepath = TextDatumGetCString(datumpath);
 			ereport(LOG,
-				(errmsg("send paremeter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
+				(errmsg("send parameter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
 			mgr_updateparm_send_parm(&infosendmsg, &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
 		}
 		heap_endscan(rel_scan);
@@ -455,9 +455,9 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 				, errmsg("column cndnpath is null")));
 		}
 		nodepath = TextDatumGetCString(datumpath);	
-		/*send the paremeter to node path, then reload it*/
+		/*send the parameter to node path, then reload it*/
 		ereport(LOG,
-			(errmsg("send paremeter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
+			(errmsg("send parameter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
 		mgr_updateparm_send_parm(&infosendmsg , &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
 		heap_freetuple(tuple);
 	}
@@ -466,11 +466,11 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 }
 
 /*
-* send paremeter to node, refresh its postgresql.conf, if the guccontent of paremeter is superuser/user/sighup, will reload the paremeter
+* send parameter to node, refresh its postgresql.conf, if the guccontent of parameter is superuser/user/sighup, will reload the parameter
 */
 static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus)
 {	
-	/*send the paremeter to node path, then reload it*/
+	/*send the parameter to node path, then reload it*/
 	resetStringInfo(infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendmsg);
@@ -481,12 +481,12 @@ static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *get
 	if (getAgentCmdRst->ret != true)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE)
-			 ,errmsg("reload paremeter fail: %s", (getAgentCmdRst->description).data))); 
+			 ,errmsg("reload parameter fail: %s", (getAgentCmdRst->description).data))); 
 	}
 }
 
 /* 
-* for command: drop parm {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to remove record the paremeter in mgr_updateparm
+* for command: drop parm {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to remove record the parameter in mgr_updateparm
 */
 void mgr_rmparm_updateparm(MGRUpdateparmRmparm *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -527,7 +527,7 @@ void mgr_rmparm_updateparm(MGRUpdateparmRmparm *node, ParamListInfo params, Dest
 			{
 				nodestring = mgr_nodetype_str(nodetype);
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					,errmsg("paremeter \"%s\" does not exist", key.data)));
+					,errmsg("parameter \"%s\" does not exist", key.data)));
 			}
 		}
 		/* todo chech used by other */
