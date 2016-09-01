@@ -1878,7 +1878,7 @@ void rxact_xlog_cleanup(void)
 void CheckPointRxact(int flags)
 {
 	StringInfoData buf;
-	if(flags & CHECKPOINT_END_OF_RECOVERY)
+	if(!IsUnderPostmaster || (flags & CHECKPOINT_END_OF_RECOVERY))
 		return;
 
 	if(rxact_client_fd == PGINVALID_SOCKET)
