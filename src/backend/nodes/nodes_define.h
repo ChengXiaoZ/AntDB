@@ -4138,16 +4138,4 @@ BEGIN_NODE(MGRUpdateparm)
 END_NODE(MGRUpdateparm)
 #endif /* NO_NODE_MGRUpdateparm */
 
-#ifndef NO_NODE_MGRUpdateparmRmparm
-BEGIN_NODE(MGRUpdateparmRmparm)
-	NODE_SCALAR(char, parmtype)
-	NODE_STRING(nodename)
-	NODE_SCALAR(bool, if_exists)
-	NODE_SCALAR(char, nodetype)
-	NODE_STRING(key)
-	NODE_STRING(value)
-	NODE_NODE(List, options)
-END_NODE(MGRUpdateparmRmparm)
-#endif /* NO_NODE_MGRUpdateparmRmparm */
-
 #endif /* ADBMGRD */

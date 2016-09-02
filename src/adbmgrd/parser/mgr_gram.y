@@ -114,7 +114,7 @@ extern char *defGetString(DefElem *def);
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
-				AddUpdataparmStmt DropUpdataparmStmt CleanAllStmt
+				AddUpdataparmStmt CleanAllStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -204,7 +204,6 @@ stmt :
 	| Get_alarm_info
 	| AppendNodeStmt
 	| AddUpdataparmStmt
-	| DropUpdataparmStmt
 	| CleanAllStmt
 	| /* empty */
 		{ $$ = NULL; }
@@ -788,62 +787,6 @@ AddUpdataparmStmt:
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 				node->nodename = $4;
 				node->options = $5;
-				$$ = (Node*)node;
-		}
-		;
-DropUpdataparmStmt:
-		DROP PARM GTM opt_gtm_inner_type Ident set_parm_general_options
-		{
-				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
-				node->parmtype = PARM_TYPE_GTM;
-				node->nodetype = $4;
-				node->nodename = $5;
-				node->options = $6;
-				$$ = (Node*)node;
-		}
-	|	DROP PARM GTM opt_gtm_inner_type IF_P EXISTS Ident set_parm_general_options
-		{
-				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
-				node->parmtype = PARM_TYPE_GTM;
-				node->nodetype = $4;
-				node->nodename = $7;
-				node->options = $8;
-				$$ = (Node*)node;
-		}
-	|	DROP PARM DATANODE opt_dn_inner_type set_ident set_parm_general_options
-		{
-				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
-				node->parmtype = PARM_TYPE_DATANODE;
-				node->nodetype = $4;
-				node->nodename = $5;
-				node->options = $6;
-				$$ = (Node*)node;
-		}
-	|	DROP PARM DATANODE opt_dn_inner_type IF_P EXISTS set_ident set_parm_general_options
-		{
-				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
-				node->parmtype = PARM_TYPE_DATANODE;
-				node->nodetype = $4;
-				node->nodename = $7;
-				node->options = $8;
-				$$ = (Node*)node;
-		}
-	|	DROP PARM COORDINATOR MASTER set_ident set_parm_general_options
-		{
-				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
-				node->parmtype = PARM_TYPE_COORDINATOR;
-				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $5;
-				node->options = $6;
-				$$ = (Node*)node;
-		}
-	|	DROP PARM COORDINATOR MASTER IF_P EXISTS set_ident set_parm_general_options
-		{
-				MGRUpdateparmRmparm *node = makeNode(MGRUpdateparmRmparm);
-				node->parmtype = PARM_TYPE_COORDINATOR;
-				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $7;
-				node->options = $8;
 				$$ = (Node*)node;
 		}
 		;
