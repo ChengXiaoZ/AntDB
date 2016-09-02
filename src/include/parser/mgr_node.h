@@ -85,4 +85,14 @@ typedef struct MGRUpdateparm
 	List		*options;		/* list of DefElem */
 }MGRUpdateparm;
 
+typedef struct MGRUpdateparmReset
+{
+	NodeTag		type;
+	char		parmtype;
+	char		*nodename;
+	char		nodetype;
+	char		*key;
+	List		*options;		/* list of DefElem */
+}MGRUpdateparmReset;
+
 #endif /* MGR_NODE_H */

@@ -114,12 +114,13 @@ extern char *defGetString(DefElem *def);
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
-				AddUpdataparmStmt CleanAllStmt
+				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
+				reset_parm_general_options resetparm_general_option_list
 %type <node>	general_option_item general_option_arg target_el
-%type <node> 	var_value
+%type <node> 	var_value resetparm_general_option_item
 
 %type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type
 %type <vsetstmt> set_rest set_rest_more
@@ -135,7 +136,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARM
 %token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
-%token<keyword> PASSWORD CLEAN
+%token<keyword> PASSWORD CLEAN RESET
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
@@ -204,6 +205,7 @@ stmt :
 	| Get_alarm_info
 	| AppendNodeStmt
 	| AddUpdataparmStmt
+	|	ResetUpdataparmStmt
 	| CleanAllStmt
 	| /* empty */
 		{ $$ = NULL; }
@@ -567,7 +569,27 @@ opt_general_options:
 set_parm_general_options:
 	  general_options	{ $$ = $1; }
 	;
+
+reset_parm_general_options: '(' resetparm_general_option_list ')'
+		{
+			$$ = $2;
+		}
+	;
 	
+resetparm_general_option_list:
+	  resetparm_general_option_item
+		{
+			$$ = list_make1($1);
+		}
+	| resetparm_general_option_list ',' resetparm_general_option_item
+		{
+			$$ = lappend($1, $3);
+		}
+	;
+resetparm_general_option_item:
+	ColLabel		{ $$ = (Node*)makeString($1); }
+	;
+
 general_options: '(' general_option_list ')'
 		{
 			$$ = $2;
@@ -783,6 +805,35 @@ AddUpdataparmStmt:
 	| SET COORDINATOR MASTER set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->nodename = $4;
+				node->options = $5;
+				$$ = (Node*)node;
+		}
+		;
+ResetUpdataparmStmt:
+		RESET GTM opt_gtm_inner_type Ident set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				$$ = (Node*)node;
+		}
+	| RESET DATANODE opt_dn_inner_type set_ident reset_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				$$ = (Node*)node;
+		}
+	| RESET COORDINATOR MASTER set_ident reset_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_COORDINATOR;
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 				node->nodename = $4;
@@ -1777,6 +1828,7 @@ unreserved_keyword:
 	| OFF
 	| PARM
 	| PASSWORD
+	| RESET
 	| S
 	| SET
 	| SLAVE

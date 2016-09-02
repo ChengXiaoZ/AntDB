@@ -516,3 +516,11 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
 	heap_endscan(rel_scan);
 	return delnum;
 }
+
+/* 
+* for command: reset {datanode|coordinaotr} xx {master|slave|extra} {key1,key2...} , to remove the parameter in mgr_updateparm
+*/
+void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest)
+{
+	
+}
