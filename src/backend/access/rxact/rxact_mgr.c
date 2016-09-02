@@ -801,8 +801,8 @@ on_exit_rxact_mgr(int code, Datum arg)
 	}
 	if(rxlf_remote_node != -1)
 	{
-		FileClose(rxlf_db_node);
-		rxlf_db_node = -1;
+		FileClose(rxlf_remote_node);
+		rxlf_remote_node = -1;
 	}
 }
 
