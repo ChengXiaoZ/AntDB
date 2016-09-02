@@ -1111,9 +1111,12 @@ static void rxact_agent_connect(RxactAgent *agent, StringInfo msg)
 	AssertArg(agent && msg);
 
 	agent->dboid = (Oid)rxact_get_int(msg);
-	dbname = rxact_get_string(msg);
-	owner = rxact_get_string(msg);
-	rxact_insert_database(agent->dboid, dbname, owner, false);
+	if(OidIsValid(agent->dboid))
+	{
+		dbname = rxact_get_string(msg);
+		owner = rxact_get_string(msg);
+		rxact_insert_database(agent->dboid, dbname, owner, false);
+	}
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
 }
 
@@ -2184,19 +2187,22 @@ static void connect_rxact(void)
 
 	/* put Database OID and name */
 	rxact_put_int(&buf, MyDatabaseId);
-	tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
-	Assert(HeapTupleIsValid(tuple));
-	form_db = (Form_pg_database)GETSTRUCT(tuple);
-	rxact_put_string(&buf, NameStr(form_db->datname));
-	owner = form_db->datdba;
-	ReleaseSysCache(tuple);
+	if(OidIsValid(MyDatabaseId))
+	{
+		tuple = SearchSysCache1(DATABASEOID, ObjectIdGetDatum(MyDatabaseId));
+		Assert(HeapTupleIsValid(tuple));
+		form_db = (Form_pg_database)GETSTRUCT(tuple);
+		rxact_put_string(&buf, NameStr(form_db->datname));
+		owner = form_db->datdba;
+		ReleaseSysCache(tuple);
 
-	/* put Database owner name */
-	tuple = SearchSysCache1(AUTHOID, ObjectIdGetDatum(owner));
-	Assert(HeapTupleIsValid(tuple));
-	form_authid = (Form_pg_authid)GETSTRUCT(tuple);
-	rxact_put_string(&buf, NameStr(form_authid->rolname));
-	ReleaseSysCache(tuple);
+		/* put Database owner name */
+		tuple = SearchSysCache1(AUTHOID, ObjectIdGetDatum(owner));
+		Assert(HeapTupleIsValid(tuple));
+		form_authid = (Form_pg_authid)GETSTRUCT(tuple);
+		rxact_put_string(&buf, NameStr(form_authid->rolname));
+		ReleaseSysCache(tuple);
+	}
 
 	/* connect and send message */
 	rxact_client_fd = rxact_connect();
