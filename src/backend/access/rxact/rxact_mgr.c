@@ -14,6 +14,7 @@
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "pgxc/pgxc.h"
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pmsignal.h"
@@ -1881,7 +1882,7 @@ void rxact_xlog_cleanup(void)
 void CheckPointRxact(int flags)
 {
 	StringInfoData buf;
-	if(!IsUnderPostmaster || (flags & CHECKPOINT_END_OF_RECOVERY))
+	if(!IS_PGXC_COORDINATOR || !IsUnderPostmaster || (flags & CHECKPOINT_END_OF_RECOVERY))
 		return;
 
 	if(rxact_client_fd == PGINVALID_SOCKET)
