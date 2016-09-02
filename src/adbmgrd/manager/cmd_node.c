@@ -1383,7 +1383,12 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	else if (AGT_CMD_AGTM_RESTART == cmdtype)
 	{
-		appendStringInfo(&infosendmsg, " %s -D %s -l %s/logfile", cmdmode, cndnPath, cndnPath);
+		appendStringInfo(&infosendmsg, " %s -D %s -m %s -l %s/logfile", cmdmode, cndnPath, shutdown_mode, cndnPath);
+	}
+	else if (AGT_CMD_DN_RESTART == cmdtype || AGT_CMD_CN_RESTART == cmdtype)
+	{
+		appendStringInfo(&infosendmsg, " %s -D %s", cmdmode, cndnPath);
+		appendStringInfo(&infosendmsg, " -Z %s -m %s -o -i -w -c -l %s/logfile", zmode, shutdown_mode, cndnPath);
 	}
 	else
 	{
@@ -5250,7 +5255,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 * 2. refresh all coordinator/datanode postgresql.conf:agtm_port,agtm_host
 * 3.delete old master record in node systbl
 * 4.change slave type to master type
-* 5.new gtm master: refresh postgresql.conf
+* 5.new gtm master: refresh postgresql.conf and restart it
 * 6.refresh gtm extra nodemasternameoid in node systbl and recovery.confs and restart gtm extra
 */
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath)
@@ -5346,6 +5351,13 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+	/*restart gtm extra or slave*/
+	resetStringInfo(&(getAgentCmdRst->description));
+	mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
+	if(!getAgentCmdRst->ret)
+	{
+		ereport(ERROR, (errmsg("agtm_ctl restart gtm %s fail", "master")));
+	}
 	/*6.update gtm extra or slave nodemasternameoid, refresh gtm extra recovery.conf*/
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
@@ -5379,7 +5391,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		}
 		/*restart gtm extra or slave*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, tuple, takeplaparm_n);
+		mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, tuple, shutdown_f);
 		if(!getAgentCmdRst->ret)
 		{
 			ereport(WARNING, (errmsg("agtm_ctl restart gtm %s fail", strlabel)));
