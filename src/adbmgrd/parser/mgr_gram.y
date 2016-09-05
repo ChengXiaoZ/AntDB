@@ -118,9 +118,8 @@ extern char *defGetString(DefElem *def);
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
-				reset_parm_general_options resetparm_general_option_list
 %type <node>	general_option_item general_option_arg target_el
-%type <node> 	var_value resetparm_general_option_item
+%type <node> 	var_value
 
 %type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type
 %type <vsetstmt> set_rest set_rest_more
@@ -569,27 +568,7 @@ opt_general_options:
 set_parm_general_options:
 	  general_options	{ $$ = $1; }
 	;
-
-reset_parm_general_options: '(' resetparm_general_option_list ')'
-		{
-			$$ = $2;
-		}
-	;
 	
-resetparm_general_option_list:
-	  resetparm_general_option_item
-		{
-			$$ = list_make1($1);
-		}
-	| resetparm_general_option_list ',' resetparm_general_option_item
-		{
-			$$ = lappend($1, $3);
-		}
-	;
-resetparm_general_option_item:
-	ColLabel		{ $$ = (Node*)makeString($1); }
-	;
-
 general_options: '(' general_option_list ')'
 		{
 			$$ = $2;
@@ -815,14 +794,14 @@ AddUpdataparmStmt:
 ResetUpdataparmStmt:
 		RESET GTM opt_gtm_inner_type Ident set_parm_general_options
 		{
-				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_GTM;
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
 				$$ = (Node*)node;
 		}
-	| RESET DATANODE opt_dn_inner_type set_ident reset_parm_general_options
+	| RESET DATANODE opt_dn_inner_type set_ident set_parm_general_options
 		{
 				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_DATANODE;
@@ -831,7 +810,7 @@ ResetUpdataparmStmt:
 				node->options = $5;
 				$$ = (Node*)node;
 		}
-	| RESET COORDINATOR MASTER set_ident reset_parm_general_options
+	| RESET COORDINATOR MASTER set_ident set_parm_general_options
 		{
 				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_COORDINATOR;
