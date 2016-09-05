@@ -2737,7 +2737,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 		/* step 3: update datanode master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, parentnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								parentnodeinfo.nodepath,
 								&infosendmsg,
@@ -2748,7 +2748,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
 		/* step 5: basebackup for datanode master using pg_basebackup command. */
-		mgr_pgbasebackup(&appendnodeinfo, &appendnodeinfo);
+		mgr_pgbasebackup(&appendnodeinfo, &parentnodeinfo);
 
 		/* step 6: update datanode slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
@@ -2794,9 +2794,13 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
+		/* step 11: update node system table's column to set initial is true when cmd is init*/
+		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, false, true);
+
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
+        errdump();
 	}PG_END_TRY_HOLD();
 
 	if (catcherr)
@@ -2853,7 +2857,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 		/* step 3: update datanode master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, parentnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								parentnodeinfo.nodepath,
 								&infosendmsg,
@@ -2864,7 +2868,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
 		/* step 5: basebackup for datanode master using pg_basebackup command. */
-		mgr_pgbasebackup(&appendnodeinfo, &appendnodeinfo);
+		mgr_pgbasebackup(&appendnodeinfo, &parentnodeinfo);
 
 		/* step 6: update datanode slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
@@ -2909,6 +2913,9 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
+
+        /* step 11: update node system table's column to set initial is true when cmd is init*/
+        mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_EXTRA, false, true);
 
 	}PG_CATCH_HOLD();
 	{
@@ -3095,6 +3102,8 @@ static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *par
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+        
+        ereport(ERROR, (errmsg("could not connect socket for agent.")));
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -3148,12 +3157,13 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	if(!HeapTupleIsValid(mastertuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			,errmsg("can not find datanode master."))); 
+			,errmsg("could not find datanode master."))); 
 	}
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 	Assert(mgr_node);
 
+	parentnodeinfo->nodename = NameStr(mgr_node->nodename);
 	parentnodeinfo->nodetype = mgr_node->nodetype;
 	parentnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	parentnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
@@ -3419,6 +3429,8 @@ static void mgr_reload_conf(Oid hostoid, char *nodepath)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+        
+        ereport(ERROR, (errmsg("could not connect socket for agent.")));
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -3660,6 +3672,8 @@ static void mgr_start_node(const char *nodepath, Oid hostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+
+        ereport(ERROR, (errmsg("could not connect socket for agent.")));
 		return;
 	}
 
