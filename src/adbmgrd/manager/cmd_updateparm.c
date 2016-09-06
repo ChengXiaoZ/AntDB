@@ -28,6 +28,8 @@
 #include "utils/tqual.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
+#include "utils/guc_tables.h"
+#include "parser/scansup.h"
 
 #if (Natts_mgr_updateparm != 5)
 #error "need change code"
@@ -61,12 +63,14 @@ const char *const GucContext_Parmnames[] =
 	 /* PGC_USERSET */ "user"
 };
 
-
-static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *effectparmstatus);
+static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
 static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus);
 static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus);
 static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
+static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax);
+static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
+
 
 /* 
 * for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
@@ -84,12 +88,16 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	NameData key;
 	NameData value;
 	NameData defaultvalue;
+	NameData parmunit;
+	NameData parmmin;
+	NameData parmmax;
 	bool isnull[Natts_mgr_updateparm];
 	bool got[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	int insertparmstatus;
 	int effectparmstatus;
+	int vartype;  /*the parm value type: bool, string, enum, int*/
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
 	parmtype =  node->parmtype;
@@ -116,7 +124,12 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
 		}
 		/*check the parameter is right for the type node of postgresql.conf*/
-		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &effectparmstatus);
+		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+		/*check the key's value*/
+		if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
+		{
+			return;
+		}
 		/*check the parm exists already in mgr_updateparm systbl*/
 		insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, &nodename, &key, value.data);
 		if (PARM_NEED_NONE == insertparmstatus)
@@ -150,11 +163,15 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 /*
 *check the given parameter nodetype, key,value in mgr_parm, if not in, shows the parameter is not right in postgresql.conf
 */
-static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *effectparmstatus)
+static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus)
 {
 	HeapTuple tuple;
 	char *gucconntent;
 	Form_mgr_parm mgr_parm;
+	Datum datumparmunit;
+	Datum datumparmmin;
+	Datum datumparmmax;
+	bool isNull = false;
 	
 	/*check the name of key exist in mgr_parm system table, if the key in gtm or cn or dn, the parmtype in 
 	* mgr_parm is '*'; if the key only in cn or dn, the parmtype in mgr_parm is '#', if the key only in 
@@ -204,8 +221,65 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 
 	Assert(mgr_parm);
 	gucconntent = NameStr(mgr_parm->parmcontext);
+	if (strcmp(NameStr(mgr_parm->parmvartype), "string") == 0)
+	{
+		*vartype = PGC_STRING;
+	}
+	else if (strcmp(NameStr(mgr_parm->parmvartype), "real") == 0)
+	{
+		*vartype = PGC_REAL;
+	}
+	else if (strcmp(NameStr(mgr_parm->parmvartype), "enum") == 0)
+	{
+		*vartype = PGC_ENUM;
+	}
+	else if (strcmp(NameStr(mgr_parm->parmvartype), "bool") == 0)
+	{
+		*vartype = PGC_BOOL;
+	}
+	else if (strcmp(NameStr(mgr_parm->parmvartype), "integer") == 0)
+	{
+		*vartype = PGC_INT;
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("the value type \"%s\" does not exist", NameStr(mgr_parm->parmvartype))));		
+	}
+		
 	/*get the default value*/
 	namestrcpy(value, NameStr(mgr_parm->parmvalue));
+	/*get parm unit*/
+	datumparmunit = heap_getattr(tuple, Anum_mgr_parm_unit, RelationGetDescr(noderel), &isNull);
+	if(isNull)
+	{
+		namestrcpy(parmunit, "");
+	}
+	else
+	{
+		namestrcpy(parmunit,TextDatumGetCString(datumparmunit));
+	}
+	/*get parm min*/
+	datumparmmin = heap_getattr(tuple, Anum_mgr_parm_minval, RelationGetDescr(noderel), &isNull);
+	if(isNull)
+	{
+		namestrcpy(parmmin, "0");
+	}
+	else
+	{
+		namestrcpy(parmmin,TextDatumGetCString(datumparmmin));
+	}
+	/*get parm max*/
+	datumparmmax = heap_getattr(tuple, Anum_mgr_parm_maxval, RelationGetDescr(noderel), &isNull);
+	if(isNull)
+	{
+		namestrcpy(parmmax, "0");
+	}
+	else
+	{
+		namestrcpy(parmmax,TextDatumGetCString(datumparmmax));
+	}	
+	
 	if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_USERSET]) == 0 || strcasecmp(gucconntent, GucContext_Parmnames[PGC_SUSET]) == 0 || strcasecmp(gucconntent, GucContext_Parmnames[PGC_SIGHUP]) == 0)
 	{
 		*effectparmstatus = PGC_SIGHUP;
@@ -222,9 +296,9 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
 			, errmsg("parameter \"%s\" cannot be changed", key->data)));
 	}
-	else if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_POSTMASTER]) == 0)
+	else if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_BACKEND]) == 0)
 	{
-		*effectparmstatus = PGC_POSTMASTER;
+		*effectparmstatus = PGC_BACKEND;
 		ereport(NOTICE, (errcode(ERRCODE_CANT_CHANGE_RUNTIME_PARAM)
 			, errmsg("parameter \"%s\" cannot be set after connection start", key->data)));
 	}
@@ -533,11 +607,14 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	HeapTuple looptuple;
 	NameData nodename;
 	NameData nodenametmp;
+	NameData parmmin;
+	NameData parmmax;
 	Datum datum[Natts_mgr_updateparm];
 	ListCell *lc;
 	DefElem *def;
 	NameData key;
 	NameData defaultvalue;
+	NameData parmunit;
 	ScanKeyData scankey[3];
 	HeapScanDesc rel_scan;
 	bool isnull[Natts_mgr_updateparm];
@@ -546,6 +623,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	int effectparmstatus;
+	int vartype; /*the parm value type: bool, string, enum, int*/
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
 	parmtype =  node->parmtype;
@@ -571,7 +649,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
 		}
 		/*check the parameter is right for the type node of postgresql.conf*/
-		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &effectparmstatus);
+		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
 		/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited*/
 		if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0)
 		{
@@ -675,3 +753,174 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	heap_close(rel_parm, RowExclusiveLock);
 	heap_close(rel_node, RowExclusiveLock);	
 }
+
+/*
+* check the guc value for postgresql.conf
+*/
+static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax)
+{
+	int elevel = ERROR;
+	int flags;
+
+	switch (vartype)
+	{
+		case PGC_BOOL:
+			{
+				bool		newval;
+
+				if (value)
+				{
+					if (!parse_bool(value, &newval))
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						  errmsg("parameter \"%s\" requires a Boolean value",
+								 name)));
+						return 0;
+					}
+				}
+				break;
+			}
+
+		case PGC_INT:
+			{
+				int			newval;
+				int min;
+				int max;
+				
+				if (value)
+				{
+					const char *hintmsg;
+					flags = mgr_get_parm_unit_type(name, parmunit);
+					if (!parse_int(value, &newval, flags, &hintmsg))
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for parameter \"%s\": \"%s\"",
+								name, value),
+								 hintmsg ? errhint("%s", _(hintmsg)) : 0));
+						return 0;
+					}
+					if (strcmp(parmmin, "") ==0 || strcmp(parmmax, "") ==0)
+					{
+						return 1;
+					}
+					min = atoi(parmmin);
+					max = atoi(parmmax);
+					if (newval < min || newval > max)
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("%d is outside the valid range for parameter \"%s\" (%d .. %d)",
+										newval, name, min, max)));
+						return 0;
+					}
+				}
+				break;
+			}
+
+		case PGC_REAL:
+			{
+				double		newval;
+				double min;
+				double max;
+				
+				if (value)
+				{
+					if (!parse_real(value, &newval))
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						  errmsg("parameter \"%s\" requires a numeric value",
+								 name)));
+						return 0;
+					}
+					
+					if (strcmp(parmmin, "") == 0 || strcmp(parmmax, "") == 0)
+					{
+						return 1;
+					}
+					min = atof(parmmin);
+					max = atof(parmmax);
+					
+					if (newval < min || newval > max)
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								 errmsg("%g is outside the valid range for parameter \"%s\" (%g .. %g)",
+										newval, name, min, max)));
+						return 0;
+					}
+				}
+				break;
+			}
+
+		case PGC_STRING:
+			{
+				/*nothing to do,only need check some name will be truncated*/
+				break;
+			}
+
+		case PGC_ENUM:
+			{
+				break;
+			}
+		default:
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					, errmsg("the parm type \"d\" does not exist")));
+	}
+	return 1;
+}
+
+/*
+* get unit type from unit and parm name(see guc.c)
+*/
+
+static int mgr_get_parm_unit_type(char *nodename, char *parmunit)
+{
+	if (strcmp(parmunit, "ms") == 0)
+	{
+		return GUC_UNIT_MS;
+	}
+	else if (strcmp(parmunit, "s") == 0)
+	{
+		if(strcmp(nodename, "post_auth_delay") ==0 || strcmp(nodename, "pre_auth_delay") ==0)
+		{
+			return (GUC_NOT_IN_SAMPLE | GUC_UNIT_S);
+		}
+		else
+			return GUC_UNIT_S;
+	}
+	else if (strcmp(parmunit, "ms") ==0)
+	{
+		return GUC_UNIT_MS;
+	}
+	else if (strcmp(parmunit, "min") ==0)
+	{
+		return GUC_UNIT_MIN;
+	}
+	else if (strcmp(parmunit, "kB") ==0)
+	{
+		return GUC_UNIT_KB;
+	}
+	else if (strcmp(parmunit, "8kB") ==0)
+	{
+		if (strcmp(nodename, "wal_buffers") ==0)
+		{
+			return GUC_UNIT_XBLOCKS;
+		}
+		else if (strcmp(nodename, "wal_segment_size") ==0)
+		{
+			return (GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE);
+		}
+		else
+			return GUC_UNIT_KB;
+		
+	}
+	else
+		return 0;
+}
+
+
+
+
