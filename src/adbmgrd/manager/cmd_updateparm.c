@@ -63,6 +63,38 @@ const char *const GucContext_Parmnames[] =
 	 /* PGC_USERSET */ "user"
 };
 
+/*check the enum type parm's value is right*/
+const int enumparnnum = 22;
+struct enumstruct
+{
+  char name[50];
+  int valuenum;
+  char value[20][20];
+}enumstruct[22] = {
+	{"backslash_quote", 3, {"safe_encoding", "on", "off"}},
+	{"bytea_output", 2, {"escape","hex"}},
+	{"client_min_messages", 9, {"debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"}},
+	{"constraint_exclusion", 3, {"partition", "on", "off"}},
+	{"default_transaction_isolation", 4, {"serializable", "repeatable read", "read committed", "read uncommitted"}},
+	{"grammar", 2, {"postgres", "oracle"}},
+	{"IntervalStyle", 4, {"postgres", "postgres_verbose", "sql_standard", "iso_8601"}},
+	{"log_error_verbosity", 3, {"terse", "default", "verbose"}},
+	{"log_min_error_statement", 11, {"debug5", "debug4", "debug3", "debug2", "debug1", "info", "notice", "warning", "error", "log", "fatal", "panic"}},
+	{"log_min_messages", 12, {"debug5", "debug4", "debug3", "debug2", "debug1", "info", "notice", "warning", "error", "log", "fatal", "panic"}},
+	{"log_statement", 4, {"none", "ddl", "mod", "all"}},
+	{"remotetype", 4, {"application", "coordinator", "datanode", "rxactmgr"}},
+	{"session_replication_role", 3, {"origin", "replica", "local"}},
+	{"snapshot_level", 6, {"mvcc", "now", "self", "any", "toast", "dirty"}},
+	{"synchronous_commit", 4, {"local", "remote_write", "on", "off"}},
+	{"syslog_facility", 8, {"local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"}},
+	{"trace_recovery_messages", 9, {"debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"}},
+	{"track_functions", 3, {"none", "pl", "all"}},
+	{"wal_level", 3, {"minimal", "archive", "hot_standby"}},
+	{"wal_sync_method", 4, {"fsync", "fdatasync", "open_sync", "open_datasync"}},
+	{"xmlbinary", 2, {"base64", "hex"}},
+	{"xmloption", 2, {"content", "document"}}
+};
+
 static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
 static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus);
@@ -70,7 +102,7 @@ static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *get
 static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
-
+static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo valuelist);
 
 /* 
 * for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
@@ -641,7 +673,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	foreach(lc,node->options)
 	{
 		def = lfirst(lc);
-		Assert(def);
+		Assert(def && IsA(def, DefElem));
 		namestrcpy(&key, def->defname);
 		if (strcmp(key.data, "port") == 0)
 		{
@@ -863,6 +895,19 @@ static int mgr_check_parm_value(char *name, char *value, int vartype, char *parm
 
 		case PGC_ENUM:
 			{
+					StringInfoData valuelist;
+					initStringInfo(&valuelist);
+					if (!mgr_parm_enum_lookup_by_name(name, value, &valuelist))
+					{
+						ereport(elevel,
+								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid value for parameter \"%s\": \"%s\"",
+								name, value),
+								 errhint("Available values: %s", _(valuelist.data))));
+						pfree(valuelist.data);
+						return 0;
+					}
+				pfree(valuelist.data);
 				break;
 			}
 		default:
@@ -921,6 +966,38 @@ static int mgr_get_parm_unit_type(char *nodename, char *parmunit)
 		return 0;
 }
 
+/*check enum type of parm's value is right*/
+static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo valuelist)
+{
+	int iloop = 0;
+	int jloop = 0;
+	for(iloop=0; iloop < enumparnnum; iloop++)
+	{
+		/*check name*/
+		if (strcmp(name, enumstruct[iloop].name) ==0)
+		{
+			/*check value*/
+			for(jloop=0; jloop<enumstruct[iloop].valuenum; jloop++)
+			{
+				if (strcmp(enumstruct[iloop].value[jloop], value) == 0)
+				{
+					return true;
+				}
+			}
+			
+			/*get the right value list*/
+			resetStringInfo(valuelist);
+			for(jloop=0; jloop<enumstruct[iloop].valuenum -1; jloop++)
+			{
+				appendStringInfo(valuelist, "%s, ", enumstruct[iloop].value[jloop]);
+			}
+			appendStringInfo(valuelist, "%s", enumstruct[iloop].value[jloop]);
+			return false;
+		}
+		
+	}
+	return false;
+}
 
 
 
