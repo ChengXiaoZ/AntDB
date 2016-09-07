@@ -2994,13 +2994,13 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 9: update datanode master's postgresql.conf.*/
-		resetStringInfo(&infosendmsg);
+		/* resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								parentnodeinfo.nodepath,
 								&infosendmsg, 
 								parentnodeinfo.nodehost, 
-								&getAgentCmdRst);
+								&getAgentCmdRst); */
 
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
