@@ -2566,6 +2566,9 @@ static TupleDesc get_common_command_tuple_desc_for_monitor(void)
 Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 {
 	AppendNodeInfo appendnodeinfo;
+	AppendNodeInfo agtm_m_nodeinfo, agtm_s_nodeinfo;
+	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg;
@@ -2593,11 +2596,56 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	{
 		/* get node info for append datanode master */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_MASTER, &appendnodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
+
+		if (agtm_m_is_exist)
+		{
+			if (agtm_m_is_running)
+			{
+				/* append "host all postgres  ip/32" for agtm master pg_hba.conf. */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										agtm_m_nodeinfo.nodepath,
+										&infosendmsg,
+										agtm_m_nodeinfo.nodehost,
+										&getAgentCmdRst);
+
+				/* reload agtm master */
+				mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+			}
+			else
+				{ ereport(ERROR, (errmsg("agtm master is not running.")));}
+		}
+		else
+		{ ereport(ERROR, (errmsg("agtm master is not exist.")));}
+		
+		if (agtm_s_is_exist)
+		{
+			if (agtm_s_is_running)
+			{
+				/* append "host all postgres ip/32" for agtm slave pg_hba.conf. */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										agtm_s_nodeinfo.nodepath,
+										&infosendmsg,
+										agtm_s_nodeinfo.nodehost,
+										&getAgentCmdRst);
+
+				/* reload agtm slave */
+				mgr_reload_conf(agtm_s_nodeinfo.nodehost, agtm_s_nodeinfo.nodepath);
+			}
+			else
+			{ ereport(ERROR, (errmsg("agtm slave is not running.")));}
+		}
 
 		/* step 1: init workdir */
 		mgr_append_init_cndnmaster(&appendnodeinfo);
 
 		/* step 2: update datanode master's postgresql.conf. */
+		resetStringInfo(&infosendmsg);
 		mgr_get_agtm_host_and_port(&infosendmsg);
 		mgr_get_other_parm(CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
@@ -2671,7 +2719,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		PQfinish(pg_conn);
 		pg_conn = NULL;
 
-		/* step10: update node system table's column to set initial is true when cmd is init*/
+		/* step10: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, false, true);
 	}PG_CATCH_HOLD();
 	{
