@@ -3098,6 +3098,9 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 {
 	AppendNodeInfo appendnodeinfo;
+	AppendNodeInfo agtm_m_nodeinfo, agtm_s_nodeinfo;
+	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData  infosendmsg;
 	char *coordhost;
@@ -3124,11 +3127,56 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	{
 		/* get node info for append coordinator master */
 		mgr_get_appendnodeinfo(CNDN_TYPE_COORDINATOR_MASTER, &appendnodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 
+		if (agtm_m_is_exist)
+		{
+			if (agtm_m_is_running)
+			{
+				/* append "host all postgres  ip/32" for agtm master pg_hba.conf. */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										agtm_m_nodeinfo.nodepath,
+										&infosendmsg,
+										agtm_m_nodeinfo.nodehost,
+										&getAgentCmdRst);
+
+				/* reload agtm master */
+				mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+			}
+			else
+				{	ereport(ERROR, (errmsg("agtm master is not running.")));}
+		}
+		else
+		{	ereport(ERROR, (errmsg("agtm master is not exist.")));}
+
+		if (agtm_s_is_exist)
+		{
+			if (agtm_s_is_running)
+			{
+				/* append "host all postgres ip/32" for agtm slave pg_hba.conf. */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										agtm_s_nodeinfo.nodepath,
+										&infosendmsg,
+										agtm_s_nodeinfo.nodehost,
+										&getAgentCmdRst);
+
+				/* reload agtm slave */
+				mgr_reload_conf(agtm_s_nodeinfo.nodehost, agtm_s_nodeinfo.nodepath);
+
+			}
+			else
+			{	ereport(ERROR, (errmsg("agtm slave is not running.")));}
+		}
 		/* step 1: init workdir */
 		mgr_append_init_cndnmaster(&appendnodeinfo);
 
 		/* step 2: update coordinator master's postgresql.conf. */
+		resetStringInfo(&infosendmsg);
 		mgr_get_agtm_host_and_port(&infosendmsg);
 		mgr_get_other_parm(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
@@ -3200,9 +3248,9 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		/* step 10: release the DDL lock */
 		PQclear(res);
 		PQfinish(pg_conn);
-        pg_conn = NULL;
+		pg_conn = NULL;
 
-		/* step 11: update node system table's column to set initial is true when cmd is init*/
+		/* step 11: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, false, true);
 	}PG_CATCH_HOLD();
 	{
@@ -3848,7 +3896,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 						,user);
 		
 		addressnode = get_hostaddress_from_hostoid(dnhostoid);
-		appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
+		appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
 						,dnname
 						,addressnode
 						,dnport);
@@ -3894,7 +3942,7 @@ static void mgr_start_node(const char *nodepath, Oid hostoid)
 	initStringInfo(&buf);
 	initStringInfo(&(getAgentCmdRst.description));
 
-	appendStringInfo(&start_cmd, " start -Z datanode -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
+	appendStringInfo(&start_cmd, " start -Z coordinator -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
 
 	/* connection agent */
 	ma = ma_connect_hostoid(hostoid);
