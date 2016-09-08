@@ -63,6 +63,9 @@ typedef struct SnapshotData
 	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 	uint32		active_count;	/* refcount on ActiveSnapshot stack */
 	uint32		regd_count;		/* refcount on RegisteredSnapshotList */
+#ifdef ADB
+	uint32		max_xcnt;		/* alloced xip size */
+#endif /* ADB */
 } SnapshotData;
 
 /*

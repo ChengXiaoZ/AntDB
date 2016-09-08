@@ -1409,19 +1409,35 @@ GetSnapshotData(Snapshot snapshot)
 		 * First call for this snapshot. Snapshot is same size whether or not
 		 * we are in recovery, see later comments.
 		 */
+#ifdef ADB
+		snapshot->max_xcnt = 0;
+		EnlargeSnapshotXip(snapshot, GetMaxSnapshotXidCount());
+#else /* ADB */
 		snapshot->xip = (TransactionId *)
 			malloc(GetMaxSnapshotXidCount() * sizeof(TransactionId));
 		if (snapshot->xip == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
+#endif /* ADB */
 		Assert(snapshot->subxip == NULL);
 		snapshot->subxip = (TransactionId *)
 			malloc(GetMaxSnapshotSubxidCount() * sizeof(TransactionId));
 		if (snapshot->subxip == NULL)
+#ifdef ADB
+		{
+			free(snapshot->xip);
+			snapshot->xip = NULL;
+			snapshot->max_xcnt = 0;
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
+		}
+#else
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+#endif /* ADB */
 	}
 
 #ifdef ADB
@@ -1434,6 +1450,7 @@ GetSnapshotData(Snapshot snapshot)
 		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
 		snap = GetGlobalSnapshot(snapshot);
 		Assert(snap == snapshot);
+		Assert(snap->xcnt <= snap->max_xcnt);
 		subcount = snapshot->subxcnt;
 		count = snapshot->xcnt;
 		suboverflowed = snapshot->suboverflowed;
@@ -1450,12 +1467,16 @@ GetSnapshotData(Snapshot snapshot)
 	xmax = ShmemVariableCache->latestCompletedXid;
 	Assert(TransactionIdIsNormal(xmax));
 	TransactionIdAdvance(xmax);
-#ifdef ADB
-	if(is_under_agtm && TransactionIdPrecedes(xmax, snapshot->xmax))
-		xmax = snapshot->xmax;
-#endif /* ADB */
 
 	/* initialize xmin calculation with xmax */
+#ifdef ADB
+	if(is_under_agtm)
+	{
+		if(TransactionIdPrecedes(xmax, snapshot->xmax))
+			xmax = snapshot->xmax;
+		globalxmin = xmin = snapshot->xmin;
+	}else
+#endif /* ADB */
 	globalxmin = xmin = xmax;
 
 	snapshot->takenDuringRecovery = RecoveryInProgress();
@@ -1510,10 +1531,10 @@ GetSnapshotData(Snapshot snapshot)
 				continue;
 
 #ifdef ADB
-			hint = false;
 			if(is_under_agtm)
 			{
 				int i;
+				hint = false;
 				for(i=0;i<count;++i)
 				{
 					if(snapshot->xip[i] == xid)
@@ -1522,8 +1543,12 @@ GetSnapshotData(Snapshot snapshot)
 						break;
 					}
 				}
-			}
-			if(hint == false)
+				if(hint == false)
+				{
+					EnlargeSnapshotXip(snapshot, count+1);
+					snapshot->xip[count++] = xid;
+				}
+			}else
 #endif /* ADB */
 			/* Add XID to snapshot. */
 			snapshot->xip[count++] = xid;
@@ -3738,3 +3763,28 @@ KnownAssignedXidsReset(void)
 
 	LWLockRelease(ProcArrayLock);
 }
+
+#ifdef ADB
+#define SNAPSHOT_ENLARGE_STEP 32
+void EnlargeSnapshotXip(Snapshot snapshot, uint32 need_size)
+{
+	void *p;
+	uint32 new_size;
+	AssertArg(snapshot);
+	if(need_size < snapshot->max_xcnt)
+		return;
+
+	new_size = need_size - (need_size % SNAPSHOT_ENLARGE_STEP) + SNAPSHOT_ENLARGE_STEP;
+	Assert(new_size >= need_size);
+
+	p = realloc(snapshot->xip, new_size * sizeof(snapshot->xip[0]));
+	if(p == NULL)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_OUT_OF_MEMORY),
+			 errmsg("out of memory")));
+	}
+	snapshot->xip = p;
+	snapshot->max_xcnt = new_size;
+}
+#endif /* ADB */

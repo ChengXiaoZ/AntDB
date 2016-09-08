@@ -229,6 +229,7 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	PGresult 	*res;
 	const char *str;
 	StringInfoData	buf;
+	uint32 xcnt;
 	AssertArg(snapshot && snapshot->xip && snapshot->subxip);
 
 	if(!IsUnderAGTM())
@@ -242,9 +243,9 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 
 	pq_copymsgbytes(&buf, (char*)&(snapshot->xmin), sizeof(snapshot->xmin));
 	pq_copymsgbytes(&buf, (char*)&(snapshot->xmax), sizeof(snapshot->xmax));
-	snapshot->xcnt = pq_getmsgint(&buf, sizeof(snapshot->xcnt));
-	if(snapshot->xcnt > GetMaxSnapshotXidCount())
-		ereport(ERROR, (errmsg("too many transaction")));
+	xcnt = pq_getmsgint(&buf, sizeof(snapshot->xcnt));
+	EnlargeSnapshotXip(snapshot, xcnt);
+	snapshot->xcnt = xcnt;
 	pq_copymsgbytes(&buf, (char*)(snapshot->xip)
 		, sizeof(snapshot->xip[0]) * (snapshot->xcnt));
 	snapshot->subxcnt = pq_getmsgint(&buf, sizeof(snapshot->subxcnt));
