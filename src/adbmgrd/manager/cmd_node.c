@@ -180,7 +180,7 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 			if(!HeapTupleIsValid(tuple))
 			{
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-					, errmsg("host \"%s\" not exists", defGetString(def))));
+					, errmsg("host \"%s\" does not exist", defGetString(def))));
 			}
 			datum[Anum_mgr_node_nodehost-1] = ObjectIdGetDatum(HeapTupleGetOid(tuple));
 			got[Anum_mgr_node_nodehost-1] = true;
@@ -211,7 +211,7 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 		}else
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				,errmsg("option \"%s\" not recognized", def->defname)
+				,errmsg("option \"%s\" is not recognized", def->defname)
 				,errhint("option is host, port and path")));
 		}
 		
@@ -225,17 +225,17 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	if(got[Anum_mgr_node_nodepath-1] == false)
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("option \"path\" must give")));
+			, errmsg("option \"path\" must be given")));
 	}
 	if(got[Anum_mgr_node_nodehost-1] == false)
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("option \"host\" must give")));
+			, errmsg("option \"host\" must be given")));
 	}
 	if(got[Anum_mgr_node_nodeport-1] == false)
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("option \"port\" must give")));
+			, errmsg("option \"port\" must be given")));
 	}
 	if(got[Anum_mgr_node_nodemasternameOid-1] == false)
 	{
@@ -247,7 +247,7 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 			if(!HeapTupleIsValid(mastertuple))
 			{
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					, errmsg("datanode master \"%s\" not exists", NameStr(mastername))));
+					, errmsg("datanode master \"%s\" does not exist", NameStr(mastername))));
 			}
 			datum[Anum_mgr_node_nodemasternameOid-1] = ObjectIdGetDatum(HeapTupleGetOid(mastertuple));
 			heap_freetuple(mastertuple);
@@ -258,7 +258,7 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 			if(!HeapTupleIsValid(mastertuple))
 			{
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					, errmsg("gtm master \"%s\" not exists", NameStr(mastername))));
+					, errmsg("gtm master \"%s\" does not exist", NameStr(mastername))));
 			}
 			datum[Anum_mgr_node_nodemasternameOid-1] = ObjectIdGetDatum(HeapTupleGetOid(mastertuple));
 			heap_freetuple(mastertuple);
@@ -385,7 +385,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		}else
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				,errmsg("option \"%s\" not recognized", def->defname)
+				,errmsg("option \"%s\" is not recognized", def->defname)
 				,errhint("option is host, port and path")));
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
@@ -631,7 +631,7 @@ mgr_init_dn_slave(PG_FUNCTION_ARGS)
 		if(!HeapTupleIsValid(mastertuple))
 		{
 			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, errmsg("datanode master \"%s\" dosen't exist", nodename)));
+				, errmsg("datanode master \"%s\" does not exist", nodename)));
 		}
 		mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 		Assert(mastertuple);
@@ -1374,7 +1374,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 			appendStringInfo(&(getAgentCmdRst->description), "gtm master dosen't exist");
 			getAgentCmdRst->ret = false;
 			ereport(LOG, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, errmsg("gtm master dosen't exist")));
+				, errmsg("gtm master does not exist")));
 			pfree(infosendmsg.data);
 			pfree(hostaddress);
 			return;
@@ -4967,7 +4967,7 @@ bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress
 	if(!HeapTupleIsValid(mastertuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_NAME)
-			,errmsg("datanode master dosen't exist")));
+			,errmsg("datanode master does not exist")));
 	}
 	ReleaseSysCache(mastertuple);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);

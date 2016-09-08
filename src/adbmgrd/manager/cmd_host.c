@@ -241,7 +241,7 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 				continue;
 			else
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					,errmsg("host \"%s\" dose not exists", NameStr(name))));
+					,errmsg("host \"%s\" dose not exist", NameStr(name))));
 		}
 		/*check the tuple has been used or not*/
 		if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
@@ -305,7 +305,7 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 		}
                 
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
-				, errmsg("host \"%s\" doesnot exists", NameStr(name))));
+				, errmsg("host \"%s\" does not exist", NameStr(name))));
 	}
 	/*check the tuple has been used or not*/
 	if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
@@ -614,7 +614,7 @@ void mgr_deplory(MGRDeplory *node, ParamListInfo params, DestReceiver *dest)
 				}else
 				{
 					success = false;
-					appendStringInfoString(&buf, "host not exists");
+					appendStringInfoString(&buf, "host does not exist");
 				}
 				MemoryContextSwitchTo(context);
 				MemoryContextResetAndDeleteChildren(context);
@@ -939,7 +939,7 @@ static void get_pghome(char *pghome)
 	if(my_exec_path[0] == '\0')
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-			,errmsg("can't get the pghome path")));
+			,errmsg("can not get the pghome path")));
 	}
 	strcpy(pghome, my_exec_path);
 	get_parent_directory(pghome);
