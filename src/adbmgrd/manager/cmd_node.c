@@ -10,6 +10,7 @@
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
 #include "catalog/mgr_cndnnode.h"
+#include "catalog/mgr_updateparm.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "fmgr.h"
@@ -400,14 +401,20 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 {
 	Relation rel;
+	Relation rel_updateparm;
 	HeapTuple tuple;
 	ListCell *lc;
 	Value *val;
 	MemoryContext context, old_context;
 	NameData name;
+	NameData nametmp;
+	HeapScanDesc rel_scan;
+	ScanKeyData key[1];
 	char nodetype;
 	char *nodestring;
 	Form_mgr_node mgr_node;
+	int getnum = 0;
+	int nodenum = 0;
 
 	nodetype = node->nodetype;
 	nodestring = mgr_nodetype_str(nodetype);
@@ -457,12 +464,30 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 						 ,errmsg("%s \"%s\" has been used by slave or extra, cannot be dropped", nodestring, NameStr(name))));
 			}
 		}
-		pfree(nodestring);
+		nodenum++;
 		/* todo chech used by other */
 		heap_freetuple(tuple);
 	}
+	pfree(nodestring);
 
 	/* now we can delete node(s) */
+	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	namestrcpy(&nametmp, MACRO_STAND_FOR_ALL_NODENAME);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	getnum = 0;
+	while ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		if(HeapTupleIsValid(tuple))
+		{
+			getnum++;
+		}
+	}
+	heap_endscan(rel_scan);
 	foreach(lc, node->names)
 	{
 		val = lfirst(lc);
@@ -472,11 +497,21 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 		tuple = mgr_get_tuple_node_from_name_type(rel, NameStr(name), nodetype);
 		if(HeapTupleIsValid(tuple))
 		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			/*delete the parm in mgr_updateparm for this type of node*/
+			mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &(mgr_node->nodename), nodetype);
 			simple_heap_delete(rel, &(tuple->t_self));
+			CatalogUpdateIndexes(rel, tuple);
 			heap_freetuple(tuple);
 		}
 	}
-
+	/*delete the parm in mgr_updateparm for this type and nodename in mgr_updateparm is MACRO_STAND_FOR_ALL_NODENAME*/
+	if (getnum == nodenum)
+	{
+		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &nametmp, nodetype);
+	}
+	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel, RowExclusiveLock);
 	(void)MemoryContextSwitchTo(old_context);
 	MemoryContextDelete(context);

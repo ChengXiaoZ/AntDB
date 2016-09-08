@@ -999,5 +999,28 @@ static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo val
 	return false;
 }
 
-
-
+/*delete the tuple for given nodename and nodetype*/
+void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype)
+{
+	HeapTuple looptuple;
+	ScanKeyData scankey[2];
+	HeapScanDesc rel_scan;
+	
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(nodename));
+	ScanKeyInit(&scankey[1],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
+	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		simple_heap_delete(noderel, &looptuple->t_self);
+		CatalogUpdateIndexes(noderel, looptuple);
+	}
+	heap_endscan(rel_scan);
+}

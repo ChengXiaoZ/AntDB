@@ -208,4 +208,5 @@ extern bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *addre
 extern void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg);
 extern void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest);
+extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
 #endif /* MGR_CMDS_H */
