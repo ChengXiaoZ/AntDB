@@ -74,7 +74,7 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port);
 static void mgr_rm_dumpall_temp_file(Oid dnhostoid);
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
-static void mgr_start_node(const char *nodepath, Oid hostoid);
+static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport);
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
@@ -2756,7 +2756,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 7: stop the datanode master with restoremode, and then start it with "datanode" mode */
 		mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+		mgr_start_node(CNDN_TYPE_DATANODE_MASTER, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 8: create node on all the coordinator */
 		mgr_create_node_on_all_coord(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
@@ -2921,7 +2921,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 
 		/* step 8: start datanode slave. */
-		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+		mgr_start_node(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 9: update datanode master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
@@ -3086,7 +3086,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 
 		/* step 8: start datanode extra. */
-		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+		mgr_start_node(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 9: update datanode master's postgresql.conf.*/
 		/* resetStringInfo(&infosendmsg);
@@ -3270,9 +3270,9 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport);
 		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost);
 
-		/* step 7: stop the datanode master with restoremode, and then start it with "datanode" mode */
+		/* step 7: stop the datanode master with restoremode, and then start it with "coordinator" mode */
 		mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-		mgr_start_node(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+		mgr_start_node(CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 8: create node on all the coordinator */
 		mgr_create_node_on_all_coord(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
@@ -3302,6 +3302,226 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	{
 		PQfinish(pg_conn);
 		pg_conn = NULL;
+	}
+
+	tup_result = build_common_command_tuple(
+		&nodename
+		,catcherr == false ? true : false
+		,catcherr == false ? "success" : catcherrmsg.data);
+
+	if (catcherr)
+		pfree(catcherrmsg.data);
+
+	return HeapTupleGetDatum(tup_result);
+}
+
+Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
+{
+	AppendNodeInfo appendnodeinfo;
+	AppendNodeInfo agtm_m_nodeinfo;
+	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	StringInfoData  infosendmsg;
+	volatile bool catcherr = false;
+	StringInfoData catcherrmsg, primary_conninfo_value;
+	NameData nodename;
+	HeapTuple tup_result;
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
+	Assert(appendnodeinfo.nodename);
+
+	namestrcpy(&nodename, appendnodeinfo.nodename);
+
+	PG_TRY_HOLD();
+	{
+		/* get agtm slave and agtm master node info. */
+		mgr_get_appendnodeinfo(GTM_TYPE_GTM_SLAVE, &appendnodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
+		
+		if (!agtm_m_is_exist)
+		{
+			ereport(ERROR, (errmsg("agtm master is not exist.")));
+		}
+		
+		if (!agtm_m_is_running)
+		{
+			ereport(ERROR, (errmsg("agtm master is not running.")));
+		}
+	
+		/* step 1: basebackup for datanode master using pg_basebackup command. */
+		mgr_pgbasebackup(&appendnodeinfo, &agtm_m_nodeinfo);
+
+		/* step 2: update agtm slave's postgresql.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								appendnodeinfo.nodepath,
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 3: update agtm slave's recovery.conf. */
+		resetStringInfo(&infosendmsg);
+		initStringInfo(&primary_conninfo_value);
+		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
+						get_hostaddress_from_hostoid(agtm_m_nodeinfo.nodehost),
+						agtm_m_nodeinfo.nodeport,
+						get_hostuser_from_hostoid(agtm_m_nodeinfo.nodehost),
+						agtm_m_nodeinfo.nodename);
+
+		mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("recovery_target_timeline", "latest", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF,
+								appendnodeinfo.nodepath, 
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 4: start agtm slave. */
+		mgr_start_node(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		/* step 5: update agtm master's postgresql.conf.*/
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								agtm_m_nodeinfo.nodepath,
+								&infosendmsg, 
+								agtm_m_nodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 6: reload agtm master's postgresql.conf. */
+		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+
+		/* step 7: update node system table's column to set initial is true */
+		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, false, true);
+
+	}PG_CATCH_HOLD();
+	{
+		catcherr = true;
+		errdump();
+	}PG_END_TRY_HOLD();
+
+	if (catcherr)
+	{
+		initStringInfo(&catcherrmsg);
+		geterrmsg(&catcherrmsg);
+		errdump();
+	}
+
+	tup_result = build_common_command_tuple(
+		&nodename
+		,catcherr == false ? true : false
+		,catcherr == false ? "success" : catcherrmsg.data);
+
+	if (catcherr)
+		pfree(catcherrmsg.data);
+
+	return HeapTupleGetDatum(tup_result);
+}
+
+Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
+{
+	AppendNodeInfo appendnodeinfo;
+	AppendNodeInfo agtm_m_nodeinfo;
+	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	//bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
+	StringInfoData  infosendmsg;
+	volatile bool catcherr = false;
+	StringInfoData catcherrmsg, primary_conninfo_value;
+	NameData nodename;
+	HeapTuple tup_result;
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
+	Assert(appendnodeinfo.nodename);
+
+	namestrcpy(&nodename, appendnodeinfo.nodename);
+
+	PG_TRY_HOLD();
+	{
+		/* get agtm extra, agtm master and agtm slave node info. */
+		mgr_get_appendnodeinfo(GTM_TYPE_GTM_EXTRA, &appendnodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
+		//get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
+
+		if (!agtm_m_is_exist)
+		{
+			ereport(ERROR, (errmsg("agtm master is not exist.")));
+		}
+		
+		if (!agtm_m_is_running)
+		{
+			ereport(ERROR, (errmsg("agtm master is not running.")));
+		}
+	
+		/* step 1: basebackup for datanode master using pg_basebackup command. */
+		mgr_pgbasebackup(&appendnodeinfo, &agtm_m_nodeinfo);
+
+		/* step 2: update agtm extra's postgresql.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								appendnodeinfo.nodepath,
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 3: update agtm extra's recovery.conf. */
+		resetStringInfo(&infosendmsg);
+		initStringInfo(&primary_conninfo_value);
+		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
+						get_hostaddress_from_hostoid(agtm_m_nodeinfo.nodehost),
+						agtm_m_nodeinfo.nodeport,
+						get_hostuser_from_hostoid(agtm_m_nodeinfo.nodehost),
+						agtm_m_nodeinfo.nodename);
+
+		mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("recovery_target_timeline", "latest", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF,
+								appendnodeinfo.nodepath, 
+								&infosendmsg, 
+								appendnodeinfo.nodehost, 
+								&getAgentCmdRst);
+
+		/* step 4: start agtm extra. */
+		mgr_start_node(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		/* step 5: update agtm master's postgresql.conf.*/
+		/*resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+								agtm_m_nodeinfo.nodepath,
+								&infosendmsg, 
+								agtm_m_nodeinfo.nodehost, 
+								&getAgentCmdRst); */
+
+		/* step 6: reload agtm master's postgresql.conf. */
+		//mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+
+		/* step 7: update node system table's column to set initial is true */
+		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, false, true);
+
+	}PG_CATCH_HOLD();
+	{
+		catcherr = true;
+		errdump();
+	}PG_END_TRY_HOLD();
+
+	if (catcherr)
+	{
+		initStringInfo(&catcherrmsg);
+		geterrmsg(&catcherrmsg);
+		errdump();
 	}
 
 	tup_result = build_common_command_tuple(
@@ -3965,7 +4185,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 	pfree(info);
 }
 
-static void mgr_start_node(const char *nodepath, Oid hostoid)
+static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 {
 	StringInfoData start_cmd;
 	StringInfoData buf;
@@ -3976,8 +4196,25 @@ static void mgr_start_node(const char *nodepath, Oid hostoid)
 	initStringInfo(&start_cmd);
 	initStringInfo(&buf);
 	initStringInfo(&(getAgentCmdRst.description));
-
-	appendStringInfo(&start_cmd, " start -Z coordinator -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
+    
+	switch (nodetype)
+	{
+		case CNDN_TYPE_COORDINATOR_MASTER:
+			appendStringInfo(&start_cmd, " start -Z coordinator -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
+			break;
+		case CNDN_TYPE_DATANODE_MASTER:
+		case CNDN_TYPE_DATANODE_SLAVE:
+		case CNDN_TYPE_DATANODE_EXTRA:
+			appendStringInfo(&start_cmd, " start -Z datanode -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
+			break;
+		case GTM_TYPE_GTM_SLAVE:
+		case GTM_TYPE_GTM_EXTRA:
+			appendStringInfo(&start_cmd, " start -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
+			break;
+		default:
+			ereport(ERROR, (errmsg("node type \"%c\" not exist.", nodetype)));
+			break;
+	}
 
 	/* connection agent */
 	ma = ma_connect_hostoid(hostoid);
@@ -3988,7 +4225,7 @@ static void mgr_start_node(const char *nodepath, Oid hostoid)
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
 
-        ereport(ERROR, (errmsg("could not connect socket for agent.")));
+		ereport(ERROR, (errmsg("could not connect socket for agent.")));
 		return;
 	}
 

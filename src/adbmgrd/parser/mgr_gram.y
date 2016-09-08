@@ -241,6 +241,22 @@ AppendNodeStmt:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordmaster", args));
 			$$ = (Node*)stmt;
+		}
+		| APPEND GTM SLAVE Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_agtmslave", args));
+			$$ = (Node*)stmt;
+		}
+		| APPEND GTM EXTRA Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_agtmextra", args));
+			$$ = (Node*)stmt;
 		};
 
 Get_alarm_info:
