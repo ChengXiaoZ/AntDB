@@ -90,6 +90,7 @@ static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *par
 static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange);
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
 static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
+static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -444,6 +445,17 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 			heap_close(rel, RowExclusiveLock);
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 					 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be dropped", nodestring, NameStr(name))));
+		}
+		/*check the node has been used by its slave or extra*/
+		if (CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype|| GTM_TYPE_GTM_MASTER == mgr_node->nodetype)
+		{
+			if (mgr_node_has_slave_extra(rel, HeapTupleGetOid(tuple)))
+			{
+				heap_freetuple(tuple);
+				heap_close(rel, RowExclusiveLock);
+				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+						 ,errmsg("%s \"%s\" has been used by slave or extra, cannot be dropped", nodestring, NameStr(name))));
+			}
 		}
 		pfree(nodestring);
 		/* todo chech used by other */
@@ -5933,4 +5945,26 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 		);
 	pfree(getAgentCmdRst.description.data);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+/*check the oid has been used by slave or extra*/
+static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid)
+{
+	ScanKeyData key[1];
+	HeapTuple tuple;
+	HeapScanDesc scan;
+	
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodemasternameOid
+		,BTEqualStrategyNumber
+		,F_OIDEQ
+		,ObjectIdGetDatum(mastertupeoid));
+	scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		heap_endscan(scan);
+		return true;
+	}
+	heap_endscan(scan);
+	return false;
 }
