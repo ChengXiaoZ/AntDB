@@ -87,7 +87,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static bool is_node_running(char *hostaddr, int32 hostport);
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
-static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
+static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
 static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange);
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
 static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
@@ -2889,7 +2889,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
 		/* step 5: basebackup for datanode master using pg_basebackup command. */
-		mgr_pgbasebackup(&appendnodeinfo, &parentnodeinfo);
+		mgr_pgbasebackup(CNDN_TYPE_DATANODE_SLAVE, &appendnodeinfo, &parentnodeinfo);
 
 		/* step 6: update datanode slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3054,7 +3054,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
 		/* step 5: basebackup for datanode master using pg_basebackup command. */
-		mgr_pgbasebackup(&appendnodeinfo, &parentnodeinfo);
+		mgr_pgbasebackup(CNDN_TYPE_DATANODE_EXTRA, &appendnodeinfo, &parentnodeinfo);
 
 		/* step 6: update datanode extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3363,7 +3363,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
 		/* step 3: basebackup for datanode master using pg_basebackup command. */
-		mgr_pgbasebackup(&appendnodeinfo, &agtm_m_nodeinfo);
+		mgr_pgbasebackup(GTM_TYPE_GTM_SLAVE, &appendnodeinfo, &agtm_m_nodeinfo);
 
 		/* step 4: update agtm slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3382,7 +3382,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
 						get_hostaddress_from_hostoid(agtm_m_nodeinfo.nodehost),
 						agtm_m_nodeinfo.nodeport,
-						get_hostuser_from_hostoid(agtm_m_nodeinfo.nodehost),
+						AGTM_USER,
 						agtm_m_nodeinfo.nodename);
 
 		mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
@@ -3441,7 +3441,6 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	AppendNodeInfo appendnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
-	//bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg, primary_conninfo_value;
@@ -3473,20 +3472,20 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 			ereport(ERROR, (errmsg("agtm master is not running.")));
 		}
 
-        /* step 1: update agtm master's pg_hba.conf. */
-        resetStringInfo(&infosendmsg);
-        mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
-        mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
-                                agtm_m_nodeinfo.nodepath,
-                                &infosendmsg,
-                                agtm_m_nodeinfo.nodehost,
-                                &getAgentCmdRst);
+		/* step 1: update agtm master's pg_hba.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								agtm_m_nodeinfo.nodepath,
+								&infosendmsg,
+								agtm_m_nodeinfo.nodehost,
+								&getAgentCmdRst);
 
-        /* step 2: reload agtm master. */
-        mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+		/* step 2: reload agtm master. */
+		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 	
 		/* step 3: basebackup for datanode master using pg_basebackup command. */
-		mgr_pgbasebackup(&appendnodeinfo, &agtm_m_nodeinfo);
+		mgr_pgbasebackup(GTM_TYPE_GTM_EXTRA, &appendnodeinfo, &agtm_m_nodeinfo);
 
 		/* step 4: update agtm extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3505,7 +3504,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
 						get_hostaddress_from_hostoid(agtm_m_nodeinfo.nodehost),
 						agtm_m_nodeinfo.nodeport,
-						get_hostuser_from_hostoid(agtm_m_nodeinfo.nodehost),
+						AGTM_USER,
 						agtm_m_nodeinfo.nodename);
 
 		mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
@@ -3636,7 +3635,7 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	pfree(hostaddr);
 }
 
-static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo)
+static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo)
 {
 
 	ManagerAgent *ma;
@@ -3646,10 +3645,24 @@ static void mgr_pgbasebackup(AppendNodeInfo *appendnodeinfo, AppendNodeInfo *par
 
 	initStringInfo(&sendstrmsg);
 	initStringInfo(&(getAgentCmdRst.description));
-	appendStringInfo(&sendstrmsg, " -h %s -p %d -D %s -Xs -Fp -R", 
-								get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
-								,parentnodeinfo->nodeport
-								,appendnodeinfo->nodepath);
+
+    if (nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTRA)
+    {
+        appendStringInfo(&sendstrmsg, " -h %s -p %d -U %s -D %s -Xs -Fp -R", 
+                                    get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
+                                    ,parentnodeinfo->nodeport
+                                    ,AGTM_USER
+                                    ,appendnodeinfo->nodepath);
+
+    }
+    else if (nodetype == CNDN_TYPE_DATANODE_SLAVE || nodetype == CNDN_TYPE_DATANODE_EXTRA)
+    {
+        appendStringInfo(&sendstrmsg, " -h %s -p %d -D %s -Xs -Fp -R", 
+                                    get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
+                                    ,parentnodeinfo->nodeport
+                                    ,appendnodeinfo->nodepath);
+
+    }
 
 	ma = ma_connect_hostoid(appendnodeinfo->nodehost);
 	if(!ma_isconnected(ma))
@@ -4254,7 +4267,12 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 	}
 
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
-	ma_sendbyte(&buf, AGT_CMD_DN_START);
+
+	if (nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTRA)
+		ma_sendbyte(&buf, AGT_CMD_GTM_START_SLAVE); /* agtm_ctl */
+	else
+		ma_sendbyte(&buf, AGT_CMD_DN_START);  /* pg_ctl  */
+		
 	ma_sendstring(&buf, start_cmd.data);
 	pfree(start_cmd.data);
 	ma_endmessage(&buf, ma);
