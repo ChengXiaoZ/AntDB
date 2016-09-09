@@ -219,13 +219,15 @@ void agtm_Flush(void)
 PGconn*
 getAgtmConnection(void)
 {
+	ConnStatusType status;
 	if (agtm_conn == NULL)
 	{
 		agtm_Connect();
 		return agtm_conn->pg_Conn;
 	}
 
-	if (PQstatus(agtm_conn->pg_Conn) == CONNECTION_OK)
+	status = PQstatus(agtm_conn->pg_Conn);
+	if (status == CONNECTION_OK)
 		return agtm_conn->pg_Conn;
 
 	/*
@@ -238,7 +240,7 @@ getAgtmConnection(void)
 		SetTopXactBeginAGTM(false);
 
 		ereport(ERROR,
-			(errmsg("Bad AGTM connection, status: %d", PQstatus(agtm_conn->pg_Conn))));
+			(errmsg("Bad AGTM connection, status: %d", status)));
 	} else
 	{
 		agtm_Close();

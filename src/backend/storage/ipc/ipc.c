@@ -31,6 +31,7 @@
 #include "tcop/tcopprot.h"
 
 #ifdef ADB
+#include "access/xact.h"
 #include "agtm/agtm_client.h"
 #endif
 
@@ -185,6 +186,7 @@ proc_exit_prepare(int code)
 
 #ifdef ADB
 	agtm_Close();
+	SetTopXactBeginAGTM(false);
 	agtm_SetDefaultPort();
 #endif
 
