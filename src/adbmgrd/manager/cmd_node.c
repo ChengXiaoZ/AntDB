@@ -3349,11 +3349,23 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errmsg("agtm master is not running.")));
 		}
-	
-		/* step 1: basebackup for datanode master using pg_basebackup command. */
+
+		/* step 1: update agtm master's pg_hba.conf. */
+		resetStringInfo(&infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								agtm_m_nodeinfo.nodepath,
+								&infosendmsg,
+								agtm_m_nodeinfo.nodehost,
+								&getAgentCmdRst);
+
+		/* step 2: reload agtm master. */
+		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+
+		/* step 3: basebackup for datanode master using pg_basebackup command. */
 		mgr_pgbasebackup(&appendnodeinfo, &agtm_m_nodeinfo);
 
-		/* step 2: update agtm slave's postgresql.conf. */
+		/* step 4: update agtm slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
@@ -3364,7 +3376,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
 
-		/* step 3: update agtm slave's recovery.conf. */
+		/* step 5: update agtm slave's recovery.conf. */
 		resetStringInfo(&infosendmsg);
 		initStringInfo(&primary_conninfo_value);
 		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
@@ -3382,10 +3394,10 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
 
-		/* step 4: start agtm slave. */
+		/* step 6: start agtm slave. */
 		mgr_start_node(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
-		/* step 5: update agtm master's postgresql.conf.*/
+		/* step 7: update agtm master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
@@ -3394,10 +3406,10 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								agtm_m_nodeinfo.nodehost, 
 								&getAgentCmdRst);
 
-		/* step 6: reload agtm master's postgresql.conf. */
+		/* step 8: reload agtm master's postgresql.conf. */
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
-		/* step 7: update node system table's column to set initial is true */
+		/* step 9: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, false, true);
 
 	}PG_CATCH_HOLD();
@@ -3460,11 +3472,23 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errmsg("agtm master is not running.")));
 		}
+
+        /* step 1: update agtm master's pg_hba.conf. */
+        resetStringInfo(&infosendmsg);
+        mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+        mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+                                agtm_m_nodeinfo.nodepath,
+                                &infosendmsg,
+                                agtm_m_nodeinfo.nodehost,
+                                &getAgentCmdRst);
+
+        /* step 2: reload agtm master. */
+        mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 	
-		/* step 1: basebackup for datanode master using pg_basebackup command. */
+		/* step 3: basebackup for datanode master using pg_basebackup command. */
 		mgr_pgbasebackup(&appendnodeinfo, &agtm_m_nodeinfo);
 
-		/* step 2: update agtm extra's postgresql.conf. */
+		/* step 4: update agtm extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
@@ -3475,7 +3499,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
 
-		/* step 3: update agtm extra's recovery.conf. */
+		/* step 5: update agtm extra's recovery.conf. */
 		resetStringInfo(&infosendmsg);
 		initStringInfo(&primary_conninfo_value);
 		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
@@ -3493,10 +3517,10 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
 
-		/* step 4: start agtm extra. */
+		/* step 6: start agtm extra. */
 		mgr_start_node(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
-		/* step 5: update agtm master's postgresql.conf.*/
+		/* step 7: update agtm master's postgresql.conf.*/
 		/*resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
@@ -3505,10 +3529,10 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								agtm_m_nodeinfo.nodehost, 
 								&getAgentCmdRst); */
 
-		/* step 6: reload agtm master's postgresql.conf. */
+		/* step 8: reload agtm master's postgresql.conf. */
 		//mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
-		/* step 7: update node system table's column to set initial is true */
+		/* step 9: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, false, true);
 
 	}PG_CATCH_HOLD();
