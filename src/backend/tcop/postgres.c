@@ -1343,7 +1343,7 @@ exec_simple_query(const char *query_string)
 
 #ifdef ADB
 		querytree_list = pg_analyze_and_rewrite_for_gram(parsetree
-							, query_string, NULL, 0, grammar);
+							, query_sql, NULL, 0, grammar);
 #else
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0);
@@ -1377,7 +1377,11 @@ exec_simple_query(const char *query_string)
 		 */
 		PortalDefineQuery(portal,
 						  NULL,
+#ifdef ADB
+						  query_sql,
+#else
 						  query_string,
+#endif
 						  commandTag,
 						  plantree_list,
 						  NULL);
