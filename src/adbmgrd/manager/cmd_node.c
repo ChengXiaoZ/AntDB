@@ -39,7 +39,7 @@
 #define shutdown_i  "immediate"
 #define takeplaparm_n  "none"
 #define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
-#define PG_DUMPALL_TEMP_FILE "/tmp/pg_dumpall_temp.txt"
+#define PG_DUMPALL_TEMP_FILE "/tmp/pg_dumpall_temp"
 #define MAX_WAL_SENDERS_NUM	5
 #define WAL_KEEP_SEGMENTS_NUM	32
 #define WAL_LEVEL_MODE	"hot_standby"
@@ -69,10 +69,10 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg);
 static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo);
-static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid);
+static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *temp_file);
 static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid);
-static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port);
-static void mgr_rm_dumpall_temp_file(Oid dnhostoid);
+static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port, char *temp_file);
+static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file);
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport);
@@ -86,6 +86,7 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static bool is_node_running(char *hostaddr, int32 hostport);
+static char *get_temp_file_name(void);
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
 static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
 static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange);
@@ -2623,6 +2624,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	Oid coordhostoid;
 	int32 coordport;
 	char *coordhost;
+	char *temp_file;
 	Oid dnhostoid;
 	int32 dnport;
 	PGconn *pg_conn = NULL;
@@ -2747,12 +2749,14 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 5: dumpall catalog message */
 		mgr_get_active_hostoid_and_port(CNDN_TYPE_DATANODE_MASTER, &dnhostoid, &dnport, &appendnodeinfo);
-		mgr_pg_dumpall(dnhostoid, dnport, appendnodeinfo.nodehost);
+
+		temp_file = get_temp_file_name();
+		mgr_pg_dumpall(dnhostoid, dnport, appendnodeinfo.nodehost, temp_file);
 
 		/* step 6: start the datanode master with restoremode mode, and input all catalog message */
 		mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost);
+		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, temp_file);
+		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost, temp_file);
 
 		/* step 7: stop the datanode master with restoremode, and then start it with "datanode" mode */
 		mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -3139,6 +3143,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData  infosendmsg;
 	char *coordhost;
+	char *temp_file;
 	Oid coordhostoid;
 	int32 coordport;
 	PGconn *pg_conn = NULL;
@@ -3263,12 +3268,13 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		}
 
 		/* step 5: dumpall catalog message */
-		mgr_pg_dumpall(coordhostoid, coordport, appendnodeinfo.nodehost);
+		temp_file = get_temp_file_name();
+		mgr_pg_dumpall(coordhostoid, coordport, appendnodeinfo.nodehost, temp_file);
 
 		/* step 6: start the datanode master with restoremode mode, and input all catalog message */
 		mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost);
+		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, temp_file);
+		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost, temp_file);
 
 		/* step 7: stop the datanode master with restoremode, and then start it with "coordinator" mode */
 		mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -3558,6 +3564,16 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	return HeapTupleGetDatum(tup_result);
 }
 
+static char *get_temp_file_name()
+{
+	StringInfoData file_name_str;
+	initStringInfo(&file_name_str);
+
+	appendStringInfo(&file_name_str, "%s_%d.txt", PG_DUMPALL_TEMP_FILE, rand());
+
+	return file_name_str.data;
+}
+
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
 {
 	InitNodeInfo *info;
@@ -3706,12 +3722,12 @@ static bool is_node_running(char *hostaddr, int32 hostport)
 	if (ret != 0)
 	{
 		ereport(ERROR, (errmsg("its datanode master is not running.")));
-        return false;
+		return false;
 	}
 
 	pfree(port.data);
 
-    return true;
+	return true;
 }
 
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo)
@@ -4082,7 +4098,7 @@ static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkva
 	pfree(info);
 }
 
-static void mgr_rm_dumpall_temp_file(Oid dnhostoid)
+static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 {
 	StringInfoData cmd_str;
 	StringInfoData buf;
@@ -4094,7 +4110,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid)
 	initStringInfo(&buf);
 	initStringInfo(&(getAgentCmdRst.description));
 
-	appendStringInfo(&cmd_str, "rm -f %s", PG_DUMPALL_TEMP_FILE);
+	appendStringInfo(&cmd_str, "rm -f %s", temp_file);
 
 	/* connection agent */
 	ma = ma_connect_hostoid(dnhostoid);
@@ -4335,7 +4351,7 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 	ma_close(ma);
 }
 
-static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port)
+static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port, char *temp_file)
 {
 	StringInfoData pgsql_cmd;
 	StringInfoData buf;
@@ -4349,7 +4365,7 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 	initStringInfo(&(getAgentCmdRst.description));
 
 	dn_master_addr = get_hostaddress_from_hostoid(dn_master_oid);
-	appendStringInfo(&pgsql_cmd, " -h %s -p %d -d %s -f %s", dn_master_addr, dn_master_port, DEFAULT_DB, PG_DUMPALL_TEMP_FILE);
+	appendStringInfo(&pgsql_cmd, " -h %s -p %d -d %s -f %s", dn_master_addr, dn_master_port, DEFAULT_DB, temp_file);
 
 	/* connection agent */
 	ma = ma_connect_hostoid(dn_master_oid);
@@ -4428,7 +4444,7 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 	ma_close(ma);
 }
 
-static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid)
+static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *temp_file)
 {
 	StringInfoData pg_dumpall_cmd;
 	StringInfoData buf;
@@ -4442,7 +4458,7 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid)
 	initStringInfo(&(getAgentCmdRst.description));
 
 	hostaddr = get_hostaddress_from_hostoid(hostoid);
-	appendStringInfo(&pg_dumpall_cmd, " -h %s -p %d -s --include-nodes --dump-nodes -f %s", hostaddr, hostport, PG_DUMPALL_TEMP_FILE);
+	appendStringInfo(&pg_dumpall_cmd, " -h %s -p %d -s --include-nodes --dump-nodes -f %s", hostaddr, hostport, temp_file);
 
 	/* connection agent */
 	ma = ma_connect_hostoid(dnmasteroid);
