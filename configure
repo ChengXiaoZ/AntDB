@@ -2050,6 +2050,10 @@ configure_args=$ac_configure_args
 
 
 ADB_VERSION='2.2devel'
+GIT_SHA1=`(cd $srcdir && git log -1 --pretty='format:%h' --no-color) 2>/dev/null`
+if test x"$GIT_SHA1" != x; then
+  ADB_VERSION="$ADB_VERSION $GIT_SHA1"
+fi
 
 
 cat >>confdefs.h <<_ACEOF
