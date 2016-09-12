@@ -6077,7 +6077,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 		,BTEqualStrategyNumber
 		,F_NAMEEQ
 		,NameGetDatum(&nodename));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
@@ -6111,6 +6111,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 		{
 			ereport(WARNING, (errmsg("pg_ctl restart datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp)));
 		}
+		break;
 	}
 	heap_endscan(rel_scan);
 	pfree(infosendmsg.data);
