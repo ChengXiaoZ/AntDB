@@ -211,4 +211,5 @@ extern void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestRe
 extern void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg);
 extern void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
+extern void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype);
 #endif /* MGR_CMDS_H */

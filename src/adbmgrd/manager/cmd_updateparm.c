@@ -1024,3 +1024,33 @@ void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 	}
 	heap_endscan(rel_scan);
 }
+
+/*update the tuple for given nodename and nodetype*/
+void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype)
+{
+	HeapTuple looptuple;
+	ScanKeyData scankey[2];
+	HeapScanDesc rel_scan;
+	Form_mgr_updateparm mgr_updateparm;
+	
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(nodename));
+	ScanKeyInit(&scankey[1],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(oldnodetype));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
+	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+		Assert(mgr_updateparm);
+		mgr_updateparm->updateparmnodetype = newnodetype;
+		heap_inplace_update(noderel, looptuple);
+		CatalogUpdateIndexes(noderel, looptuple);
+	}
+	heap_endscan(rel_scan);
+}
