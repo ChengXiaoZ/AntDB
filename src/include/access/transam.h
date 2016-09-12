@@ -31,11 +31,7 @@
 #define InvalidTransactionId		((TransactionId) 0)
 #define BootstrapTransactionId		((TransactionId) 1)
 #define FrozenTransactionId			((TransactionId) 2)
-#ifdef AGTM
-#define FirstNormalTransactionId	((TransactionId) 1000)
-#else
 #define FirstNormalTransactionId	((TransactionId) 3)
-#endif
 #define MaxTransactionId			((TransactionId) 0xFFFFFFFF)
 
 /* ----------------
@@ -163,7 +159,7 @@ extern XLogRecPtr TransactionIdGetCommitLSN(TransactionId xid);
 
 /* in transam/varsup.c */
 #if defined(AGTM)
-extern void AdjustTransactionId(long least_xid);
+extern void AdjustTransactionId(TransactionId least_xid);
 #endif
 #ifdef ADB
 extern TransactionId GetNewGlobalTransactionId(bool isSubXact);

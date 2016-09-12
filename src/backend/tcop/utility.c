@@ -480,13 +480,13 @@ standard_ProcessUtility(Node *parsetree,
 #if defined(AGTM)
 								else if (strcmp(item->defname, "least_xid_is") == 0)
 								{
-									A_Const		*con;
-									long		 least_xid;
+									A_Const			*con;
+									TransactionId	 least_xid;
 
 									AssertArg(IsA(item->arg, A_Const));
 									con = (A_Const *) (item->arg);
 									AssertArg(nodeTag(&con->val) == T_Integer);
-									least_xid = intVal(&con->val);
+									least_xid = (TransactionId)intVal(&con->val);
 
 									AdjustTransactionId(least_xid);
 								}

@@ -42,15 +42,19 @@ VariableCache ShmemVariableCache = NULL;
  * make sure next xid from AGTM is bigger than the caller's.
  */
 void
-AdjustTransactionId(long least_xid)
+AdjustTransactionId(TransactionId least_xid)
 {
 	LWLockAcquire(XidGenLock, LW_SHARED);
 	elog(DEBUG1,
-		"AGTM adjust next xid from %u to %ld",
+		"AGTM adjust next xid from %u to %u",
 		ShmemVariableCache->nextXid, least_xid);
 
-	while ((long)ShmemVariableCache->nextXid < least_xid)
+	while (TransactionIdPrecedes(ShmemVariableCache->nextXid, least_xid))
+	{
+		ExtendCLOG(ShmemVariableCache->nextXid);
+		ExtendSUBTRANS(ShmemVariableCache->nextXid);
 		TransactionIdAdvance(ShmemVariableCache->nextXid);
+	}
 	LWLockRelease(XidGenLock);
 }
 #endif

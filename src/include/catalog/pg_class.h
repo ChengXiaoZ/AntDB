@@ -138,23 +138,6 @@ typedef FormData_pg_class *Form_pg_class;
  * ----------------
  */
 
-#ifdef AGTM
-/*
- * Note: "1000" in the relfrozenxid column stands for FirstNormalTransactionId;
- * similarly, "1" in relminmxid stands for FirstMultiXactId
- *
- * Note: we need AGTM's next xid is bigger than ADB's.
- * so, we enlarge the value of FirstNormalTransactionId.
- */
-DATA(insert OID = 1247 (  pg_type		PGNSP 71 0 PGUID 0 0 0 0 0 0 0 0 f f p r 30 0 t f f f f t 1000 1 _null_ _null_ ));
-DESCR("");
-DATA(insert OID = 1249 (  pg_attribute	PGNSP 75 0 PGUID 0 0 0 0 0 0 0 0 f f p r 21 0 f f f f f t 1000 1 _null_ _null_ ));
-DESCR("");
-DATA(insert OID = 1255 (  pg_proc		PGNSP 81 0 PGUID 0 0 0 0 0 0 0 0 f f p r 27 0 t f f f f t 1000 1 _null_ _null_ ));
-DESCR("");
-DATA(insert OID = 1259 (  pg_class		PGNSP 83 0 PGUID 0 0 0 0 0 0 0 0 f f p r 29 0 t f f f f t 1000 1 _null_ _null_ ));
-DESCR("");
-#else
 /*
  * Note: "3" in the relfrozenxid column stands for FirstNormalTransactionId;
  * similarly, "1" in relminmxid stands for FirstMultiXactId
@@ -167,7 +150,6 @@ DATA(insert OID = 1255 (  pg_proc		PGNSP 81 0 PGUID 0 0 0 0 0 0 0 0 f f p r 27 0
 DESCR("");
 DATA(insert OID = 1259 (  pg_class		PGNSP 83 0 PGUID 0 0 0 0 0 0 0 0 f f p r 29 0 t f f f f t 3 1 _null_ _null_ ));
 DESCR("");
-#endif
 
 #define		  RELKIND_RELATION		  'r'		/* ordinary table */
 #define		  RELKIND_INDEX			  'i'		/* secondary index */
