@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <ifaddrs.h>
+#include<arpa/inet.h>
 
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
@@ -58,9 +59,16 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 	NameData name;
 	NameData user;
 	Datum datum[Natts_mgr_host];
+	struct addrinfo hint;
+	struct addrinfo *addrs;
 	bool isnull[Natts_mgr_host];
 	bool got[Natts_mgr_host];
 	char pghome[MAXPGPATH]={0};
+	char abuf[INET_ADDRSTRLEN];
+	const char *ipstr;
+	struct sockaddr_in *sinp;
+	struct in_addr addr;
+	int ret;
 	Assert(node && node->name);
 
 	rel = heap_open(HostRelationId, RowExclusiveLock);
@@ -131,9 +139,15 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			if(str[0] == '\0')
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-					,errmsg("invalid value for parameter \"%s\"", "address")));
+			/*check the address is IPv4 or IPv6, not hostname*/
+			if(!(inet_pton(AF_INET, str, &addr)>0))
+			{
+				if(!(inet_pton(AF_INET6, str, &addr)>0))
+				{
+					ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("invalid value for parameter \"%s\", is not a valid IPv4 or IPv6 address", "address")));
+				}
+			}
 			datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_host_hostaddr-1] = true;
 		}else if(strcmp(def->defname, "pghome") == 0)
@@ -189,7 +203,20 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 	}
 	if(got[Anum_mgr_host_hostaddr-1] == false)
 	{
-		datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(node->name));
+		MemSet(&hint, 0, sizeof(hint));
+		hint.ai_socktype = SOCK_STREAM;
+		hint.ai_family = AF_UNSPEC;
+		hint.ai_flags = AI_PASSIVE;
+		ret = pg_getaddrinfo_all(name.data, NULL, &hint, &addrs);
+		if(ret != 0 || addrs == NULL)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), errmsg("could not resolve \"%s\": %s"
+				, name.data, gai_strerror(ret))));
+		}
+		sinp = (struct sockaddr_in *)addrs->ai_addr;
+		ipstr = inet_ntop(AF_INET, &sinp->sin_addr, abuf,INET_ADDRSTRLEN);
+		datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(ipstr));
+		pg_freeaddrinfo_all(AF_UNSPEC, addrs);
 	}
 	if(got[Anum_mgr_host_hostpghome-1] == false)
 	{
