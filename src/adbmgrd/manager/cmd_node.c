@@ -3538,7 +3538,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		//mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
 		/* step 9: update node system table's column to set initial is true */
-		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, false, true);
+		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, false, true);
 
 	}PG_CATCH_HOLD();
 	{

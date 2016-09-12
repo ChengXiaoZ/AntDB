@@ -5210,7 +5210,7 @@ DESCR("mgr append coordinator master");
 DATA(insert OID = 3931 (  mgr_append_agtmslave        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_append_agtmslave _null_ _null_ _null_ ));
 DESCR("mgr append agtm slave");
 
-DATA(insert OID = 3932 (  mgr_append_agtmextra        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_append_dnextra _null_ _null_ _null_ ));
+DATA(insert OID = 3932 (  mgr_append_agtmextra        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_append_agtmextra _null_ _null_ _null_ ));
 DESCR("mgr append agtm extra");
 
 DATA(insert OID = 3210 ( mgr_failover_one_dn      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_one_dn _null_ _null_ _null_ ));
