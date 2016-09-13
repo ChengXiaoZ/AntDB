@@ -124,7 +124,6 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	NameData parmmin;
 	NameData parmmax;
 	bool isnull[Natts_mgr_updateparm];
-	bool got[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	int insertparmstatus;
@@ -142,7 +141,6 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
-	memset(got, 0, sizeof(got));
 
 	foreach(lc,node->options)
 	{
@@ -1053,4 +1051,107 @@ void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 		CatalogUpdateIndexes(noderel, looptuple);
 	}
 	heap_endscan(rel_scan);
+}
+
+/*update mgr_updateparm, change * to newmaster name and change its nodetype to mastertype*/
+void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, char oldmastertype, Name oldslavename, int olddnslavename,  char oldslavetype)
+{
+	Relation rel_updateparm;
+	NameData namedatatmp;
+	HeapTuple looptuple;
+	HeapTuple newtuple;
+	HeapTuple tuple;
+	ScanKeyData scankey[2];
+	HeapScanDesc rel_scan;
+	Form_mgr_updateparm mgr_updateparm;
+	Datum datum[Natts_mgr_updateparm];
+	bool isnull[Natts_mgr_updateparm];
+
+	memset(datum, 0, sizeof(datum));
+	memset(isnull, 0, sizeof(isnull));
+	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
+	/*delete old master parm in mgr_updateparm systbl*/
+	mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, oldmastername, oldmastertype);
+	namestrcpy(&namedatatmp, MACRO_STAND_FOR_ALL_NODENAME);
+	if (1 == olddnmasternum)
+	{
+		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &namedatatmp, oldmastertype);
+	}
+	/*change oldslave parm*/
+	mgr_parmr_update_tuple_nodename_nodetype(rel_updateparm, oldslavename, oldslavetype, oldmastertype);
+	ScanKeyInit(&scankey[0],
+	Anum_mgr_updateparm_nodename
+	,BTEqualStrategyNumber
+	,F_NAMEEQ
+	,NameGetDatum(&namedatatmp));
+	ScanKeyInit(&scankey[1],
+	Anum_mgr_updateparm_nodetype
+	,BTEqualStrategyNumber
+	,F_CHAREQ
+	,CharGetDatum(oldslavetype));
+
+	if (olddnslavename == 1)
+	{
+		rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, scankey);
+		while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+			Assert(mgr_updateparm);
+			/*check nodename, nodetype, key need record*/
+			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
+			if(!HeapTupleIsValid(tuple))
+			{
+				datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(PARM_TYPE_DATANODE);
+				datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(oldslavename);
+				datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(oldmastertype);
+				datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&(mgr_updateparm->updateparmkey));
+				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&(mgr_updateparm->updateparmvalue));
+				/* now, we can insert record */
+				newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
+				simple_heap_insert(rel_updateparm, newtuple);
+				CatalogUpdateIndexes(rel_updateparm, newtuple);
+				heap_freetuple(newtuple);
+			}
+			else
+			{
+				ReleaseSysCache(tuple);
+			}
+			/*delete the old tuple*/
+			simple_heap_delete(rel_updateparm, &looptuple->t_self);
+			CatalogUpdateIndexes(rel_updateparm, looptuple);			
+		}
+		heap_endscan(rel_scan);
+	}
+	else
+	{
+		/*insert one tuple to mgr_updateparm systbl*/
+		rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, scankey);
+		while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+			Assert(mgr_updateparm);
+			/*check nodename, nodetype, key need record*/
+			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
+			if(!HeapTupleIsValid(tuple))
+			{
+				/*get key, value*/
+				datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(PARM_TYPE_DATANODE);
+				datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(oldslavename);
+				datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(oldmastertype);
+				datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&(mgr_updateparm->updateparmkey));
+				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&(mgr_updateparm->updateparmvalue));
+				/* now, we can insert record */
+				newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
+				simple_heap_insert(rel_updateparm, newtuple);
+				CatalogUpdateIndexes(rel_updateparm, newtuple);
+				heap_freetuple(newtuple);
+			}
+			else
+			{
+				ReleaseSysCache(tuple);
+			}
+		}
+		heap_endscan(rel_scan);
+	}
+	heap_close(rel_updateparm, RowExclusiveLock);
 }

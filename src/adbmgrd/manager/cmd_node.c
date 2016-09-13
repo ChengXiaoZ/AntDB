@@ -93,6 +93,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
 static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
 static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid);
+static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -1240,12 +1241,13 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	char *cmdmode;
 	char *zmode;
 	char *cndnname;
-	char *dnmastername;
 	char *masterhostaddress;
 	char *masterpath;
 	char *mastername;
 	char nodetype;
 	int32 cndnport;
+	int masternumtmp = 0;
+	int slavenumtmp = 0;
 	int masterport;
 	Oid hostOid;
 	Oid nodemasternameoid;
@@ -1259,6 +1261,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	HeapTuple tuple;
 	HeapTuple mastertuple;
 	HeapTuple gtmmastertuple;
+	NameData dnmastername;
+	NameData dnslavename;
 
 	getAgentCmdRst->ret = false;
 	initStringInfo(&infosendmsg);
@@ -1271,6 +1275,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Assert(hostaddress);
 	/*get nodename*/
 	cndnname = NameStr(mgr_node->nodename);
+	namestrcpy(&dnslavename, cndnname);
 	isprimary = mgr_node->nodeprimary;
 	/*get the host address for return result*/
 	namestrcpy(&(getAgentCmdRst->nodename), cndnname);
@@ -1559,10 +1564,10 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*get master name*/
 		mgr_node_dnmaster = (Form_mgr_node)GETSTRUCT(mastertuple);
 		Assert(mgr_node_dnmaster);
-		dnmastername = NameStr(mgr_node_dnmaster->nodename);
-		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(dnmastername));
+		namestrcpy(&dnmastername, NameStr(mgr_node_dnmaster->nodename));
+		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(dnmastername.data));
 		if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
-			ereport(WARNING, (errmsg("stop datanode master \"%s\" fail", dnmastername)));
+			ereport(WARNING, (errmsg("stop datanode master \"%s\" fail", dnmastername.data)));
 		/*1. restart datanode*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
@@ -1583,6 +1588,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 			return;
 		}
 		/*3.delete old master record in node systbl*/
+		masternumtmp = mgr_get_num_nodetype_node_incluster(noderel, CNDN_TYPE_DATANODE_MASTER);
+		slavenumtmp = mgr_get_num_nodetype_node_incluster(noderel, nodetype);
 		simple_heap_delete(noderel, &mastertuple->t_self);
 		CatalogUpdateIndexes(noderel, mastertuple);
 		ReleaseSysCache(mastertuple);
@@ -1591,6 +1598,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_node->nodetype = CNDN_TYPE_DATANODE_MASTER;
 		mgr_node->nodemasternameoid = 0;
 		heap_inplace_update(noderel, aimtuple);
+		/*refresh parm systbl*/
+		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype);
 		/*5.refresh extra recovery.conf*/
 		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype);
 	}
@@ -6344,3 +6353,33 @@ static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid)
 	heap_endscan(scan);
 	return false;
 }
+
+/*get the num of node for given nodetype*/
+static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype)
+{
+	ScanKeyData key[2];
+	HeapTuple tuple;
+	HeapScanDesc scan;
+	int num = 0;
+	
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	ScanKeyInit(&key[1],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	scan = heap_beginscan(rel, SnapshotNow, 2, key);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		num++;
+	}
+	heap_endscan(scan);
+	return num;	
+}
+
+
+
