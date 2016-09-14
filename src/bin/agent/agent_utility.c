@@ -17,7 +17,7 @@ int exec_shell(const char *exec, StringInfo out)
 {
 	StringInfoData buf_stdout;
 	StringInfoData buf_stderr;
-	volatile pid_t pid;
+	volatile pid_t pid = 0;
 	volatile int pipe_stdout[2] = {-1, -1};
 	volatile int pipe_stderr[2] = {-1, -1};
 	int exit_status;
@@ -142,3 +142,4 @@ static void read_pipe(int *pfd, StringInfo buf)
 		buf->len += rval;
 	}
 }
+

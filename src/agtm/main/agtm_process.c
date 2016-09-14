@@ -173,7 +173,7 @@ static TupleTableSlot* get_agtm_command_slot(void)
 
 	if(desc == NULL)
 	{
-		TupleDesc volatile temp;
+		TupleDesc volatile temp = NULL;
 		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 		PG_TRY();
 		{
