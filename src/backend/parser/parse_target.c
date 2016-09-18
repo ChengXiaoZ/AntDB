@@ -163,6 +163,29 @@ transformTargetList(ParseState *pstate, List *targetlist,
 			}
 		}
 
+#ifdef ADB
+		/*
+		 * we need transform target first in oracle grammar
+		 * in default grammar(pg) stmt "UPDATE t set t.col ..." the "t.col" is invalid,
+		 * we test dot and change name to last name
+		 */
+		if(exprKind == EXPR_KIND_UPDATE_SOURCE
+			&& res->indirection != NIL
+			&& pstate->p_grammar == PARSE_GRAM_ORACLE)
+		{
+			Node *node;
+			ColumnRef cref;
+			NodeSetTag(&cref, T_ColumnRef);
+			cref.fields = lcons(makeString(res->name), res->indirection);
+			cref.location = res->location;
+			node = transformExpr(pstate, (Node*)&cref, EXPR_KIND_UPDATE_TARGET);
+			res->name = strVal(llast(cref.fields));
+			res->indirection = NIL;
+			/* we don't need transformed node(Var) */
+			pfree(node);
+		}
+#endif /* ADB */
+
 		/*
 		 * Not "something.*", so transform as a single expression
 		 */
