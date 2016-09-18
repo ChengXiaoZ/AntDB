@@ -103,6 +103,8 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
 static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo valuelist);
+static void mgr_parm_in_master_all_not_in_slave(Relation rel_updateparm, int olddnmasternum, char oldmastertype, Name oldslavename, char oldslavetype);
+static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue);
 
 /* 
 * for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
@@ -1153,5 +1155,131 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 		}
 		heap_endscan(rel_scan);
 	}
+	/*insert one new tuple for new datanode master when datanode master all has the parm which not in old datanode slave parm list*/
+	mgr_parm_in_master_all_not_in_slave(rel_updateparm, olddnmasternum, oldmastertype, oldslavename, oldslavetype);
 	heap_close(rel_updateparm, RowExclusiveLock);
+	
+}
+
+/*
+* check parm: datanode master num>2, and datanode master all parms have key, but key does not exist in given datanode name and 
+* datanode slave type or given datanode slave all parm list, so it needs insert a new tuple (new datanode master key = default value)
+*/
+
+static void mgr_parm_in_master_all_not_in_slave(Relation rel_updateparm,int olddnmasternum, char oldmastertype, Name oldslavename, char oldslavetype)
+{
+	ScanKeyData scankey[2];
+	HeapScanDesc rel_scan;
+	NameData namedatatmp;
+	HeapTuple tuple;
+	HeapTuple looptuple;
+	HeapTuple newtuple;
+	bool bget = false;
+	NameData defaultvalue;
+	Form_mgr_updateparm mgr_updateparm;
+	Datum datum[Natts_mgr_updateparm];
+	bool isnull[Natts_mgr_updateparm];
+
+	
+	/*check old datanode master num*/
+	if (olddnmasternum <= 1)
+		return;
+	namestrcpy(&namedatatmp, MACRO_STAND_FOR_ALL_NODENAME);
+	memset(datum, 0, sizeof(datum));
+	memset(isnull, 0, sizeof(isnull));	
+	/*lookup the datanode master '*' parm*/
+	ScanKeyInit(&scankey[0],
+	Anum_mgr_updateparm_nodename
+	,BTEqualStrategyNumber
+	,F_NAMEEQ
+	,NameGetDatum(&namedatatmp));
+	ScanKeyInit(&scankey[1],
+	Anum_mgr_updateparm_nodetype
+	,BTEqualStrategyNumber
+	,F_CHAREQ
+	,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
+
+	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, scankey);
+	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+		Assert(mgr_updateparm);
+		/*check the datanode slave does not have this parm*/
+		tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(&namedatatmp), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
+		if(HeapTupleIsValid(tuple))
+		{
+			bget = true;
+			ReleaseSysCache(tuple);
+		}
+		if (false == bget)
+		{
+			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
+			if(HeapTupleIsValid(tuple))
+			{
+				bget = true;
+				ReleaseSysCache(tuple);
+			}
+		}
+		if (false == bget)
+		{
+			/*need insert a new tuple to mgr_updateparm systbl for the new datanode master*/
+				/*get key, value*/
+				if(mgr_parm_get_defaultvalue(PARM_TYPE_DATANODE, &(mgr_updateparm->updateparmkey), &defaultvalue))
+				{
+					datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(PARM_TYPE_DATANODE);
+					datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(oldslavename);
+					datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(oldmastertype);
+					datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&(mgr_updateparm->updateparmkey));
+					datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&defaultvalue);
+					/* now, we can insert record */
+					newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
+					simple_heap_insert(rel_updateparm, newtuple);
+					CatalogUpdateIndexes(rel_updateparm, newtuple);
+					heap_freetuple(newtuple);
+				}
+		}
+	}
+	heap_endscan(rel_scan);
+}
+
+/*get datanode master key's default value*/
+static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue)
+{
+	HeapTuple tuple;
+	Form_mgr_parm mgr_parm;
+	
+	/*check the parm in mgr_parm, type is '*'*/
+	tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_GTM_CN_DN), NameGetDatum(key));
+	if(!HeapTupleIsValid(tuple))
+	{
+		/*check the parm in mgr_parm, type is '#'*/
+		if (PARM_TYPE_DATANODE ==parmtype)
+		{
+			tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_CN_DN), NameGetDatum(key));
+			if(!HeapTupleIsValid(tuple))
+			{		
+					tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(parmtype), NameGetDatum(key));
+					if(!HeapTupleIsValid(tuple))
+						return false;
+					mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+			}
+			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+		}
+		else
+		{
+			/*never will come here*/
+			ereport(WARNING, (errcode(ERRCODE_SYNTAX_ERROR)
+				, errmsg("the parameter type: \"%c\" is not right for datanode master", parmtype)));
+			return false;
+		}
+	}
+	else
+	{
+		mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+	}
+	Assert(mgr_parm);
+	/*get the default value*/
+	namestrcpy(defaultvalue, NameStr(mgr_parm->parmvalue));
+	ReleaseSysCache(tuple);
+	return true;
 }
