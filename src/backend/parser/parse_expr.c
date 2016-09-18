@@ -136,7 +136,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 {
 	Node	   *result;
 #ifdef ADB
-	int			sv_grammar;
+	volatile int	sv_grammar;
 #endif
 
 	if (expr == NULL)
