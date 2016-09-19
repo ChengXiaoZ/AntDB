@@ -125,12 +125,14 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	NameData parmunit;
 	NameData parmmin;
 	NameData parmmax;
+	NameData valuetmp;
 	bool isnull[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	int insertparmstatus;
 	int effectparmstatus;
 	int vartype;  /*the parm value type: bool, string, enum, int*/
+	int len = 0;
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
 	parmtype =  node->parmtype;
@@ -157,6 +159,19 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 		}
 		/*check the parameter is right for the type node of postgresql.conf*/
 		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+		if (PGC_STRING == vartype)
+		{
+			/*if the value of key is string, it need use signle quota*/
+			len = strlen(value.data);
+			if (value.data[0] != '\'' || value.data[len-1] != '\'')
+			{
+				valuetmp.data[0]='\'';
+				strcpy(valuetmp.data+sizeof(char),value.data);
+				valuetmp.data[1+len]='\'';
+				valuetmp.data[2+len]='\0';
+				namestrcpy(&value, valuetmp.data);
+			}
+		}
 		/*check the key's value*/
 		if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
 		{
@@ -204,6 +219,8 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	Datum datumparmmin;
 	Datum datumparmmax;
 	bool isNull = false;
+	NameData valuetmp;
+	int len = 0;
 	
 	/*check the name of key exist in mgr_parm system table, if the key in gtm or cn or dn, the parmtype in 
 	* mgr_parm is '*'; if the key only in cn or dn, the parmtype in mgr_parm is '#', if the key only in 
@@ -281,6 +298,19 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 		
 	/*get the default value*/
 	namestrcpy(value, NameStr(mgr_parm->parmvalue));
+	if (PGC_STRING == *vartype)
+	{
+		/*if the value of key is string, it need use signle quota*/
+		len = strlen(value->data);
+		if (value->data[0] != '\'' || value->data[len-1] != '\'')
+		{
+			valuetmp.data[0]='\'';
+			strcpy(valuetmp.data+sizeof(char),value->data);
+			valuetmp.data[1+len]='\'';
+			valuetmp.data[2+len]='\0';
+			namestrcpy(value, valuetmp.data);
+		}
+	}
 	/*get parm unit*/
 	datumparmunit = heap_getattr(tuple, Anum_mgr_parm_unit, RelationGetDescr(noderel), &isNull);
 	if(isNull)
