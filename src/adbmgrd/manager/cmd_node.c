@@ -279,7 +279,15 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 
 	/*close relation */
 	heap_close(rel, RowExclusiveLock);
-
+	if(mgr_check_node_exist_incluster(&mastername, CNDN_TYPE_DATANODE_MASTER, false))
+	{
+		/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
+		if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
+			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'slave'");
+		else if (CNDN_TYPE_DATANODE_EXTRA == nodetype)
+			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'extra'");
+	}
+		
 	/* Record dependencies on host */
 	myself.classId = NodeRelationId;
 	myself.objectId = cndn_oid;
@@ -410,6 +418,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	MemoryContext context, old_context;
 	NameData name;
 	NameData nametmp;
+	NameData application_name;
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	char nodetype;
@@ -506,6 +515,16 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 			simple_heap_delete(rel, &(tuple->t_self));
 			CatalogUpdateIndexes(rel, tuple);
 			heap_freetuple(tuple);
+		}
+		if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
+		{
+			if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
+			{
+				namestrcpy(&application_name, "'slave'");
+			}
+			else
+				namestrcpy(&application_name, "'extra'");
+			mgr_parm_alter_sync_master_slave(name.data, CNDN_TYPE_DATANODE_MASTER, application_name.data, nodetype);
 		}
 	}
 	/*delete the parm in mgr_updateparm for this type and nodename in mgr_updateparm is MACRO_STAND_FOR_ALL_NODENAME*/
@@ -6381,5 +6400,38 @@ static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype)
 	return num;	
 }
 
+/*check given type of node exist*/
+int mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bincluster)
+{
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	ScanKeyData key[3];
+	HeapTuple tuple;
+	bool getnode = false;
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,CStringGetDatum(nodename));
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(nodetype));
+	ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(bincluster));
 
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		getnode = true;
+	}
 
+	heap_endscan(rel_scan);
+	heap_close(rel_node, RowExclusiveLock);
+	return getnode;
+}

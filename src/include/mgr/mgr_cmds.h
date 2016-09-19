@@ -158,6 +158,8 @@ extern HeapTuple mgr_get_tuple_node_from_name_type(Relation rel, char *nodename,
 extern char *mgr_nodetype_str(char nodetype);
 extern Datum mgr_clean_all(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_agent(PG_FUNCTION_ARGS);
+extern int mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bincluster);
+extern void mgr_parm_alter_sync_master_slave(char *mastername, char mastertype, char *application_name_drop, char slavetypedrop);
 
 /* mgr_common.c */
 extern TupleDesc get_common_command_tuple_desc(void);
@@ -213,4 +215,5 @@ extern void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params,
 extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
 extern void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype);
 extern void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, char oldmastertype, Name oldslavename, int olddnslavename,  char oldslavetype);
+extern void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *application_name);
 #endif /* MGR_CMDS_H */

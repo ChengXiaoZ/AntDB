@@ -169,6 +169,11 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 				strcpy(valuetmp.data+sizeof(char),value.data);
 				valuetmp.data[1+len]='\'';
 				valuetmp.data[2+len]='\0';
+				if (len > sizeof(value.data)-2-1)
+				{
+					valuetmp.data[sizeof(value.data)-2]='\'';
+					valuetmp.data[sizeof(value.data)-1]='\0';
+				}
 				namestrcpy(&value, valuetmp.data);
 			}
 		}
@@ -308,6 +313,11 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 			strcpy(valuetmp.data+sizeof(char),value->data);
 			valuetmp.data[1+len]='\'';
 			valuetmp.data[2+len]='\0';
+			if (len > sizeof(value->data)-2-1)
+			{
+				valuetmp.data[sizeof(value->data)-2]='\'';
+				valuetmp.data[sizeof(value->data)-1]='\0';
+			}
 			namestrcpy(value, valuetmp.data);
 		}
 	}
@@ -1312,4 +1322,145 @@ static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue
 	namestrcpy(defaultvalue, NameStr(mgr_parm->parmvalue));
 	ReleaseSysCache(tuple);
 	return true;
+}
+
+/*
+* set datanode master-slave replication sync relation: if master has two slave, the one is synchronous, the other is asynchronous; if 
+* master has only one slave, it is synchronous relation. insert one tuple to mgr_updateparm systbl to record master-slave sync relation
+*/
+void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *application_name)
+{
+	Relation rel_updateparm;
+	HeapTuple newtuple;
+	HeapTuple tuple;
+	NameData parmname;
+	NameData masternamedata;
+	NameData application_name_data;
+	HeapScanDesc rel_scan;
+	ScanKeyData scankey[3];
+	bool bget = false;
+	Datum datum[Natts_mgr_updateparm];
+	bool isnull[Natts_mgr_updateparm];
+	
+	namestrcpy(&parmname, "synchronous_standby_names");
+	namestrcpy(&masternamedata, mastername);
+	namestrcpy(&application_name_data, application_name);
+	/*check the synchronous_standby_names*/
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&masternamedata));
+	ScanKeyInit(&scankey[1],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(mastertype));
+	ScanKeyInit(&scankey[2],
+		Anum_mgr_updateparm_key
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&parmname));
+	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		/*check the value, when it is null, update it*/
+		Form_mgr_updateparm mgr_updateparm;
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
+		Assert(mgr_updateparm);
+		if(strcmp(NameStr(mgr_updateparm->updateparmvalue),"''") == 0)
+		{
+			namestrcpy(&(mgr_updateparm->updateparmvalue), application_name_data.data);
+			heap_inplace_update(rel_updateparm, tuple);
+		}
+		bget = true;
+		break;
+	}
+	if (!bget)
+	{
+		/*insert it*/
+		memset(datum, 0, sizeof(datum));
+		memset(isnull, 0, sizeof(isnull));
+		datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(PARM_TYPE_DATANODE);
+		datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&masternamedata);
+		datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(mastertype);
+		datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&parmname);
+		datum[Anum_mgr_updateparm_value-1] = NameGetDatum(application_name);
+		/* now, we can insert record */
+		newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
+		simple_heap_insert(rel_updateparm, newtuple);
+		CatalogUpdateIndexes(rel_updateparm, newtuple);
+		heap_freetuple(newtuple);		
+	}
+	
+	heap_endscan(rel_scan);
+	heap_close(rel_updateparm, RowExclusiveLock);
+}
+
+/*when drop datanode slave or datanode extra, it should modify master_slave sync relation in mgr_updateparm systbl*/
+void mgr_parm_alter_sync_master_slave(char *mastername, char mastertype, char *application_name_drop, char slavetypedrop)
+{
+	Relation rel_updateparm;
+	HeapTuple tuple;
+	NameData parmname;
+	NameData masternamedata;
+	NameData application_name_data_new;
+	HeapScanDesc rel_scan;
+	ScanKeyData scankey[3];
+	char checkexisttype;
+	
+	checkexisttype = (slavetypedrop == CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
+	if (CNDN_TYPE_DATANODE_SLAVE == checkexisttype)
+	{
+		namestrcpy(&application_name_data_new, "'slave'");
+	}
+	else if(CNDN_TYPE_DATANODE_EXTRA == checkexisttype)
+	{
+		namestrcpy(&application_name_data_new, "'extra'");
+	}
+	namestrcpy(&parmname, "synchronous_standby_names");
+	namestrcpy(&masternamedata, mastername);
+	/*check the synchronous_standby_names*/
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&masternamedata));
+	ScanKeyInit(&scankey[1],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(mastertype));
+	ScanKeyInit(&scankey[2],
+		Anum_mgr_updateparm_key
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&parmname));
+	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		/*check the value, when it is null, update it*/
+		Form_mgr_updateparm mgr_updateparm;
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
+		Assert(mgr_updateparm);
+		if(strcmp(NameStr(mgr_updateparm->updateparmvalue), application_name_drop) == 0)
+		{
+			/*need update the value*/
+			if (mgr_check_node_exist_incluster(&masternamedata, checkexisttype, false))
+			{
+				namestrcpy(&(mgr_updateparm->updateparmvalue), application_name_data_new.data);
+			}
+			else
+			{
+				namestrcpy(&(mgr_updateparm->updateparmvalue), "''");
+			}
+			heap_inplace_update(rel_updateparm, tuple);
+		}
+		break;
+	}
+
+	heap_endscan(rel_scan);
+	heap_close(rel_updateparm, RowExclusiveLock);
 }
