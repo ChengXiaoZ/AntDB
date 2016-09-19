@@ -1297,6 +1297,7 @@ OutputGlobalSnapshot(Snapshot snapshot)
 
 	ereport(DEBUG1,
 		(errmsg("%s", buf.data)));
+	pfree(buf.data);
 }
 
 /*
