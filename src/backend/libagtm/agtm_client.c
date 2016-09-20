@@ -13,8 +13,9 @@
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
 #include "pgxc/pgxc.h"
-#include "utils/memutils.h"
 #include "utils/builtins.h"
+#include "utils/guc.h"
+#include "utils/memutils.h"
 
 /* Configuration variables */
 extern char				*AGtmHost;
@@ -24,6 +25,8 @@ extern int 				AGtmPort;
 #define InvalidAGtmPort	0
 
 static AGTM_Conn		*agtm_conn = NULL;
+static char				*save_AGtmHost = NULL;
+static int				save_AGtmPort = 0;
 static int				save_DefaultAGtmPort = InvalidAGtmPort;
 static bool				IsDefaultAGtmPortSave = false;
 
@@ -80,6 +83,9 @@ agtm_Connect(void)
 					AGtmHost, AGtmPort, AGTM_DBNAME, AGTM_USER)));
 		}
 
+		save_AGtmHost = AGtmHost;
+		save_AGtmPort = AGtmPort;
+
 		/*
 		 * Make sure agtm_conn is null pointer.
 		 */
@@ -97,6 +103,8 @@ agtm_Connect(void)
 	}PG_CATCH();
 	{
 		PQfinish((PGconn*)pg_conn);
+		save_AGtmHost = NULL;
+		save_AGtmPort = 0;
 		PG_RE_THROW();
 	}PG_END_TRY();
 
@@ -184,6 +192,8 @@ void agtm_Close(void)
 		pfree(agtm_conn);
 	}
 	agtm_conn = NULL;
+	save_AGtmHost = NULL;
+	save_AGtmPort = 0;
 }
 
 void agtm_Reset(void)
@@ -308,3 +318,62 @@ void agtm_use_result_end(StringInfo buf)
 				(errcode(ERRCODE_PROTOCOL_VIOLATION),
 				 errmsg("invalid message format from AGTM")));
 }
+
+/* GUC check hook for agtm_host */
+bool
+check_agtm_host(char **newval, void **extra, GucSource source)
+{
+	if (!(IS_PGXC_COORDINATOR && !IsConnFromCoord()))
+		return true;
+
+	if (save_AGtmHost == NULL)
+		return true;
+
+	if (!newval || *newval == NULL || (*newval)[0] == '\0')
+		return false;
+
+	if (pg_strcasecmp(save_AGtmHost, *newval) == 0)
+		return true;
+
+	agtm_Close();
+	SetTopXactBeginAGTM(false);
+	IsDefaultAGtmPortSave = false;
+
+	if (TopXactBeginAGTM())
+	{
+		elog(ERROR,
+			"Abort transaction because of modifying GUC variable: agtm_host");
+	}
+
+	return true;
+}
+
+/* GUC check hook for agtm_port */
+bool
+check_agtm_port(int *newval, void **extra, GucSource source)
+{
+	if (!(IS_PGXC_COORDINATOR && !IsConnFromCoord()))
+		return true;
+
+	if (save_AGtmPort == 0)
+		return true;
+
+	if (!newval)
+		return false;
+
+	if (*newval == save_AGtmPort)
+		return true;
+
+	agtm_Close();
+	SetTopXactBeginAGTM(false);
+	IsDefaultAGtmPortSave = false;
+
+	if (TopXactBeginAGTM())
+	{
+		elog(ERROR,
+			"Abort transaction because of modifying GUC variable: agtm_port");
+	}
+
+	return true;
+}
+
