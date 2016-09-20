@@ -2406,7 +2406,6 @@ Datum mgr_monitor_dnslave_namelist(PG_FUNCTION_ARGS)
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
-
 /*
  * MONITOR DATANODE MASTER ALL
  */
@@ -2480,7 +2479,6 @@ Datum mgr_monitor_dnmaster_all(PG_FUNCTION_ARGS)
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
-
 /*
  * MONITOR DATANODE SLAVE ALL
  */
@@ -2551,6 +2549,162 @@ Datum mgr_monitor_dnslave_all(PG_FUNCTION_ARGS)
                 );
     pfree(port.data);
 	pfree(host_addr);
+    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+/*
+ * MONITOR DATANODE EXTRA ALL
+ */
+Datum mgr_monitor_dnextra_all(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *funcctx;
+    InitNodeInfo *info;
+    HeapTuple tup;
+    HeapTuple tup_result;
+    Form_mgr_node mgr_node;
+    ScanKeyData  key[1];
+    StringInfoData port;
+    char *host_addr;
+    int ret;
+
+    if (SRF_IS_FIRSTCALL())
+    {
+        MemoryContext oldcontext;
+
+        funcctx = SRF_FIRSTCALL_INIT();
+        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+        info = palloc(sizeof(*info));
+        info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+   
+        ScanKeyInit(&key[0]
+                    ,Anum_mgr_node_nodetype
+                    ,BTEqualStrategyNumber
+                    ,F_CHAREQ
+                    ,CharGetDatum(CNDN_TYPE_DATANODE_EXTRA));
+        info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+        info->lcp =NULL;
+
+        /* save info */
+        funcctx->user_fctx = info;
+
+        MemoryContextSwitchTo(oldcontext);
+    }
+
+    funcctx = SRF_PERCALL_SETUP();
+    Assert(funcctx);
+    info = funcctx->user_fctx;
+    Assert(info);
+
+    tup = heap_getnext(info->rel_scan, ForwardScanDirection);
+    if(tup == NULL)
+    {
+        /* end of row */
+        heap_endscan(info->rel_scan);
+        heap_close(info->rel_node, AccessShareLock);
+        pfree(info);
+        SRF_RETURN_DONE(funcctx);
+    }
+
+    mgr_node = (Form_mgr_node)GETSTRUCT(tup);
+    Assert(mgr_node);
+
+    host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+    initStringInfo(&port);
+    appendStringInfo(&port, "%d", mgr_node->nodeport);
+    ret = pingNode(host_addr, port.data);
+
+    tup_result = build_common_command_tuple_for_monitor(
+                &(mgr_node->nodename)
+                ,mgr_node->nodetype
+                ,ret == 0 ? true:false
+                ,ret == 0 ? "running":"not running"
+                );
+    pfree(port.data);
+	pfree(host_addr);
+    SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+/*
+ * MONITOR DATANODE EXTRA db1 db2 ...
+ */
+Datum mgr_monitor_dnextra_namelist(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *funcctx;
+    InitNodeInfo *info;
+	ListCell **lcp;
+	List *nodenamelist=NIL;
+    HeapTuple tup, tup_result;
+    Form_mgr_node mgr_node;
+    StringInfoData port;
+    char *host_addr;
+	char *dnextraname;
+    int ret;
+
+    if (SRF_IS_FIRSTCALL())
+    {
+        MemoryContext oldcontext;
+
+        funcctx = SRF_FIRSTCALL_INIT();
+        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
+		
+		info = palloc(sizeof(*info));
+		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
+		*(info->lcp) = list_head(nodenamelist);
+		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+		
+        /* save info */
+        funcctx->user_fctx = info;
+
+        MemoryContextSwitchTo(oldcontext);
+    }
+	
+
+    funcctx = SRF_PERCALL_SETUP();
+    Assert(funcctx);
+    info = funcctx->user_fctx;
+    Assert(info);
+
+	lcp = info->lcp;
+	if (*lcp == NULL)
+	{
+		heap_close(info->rel_node, RowExclusiveLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	dnextraname = (char *)lfirst(*lcp);
+	*lcp = lnext(*lcp);
+	tup = mgr_get_tuple_node_from_name_type(info->rel_node, dnextraname, CNDN_TYPE_DATANODE_EXTRA);
+	if (!HeapTupleIsValid(tup))
+		ereport(ERROR, (errmsg("node name is invalid: %s", dnextraname)));
+
+    mgr_node = (Form_mgr_node)GETSTRUCT(tup);
+    Assert(mgr_node);
+	
+	if (CNDN_TYPE_DATANODE_EXTRA != mgr_node->nodetype)
+		ereport(ERROR, (errmsg("node type is not datanode extra: %s", dnextraname)));
+
+    host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+    initStringInfo(&port);
+    appendStringInfo(&port, "%d", mgr_node->nodeport);
+    ret = pingNode(host_addr, port.data);
+
+    tup_result = build_common_command_tuple_for_monitor(
+                &(mgr_node->nodename)
+                ,mgr_node->nodetype
+                ,ret == 0 ? true:false
+                ,ret == 0 ? "running":"not running"
+                );
+    pfree(port.data);
+	pfree(host_addr);
+	heap_freetuple(tup);
     SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 

@@ -117,6 +117,7 @@ extern Datum mgr_monitor_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_coord_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_dnmaster_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_dnslave_all(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_dnextra_all(PG_FUNCTION_ARGS);
 
 extern Datum mgr_append_dnmaster(PG_FUNCTION_ARGS);
 extern Datum mgr_append_dnslave(PG_FUNCTION_ARGS);
@@ -131,6 +132,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_coord_namelist(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_dnmaster_namelist(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_dnslave_namelist(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_dnextra_namelist(PG_FUNCTION_ARGS);
 
 extern void mgr_start_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple);
 extern List * get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo

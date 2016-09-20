@@ -458,6 +458,14 @@ MonitorStmt:
             stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_dnslave_all", NULL));
             $$ = (Node*)stmt;
 		}
+		| MONITOR DATANODE EXTRA ALL
+		{
+            SelectStmt *stmt = makeNode(SelectStmt);
+            //List *arg = list_make1(makeNullAConst(-1));
+            stmt->targetList = list_make1(make_star_target(-1));
+            stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_dnextra_all", NULL));
+            $$ = (Node*)stmt;
+		}
         | MONITOR COORDINATOR NodeConstList
         {
             SelectStmt *stmt = makeNode(SelectStmt);
@@ -479,6 +487,13 @@ MonitorStmt:
             stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_dnslave_namelist", $4));
             $$ = (Node*)stmt;
         }
+		| MONITOR DATANODE EXTRA NodeConstList
+		{
+            SelectStmt *stmt = makeNode(SelectStmt);
+            stmt->targetList = list_make1(make_star_target(-1));
+            stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_dnextra_namelist", $4));
+            $$ = (Node*)stmt;
+		}
         ;
 		
 VariableSetStmt:
