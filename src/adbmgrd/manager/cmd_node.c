@@ -525,7 +525,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
 			/*delete the parm in mgr_updateparm for this type of node*/
-			mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &(mgr_node->nodename), nodetype);
+			mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &(mgr_node->nodename), nodetype, false, "synchronous_standby_names");
 			simple_heap_delete(rel, &(tuple->t_self));
 			CatalogUpdateIndexes(rel, tuple);
 			heap_freetuple(tuple);
@@ -554,7 +554,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	/*delete the parm in mgr_updateparm for this type and nodename in mgr_updateparm is MACRO_STAND_FOR_ALL_NODENAME*/
 	if (getnum == nodenum)
 	{
-		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &nametmp, nodetype);
+		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &nametmp, nodetype, false, "synchronous_standby_names");
 	}
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel, RowExclusiveLock);
@@ -1299,6 +1299,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	bool getmaster = false;
 	bool isprimary = false;
 	bool ismasterrunning = 0;
+	bool bgetextra = false;
 	ScanKeyData key[1];
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
@@ -1642,7 +1643,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_node->nodemasternameoid = 0;
 		heap_inplace_update(noderel, aimtuple);
 		/*refresh parm systbl*/
-		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype);
+		bgetextra = mgr_check_node_exist_incluster(&dnslavename, nodetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
+		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype, bgetextra);
 		/*5.refresh extra recovery.conf*/
 		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype);
 	}
@@ -6178,7 +6180,14 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	/*5. refresh new master postgresql.conf*/
 	resetStringInfo(&infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
-	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+	if (bget)
+	{
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", aimtuplenodetype == GTM_TYPE_GTM_SLAVE ? "extra":"slave", &infosendmsg);
+	}
+	else
+	{
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+	}
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	/*restart gtm extra or slave*/
 	resetStringInfo(&(getAgentCmdRst->description));

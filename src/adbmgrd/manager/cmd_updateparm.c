@@ -1040,11 +1040,12 @@ static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo val
 }
 
 /*delete the tuple for given nodename and nodetype*/
-void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype)
+void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype, bool bexpect, char *expectname)
 {
 	HeapTuple looptuple;
 	ScanKeyData scankey[2];
 	HeapScanDesc rel_scan;
+	Form_mgr_updateparm mgr_updateparm;
 	
 	ScanKeyInit(&scankey[0],
 		Anum_mgr_updateparm_nodename
@@ -1059,8 +1060,21 @@ void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
 	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		simple_heap_delete(noderel, &looptuple->t_self);
-		CatalogUpdateIndexes(noderel, looptuple);
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+		Assert(mgr_updateparm);
+		if (bexpect)
+		{
+			if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), expectname) != 0)
+			{
+				simple_heap_delete(noderel, &looptuple->t_self);
+				CatalogUpdateIndexes(noderel, looptuple);
+			}
+		}
+		else
+		{
+			simple_heap_delete(noderel, &looptuple->t_self);
+			CatalogUpdateIndexes(noderel, looptuple);
+		}
 	}
 	heap_endscan(rel_scan);
 }
@@ -1088,15 +1102,24 @@ void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 	{
 		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
 		Assert(mgr_updateparm);
-		mgr_updateparm->updateparmnodetype = newnodetype;
-		heap_inplace_update(noderel, looptuple);
-		CatalogUpdateIndexes(noderel, looptuple);
+		if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") != 0)
+		{
+			mgr_updateparm->updateparmnodetype = newnodetype;
+			heap_inplace_update(noderel, looptuple);
+			CatalogUpdateIndexes(noderel, looptuple);			
+		}
+		else
+		{
+			simple_heap_delete(noderel, &looptuple->t_self);
+			CatalogUpdateIndexes(noderel, looptuple);			
+		}
+
 	}
 	heap_endscan(rel_scan);
 }
 
 /*update mgr_updateparm, change * to newmaster name and change its nodetype to mastertype*/
-void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, char oldmastertype, Name oldslavename, int olddnslavename,  char oldslavetype)
+void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, char oldmastertype, Name oldslavename, int olddnslavenum,  char oldslavetype, bool bgetextra)
 {
 	Relation rel_updateparm;
 	NameData namedatatmp;
@@ -1111,13 +1134,18 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
+	bgetextra = mgr_check_node_exist_incluster(oldmastername, oldslavetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	/*delete old master parm in mgr_updateparm systbl*/
-	mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, oldmastername, oldmastertype);
+	mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, oldmastername, oldmastertype, bgetextra, "synchronous_standby_names");
+	if (bgetextra)
+	{
+		mgr_parm_set_sync_master_slave(oldslavename->data, CNDN_TYPE_DATANODE_MASTER, (oldslavetype == CNDN_TYPE_DATANODE_SLAVE ? "'extra'":"'slave'"), true);
+	}
 	namestrcpy(&namedatatmp, MACRO_STAND_FOR_ALL_NODENAME);
 	if (1 == olddnmasternum)
 	{
-		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &namedatatmp, oldmastertype);
+		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &namedatatmp, oldmastertype, false, "synchronous_standby_names");
 	}
 	/*change oldslave parm*/
 	mgr_parmr_update_tuple_nodename_nodetype(rel_updateparm, oldslavename, oldslavetype, oldmastertype);
@@ -1132,7 +1160,7 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 	,F_CHAREQ
 	,CharGetDatum(oldslavetype));
 
-	if (olddnslavename == 1)
+	if (olddnslavenum == 1)
 	{
 		rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, scankey);
 		while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
@@ -1143,24 +1171,27 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
 			if(!HeapTupleIsValid(tuple))
 			{
-				datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(PARM_TYPE_DATANODE);
-				datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(oldslavename);
-				datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(oldmastertype);
-				datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&(mgr_updateparm->updateparmkey));
-				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&(mgr_updateparm->updateparmvalue));
-				/* now, we can insert record */
-				newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
-				simple_heap_insert(rel_updateparm, newtuple);
-				CatalogUpdateIndexes(rel_updateparm, newtuple);
-				heap_freetuple(newtuple);
+				if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") != 0)
+				{
+					namestrcpy(&(mgr_updateparm->updateparmnodename), oldslavename->data);
+					mgr_updateparm->updateparmnodetype = oldmastertype;
+					heap_inplace_update(rel_updateparm, looptuple);
+					CatalogUpdateIndexes(rel_updateparm, looptuple);
+				}
+				else
+				{
+					/*delete the old tuple*/
+					simple_heap_delete(rel_updateparm, &looptuple->t_self);
+					CatalogUpdateIndexes(rel_updateparm, looptuple);
+				}
 			}
 			else
 			{
 				ReleaseSysCache(tuple);
+				/*delete the old tuple*/
+				simple_heap_delete(rel_updateparm, &looptuple->t_self);
+				CatalogUpdateIndexes(rel_updateparm, looptuple);
 			}
-			/*delete the old tuple*/
-			simple_heap_delete(rel_updateparm, &looptuple->t_self);
-			CatalogUpdateIndexes(rel_updateparm, looptuple);			
 		}
 		heap_endscan(rel_scan);
 	}
@@ -1172,6 +1203,8 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 		{
 			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
 			Assert(mgr_updateparm);
+			if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") == 0)
+				continue;
 			/*check nodename, nodetype, key need record*/
 			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
 			if(!HeapTupleIsValid(tuple))
