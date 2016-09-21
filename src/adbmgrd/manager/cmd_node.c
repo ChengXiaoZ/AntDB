@@ -279,13 +279,27 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 
 	/*close relation */
 	heap_close(rel, RowExclusiveLock);
-	if(mgr_check_node_exist_incluster(&mastername, CNDN_TYPE_DATANODE_MASTER, false))
+	if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
 	{
-		/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
-		if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
-			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'slave'");
-		else if (CNDN_TYPE_DATANODE_EXTRA == nodetype)
-			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'extra'");
+		if(mgr_check_node_exist_incluster(&mastername, CNDN_TYPE_DATANODE_MASTER, false))
+		{
+			/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
+			if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
+				mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'slave'", false);
+			else if (CNDN_TYPE_DATANODE_EXTRA == nodetype)
+				mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'extra'", false);
+		}
+	}
+	else if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+	{
+		if(mgr_check_node_exist_incluster(&mastername, GTM_TYPE_GTM_MASTER, false))
+		{
+			/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
+			if (GTM_TYPE_GTM_SLAVE == nodetype)
+				mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'slave'", false);
+			else if (GTM_TYPE_GTM_EXTRA == nodetype)
+				mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'extra'", false);
+		}
 	}
 		
 	/* Record dependencies on host */
@@ -525,6 +539,16 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 			else
 				namestrcpy(&application_name, "'extra'");
 			mgr_parm_alter_sync_master_slave(name.data, CNDN_TYPE_DATANODE_MASTER, application_name.data, nodetype);
+		}
+		else if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+		{
+			if (GTM_TYPE_GTM_SLAVE == nodetype)
+			{
+				namestrcpy(&application_name, "'slave'");
+			}
+			else
+				namestrcpy(&application_name, "'extra'");
+			mgr_parm_alter_sync_master_slave(name.data, GTM_TYPE_GTM_MASTER, application_name.data, nodetype);
 		}
 	}
 	/*delete the parm in mgr_updateparm for this type and nodename in mgr_updateparm is MACRO_STAND_FOR_ALL_NODENAME*/
@@ -6071,6 +6095,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Datum datumPath;
 	Datum DatumStopDnMaster;
 	bool isNull;
+	bool bget = false;
 	char *cndnPathtmp;
 	NameData dnmastername;
 	NameData cndnname;
@@ -6139,15 +6164,16 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	simple_heap_delete(noderel, &mastertuple->t_self);
 	CatalogUpdateIndexes(noderel, mastertuple);
 	ReleaseSysCache(mastertuple);
-	/*delete parm info in mgr_updateparm systbl*/
-	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
-	mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &dnmastername, GTM_TYPE_GTM_MASTER);
 	/*4.change slave or extra type to master type*/
 	mgr_node->nodetype = GTM_TYPE_GTM_MASTER;
 	mgr_node->nodemasternameoid = 0;
 	heap_inplace_update(noderel, aimtuple);
+	/*for mgr_updateparm systbl*/
+	/*delete parm info in mgr_updateparm systbl*/
+	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	/*update parm info in the mgr_updateparm systbl*/
-	mgr_parmr_update_tuple_nodename_nodetype(rel_updateparm, &cndnname, aimtuplenodetype, GTM_TYPE_GTM_MASTER);
+	bget = mgr_check_node_exist_incluster(&cndnname, nodetype, true);
+	mgr_parm_after_gtm_failover_handle(rel_updateparm, &cndnname, GTM_TYPE_GTM_MASTER, &cndnname, aimtuplenodetype, bget);
 	heap_close(rel_updateparm, RowExclusiveLock);
 	/*5. refresh new master postgresql.conf*/
 	resetStringInfo(&infosendmsg);

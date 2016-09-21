@@ -1328,7 +1328,7 @@ static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue
 * set datanode master-slave replication sync relation: if master has two slave, the one is synchronous, the other is asynchronous; if 
 * master has only one slave, it is synchronous relation. insert one tuple to mgr_updateparm systbl to record master-slave sync relation
 */
-void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *application_name)
+void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *application_name, bool forcereplace)
 {
 	Relation rel_updateparm;
 	HeapTuple newtuple;
@@ -1369,7 +1369,7 @@ void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *app
 		Form_mgr_updateparm mgr_updateparm;
 		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 		Assert(mgr_updateparm);
-		if(strcmp(NameStr(mgr_updateparm->updateparmvalue),"''") == 0)
+		if(strcmp(NameStr(mgr_updateparm->updateparmvalue),"''") == 0 || forcereplace)
 		{
 			namestrcpy(&(mgr_updateparm->updateparmvalue), application_name_data.data);
 			heap_inplace_update(rel_updateparm, tuple);
@@ -1391,7 +1391,7 @@ void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *app
 		newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
 		simple_heap_insert(rel_updateparm, newtuple);
 		CatalogUpdateIndexes(rel_updateparm, newtuple);
-		heap_freetuple(newtuple);		
+		heap_freetuple(newtuple);
 	}
 	
 	heap_endscan(rel_scan);
@@ -1409,15 +1409,23 @@ void mgr_parm_alter_sync_master_slave(char *mastername, char mastertype, char *a
 	HeapScanDesc rel_scan;
 	ScanKeyData scankey[3];
 	char checkexisttype;
-	
-	checkexisttype = (slavetypedrop == CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
-	if (CNDN_TYPE_DATANODE_SLAVE == checkexisttype)
+
+	if (GTM_TYPE_GTM_SLAVE == slavetypedrop || GTM_TYPE_GTM_EXTRA == slavetypedrop)
 	{
-		namestrcpy(&application_name_data_new, "'slave'");
+		checkexisttype = (GTM_TYPE_GTM_SLAVE == slavetypedrop ? GTM_TYPE_GTM_EXTRA:GTM_TYPE_GTM_SLAVE);
 	}
-	else if(CNDN_TYPE_DATANODE_EXTRA == checkexisttype)
+	else
+	{
+		checkexisttype = (CNDN_TYPE_DATANODE_SLAVE == slavetypedrop ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
+	}
+	
+	if (CNDN_TYPE_DATANODE_SLAVE == slavetypedrop || GTM_TYPE_GTM_SLAVE == slavetypedrop)
 	{
 		namestrcpy(&application_name_data_new, "'extra'");
+	}
+	else if(CNDN_TYPE_DATANODE_EXTRA == slavetypedrop || GTM_TYPE_GTM_EXTRA == slavetypedrop)
+	{
+		namestrcpy(&application_name_data_new, "'slave'");
 	}
 	namestrcpy(&parmname, "synchronous_standby_names");
 	namestrcpy(&masternamedata, mastername);
@@ -1451,16 +1459,87 @@ void mgr_parm_alter_sync_master_slave(char *mastername, char mastertype, char *a
 			if (mgr_check_node_exist_incluster(&masternamedata, checkexisttype, false))
 			{
 				namestrcpy(&(mgr_updateparm->updateparmvalue), application_name_data_new.data);
+				heap_inplace_update(rel_updateparm, tuple);
 			}
 			else
 			{
-				namestrcpy(&(mgr_updateparm->updateparmvalue), "''");
+				simple_heap_delete(rel_updateparm, &tuple->t_self);
+				CatalogUpdateIndexes(rel_updateparm, tuple);
 			}
-			heap_inplace_update(rel_updateparm, tuple);
+
 		}
 		break;
 	}
 
 	heap_endscan(rel_scan);
 	heap_close(rel_updateparm, RowExclusiveLock);
+}
+
+
+/*when gtm failover, the mgr_updateparm need modify: delete oldmaster parm and update slavetype to master for new master*/
+void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char mastertype, Name slavename, char slavetype, bool bget)
+{
+	HeapTuple looptuple;
+	ScanKeyData scankey[2];
+	HeapScanDesc rel_scan;
+	Form_mgr_updateparm mgr_updateparm;
+	
+	/*delete old master parameters*/	
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(mastername));
+	ScanKeyInit(&scankey[1],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(mastertype));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
+	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+		Assert(mgr_updateparm);
+		if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") != 0 || !bget)
+		{
+			simple_heap_delete(noderel, &looptuple->t_self);
+			CatalogUpdateIndexes(noderel, looptuple);
+		}
+	}
+	heap_endscan(rel_scan);
+
+	/*update the old slave parameters to new master type*/
+	ScanKeyInit(&scankey[0],
+		Anum_mgr_updateparm_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(slavename));
+	ScanKeyInit(&scankey[1],
+		Anum_mgr_updateparm_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(slavetype));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
+	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
+		Assert(mgr_updateparm);
+		mgr_updateparm->updateparmnodetype = mastertype;
+		if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") == 0)
+		{
+			simple_heap_delete(noderel, &looptuple->t_self);
+			CatalogUpdateIndexes(noderel, looptuple);
+		}
+		else
+		{
+			heap_inplace_update(noderel, looptuple);
+			CatalogUpdateIndexes(noderel, looptuple);
+		}
+	}
+	heap_endscan(rel_scan);
+	
+	if (bget)
+	{
+		mgr_parm_set_sync_master_slave(mastername->data, GTM_TYPE_GTM_MASTER, (slavetype == GTM_TYPE_GTM_SLAVE ? "'extra'":"'slave'"), true);
+	}
 }
