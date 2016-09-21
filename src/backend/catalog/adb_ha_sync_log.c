@@ -22,6 +22,7 @@
 #include "nodes/nodeFuncs.h"
 #include "nodes/pg_list.h"
 #include "pgxc/pgxc.h"
+#include "storage/bufmgr.h"
 #include "tcop/pquery.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -103,6 +104,8 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	} PG_CATCH_HOLD();
 	{
 		errdump();
+		LWLockReleaseAll();
+		UnlockBuffers();
 		schema_name = (Datum) 0;
 	} PG_END_TRY_HOLD();
 	
@@ -464,6 +467,12 @@ WalkerMultiQueryPortal(Portal portal)
 					result = true;
 					break;
 			}
+		} else
+		if (IsA(node, VariableSetStmt))
+		{
+			VariableSetStmt *stmt = (VariableSetStmt *) node;
+			if (pg_strcasecmp(stmt->name, "search_path") == 0)
+				result = false;
 		}
 	}
 
