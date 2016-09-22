@@ -279,6 +279,8 @@ IsSharedRelation(Oid relationId)
 #ifdef ADB
 		relationId == AdbHaSyncLogRelationId ||
 		relationId == AdbHaSyncLogOidIndexId ||
+		relationId == AdbHaSyncLogToastTable ||
+		relationId == AdbHaSyncLogToastIndex ||
 #endif
 		relationId == DbRoleSettingRelationId)
 		return true;

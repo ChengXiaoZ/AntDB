@@ -55,5 +55,9 @@ DECLARE_TOAST(pg_shdescription, 2846, 2847);
 DECLARE_TOAST(pg_db_role_setting, 2966, 2967);
 #define PgDbRoleSettingToastTable 2966
 #define PgDbRoleSettingToastIndex 2967
-
+#ifdef ADB
+DECLARE_TOAST(adb_ha_sync_log, 5028, 5029);
+#define AdbHaSyncLogToastTable 5028
+#define AdbHaSyncLogToastIndex 5029
+#endif
 #endif   /* TOASTING_H */

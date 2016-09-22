@@ -65,7 +65,7 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	char		grammar = ADB_SQL_GRAM_DEFAULT;
 	Datum		values[Natts_adb_ha_sync_log];
 	bool		nulls[Natts_adb_ha_sync_log];
-	Datum		schema_name;
+	volatile Datum schema_name;
 	CommandId	cmdid;
 	TransactionId gxid;
 
