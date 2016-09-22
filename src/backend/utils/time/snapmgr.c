@@ -1269,6 +1269,7 @@ SetGlobalSnapshot(StringInfo input_message)
 	/* TODO */
 }
 
+#ifdef DEBUG_ADB
 static void
 OutputGlobalSnapshot(Snapshot snapshot)
 {
@@ -1299,6 +1300,7 @@ OutputGlobalSnapshot(Snapshot snapshot)
 		(errmsg("%s", buf.data)));
 	pfree(buf.data);
 }
+#endif
 
 /*
  * Entry of snapshot obtention for Postgres-XC node
@@ -1311,7 +1313,9 @@ GetGlobalSnapshot(Snapshot snapshot)
 	{
 		GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
 	}
+#ifdef DEBUG_ADB
 	OutputGlobalSnapshot(GlobalSnapshot);
+#endif
 
 	return GlobalSnapshot;
 }
