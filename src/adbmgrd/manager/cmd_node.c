@@ -83,7 +83,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 static void mgr_reload_conf(Oid hostoid, char *nodepath);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport);
-static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
+static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, bool bgetextra);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static bool is_node_running(char *hostaddr, int32 hostport);
 static char *get_temp_file_name(void);
@@ -1642,11 +1642,11 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_node->nodetype = CNDN_TYPE_DATANODE_MASTER;
 		mgr_node->nodemasternameoid = 0;
 		heap_inplace_update(noderel, aimtuple);
-		/*refresh parm systbl*/
+		/*5.refresh parm systbl*/
 		bgetextra = mgr_check_node_exist_incluster(&dnslavename, nodetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
 		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype, bgetextra);
-		/*5.refresh extra recovery.conf*/
-		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype);
+		/*6.refresh extra recovery.conf*/
+		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype, bgetextra);
 	}
 	/*if stop datanode slave, we should refresh its datanode master's 
 	*postgresql.conf:synchronous_standby_names = '' 
@@ -6189,6 +6189,10 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 	}
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+	if(!getAgentCmdRst->ret)
+	{
+		ereport(LOG, (errmsg("refresh %s %s/postgresql.conf of gtm master fail", hostaddress, cndnPath)));
+	}
 	/*restart gtm extra or slave*/
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
@@ -6247,7 +6251,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 * 2. change the datanode  extra dn1's recovery.conf:host,port
 * 3. restart datanode extra dn1
 */
-static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype)
+static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, bool bgetextra)
 {
 	StringInfoData infosendmsg;
 	HeapScanDesc rel_scan;
@@ -6263,6 +6267,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	ScanKeyData key[2];
 	char nodetype;
 	NameData nodename;
+	char *strlabel;
 
 
 	initStringInfo(&infosendmsg);
@@ -6271,16 +6276,29 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	Assert(mgr_node_master);
 	masterhostOid = mgr_node_master->nodehost;
 	namecpy(&nodename,&(mgr_node_master->nodename));
+	nodetype = (aimtuplenodetype == CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
+	strlabel = (nodetype == CNDN_TYPE_DATANODE_EXTRA ? "extra":"slave");
 	/*1.refresh master's postgresql.conf*/
 	resetStringInfo(&(getAgentCmdRst->description));
-	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+	if(bgetextra)
+	{
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strlabel, &infosendmsg);
+	}
+	else
+	{
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+	}
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPath, &infosendmsg, masterhostOid, getAgentCmdRst);
 	if(!getAgentCmdRst->ret)
 	{
 		ereport(LOG, (errmsg("refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename))));
 	}
+	if (!bgetextra)
+	{
+		pfree(infosendmsg.data);
+		return;
+	}
 	/*2.update datanode extra/slave nodemasternameoid, refresh recovery.conf, restart the node*/
-	nodetype = (aimtuplenodetype == CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
 		,BTEqualStrategyNumber
