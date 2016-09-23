@@ -580,6 +580,7 @@ text_tonumber(PG_FUNCTION_ARGS)
 	if (!txt)
 		PG_RETURN_NULL();
 
+	RETURN_NULL_IF_EMPTY_INPUT(txt);
 	RETURN_NULL_IF_EMPTY_INPUT(fmt);
 
 	if (!fmt)
