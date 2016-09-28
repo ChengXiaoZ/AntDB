@@ -28,6 +28,7 @@
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/timestamp.h"
@@ -35,6 +36,8 @@
 extern bool enable_adb_ha_sync;
 extern bool enable_adb_ha_sync_select;
 extern char *adb_ha_param_delimiter;
+
+static MemoryContext AdbHaSyncLogContext = NULL;
 
 static int time2tm(TimeADT time, struct pg_tm * tm, fsec_t *fsec);
 static int timetz2tm(TimeTzADT *time, struct pg_tm * tm, fsec_t *fsec, int *tzp);
@@ -65,9 +68,10 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	char		grammar = ADB_SQL_GRAM_DEFAULT;
 	Datum		values[Natts_adb_ha_sync_log];
 	bool		nulls[Natts_adb_ha_sync_log];
-	volatile Datum schema_name;
 	CommandId	cmdid;
 	TransactionId gxid;
+	char		*schemaname;
+	MemoryContext oldContext;
 
 	if (!CanAdbHaSync())
 		return ;
@@ -86,6 +90,19 @@ AddAdbHaSyncLog(TimestampTz create_time,
 			break;
 	}
 
+	if (AdbHaSyncLogContext == NULL)
+	{
+		AdbHaSyncLogContext = AllocSetContextCreate(TopMemoryContext,
+													"AdbHaSyncLogContext",
+													ALLOCSET_DEFAULT_MINSIZE,
+													ALLOCSET_DEFAULT_INITSIZE,
+													ALLOCSET_DEFAULT_MAXSIZE);
+	} else
+	{
+		MemoryContextResetAndDeleteChildren(AdbHaSyncLogContext);
+	}
+
+	oldContext = MemoryContextSwitchTo(AdbHaSyncLogContext);
 	MemSet(values, 0, sizeof(values));
 	MemSet(nulls, false, sizeof(nulls));
 
@@ -98,21 +115,16 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	values[Anum_adb_ha_sync_log_sql_gram - 1] = CharGetDatum(grammar);	
 	values[Anum_adb_ha_sync_log_sql_kind - 1] = CharGetDatum(sql_kind);
 
-	PG_TRY_HOLD();
+	schemaname = get_current_schema();
+	if (schemaname == NULL)
 	{
-		schema_name = DirectFunctionCall1(current_schema, (Datum)0);
-	} PG_CATCH_HOLD();
-	{
-		errdump();
-		LWLockReleaseAll();
-		UnlockBuffers();
-		schema_name = (Datum) 0;
-	} PG_END_TRY_HOLD();
-	
-	if (schema_name == (Datum) 0)
 		nulls[Anum_adb_ha_sync_log_sql_schema - 1] = true;
-	else
-		values[Anum_adb_ha_sync_log_sql_schema - 1] = schema_name;
+	} else
+	{
+		NameData	schemadata;
+		namestrcpy(&schemadata, (const char *) schemaname);
+		values[Anum_adb_ha_sync_log_sql_schema - 1] = NameGetDatum(&schemadata);
+	}
 
 	if (query_sql)
 		values[Anum_adb_ha_sync_log_query_sql - 1] = CStringGetTextDatum(query_sql);
@@ -143,6 +155,13 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	CatalogUpdateIndexes(adbharel, htup);
 
 	heap_close(adbharel, RowExclusiveLock);
+
+	(void)MemoryContextSwitchTo(oldContext);
+
+#ifdef DEBUG_ADB
+	MemoryContextStats(AdbHaSyncLogContext);
+#endif
+	MemoryContextResetAndDeleteChildren(AdbHaSyncLogContext);
 }
 
 static int

@@ -47,6 +47,10 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
+#ifdef ADB
+#include "catalog/namespace.h"
+#endif
+
 /* Hook for plugins to get control in get_attavgwidth() */
 get_attavgwidth_hook_type get_attavgwidth_hook = NULL;
 
@@ -2192,6 +2196,21 @@ getBaseTypeAndTypmod(Oid typid, int32 *typmod)
 #ifdef PGXC
 
 #ifdef ADB
+char *
+get_current_schema(void)
+{
+	List	   *search_path = fetch_search_path(false);
+	char	   *nspname;
+
+	if (search_path == NIL)
+		return NULL;
+	nspname = get_namespace_name(linitial_oid(search_path));
+	list_free(search_path);
+	if (!nspname)
+		return NULL;
+	return nspname;
+}
+
 /*
  * get_namespaceid
  *	  Given a namespace name, look up the namespace OID.

@@ -144,6 +144,7 @@ extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
 #ifdef PGXC
 #ifdef ADB
+extern char *get_current_schema(void);
 extern Oid	get_namespaceid(const char *nspname);
 extern Oid	get_typ_namespace(Oid typid);
 extern Oid	get_typname_typid(const char *typname, Oid typnamespace);
