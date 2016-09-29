@@ -490,7 +490,7 @@ WalkerMultiQueryPortal(Portal portal)
 		if (IsA(node, VariableSetStmt))
 		{
 			VariableSetStmt *stmt = (VariableSetStmt *) node;
-			if (pg_strcasecmp(stmt->name, "search_path") == 0)
+			if (stmt->name != NULL && pg_strcasecmp(stmt->name, "search_path") == 0)
 				result = false;
 		}
 	}

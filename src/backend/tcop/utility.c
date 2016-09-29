@@ -973,7 +973,7 @@ standard_ProcessUtility(Node *parsetree,
 				 * send this query to backend nodes, it is just bypassed by the backend.
 				 * And we can't send "grammar".
 				 */
-				if (strcmp(stmt->name, "grammar") == 0)
+				if (stmt->name !=NULL && strcmp(stmt->name, "grammar") == 0)
 				{
 					/* nothing to do */
 				}else if (stmt->is_local)
