@@ -8411,10 +8411,6 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 	 * the aggregate call inside final function call, so as to get finalised
 	 * results at the Coordinator
 	 */
-#ifndef ADB
-	/*
-	 * Since bug #15046, we skip this code while under ADB develop environment.
-	 */
 	if (context->finalise_aggs)
 	{
 		HeapTuple			aggTuple;
@@ -8435,7 +8431,6 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 		}
 		ReleaseSysCache(aggTuple);
 	}
-#endif
 #endif /* PGXC */
 
 	appendStringInfo(buf, "%s(%s",

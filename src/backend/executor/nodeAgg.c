@@ -1827,16 +1827,11 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 * For PGXC final and collection functions are used to combine results at Coordinator,
 		 * disable those for Datanode
 		 */
-#ifndef ADB
-		/*
-		 * Since bug #15046, we skip this code while under ADB develop environment.
-		 */
 		if (IS_PGXC_DATANODE)
 		{
 			peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
 			peraggstate->collectfn_oid = collectfn_oid = InvalidOid;
 		}
-#endif
 #endif /* PGXC */
 		/* Check that aggregate owner has permission to call component fns */
 		{
