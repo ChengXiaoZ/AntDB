@@ -27,7 +27,6 @@ FROM pg_catalog.mgr_parm;
 
 CREATE VIEW adbmgr.updateparm AS
 SELECT
-	updateparmparmtype		AS	parmtype,
 	updateparmnodename		AS	nodename,
 	CASE updateparmnodetype
 		WHEN 'c' THEN 'coordinator'::text

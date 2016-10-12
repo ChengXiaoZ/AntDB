@@ -138,7 +138,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword> PASSWORD CLEAN RESET
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
-%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F
+%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -801,6 +801,17 @@ AddUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	|	SET GTM opt_gtm_inner_type Ident set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force= true;
 				$$ = (Node*)node;
 		}
 	| SET DATANODE opt_dn_inner_type set_ident set_parm_general_options
@@ -810,6 +821,17 @@ AddUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| SET DATANODE opt_dn_inner_type set_ident set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
 				$$ = (Node*)node;
 		}
 	| SET COORDINATOR MASTER set_ident set_parm_general_options
@@ -819,6 +841,17 @@ AddUpdataparmStmt:
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| SET COORDINATOR MASTER set_ident set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
 				$$ = (Node*)node;
 		}
 		;
@@ -830,6 +863,17 @@ ResetUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	|	RESET GTM opt_gtm_inner_type Ident set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
 				$$ = (Node*)node;
 		}
 	| RESET DATANODE opt_dn_inner_type set_ident set_parm_general_options
@@ -839,6 +883,17 @@ ResetUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| RESET DATANODE opt_dn_inner_type set_ident set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
 				$$ = (Node*)node;
 		}
 	| RESET COORDINATOR MASTER set_ident set_parm_general_options
@@ -848,6 +903,17 @@ ResetUpdataparmStmt:
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| RESET COORDINATOR MASTER set_ident set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
 				$$ = (Node*)node;
 		}
 		;
@@ -1801,6 +1867,7 @@ unreserved_keyword:
 	| F
 	| FAILOVER
 	| FAST
+	| FORCE
 	| GET_CLUSTER_FOURITEM
 	| GET_CLUSTER_HEADPAGE_LINE
 	| GET_CLUSTER_SUMMARY

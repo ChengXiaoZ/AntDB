@@ -5769,7 +5769,7 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoi
 * the parameters which need refresh for pg_hba.conf
 * gtm : include all gtm master/slave/extra ip and all coordinators ip and datanode masters/slave/extra ip
 * coordinator: include all coordinators ip
-* datanode master: include all coordinators ip
+* datanode master: include all coordinators ip and the master's slave ip and extra ip
 */
 void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo infosendhbamsg)
 {

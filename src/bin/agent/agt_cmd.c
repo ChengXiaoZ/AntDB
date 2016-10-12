@@ -29,7 +29,7 @@
 
 static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VERSION);
 static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg);
-static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info);
+static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bforce);
 static void writefile(char *path, ConfInfo *info);
 static void writehbafile(char *path, HbaInfo *info);
 static bool copyFile(const char *targetFileWithPath, const char *sourceFileWithPath);
@@ -100,6 +100,9 @@ void do_agent_command(StringInfo buf)
 		break;
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD:
 		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, buf);
+		break;
+	case AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE:
+		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE, buf);
 		break;
 	case AGT_CMD_CNDN_RENAME_RECOVERCONF:
 		cmd_rename_recovery(buf);
@@ -428,6 +431,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	char *ptmp;
 	char *strconf = "# PostgreSQL recovery config file";
 	char buf[1024];
+	bool bforce = false;
 	ConfInfo *info,
 			*infohead;
 	FILE *create_recovery_file;
@@ -453,8 +457,10 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	/*get datapath*/
 	strcpy(datapath, rec_msg_string);
 	/*check file exists*/
-	if (AGT_CMD_CNDN_REFRESH_PGSQLCONF == cmdtype || AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD == cmdtype)
+	if (AGT_CMD_CNDN_REFRESH_PGSQLCONF == cmdtype || AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD == cmdtype || AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE == cmdtype)
 	{
+		if (AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE == cmdtype)
+			bforce = true;
 		appendStringInfo(&pgconffile, "%s/postgresql.conf", datapath);
 		if(access(pgconffile.data, F_OK) !=0 )
 		{
@@ -519,7 +525,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 		value = &(infoparastr.data[infoparastr.cursor]);
 		/*refresh the infoparastr.cursor*/
 		infoparastr.cursor = infoparastr.cursor + strlen(value) + 1;
-		cmd_refresh_confinfo(key, value, info);
+		cmd_refresh_confinfo(key, value, info, bforce);
 	}
 	
 	/*use the new info list to refresh the postgresql.conf*/
@@ -555,7 +561,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 * the info is struct list for the content of postgresql , use key value to refresh info 
 *   list, if key not in info list, add the newlistnode to info
 */
-static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info)
+static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bforce)
 {
 	bool getkey = false;
 	int diffvalue;
@@ -566,7 +572,7 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info)
 	/*use (key, value) to refresh info list*/
 	while(info)
 	{
-		if(info->name != '\0' && strcmp(key, info->name) == 0)
+		if(info->name != '\0' && strcmp(key, info->name) == 0 && !bforce)
 		{
 			getkey = true;
 			diffvalue = strlen(value) - info->value_len;
@@ -594,13 +600,23 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info)
 				/*refresh the struct info*/
 				info->value_len = strlen(value);
 			}
+			break;
 		}
+		else if (bforce && info->name != '\0' && strcmp(key, info->name) == 0)
+		{
+			getkey = true;
+			infopre->next = info->next;
+			pfree(info);
+			info = info->next;
+			break;
+		}
+		
 		infopre = info;
 		info = info->next;
 	}
 
 	/*append the (key,value) to the info list*/
-	if (!getkey)
+	if (!getkey && !bforce)
 	{
 		ConfInfo *newinfo = (ConfInfo *)palloc(sizeof(ConfInfo)+1);
 		newname = (char *)palloc(strlen(key)+1);

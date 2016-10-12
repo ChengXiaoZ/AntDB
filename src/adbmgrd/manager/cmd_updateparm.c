@@ -97,8 +97,8 @@ struct enumstruct
 
 static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
-static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus);
-static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus);
+static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus, bool bforce);
+static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce);
 static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
@@ -157,30 +157,33 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
 		}
-		/*check the parameter is right for the type node of postgresql.conf*/
-		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
-		if (PGC_STRING == vartype)
+		if (!node->is_force)
 		{
-			/*if the value of key is string, it need use signle quota*/
-			len = strlen(value.data);
-			if (value.data[0] != '\'' || value.data[len-1] != '\'')
+			/*check the parameter is right for the type node of postgresql.conf*/
+			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+			if (PGC_STRING == vartype)
 			{
-				valuetmp.data[0]='\'';
-				strcpy(valuetmp.data+sizeof(char),value.data);
-				valuetmp.data[1+len]='\'';
-				valuetmp.data[2+len]='\0';
-				if (len > sizeof(value.data)-2-1)
+				/*if the value of key is string, it need use signle quota*/
+				len = strlen(value.data);
+				if (value.data[0] != '\'' || value.data[len-1] != '\'')
 				{
-					valuetmp.data[sizeof(value.data)-2]='\'';
-					valuetmp.data[sizeof(value.data)-1]='\0';
+					valuetmp.data[0]='\'';
+					strcpy(valuetmp.data+sizeof(char),value.data);
+					valuetmp.data[1+len]='\'';
+					valuetmp.data[2+len]='\0';
+					if (len > sizeof(value.data)-2-1)
+					{
+						valuetmp.data[sizeof(value.data)-2]='\'';
+						valuetmp.data[sizeof(value.data)-1]='\0';
+					}
+					namestrcpy(&value, valuetmp.data);
 				}
-				namestrcpy(&value, valuetmp.data);
 			}
-		}
-		/*check the key's value*/
-		if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
-		{
-			return;
+			/*check the key's value*/
+			if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
+			{
+				return;
+			}
 		}
 		/*check the parm exists already in mgr_updateparm systbl*/
 		insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, &nodename, &key, value.data);
@@ -189,7 +192,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 		else if (PARM_NEED_UPDATE == insertparmstatus)
 		{
 			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus);
+			mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus, false);
 			continue;
 		}
 		datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
@@ -203,7 +206,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 		CatalogUpdateIndexes(rel_updateparm, newtuple);
 		heap_freetuple(newtuple);
 		/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-		mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus);
+		mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus, false);
 	}
 
 	/*close relation */
@@ -532,7 +535,7 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 * the type of the key does not need restart to make effective
 */
 
-static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *parmkey, char *parmvalue, int effectparmstatus)
+static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce)
 {
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
@@ -572,7 +575,7 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 			nodepath = TextDatumGetCString(datumpath);
 			ereport(LOG,
 				(errmsg("send parameter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
-			mgr_updateparm_send_parm(&infosendmsg, &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
+			mgr_updateparm_send_parm(&infosendmsg, &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus, bforce);
 		}
 		heap_endscan(rel_scan);
 	}
@@ -606,7 +609,7 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 		/*send the parameter to node path, then reload it*/
 		ereport(LOG,
 			(errmsg("send parameter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
-		mgr_updateparm_send_parm(&infosendmsg , &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus);
+		mgr_updateparm_send_parm(&infosendmsg , &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus, bforce);
 		heap_freetuple(tuple);
 	}
 	pfree(infosendmsg.data);
@@ -616,16 +619,27 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 /*
 * send parameter to node, refresh its postgresql.conf, if the guccontent of parameter is superuser/user/sighup, will reload the parameter
 */
-static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus)
+static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce)
 {	
 	/*send the parameter to node path, then reload it*/
 	resetStringInfo(infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendmsg);
 	if(effectparmstatus == PGC_SIGHUP)
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+	{
+		if (!bforce)
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+		else
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+	}
 	else
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+	{
+		if (!bforce)
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+		else
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+	}
+
 	if (getAgentCmdRst->ret != true)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE)
@@ -721,7 +735,8 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
 		}
 		/*check the parameter is right for the type node of postgresql.conf*/
-		mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+		if (!node->is_force)
+			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
 		/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited*/
 		if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0)
 		{
@@ -744,7 +759,10 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 			}
 			heap_endscan(rel_scan);
 			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus);
+			if (!node->is_force)
+				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
+			else
+				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 		}
 		/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME, refresh the postgresql.conf of the node, and delete the tuple in mgr_updateparm which 
 		*nodetype and nodename is given; if MACRO_STAND_FOR_ALL_NODENAME in mgr_updateparm has the same nodetype, insert one tuple to *mgr_updateparm for record
@@ -815,8 +833,10 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				heap_freetuple(newtuple);
 			}
 			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus);
-			
+			if (!node->is_force)
+				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
+			else
+				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 		}
 	}
 
