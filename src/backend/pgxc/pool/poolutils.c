@@ -37,6 +37,8 @@
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 
+volatile bool need_reload_pooler = false;
+
 /*
  * pgxc_pool_check
  *
@@ -385,9 +387,10 @@ void
 HandlePoolerReload(void)
 {
 	MemoryContext old_context;
+	ResourceOwner volatile reload_ro;
 
 	/* A Datanode has no pooler active, so do not bother about that */
-	if (IS_PGXC_DATANODE)
+	if (IS_PGXC_DATANODE || !IsNormalProcessingMode() || MessageContext == NULL)
 		return;
 
 	/* Abort existing xact if any */
@@ -400,13 +403,20 @@ HandlePoolerReload(void)
 	old_context = MemoryContextSwitchTo(TopMemoryContext);
 
 	/* Need to be able to look into catalogs */
-	CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForPoolerReload");
+	CurrentResourceOwner = reload_ro = ResourceOwnerCreate(CurrentResourceOwner, "ForPoolerReload");
 
-	/* Reinitialize session, while old pooler connection is active */
-	InitMultinodeExecutor(true);
+	PG_TRY();
+	{
+		/* Reinitialize session, while old pooler connection is active */
+		InitMultinodeExecutor(true);
 
-	/* And reconnect to pool manager */
-	PoolManagerReconnect();
+		/* And reconnect to pool manager */
+		PoolManagerReconnect();
+	}PG_CATCH();
+	{
+		CurrentResourceOwner = ResourceOwnerGetParent(reload_ro);
+		PG_RE_THROW();
+	}PG_END_TRY();
 
 	/* Send a message back to client regarding session being reloaded */
     ereport(WARNING,
@@ -419,7 +429,8 @@ HandlePoolerReload(void)
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
-	CurrentResourceOwner = NULL;
+	CurrentResourceOwner = ResourceOwnerGetParent(reload_ro);
+	ResourceOwnerDelete(reload_ro);
 
 	MemoryContextSwitchTo(old_context);
 }

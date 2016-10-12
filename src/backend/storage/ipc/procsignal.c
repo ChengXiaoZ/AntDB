@@ -269,7 +269,7 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 #ifdef PGXC
 	if (CheckProcSignal(PROCSIG_PGXCPOOL_RELOAD))
-		HandlePoolerReload();
+		need_reload_pooler = true;
 #endif
 
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_DATABASE))

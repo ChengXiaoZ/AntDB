@@ -101,6 +101,7 @@
 #include "access/rxact_mgr.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
+#include "pgxc/poolutils.h"
 #include "catalog/adb_ha_sync_log.h"
 #include "nodes/nodeFuncs.h"
 #endif /* ADB */
@@ -4384,7 +4385,13 @@ PostgresMain(int argc, char *argv[],
 	/* If this postgres is launched from another Coord, do not initialize handles. skip it */
 	if (!am_walsender && IS_PGXC_COORDINATOR && !IsPoolHandle())
 	{
+#ifdef ADB
+		ResourceOwner reload_ro = ResourceOwnerCreate(CurrentResourceOwner, "ForPGXCNodes");
+		CurrentResourceOwner = reload_ro;
+		need_reload_pooler = false;
+#else /* ADB */
 		CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForPGXCNodes");
+#endif /* ADB */
 
 		InitMultinodeExecutor(false);
 		if (!IsConnFromCoord())
@@ -4403,7 +4410,12 @@ PostgresMain(int argc, char *argv[],
 		ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
 		ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
 		ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
+#ifdef ADB
+		CurrentResourceOwner = ResourceOwnerGetParent(reload_ro);
+		ResourceOwnerDelete(reload_ro);
+#else
 		CurrentResourceOwner = NULL;
+#endif /* ADB */
 
 		/* If we exit, first try and clean connections and send to pool */
 		on_proc_exit (PGXCNodeCleanAndRelease, 0);
@@ -4569,6 +4581,12 @@ PostgresMain(int argc, char *argv[],
 		{
 			clear_all_handles();
 			release_handles();
+		}
+		if(need_reload_pooler)
+		{
+			need_reload_pooler = false;
+			if(!am_walsender)
+				HandlePoolerReload();
 		}
 #endif
 		/*

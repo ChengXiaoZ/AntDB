@@ -29,6 +29,8 @@
 #define POOL_CHECK_SUCCESS					0
 #define POOL_CHECK_FAILED					1
 
+extern volatile bool need_reload_pooler;
+
 void CleanConnection(CleanConnStmt *stmt);
 void DropDBCleanConnection(char *dbname);
 
