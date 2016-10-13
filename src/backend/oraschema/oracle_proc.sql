@@ -277,24 +277,6 @@ CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date, oracle.date)
     LANGUAGE SQL
     RETURNS NULL ON NULL INPUT;
 
-CREATE OR REPLACE FUNCTION oracle.date_pl_interval(oracle.date, interval)
-    RETURNS oracle.date
-    AS $$SELECT ($1 + $2)::oracle.date;$$
-    LANGUAGE SQL
-    RETURNS NULL ON NULL INPUT;
-
-CREATE OR REPLACE FUNCTION oracle.interval_pl_date(interval, oracle.date)
-    RETURNS oracle.date
-    AS $$SELECT ($1 + $2)::oracle.date;$$
-    LANGUAGE SQL
-    RETURNS NULL ON NULL INPUT;
-
-CREATE OR REPLACE FUNCTION oracle.date_mi_interval(oracle.date, interval)
-    RETURNS oracle.date
-    AS $$SELECT ($1 - $2)::oracle.date;$$
-    LANGUAGE SQL
-    RETURNS NULL ON NULL INPUT;
-
 /*
  * Function: to_date
  * Parameter Type: (text)

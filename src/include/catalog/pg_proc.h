@@ -5081,6 +5081,10 @@ DATA(insert OID = 5233 (  text_toint8        ORANSP PGUID 12 1 0 0 0 f f f f t f
 #define TEXTTOINT8OID		5233
 DESCR("convert text to bigint");
 
+DATA(insert OID = 5300 ( ora_date_pl_interval ORANSP PGUID 12 1 0 0 0 f f f f t f s 2 0 3970 "3970 1186" _null_ _null_ _null_ _null_ timestamptz_pl_interval _null_ _null_ _null_ ));
+DATA(insert OID = 5301 ( interval_pl_ora_date ORANSP PGUID 14 1 0 0 0 f f f f t f s 2 0 3970 "1186 3970" _null_ _null_ _null_ _null_	"select $2 + $1" _null_ _null_ _null_ ));
+DATA(insert OID = 5302 ( ora_date_mi_interval ORANSP PGUID 12 1 0 0 0 f f f f t f s 2 0 3970 "3970 1186" _null_ _null_ _null_ _null_ timestamptz_mi_interval _null_ _null_ _null_ ));
+
 #endif
 
 #ifdef ADBMGRD
