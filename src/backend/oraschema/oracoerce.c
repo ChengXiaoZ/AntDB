@@ -219,6 +219,16 @@ static const OraPrecedence OraPrecedenceMap[] =
 
 static const int NumOraPrecedenceMap = lengthof(OraPrecedenceMap);
 
+typedef enum OraOperKind
+{
+	ORA_OPER_UNKNOWN,
+	ORA_OPER_ARITHMETIC,
+	ORA_OPER_PATTERN,
+} OraOperKind;
+
+#define IS_ARITHMETIC_OPER(opname)	(get_ora_oper_kind((opname)) == ORA_OPER_ARITHMETIC)
+#define IS_PATTERN_OPER(opname)		(get_ora_oper_kind((opname)) == ORA_OPER_PATTERN)
+
 OraCoerceKind current_coerce_kind = ORA_COERCE_NOUSE;
 
 static Oid ora_default_coerce(Oid sourceTypeId, Oid targetTypeId, bool trunc);
@@ -227,7 +237,7 @@ static Oid ora_function_coerce(Oid sourceTypeId, Oid targetTypeId, bool trunc);
 static int get_precedence(Oid typoid);
 static int ora_type_preferred(Oid typoid1, Oid typoid2);
 static bool is_character_expr(Node *expr);
-static bool is_arithmetic_operator(List *opname);
+static OraOperKind get_ora_oper_kind(List *opname);
 
 Oid
 ora_find_coerce_func(Oid sourceTypeId, Oid targetTypeId)
@@ -330,13 +340,13 @@ is_character_expr(Node *expr)
 	return IS_CHARACTER_TYPE(typeId);
 }
 
-static bool
-is_arithmetic_operator(List *opname)
+static OraOperKind
+get_ora_oper_kind(List *opname)
 {
 	char *nspname = NULL;
 	char *objname = NULL;
 	int objlen = 0;
-	bool result = false;
+	OraOperKind result = ORA_OPER_UNKNOWN;
 
 	DeconstructQualifiedName(opname, &nspname, &objname);
 
@@ -350,15 +360,23 @@ is_arithmetic_operator(List *opname)
 				strncmp(objname, "-", objlen) == 0 ||
 				strncmp(objname, "*", objlen) == 0 ||
 				strncmp(objname, "/", objlen) == 0)
-				result = true;
+				result = ORA_OPER_ARITHMETIC;
+			break;
+		case 2:
+			if (strncmp(objname, "~~", objlen) == 0)
+				result = ORA_OPER_PATTERN;
+			break;
+		case 3:
+			if (strncmp(objname, "!~~", objlen) == 0)
+				result = ORA_OPER_PATTERN;
 			break;
 		default:
-			result = false;
 			break;
 	}
 
 	return result;
 }
+
 
 void
 try_coerce_in_operator(ParseState *pstate,	/* in */
@@ -373,7 +391,6 @@ try_coerce_in_operator(ParseState *pstate,	/* in */
 	Oid		ltypeId = InvalidOid;
 	Oid		rtypeId = InvalidOid;
 	Oid		coerce_func_oid = InvalidOid;
-	bool	arithmetic_op = false;
 
 	Assert(ret_lexpr && ret_rexpr);
 	if (!IsOracleParseGram(pstate) ||
@@ -387,13 +404,13 @@ try_coerce_in_operator(ParseState *pstate,	/* in */
 
 	ltypeId = exprType(lexpr);
 	rtypeId = exprType(rexpr);
-	arithmetic_op = is_arithmetic_operator(opname);
 
 	/*
 	 * convert character data to numeric data
 	 * during arithmetic operations.
 	 */
-	if (arithmetic_op && is_character_expr(lexpr) && is_character_expr(rexpr))
+	if (IS_ARITHMETIC_OPER(opname) &&
+		(is_character_expr(lexpr) || is_character_expr(rexpr)))
 	{
 		coerce_func_oid = ora_operator_coerce(ltypeId, NUMERICOID, false);
 		if (OidIsValid(coerce_func_oid))
@@ -407,6 +424,38 @@ try_coerce_in_operator(ParseState *pstate,	/* in */
 			*ret_lexpr = lexpr;
 
 		coerce_func_oid = ora_operator_coerce(rtypeId, NUMERICOID, false);
+		if (OidIsValid(coerce_func_oid))
+			*ret_rexpr = (Node *)makeFuncExpr(coerce_func_oid,
+											  get_func_rettype(coerce_func_oid),
+											  list_make1(rexpr),
+											  InvalidOid,
+											  InvalidOid,
+											  COERCE_EXPLICIT_CALL);
+		else
+			*ret_rexpr = rexpr;
+
+		return ;
+	}
+
+	/*
+	 * convert numeric data to character data
+	 * during pattern operations.
+	 */
+	if (IS_PATTERN_OPER(opname) &&
+		(!is_character_expr(lexpr) || !is_character_expr(rexpr)))
+	{
+		coerce_func_oid = ora_function_coerce(ltypeId, TEXTOID, false);
+		if (OidIsValid(coerce_func_oid))
+			*ret_lexpr = (Node *)makeFuncExpr(coerce_func_oid,
+											  get_func_rettype(coerce_func_oid),
+											  list_make1(lexpr),
+											  InvalidOid,
+											  InvalidOid,
+											  COERCE_EXPLICIT_CALL);
+		else
+			*ret_lexpr = lexpr;
+
+		coerce_func_oid = ora_function_coerce(rtypeId, TEXTOID, false);
 		if (OidIsValid(coerce_func_oid))
 			*ret_rexpr = (Node *)makeFuncExpr(coerce_func_oid,
 											  get_func_rettype(coerce_func_oid),
