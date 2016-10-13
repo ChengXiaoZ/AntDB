@@ -1285,7 +1285,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	char *zmode;
 	char *cndnname;
 	char *masterhostaddress;
-	char *masterpath;
 	char *mastername;
 	char nodetype;
 	int32 cndnport;
@@ -1296,13 +1295,9 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Oid nodemasternameoid;
 	Oid	tupleOid;
 	Oid	masterhostOid;
-	bool getmaster = false;
 	bool isprimary = false;
 	bool ismasterrunning = 0;
 	bool bgetextra = false;
-	ScanKeyData key[1];
-	HeapScanDesc rel_scan;
-	HeapTuple tuple;
 	HeapTuple mastertuple;
 	HeapTuple gtmmastertuple;
 	NameData dnmastername;
@@ -1648,50 +1643,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*6.refresh extra recovery.conf*/
 		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype, bgetextra);
 	}
-	/*if stop datanode slave, we should refresh its datanode master's 
-	*postgresql.conf:synchronous_standby_names = '' 
-	*/
-	if((AGT_CMD_DN_STOP == cmdtype ||  AGT_CMD_DN_START == cmdtype) && nodetype == CNDN_TYPE_DATANODE_SLAVE && execok)
-	{	
-		/*get datanode master:path, hostoid*/
-		ScanKeyInit(&key[0],
-			Anum_mgr_node_nodetype
-			,BTEqualStrategyNumber
-			,F_CHAREQ
-			,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
-		rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
-		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			Assert(mgr_node);
-			if(nodemasternameoid == HeapTupleGetOid(tuple))
-			{
-				hostOid = mgr_node->nodehost;
-				datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
-				if(isNull)
-				{
-					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-						, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-						, errmsg("column cndnpath is null")));
-				}
-				masterpath = TextDatumGetCString(datumPath);
-				getmaster = true;
-				break;
-			}
-		}
-		heap_endscan(rel_scan);
-		
-		if(getmaster)
-		{
-			resetStringInfo(&(getAgentCmdRst->description));
-			resetStringInfo(&infosendmsg);
-			if(AGT_CMD_DN_STOP == cmdtype)
-				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
-			else
-				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, masterpath, &infosendmsg, hostOid, getAgentCmdRst);
-		}
-	}
+
 	/*gtm failover*/
 	if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype && execok)
 	{
@@ -2915,7 +2867,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		/* step 3: update datanode master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
 								&infosendmsg,
@@ -3437,7 +3389,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		/* step 3: update coordinator master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
 								&infosendmsg,
@@ -4125,7 +4077,7 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 				, errmsg("column nodepath is null")));
 		}
 
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", dnaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", dnusername, dnaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 							TextDatumGetCString(datumPath),
 							&infosendmsg,
@@ -4193,7 +4145,7 @@ static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 			, errmsg("column nodepath is null")));
 	}
 
-	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", dnaddr, 32, "trust", &infosendmsg);
+	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", dnusername, dnaddr, 32, "trust", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 							TextDatumGetCString(datumPath),
 							&infosendmsg,
@@ -4767,7 +4719,7 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
 		}
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo->nodeaddr,
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo->nodeusername, appendnodeinfo->nodeaddr,
 										32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								TextDatumGetCString(datumPath),
@@ -5793,10 +5745,13 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 			Assert(mgr_node);
 			/*hostoid*/
 			hostoid = mgr_node->nodehost;
+			/*database user for this coordinator*/
+			cnuser = get_hostuser_from_hostoid(hostoid);
 			/*get coordinator address*/
 			cnaddress = get_hostaddress_from_hostoid(hostoid);
 			if (CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
-				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+			pfree(cnuser);
 			pfree(cnaddress);
 		}
 		heap_endscan(rel_scan);
@@ -5845,10 +5800,13 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 				hostoid = mgr_node->nodehost;
 				/*get address*/
 				cnaddress = get_hostaddress_from_hostoid(hostoid);
+				/*database user for this coordinator*/
+				cnuser = get_hostuser_from_hostoid(hostoid);
 				if (GTM_TYPE_GTM_MASTER == nodetype)
 					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
 				else
-					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				pfree(cnuser);
 				pfree(cnaddress);
 			}
 			else if ((CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype || CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype 
