@@ -259,11 +259,12 @@ ora_date_out(PG_FUNCTION_ARGS)
 			   *tm = &tt;
 	fsec_t		fsec;
 	char		buf[MAXDATELEN + 1];
+	int			tzp;
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		EncodeSpecialTimestamp(timestamp, buf);
-	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) == 0)
-		EncodeDateTime(tm, fsec, false, 0, NULL, DateStyle, buf, true);
+	else if (timestamp2tm(timestamp, &tzp, tm, &fsec, NULL, NULL) == 0)
+		EncodeDateTime(tm, fsec, false, tzp, NULL, DateStyle, buf, true);
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
