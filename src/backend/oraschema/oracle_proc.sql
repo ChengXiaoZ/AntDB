@@ -273,19 +273,25 @@ CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, numeric)
 
 CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date, oracle.date)
     RETURNS double precision
-    AS $$SELECT date_part('epoch', ($1::timestamp - $2::timestamp)/3600/24);$$
+    AS $$SELECT date_part('epoch', ($1 - $2)/3600/24);$$
     LANGUAGE SQL
     RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION oracle.date_pl_interval(oracle.date, interval)
     RETURNS oracle.date
-    AS $$SELECT ($1::timestamp + $2)::oracle.date;$$
+    AS $$SELECT ($1 + $2)::oracle.date;$$
     LANGUAGE SQL
     RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION oracle.interval_pl_date(interval, oracle.date)
     RETURNS oracle.date
-    AS $$SELECT ($1 + $2::timestamp)::oracle.date;$$
+    AS $$SELECT ($1 + $2)::oracle.date;$$
+    LANGUAGE SQL
+    RETURNS NULL ON NULL INPUT;
+
+CREATE OR REPLACE FUNCTION oracle.date_mi_interval(oracle.date, interval)
+    RETURNS oracle.date
+    AS $$SELECT ($1 - $2)::oracle.date;$$
     LANGUAGE SQL
     RETURNS NULL ON NULL INPUT;
 

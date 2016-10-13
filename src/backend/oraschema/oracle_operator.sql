@@ -46,3 +46,9 @@ CREATE OPERATOR oracle.+ (
   PROCEDURE = oracle.interval_pl_date
 );
 
+DROP OPERATOR IF EXISTS oracle.- (oracle.date, interval);
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = interval,
+  PROCEDURE = oracle.date_mi_interval
+);
