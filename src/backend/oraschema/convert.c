@@ -485,10 +485,13 @@ text_totimestamp(PG_FUNCTION_ARGS)
 
 	if(fmt)
 	{
-		/* it will return timestamp at session_timezone */
+		/* it will return timestamp at GMT */
 		result = DirectFunctionCall2(to_timestamp,
 									  PG_GETARG_DATUM(0),
 									  PointerGetDatum(fmt));
+
+		/* it will return timestamp at local */
+		result = DirectFunctionCall1(timestamptz_timestamp, result);
 	}
 	else
 	{
@@ -527,7 +530,7 @@ text_totimestamptz(PG_FUNCTION_ARGS)
 
 	if(fmt)
 	{
-		/* it will return timestamp at session_timezone */
+		/* it will return timestamp at GMT */
 		result = DirectFunctionCall2(to_timestamp,
 									  PG_GETARG_DATUM(0),
 									  PointerGetDatum(fmt));
