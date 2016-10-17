@@ -3105,7 +3105,6 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-		errdump();
 	}PG_END_TRY_HOLD();
 
 	if (catcherr)
@@ -3270,7 +3269,6 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-		errdump();
 	}PG_END_TRY_HOLD();
 
 	if (catcherr)
@@ -3581,7 +3579,6 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-		errdump();
 	}PG_END_TRY_HOLD();
 
 	if (catcherr)
@@ -3703,7 +3700,6 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	}PG_CATCH_HOLD();
 	{
 		catcherr = true;
-		errdump();
 	}PG_END_TRY_HOLD();
 
 	if (catcherr)
