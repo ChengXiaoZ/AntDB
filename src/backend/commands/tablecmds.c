@@ -10552,6 +10552,12 @@ BuildRedistribCommands(Oid relid, List *subCmds)
 	Oid		   *new_oid_array;	/* Modified list of Oids */
 	int			new_num, i;	/* Modified number of Oids */
 	ListCell   *item;
+#ifdef ADB
+	Oid			funcid = InvalidOid;
+	int			numatts = 0;
+	int			idx = 0;
+	int16	   *attnums = NULL;
+#endif
 
 	/* Get necessary information about relation */
 	rel = relation_open(redistribState->relid, NoLock);
@@ -10588,11 +10594,22 @@ BuildRedistribCommands(Oid relid, List *subCmds)
 											 NULL,
 											 (AttrNumber *)&(newLocInfo->partAttrNum)
 #ifdef ADB
-											 , NULL
-											 , NULL
-											 , NULL
+											 , &funcid
+											 , &numatts
+											 , &attnums
 #endif
 											 );
+#ifdef ADB
+				newLocInfo->funcid = funcid;
+				if (newLocInfo->funcAttrNums)
+				{
+					pfree(newLocInfo->funcAttrNums);
+					newLocInfo->funcAttrNums = NIL;
+				}
+				for (idx = 0; idx < numatts; idx++)
+					newLocInfo->funcAttrNums = lappend_int(newLocInfo->funcAttrNums,
+															attnums[idx]);
+#endif
 				break;
 			case AT_SubCluster:
 				/* Update new list of nodes */
