@@ -953,6 +953,7 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	Datum datumPath;
 	char *cndnPath;
 	char *cndnnametmp;
+	char *nodetypestr;
 	char nodetype;
 	Oid hostOid,
 		masteroid,
@@ -990,8 +991,10 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	/*check node init or not*/
 	if (mgr_node->nodeinited)
 	{
-		appendStringInfo(&(getAgentCmdRst->description), "the node \"%s\" has inited", cndnnametmp);
+		nodetypestr = mgr_nodetype_str(nodetype);
+		appendStringInfo(&(getAgentCmdRst->description), "%s \"%s\" has been initialized", nodetypestr, cndnnametmp);
 		getAgentCmdRst->ret = false;
+		pfree(nodetypestr);
 		return;
 	}
 	/*get cndnPath from aimtuple*/
@@ -1280,6 +1283,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	char *cndnname;
 	char *masterhostaddress;
 	char *mastername;
+	char *nodetypestr;
 	char nodetype;
 	int32 cndnport;
 	int masternumtmp = 0;
@@ -1312,25 +1316,30 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	isprimary = mgr_node->nodeprimary;
 	/*get the host address for return result*/
 	namestrcpy(&(getAgentCmdRst->nodename), cndnname);
+	/*get node type*/
+	nodetype = mgr_node->nodetype;
+	nodetypestr = mgr_nodetype_str(nodetype);
 	/*check node init or not*/
 	if ((AGT_CMD_CNDN_CNDN_INIT == cmdtype || AGT_CMD_GTM_INIT == cmdtype || AGT_CMD_GTM_SLAVE_INIT == cmdtype ) && mgr_node->nodeinited)
 	{
-		appendStringInfo(&(getAgentCmdRst->description), "the node \"%s\" has inited", cndnname);
+		appendStringInfo(&(getAgentCmdRst->description), "%s \"%s\" has been initialized", nodetypestr, cndnname);
 		getAgentCmdRst->ret = false;
+		pfree(nodetypestr);
 		return;
 	}
 	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype && !mgr_node->nodeinited)
 	{
-		appendStringInfo(&(getAgentCmdRst->description), "the node \"%s\" has not inited", cndnname);
+		appendStringInfo(&(getAgentCmdRst->description), "%s \"%s\" has not been initialized", nodetypestr, cndnname);
 		getAgentCmdRst->ret = false;
+		pfree(nodetypestr);
 		return;
 	}
+	
+	pfree(nodetypestr);
 	/*get the port*/
 	cndnport = mgr_node->nodeport;
 	/*get node master oid*/
 	nodemasternameoid = mgr_node->nodemasternameoid;
-	/*get node type*/
-	nodetype = mgr_node->nodetype;
 	/*get tuple oid*/
 	tupleOid = HeapTupleGetOid(aimtuple);
 	datumPath = heap_getattr(aimtuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
@@ -6123,7 +6132,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	char *strlabel;
 	char aimtuplenodetype;
 	char nodetype;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 
 
 	initStringInfo(&infosendmsg);
@@ -6163,7 +6172,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
-		if(mgr_nodetmp->nodeinited && (mgr_nodetmp->nodetype == CNDN_TYPE_COORDINATOR_MASTER || 
+		if(mgr_nodetmp->nodeincluster && (mgr_nodetmp->nodetype == CNDN_TYPE_COORDINATOR_MASTER || 
 		mgr_nodetmp->nodetype == CNDN_TYPE_DATANODE_MASTER || mgr_nodetmp->nodetype == 
 		CNDN_TYPE_DATANODE_SLAVE || mgr_nodetmp->nodetype == CNDN_TYPE_DATANODE_EXTRA))
 		{
@@ -6225,7 +6234,12 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(nodetype));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,CharGetDatum(true));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
@@ -6283,7 +6297,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	bool isNull;
 	char *cndnPathtmp;
 	char *strtmp;
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 	char nodetype;
 	NameData nodename;
 	char *strlabel;
@@ -6310,7 +6324,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPath, &infosendmsg, masterhostOid, getAgentCmdRst);
 	if(!getAgentCmdRst->ret)
 	{
-		ereport(LOG, (errmsg("refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename))));
+		ereport(WARNING, (errmsg("refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename))));
 	}
 	if (!bgetextra)
 	{
@@ -6328,7 +6342,12 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 		,BTEqualStrategyNumber
 		,F_NAMEEQ
 		,NameGetDatum(&nodename));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,CharGetDatum(true));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
