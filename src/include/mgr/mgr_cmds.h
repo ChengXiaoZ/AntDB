@@ -220,4 +220,5 @@ extern void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, ch
 extern void mgr_parm_alter_sync_master_slave(char *mastername, char mastertype, char *application_name_drop, char slavetypedrop);
 extern void mgr_parmr_update_tuple_nodename_key_nodetype(Relation noderel, Name nodename, char *key, char oldnodetype, char newnodetype);
 extern void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char mastertype, Name slavename, char slavetype, bool bextra);
+extern bool mgr_parm_get_parmvalue(Name nodename, char nodetype, char *key, Name value);
 #endif /* MGR_CMDS_H */

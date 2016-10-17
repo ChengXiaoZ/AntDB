@@ -1596,3 +1596,24 @@ void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char 
 		mgr_parm_set_sync_master_slave(mastername->data, GTM_TYPE_GTM_MASTER, (slavetype == GTM_TYPE_GTM_SLAVE ? "'extra'":"'slave'"), true);
 	}
 }
+
+/*get given nodename nodetype key 's value*/
+bool mgr_parm_get_parmvalue(Name nodename, char nodetype, char *key, Name value)
+{
+	Form_mgr_updateparm mgr_updateparm;
+	HeapTuple tuple;
+	NameData parmname;
+	
+	namestrcpy(&parmname, key);
+	tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(nodename), CharGetDatum(nodetype), NameGetDatum(&parmname));
+	if(HeapTupleIsValid(tuple))
+	{
+		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
+		Assert(mgr_updateparm);
+		namestrcpy(value, NameStr(mgr_updateparm->updateparmvalue));
+		ReleaseSysCache(tuple);
+		return true;
+	}
+	
+	return false;
+}

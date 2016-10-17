@@ -281,25 +281,19 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 	heap_close(rel, RowExclusiveLock);
 	if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
 	{
-		if(mgr_check_node_exist_incluster(&mastername, CNDN_TYPE_DATANODE_MASTER, false))
-		{
-			/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
-			if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
-				mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'slave'", false);
-			else if (CNDN_TYPE_DATANODE_EXTRA == nodetype)
-				mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'extra'", false);
-		}
+		/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
+		if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
+			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'slave'", false);
+		else if (CNDN_TYPE_DATANODE_EXTRA == nodetype)
+			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'extra'", false);
 	}
 	else if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
 	{
-		if(mgr_check_node_exist_incluster(&mastername, GTM_TYPE_GTM_MASTER, false))
-		{
-			/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
-			if (GTM_TYPE_GTM_SLAVE == nodetype)
-				mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'slave'", false);
-			else if (GTM_TYPE_GTM_EXTRA == nodetype)
-				mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'extra'", false);
-		}
+		/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
+		if (GTM_TYPE_GTM_SLAVE == nodetype)
+			mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'slave'", false);
+		else if (GTM_TYPE_GTM_EXTRA == nodetype)
+			mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'extra'", false);
 	}
 		
 	/* Record dependencies on host */
@@ -4947,6 +4941,9 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	char cmdtype = AGT_CMD_DN_FAILOVER;
 	char nodetype;
 	bool nodetypechange = false;
+	NameData value;
+	NameData nodenamedata;
+	
 	if (strcmp(typestr, "slave") == 0)
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
@@ -4957,8 +4954,30 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	}
 	else if (strcmp(typestr, "either") == 0)
 	{
-		nodetype = CNDN_TYPE_DATANODE_SLAVE;
-		nodetypechange = true;
+		namestrcpy(&nodenamedata, nodename);
+		if(mgr_parm_get_parmvalue(&nodenamedata, CNDN_TYPE_DATANODE_MASTER, "synchronous_standby_names", &value))
+		{
+			if (strstr(value.data, "slave") != NULL)
+			{
+				nodetype = CNDN_TYPE_DATANODE_SLAVE;
+				nodetypechange = false;
+			}
+			else if (strstr(value.data, "extra") != NULL)
+			{
+				nodetype = CNDN_TYPE_DATANODE_EXTRA;
+				nodetypechange = false;
+			}
+			else
+			{
+				nodetype = CNDN_TYPE_DATANODE_SLAVE;
+				nodetypechange = true;
+			}
+		}
+		else
+		{
+			nodetype = CNDN_TYPE_DATANODE_SLAVE;
+			nodetypechange = true;
+		}
 	}
 	else
 	{
@@ -6002,6 +6021,13 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	char nodetype = GTM_TYPE_GTM_SLAVE;
 	bool nodetypechange = false;
 	char *nodename = "gtm"; /*just use for input parameter*/
+	NameData value;
+	NameData nodenamedata;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+	Relation rel_node;
+	HeapScanDesc scan;
+	Form_mgr_node mgr_node;
 	
 	if (strcmp(typestr, "slave") == 0)
 	{
@@ -6013,8 +6039,47 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	}
 	else if (strcmp(typestr, "either") == 0)
 	{
-		nodetype = GTM_TYPE_GTM_SLAVE;
-		nodetypechange = true;
+		/*get master-slave sync relation*/
+
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(GTM_TYPE_GTM_MASTER));
+		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+		scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
+			Assert(mgr_node);
+		}
+		heap_endscan(scan);
+		heap_close(rel_node, RowExclusiveLock);
+
+		if(mgr_parm_get_parmvalue(&nodenamedata, GTM_TYPE_GTM_MASTER, "synchronous_standby_names", &value))
+		{
+			if (strstr(value.data, "slave") != NULL)
+			{
+				nodetype = GTM_TYPE_GTM_SLAVE;
+				nodetypechange = false;
+			}
+			else if (strstr(value.data, "extra") != NULL)
+			{
+				nodetype = GTM_TYPE_GTM_EXTRA;
+				nodetypechange = false;
+			}
+			else
+			{
+				nodetype = GTM_TYPE_GTM_SLAVE;
+				nodetypechange = true;
+			}
+		}
+		else
+		{
+			nodetype = GTM_TYPE_GTM_SLAVE;
+			nodetypechange = true;
+		}
 	}
 	else
 	{
