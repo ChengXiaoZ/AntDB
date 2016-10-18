@@ -1218,19 +1218,8 @@ CopyRelationLocInfo(RelationLocInfo *srcInfo)
 void
 FreeRelationLocInfo(RelationLocInfo *relationLocInfo)
 {
-#ifdef ADB
-	if (relationLocInfo)
-	{
-		if (relationLocInfo->nodeList)
-			pfree(relationLocInfo->nodeList);
-		if (relationLocInfo->funcAttrNums)
-			pfree(relationLocInfo->funcAttrNums);
-		pfree(relationLocInfo);
-	}
-#else
 	if (relationLocInfo)
 		pfree(relationLocInfo);
-#endif
 }
 
 /*
