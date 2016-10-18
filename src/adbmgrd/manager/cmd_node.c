@@ -3880,12 +3880,11 @@ static bool is_node_running(char *hostaddr, int32 hostport)
 	ret = pingNode(hostaddr, port.data);
 	if (ret != 0)
 	{
-		ereport(ERROR, (errmsg("its datanode master is not running.")));
+		pfree(port.data);
 		return false;
 	}
 
 	pfree(port.data);
-
 	return true;
 }
 
