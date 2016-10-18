@@ -2973,6 +2973,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	AppendNodeInfo agtm_m_nodeinfo, agtm_s_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
+	bool dnmaster_is_running; /* datanode master status */
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg, primary_conninfo_value;
@@ -2996,7 +2997,10 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 
 		/* step 1: make sure datanode master, agtm master or agtm slave is running. */
-		is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+		if (!dnmaster_is_running)
+			ereport(ERROR, (errmsg("datanode master \"%s\" is not running.", parentnodeinfo.nodename)));
+
 		if (agtm_m_is_exist)
 		{
 			if (agtm_m_is_running)
@@ -3137,6 +3141,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	AppendNodeInfo agtm_m_nodeinfo, agtm_s_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
+	bool dnmaster_is_running; /* datanode master status */
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg, primary_conninfo_value;
@@ -3160,7 +3165,10 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 
 		/* step 1: make sure datanode master, agtm master or agtm slave is running. */
-		is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+		if (!dnmaster_is_running)
+			ereport(ERROR, (errmsg("datanode master \"%s\" is not running.", parentnodeinfo.nodename)));
+
 		if (agtm_m_is_exist)
 		{
 			if (agtm_m_is_running)
