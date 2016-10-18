@@ -3083,6 +3083,9 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 #ifdef PGXC
 	RedistribState   *redistribState = NULL;
 #endif
+#ifdef ADB
+	bool		rebuid_locator = false;
+#endif
 
 	/* Phase 1: preliminary examination of commands, create work queue */
 	foreach(lcmd, cmds)
@@ -3098,8 +3101,13 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 	}
 
 #ifdef PGXC
+#ifdef ADB
+	/* Check every coordinator for rebuilding relation locator info */
+	if (IS_PGXC_COORDINATOR)
+#else
 	/* Only check that on local Coordinator */
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+#endif
 	{
 		ListCell   *ltab;
 
@@ -3133,7 +3141,11 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 							(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
 							 errmsg("Incompatible operation with data redistribution")));
 
-
+#ifdef ADB
+					rebuid_locator = true;
+					/* Only local coordinator make RedistribState */
+					if (!IsConnFromCoord())
+#endif
 					/* Scan redistribution commands and improve operation */
 					redistribState = BuildRedistribCommands(RelationGetRelid(rel),
 														tab->subcmds[AT_PASS_DISTRIB]);
@@ -3155,6 +3167,19 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 	ATRewriteCatalogs(&wqueue, lockmode);
 
 #ifdef PGXC
+#ifdef ADB
+	if (rebuid_locator)
+	{
+		Relation rel2 = relation_open(RelationGetRelid(rel), NoLock);
+
+		/* Invalidate all entries related to this relation */
+		CacheInvalidateRelcache(rel2);
+
+		/* Make sure locator info is rebuilt */
+		RelationCacheInvalidateEntry(RelationGetRelid(rel));
+		relation_close(rel2, NoLock);
+	}
+#else
 	/* Invalidate cache for redistributed relation */
 	if (redistribState)
 	{
@@ -3167,6 +3192,7 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 		RelationCacheInvalidateEntry(redistribState->relid);
 		relation_close(rel2, NoLock);
 	}
+#endif
 
 	/* Perform post-catalog-update redistribution operations */
 	PGXCRedistribTable(redistribState, CATALOG_UPDATE_AFTER);

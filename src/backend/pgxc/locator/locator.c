@@ -1175,20 +1175,6 @@ GetRelationLocInfo(Oid relid)
 	/* Relation needs to be valid */
 	Assert(rel->rd_isvalid);
 
-#ifdef ADB
-	if (IS_PGXC_COORDINATOR &&
-		rel->rd_id >= FirstNormalObjectId &&
-		!IsAutoVacuumWorkerProcess())
-	{
-		if (rel->rd_locator_info)
-		{
-			pfree(rel->rd_locator_info);
-			rel->rd_locator_info = NULL;
-		}
-		RelationBuildLocator(rel);
-	}
-#endif
-
 	if (rel->rd_locator_info)
 		ret_loc_info = CopyRelationLocInfo(rel->rd_locator_info);
 
@@ -1232,8 +1218,19 @@ CopyRelationLocInfo(RelationLocInfo *srcInfo)
 void
 FreeRelationLocInfo(RelationLocInfo *relationLocInfo)
 {
+#ifdef ADB
+	if (relationLocInfo)
+	{
+		if (relationLocInfo->nodeList)
+			pfree(relationLocInfo->nodeList);
+		if (relationLocInfo->funcAttrNums)
+			pfree(relationLocInfo->funcAttrNums);
+		pfree(relationLocInfo);
+	}
+#else
 	if (relationLocInfo)
 		pfree(relationLocInfo);
+#endif
 }
 
 /*

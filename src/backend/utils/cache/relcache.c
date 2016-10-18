@@ -1846,6 +1846,11 @@ RelationDestroyRelation(Relation relation)
 		MemoryContextDelete(relation->rd_rulescxt);
 	if (relation->rd_fdwroutine)
 		pfree(relation->rd_fdwroutine);
+#ifdef ADB
+	if (relation->rd_locator_info)
+		FreeRelationLocInfo(relation->rd_locator_info);
+#endif
+
 	pfree(relation);
 }
 
