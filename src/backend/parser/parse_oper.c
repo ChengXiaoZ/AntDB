@@ -736,6 +736,15 @@ Expr *
 make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 		int location)
 {
+	return make_op2(pstate, opname, ltree, rtree, location, false);
+}
+
+/*
+ * when noError then no erorr throw for can't find operator
+ */
+Expr *make_op2(ParseState *pstate, List *opname,
+		Node *ltree, Node *rtree, int location, bool noError)
+{
 	Oid			ltypeId,
 				rtypeId;
 	Operator	tup;
@@ -753,35 +762,48 @@ make_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree,
 		/* right operator */
 		ltypeId = exprType(ltree);
 		rtypeId = InvalidOid;
-		tup = right_oper(pstate, opname, ltypeId, false, location);
+		tup = right_oper(pstate, opname, ltypeId, noError, location);
 	}
 	else if (ltree == NULL)
 	{
 		/* left operator */
 		rtypeId = exprType(rtree);
 		ltypeId = InvalidOid;
-		tup = left_oper(pstate, opname, rtypeId, false, location);
+		tup = left_oper(pstate, opname, rtypeId, noError, location);
 	}
 	else
 	{
 		/* otherwise, binary operator */
 		ltypeId = exprType(ltree);
 		rtypeId = exprType(rtree);
-		tup = oper(pstate, opname, ltypeId, rtypeId, false, location);
+		tup = oper(pstate, opname, ltypeId, rtypeId, noError, location);
+	}
+	if(!HeapTupleIsValid(tup))
+	{
+		Assert(noError == true);
+		return NULL;
 	}
 
 	opform = (Form_pg_operator) GETSTRUCT(tup);
 
 	/* Check it's not a shell */
 	if (!RegProcedureIsValid(opform->oprcode))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_FUNCTION),
-				 errmsg("operator is only a shell: %s",
-						op_signature_string(opname,
-											opform->oprkind,
-											opform->oprleft,
-											opform->oprright)),
-				 parser_errposition(pstate, location)));
+	{
+		if(noError)
+		{
+			return NULL;
+		}else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_FUNCTION),
+					 errmsg("operator is only a shell: %s",
+							op_signature_string(opname,
+												opform->oprkind,
+												opform->oprleft,
+												opform->oprright)),
+					 parser_errposition(pstate, location)));
+		}
+	}
 
 	/* Do typecasting and build the expression tree */
 	if (rtree == NULL)

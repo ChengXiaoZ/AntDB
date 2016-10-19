@@ -61,6 +61,8 @@ extern Oid	oprfuncid(Operator op);
 /* Build expression tree for an operator invocation */
 extern Expr *make_op(ParseState *pstate, List *opname,
 		Node *ltree, Node *rtree, int location);
+extern Expr *make_op2(ParseState *pstate, List *opname,
+		Node *ltree, Node *rtree, int location, bool noError);
 extern Expr *make_scalar_array_op(ParseState *pstate, List *opname,
 					 bool useOr,
 					 Node *ltree, Node *rtree, int location);
