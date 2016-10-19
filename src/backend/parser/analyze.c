@@ -73,6 +73,9 @@
 
 #ifdef ADB
 #include "catalog/namespace.h"
+#include "catalog/pg_operator.h"
+#include "parser/parser.h"
+#include "utils/syscache.h"
 #endif
 /* End of addition */
 
@@ -111,6 +114,11 @@ static void transformLockingClause(ParseState *pstate, Query *qry,
 #ifdef ADB
 static Node* transformFromAndWhere(ParseState *pstate, Node *quals);
 static void check_joinon_column_join(Node *node, ParseState *pstate);
+static void rewrite_rownum_query(Query *query);
+static bool rewrite_rownum_query_enum(Node *node, void *context);
+static bool is_const_equal_value(const Expr *expr, int32 val);
+static Expr* make_int8_const(Datum value);
+static Oid get_operator_for_function(Oid funcid);
 #endif /* ADB */
 
 /*
@@ -158,6 +166,7 @@ parse_analyze_for_gram(Node *parseTree, const char *sourceText,
 	query = transformTopLevelStmt(pstate, parseTree);
 #ifdef ADB
 	check_joinon_column_join((Node*)(query->jointree), pstate);
+	rewrite_rownum_query_enum((Node*)query, NULL);
 #endif /* ADB */
 
 	if (post_parse_analyze_hook)
@@ -3654,4 +3663,267 @@ static Node* transformFromAndWhere(ParseState *pstate, Node *quals)
 	}
 	return (Node*)makeBoolExpr(AND_EXPR, qual_list, -1);
 }
+
+static bool rewrite_rownum_query_enum(Node *node, void *context)
+{
+	if(node == NULL)
+		return false;
+
+	if(node_tree_walker(node,rewrite_rownum_query_enum, context))
+		return true;
+	if(IsA(node, Query))
+	{
+		rewrite_rownum_query((Query*)node);
+	}
+	return false;
+}
+
+/*
+ * let "rownum <[=] CONST" or "CONST >[=] rownum"
+ * to "limit N"
+ * TODO: fix when "Const::consttypmod != -1"
+ * TODO: fix when "rownum < 1 and rownum < 2" to "limit CASE WHEN 1<2 THEN 1 ELSE 2"
+ */
+static void rewrite_rownum_query(Query *query)
+{
+	List *qual_list,*args;
+	ListCell *lc;
+	Node *expr,*l,*r;
+	Node *limitCount;
+	Bitmapset *hints;
+	char opname[4];
+	Oid opno;
+	Oid funcid;
+	int i;
+
+	Assert(query);
+	if(query->jointree == NULL
+		|| query->limitOffset != NULL
+		|| query->limitCount != NULL
+		|| contain_rownum(query->jointree->quals) == false)
+		return;
+
+	query->jointree->quals = expr = (Node*)canonicalize_qual((Expr*)(query->jointree->quals));
+	if(and_clause((Node*)expr))
+		qual_list = ((BoolExpr*)expr)->args;
+	else
+		qual_list = list_make1(expr);
+
+	/* find expr */
+	limitCount = NULL;
+	hints = NULL;
+	for(i=0,lc=list_head(qual_list);lc;lc=lnext(lc),++i)
+	{
+		expr = lfirst(lc);
+		if(contain_rownum((Node*)expr) == false)
+			continue;
+
+		if(IsA(expr, OpExpr))
+		{
+			args = ((OpExpr*)expr)->args;
+			opno = ((OpExpr*)expr)->opno;
+			funcid = ((OpExpr*)expr)->opfuncid;
+		}else if(IsA(expr, FuncExpr))
+		{
+			funcid = ((FuncExpr*)expr)->funcid;
+			args = ((FuncExpr*)expr)->args;
+			opno = InvalidOid;
+		}else
+		{
+			return;
+		}
+		if(list_length(args) != 2)
+			return;
+		l = linitial(args);
+		r = llast(args);
+		Assert(l != NULL && r != NULL);
+		if(!IsA(l,RownumExpr) && !IsA(r, RownumExpr))
+			return;
+
+		if(opno == InvalidOid)
+		{
+			/* get operator */
+			Assert(OidIsValid(funcid));
+			opno = get_operator_for_function(funcid);
+			if(opno == InvalidOid)
+				return;
+		}
+
+		if(IsA(r, RownumExpr))
+		{
+			/* exchange operator, like "10>rownum" to "rownum<10" */
+			Node *tmp;
+			opno = get_commutator(opno);
+			if(opno == InvalidOid)
+				return;
+			tmp = l;
+			l = r;
+			r = tmp;
+		}
+
+		if(!IsA(l, RownumExpr))
+			return;
+		/* get operator name */
+		{
+			char *tmp = get_opname(opno);
+			if(tmp == NULL)
+				return;
+			strncpy(opname, tmp, lengthof(opname));
+			pfree(tmp);
+		}
+
+		if(opname[0] == '<')
+		{
+			if(contain_mutable_functions((Node*)r))
+				return;
+
+			if(limitCount != NULL)
+				return; /* has other operator */
+			if(opname[1] == '=' && opname[2] == '\0')
+			{
+				/* rownum <= expr */
+				limitCount = r;
+			}else if(opname[1] == '\0'
+				/* "rownum <> expr" equal "rownum < expr" */
+				|| (opname[1] == '>' && opname[2] == '\0'))
+			{
+				/* rownum < expr, make it to "limit (expr+1)" */
+				limitCount = (Node*)make_op2(NULL
+					, SystemFuncName("-")
+					, (Node*)r, (Node*)make_int8_const(Int64GetDatum(1))
+					, -1, true);
+				if(limitCount == NULL)
+					return;
+			}else
+			{
+				return; /* unknown operator */
+			}
+		}else if(opname[0] == '>')
+		{
+			if(opname[1] == '=' && opname[2] == '\0')
+			{
+				/* rownum >= expr
+				 *  only support rownum >= 1
+				 */
+				if(!is_const_equal_value((Expr*)r, 1))
+					return;
+			}else if(opname[1] == '\0')
+			{
+				/* rownum > expr
+				 *  only support rownum > 0
+				 */
+				if(!is_const_equal_value((Expr*)r, 0))
+					return;
+			}else
+			{
+				return;
+			}
+		}else if(opname[0] == '=' && opname[1] == '\0')
+		{
+			if(!IsA(r, RownumExpr))
+				return;
+			/* rownum = rownum ignore */
+		}else
+		{
+			return;
+		}
+
+		hints = bms_add_member(hints, i);
+	}
+
+	query->limitCount = limitCount;
+	if(qual_list != NIL)
+	{
+		/* whe use args for get new quals */
+		args = NIL;
+		for(i=0,lc=list_head(qual_list);lc;lc=lnext(lc),++i)
+		{
+			if(bms_is_member(i, hints))
+				continue;
+			Assert(contain_rownum(lfirst(lc)) == false);
+			args = lappend(args, lfirst(lc));
+		}
+		if(args == NIL)
+		{
+			query->jointree->quals = NULL;
+		}else if(list_length(args) == 1)
+		{
+			query->jointree->quals = linitial(args);
+		}else
+		{
+			query->jointree->quals = (Node*)makeBoolExpr(AND_EXPR, args, -1);
+		}
+	}
+	return;
+}
+
+static Expr* make_int8_const(Datum value)
+{
+	Const *result;
+	result = makeNode(Const);
+	result->consttype = INT8OID;
+	result->consttypmod = -1;
+	result->constcollid = InvalidOid;
+	result->constlen = sizeof(int64);
+	result->constvalue = value;
+	result->constisnull = false;
+	result->constbyval = FLOAT8PASSBYVAL;
+	result->location = -1;
+	return (Expr*)result;
+}
+
+/*
+ * we should be find an operator and call it
+ */
+static bool is_const_equal_value(const Expr *expr, int32 val)
+{
+	Const *c;
+	AssertArg(expr);
+	if(!IsA(expr, Const))
+		return false;
+	c = (Const*)expr;
+	if(c->constisnull)
+		return false;
+	switch(c->consttype)
+	{
+	case INT8OID:
+		return DatumGetInt64(c->constvalue) == (int64)val;
+	case INT4OID:
+		return DatumGetInt32(c->constvalue) == val;
+	case INT2OID:
+		return (int32)DatumGetInt16(c->constvalue) == val;
+	default:
+		break;
+	}
+	return false;
+}
+
+static Oid get_operator_for_function(Oid funcid)
+{
+	Relation rel;
+	HeapScanDesc scanDesc;
+	HeapTuple	htup;
+	ScanKeyData scanKeyData;
+	Oid opno;
+
+	if(funcid == InvalidOid)
+		return InvalidOid;
+
+	ScanKeyInit(&scanKeyData, Anum_pg_operator_oprcode
+		, BTEqualStrategyNumber, F_OIDEQ, ObjectIdGetDatum(funcid));
+	rel = heap_open(OperatorRelationId, AccessShareLock);
+	scanDesc = heap_beginscan(rel, SnapshotNow, 1, &scanKeyData);
+	htup = heap_getnext(scanDesc, ForwardScanDirection);
+	if(HeapTupleIsValid(htup))
+	{
+		opno = HeapTupleGetOid(htup);
+	}else
+	{
+		opno = InvalidOid;
+	}
+	heap_endscan(scanDesc);
+	heap_close(rel, AccessShareLock);
+	return opno;
+}
+
 #endif /* ADB */
