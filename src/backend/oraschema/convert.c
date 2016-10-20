@@ -30,13 +30,10 @@ static int getindex(const char **map, char *mbchar, int mblen);
 	do { \
 		if (in) \
 		{ \
-			char	*instr = text_to_cstring(in); \
+			char instr[2]= {0, 0}; \
+			text_to_cstring_buffer(in, instr, 2); \
 			if (instr[0] == '\0') \
-			{ \
-				pfree(instr); \
 				PG_RETURN_NULL(); \
-			} \
-			pfree(instr); \
 		} \
 	} while (0)
 
