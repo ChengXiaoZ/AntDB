@@ -142,7 +142,7 @@ Datum rowid_make(uint32 node_id, ItemPointer const tid)
 {
 	OraRowID *rowid;
 	AssertArg(tid);
-	rowid = palloc(sizeof(rowid));
+	rowid = palloc(sizeof(*rowid));
 	rowid->node_id = node_id;
 	rowid->block = ItemPointerGetBlockNumber(tid);
 	rowid->offset = ItemPointerGetOffsetNumber(tid);

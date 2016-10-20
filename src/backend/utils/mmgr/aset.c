@@ -1186,8 +1186,13 @@ AllocSetCheck(MemoryContext context)
 			 * easily...)
 			 */
 			if (dsize > 0 && chunk->aset != (void *) set)
+#ifdef DEBUG_ADB
+				elog(WARNING, "problem in alloc set %s %p: bogus aset link in block %p, chunk %p with set %p",
+					name, set, block, chunk, chunk->aset);
+#else
 				elog(WARNING, "problem in alloc set %s: bogus aset link in block %p, chunk %p",
 					 name, block, chunk);
+#endif
 
 			/*
 			 * Check for overwrite of "unallocated" space in chunk
