@@ -75,7 +75,7 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file);
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
-static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport);
+static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *dnname, Oid dnhostoid, int32 dnport);
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
@@ -2926,7 +2926,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		mgr_start_node(CNDN_TYPE_DATANODE_MASTER, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 8: create node on all the coordinator */
-		mgr_create_node_on_all_coord(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
+		mgr_create_node_on_all_coord(fcinfo, CNDN_TYPE_DATANODE_MASTER, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
 
 		/* step 9: release the DDL lock */
 		PQclear(res);
@@ -3450,7 +3450,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		mgr_start_node(CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 8: create node on all the coordinator */
-		mgr_create_node_on_all_coord(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
+		mgr_create_node_on_all_coord(fcinfo, CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
 
 		/* step 9:*/
 		mgr_alter_pgxc_node(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
@@ -4312,7 +4312,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 	ma_close(ma);
 }
 
-static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnhostoid, int32 dnport)
+static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *dnname, Oid dnhostoid, int32 dnport)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[2];
@@ -4373,10 +4373,18 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char *dnname, Oid dnh
 						,user);
 		
 		addressnode = get_hostaddress_from_hostoid(dnhostoid);
-		appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
-						,dnname
-						,addressnode
-						,dnport);
+
+        if (nodetype == CNDN_TYPE_COORDINATOR_MASTER)
+		    appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
+						    ,dnname
+						    ,addressnode
+						    ,dnport);
+        if (nodetype == CNDN_TYPE_DATANODE_MASTER)
+		    appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
+						    ,dnname
+						    ,addressnode
+						    ,dnport);
+
 		appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
 
 		ma_beginmessage(&buf, AGT_MSG_COMMAND);
