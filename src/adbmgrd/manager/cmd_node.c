@@ -3910,6 +3910,9 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
 	{
+	    ReleaseSysCache(mastertuple);
+	    heap_close(noderelation, AccessShareLock);
+
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			,errmsg("could not find datanode master."))); 
 	}
