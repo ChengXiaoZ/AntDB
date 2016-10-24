@@ -116,7 +116,7 @@ static Node* transformFromAndWhere(ParseState *pstate, Node *quals);
 static void check_joinon_column_join(Node *node, ParseState *pstate);
 static void rewrite_rownum_query(Query *query);
 static bool rewrite_rownum_query_enum(Node *node, void *context);
-static bool is_const_equal_value(const Expr *expr, int32 val);
+static bool const_get_int64(const Expr *expr, int64 *val);
 static Expr* make_int8_const(Datum value);
 static Oid get_operator_for_function(Oid funcid);
 #endif /* ADB */
@@ -3695,6 +3695,7 @@ static void rewrite_rownum_query(Query *query)
 	Oid opno;
 	Oid funcid;
 	int i;
+	int64 v64;
 
 	Assert(query);
 	if(query->jointree == NULL
@@ -3777,42 +3778,79 @@ static void rewrite_rownum_query(Query *query)
 			if(contain_mutable_functions((Node*)r))
 				return;
 
-			if(limitCount != NULL)
-				return; /* has other operator */
+			if(const_get_int64((Expr*)r, &v64) == false)
+				return;
 			if(opname[1] == '=' && opname[2] == '\0')
 			{
 				/* rownum <= expr */
+				if(v64 <= (int64)0)
+				{
+					/* rownum <= n, and (n<=0) */
+					limitCount = (Node*)make_int8_const(Int64GetDatum(0));
+					qual_list = NIL;
+					break;
+				}
+				if(limitCount != NULL)
+					return; /* has other operator */
 				limitCount = r;
-			}else if(opname[1] == '\0'
-				/* "rownum <> expr" equal "rownum < expr" */
-				|| (opname[1] == '>' && opname[2] == '\0'))
+			}else if(opname[1] == '\0')
 			{
-				/* rownum < expr, make it to "limit (expr+1)" */
+				if(v64 <= (int64)1)
+				{
+					/* rownum < n, and (n<=1) */
+					limitCount = (Node*)make_int8_const(Int64GetDatum(0));
+					qual_list = NIL;
+					break;
+				}
+				if(limitCount != NULL)
+					return; /* has other operator */
 				limitCount = (Node*)make_op2(NULL
 					, SystemFuncName("-")
 					, (Node*)r, (Node*)make_int8_const(Int64GetDatum(1))
 					, -1, true);
 				if(limitCount == NULL)
 					return;
+			}else if(opname[1] == '>' && opname[2] == '\0')
+			{
+				/* rownum <> expr */
+				if(v64 <= (int64)0)
+				{
+					/* rownum <> n, and (n <= 0) ignore */
+				}else if(limitCount != NULL)
+				{
+					return; /* has other operator */
+				}else
+				{
+					/* for now, rownum <> n equal limit n-1 */
+					limitCount = (Node*)make_op2(NULL
+						, SystemFuncName("-")
+						, (Node*)r, (Node*)make_int8_const(Int64GetDatum(1))
+						, -1, true);
+					if(limitCount == NULL)
+						return;
+				}
 			}else
 			{
 				return; /* unknown operator */
 			}
 		}else if(opname[0] == '>')
 		{
+			if(const_get_int64((Expr*)r, &v64) == false)
+				return;
+
 			if(opname[1] == '=' && opname[2] == '\0')
 			{
 				/* rownum >= expr
 				 *  only support rownum >= 1
 				 */
-				if(!is_const_equal_value((Expr*)r, 1))
+				if(v64 != (int64)1)
 					return;
 			}else if(opname[1] == '\0')
 			{
 				/* rownum > expr
 				 *  only support rownum > 0
 				 */
-				if(!is_const_equal_value((Expr*)r, 0))
+				if(v64 != (int64)0)
 					return;
 			}else
 			{
@@ -3873,12 +3911,12 @@ static Expr* make_int8_const(Datum value)
 }
 
 /*
- * we should be find an operator and call it
+ * we should be find a cast and call it
  */
-static bool is_const_equal_value(const Expr *expr, int32 val)
+static bool const_get_int64(const Expr *expr, int64 *val)
 {
 	Const *c;
-	AssertArg(expr);
+	AssertArg(expr && val);
 	if(!IsA(expr, Const))
 		return false;
 	c = (Const*)expr;
@@ -3887,11 +3925,14 @@ static bool is_const_equal_value(const Expr *expr, int32 val)
 	switch(c->consttype)
 	{
 	case INT8OID:
-		return DatumGetInt64(c->constvalue) == (int64)val;
+		*val = DatumGetInt64(c->constvalue);
+		return true;
 	case INT4OID:
-		return DatumGetInt32(c->constvalue) == val;
+		*val = (int64)(DatumGetInt32(c->constvalue));
+		return true;
 	case INT2OID:
-		return (int32)DatumGetInt16(c->constvalue) == val;
+		*val = (int64)(DatumGetInt16(c->constvalue));
+		return true;
 	default:
 		break;
 	}
