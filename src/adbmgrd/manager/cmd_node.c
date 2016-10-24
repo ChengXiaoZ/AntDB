@@ -2870,16 +2870,16 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		/* step 3: update datanode master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
 								&infosendmsg,
 								appendnodeinfo.nodehost,
 								&getAgentCmdRst);
 		/* add host line for agtm */
-		mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
-		mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
-		mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+		mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
+		mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
+		mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
 
 		/* step 4: block all the DDL lock */
 		mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo);
@@ -3398,7 +3398,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		/* step 3: update coordinator master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
 								&infosendmsg,
@@ -4085,17 +4085,20 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
 		}
-
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", dnusername, dnaddr, 32, "trust", &infosendmsg);
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, dnaddr, 32, "trust", &infosendmsg);
+		else
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", dnaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 							TextDatumGetCString(datumPath),
 							&infosendmsg,
 							mgr_node->nodehost,
 							&getAgentCmdRst);
+		resetStringInfo(&infosendmsg);
 
 		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 	}
-
+	pfree(infosendmsg.data);
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
@@ -4736,7 +4739,7 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
 		}
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo->nodeusername, appendnodeinfo->nodeaddr,
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo->nodeaddr,
 										32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								TextDatumGetCString(datumPath),
@@ -4757,7 +4760,7 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
 		}
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo->nodeusername, appendnodeinfo->nodeaddr,
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo->nodeaddr,
 										32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								TextDatumGetCString(datumPath),
@@ -4825,10 +4828,9 @@ static void mgr_get_other_parm(char node_type, StringInfo infosendmsg)
 	mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendmsg);
 	mgr_append_pgconf_paras_str_int("max_prepared_transactions", MAX_PREPARED_TRANSACTIONS_DEFAULT, infosendmsg);
-	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendmsg);
+	mgr_append_pgconf_paras_str_quotastr("log_destination", "csvlog", infosendmsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendmsg);
-	mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %m %e %x", infosendmsg);
 }
 
 static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinfo)
@@ -5706,10 +5708,9 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 	mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendparamsg);	mgr_append_pgconf_paras_str_int("port", cndnport, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendparamsg);
 	mgr_append_pgconf_paras_str_int("max_prepared_transactions", MAX_PREPARED_TRANSACTIONS_DEFAULT, infosendparamsg);
-	mgr_append_pgconf_paras_str_quotastr("log_destination", "stderr", infosendparamsg);
+	mgr_append_pgconf_paras_str_quotastr("log_destination", "csvlog", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("logging_collector", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", infosendparamsg);
-	mgr_append_pgconf_paras_str_quotastr("log_line_prefix", "%u %d %h %m %e %x", infosendparamsg);
 	/*agtm postgresql.conf does not need these*/
 	if(GTM_TYPE_GTM_MASTER != nodetype && GTM_TYPE_GTM_SLAVE != nodetype && GTM_TYPE_GTM_EXTRA != nodetype)
 	{
@@ -5808,13 +5809,10 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 			Assert(mgr_node);
 			/*hostoid*/
 			hostoid = mgr_node->nodehost;
-			/*database user for this coordinator*/
-			cnuser = get_hostuser_from_hostoid(hostoid);
 			/*get coordinator address*/
 			cnaddress = get_hostaddress_from_hostoid(hostoid);
 			if (CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
-				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
-			pfree(cnuser);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
 			pfree(cnaddress);
 		}
 		heap_endscan(rel_scan);
@@ -5863,13 +5861,10 @@ void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo in
 				hostoid = mgr_node->nodehost;
 				/*get address*/
 				cnaddress = get_hostaddress_from_hostoid(hostoid);
-				/*database user for this coordinator*/
-				cnuser = get_hostuser_from_hostoid(hostoid);
 				if (GTM_TYPE_GTM_MASTER == nodetype)
 					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
 				else
-					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", cnuser, cnaddress, 32, "trust", infosendhbamsg);
-				pfree(cnuser);
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
 				pfree(cnaddress);
 			}
 			else if ((CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype || CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype 
