@@ -4736,6 +4736,27 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 	}
 
+	if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
+	{
+		/*get nodepath from tuple*/
+		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+		if (isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column nodepath is null")));
+		}
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", appendnodeinfo->nodeusername, appendnodeinfo->nodeaddr,
+										32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								TextDatumGetCString(datumPath),
+								&infosendmsg,
+								mgr_node->nodehost,
+								&getAgentCmdRst);
+		
+		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+	}
+
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
