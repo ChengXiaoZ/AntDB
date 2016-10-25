@@ -8423,7 +8423,12 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 				 aggref->aggfnoid);
 		aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 
+#ifdef ADB
+		if (OidIsValid(aggform->aggfinalfn) &&
+			aggform->aggtranstype != INTERNALOID)
+#else
 		if (OidIsValid(aggform->aggfinalfn))
+#endif
 		{
 			appendStringInfo(buf, "%s(", generate_function_name(aggform->aggfinalfn, 0,
 																NULL, NULL, false, NULL));

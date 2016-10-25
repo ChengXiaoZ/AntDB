@@ -33,7 +33,9 @@
 /* Added to resolve conflicts. K.Suzuki */
 #include "access/htup_details.h"
 /* End of addition */
-
+#ifdef ADB
+#include "catalog/pg_type.h"
+#endif
 
 typedef struct
 {
@@ -197,7 +199,12 @@ transformAggregateCall(ParseState *pstate, Aggref *agg,
 	aggform = (Form_pg_aggregate) GETSTRUCT(aggTuple);
 	agg->aggtrantype = aggform->aggtranstype;
 	agg->agghas_collectfn = OidIsValid(aggform->aggcollectfn);
+#ifdef ADB
+	if (IS_PGXC_DATANODE &&
+		aggform->aggtranstype != INTERNALOID)
+#else
 	if (IS_PGXC_DATANODE)
+#endif
 		agg->aggtype = agg->aggtrantype;
 
 	ReleaseSysCache(aggTuple);

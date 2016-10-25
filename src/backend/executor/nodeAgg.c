@@ -1827,7 +1827,12 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 * For PGXC final and collection functions are used to combine results at Coordinator,
 		 * disable those for Datanode
 		 */
+#ifdef ADB
+		if (IS_PGXC_DATANODE &&
+			aggform->aggtranstype != INTERNALOID)
+#else
 		if (IS_PGXC_DATANODE)
+#endif
 		{
 			peraggstate->finalfn_oid = finalfn_oid = InvalidOid;
 			peraggstate->collectfn_oid = collectfn_oid = InvalidOid;
