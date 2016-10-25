@@ -424,7 +424,7 @@ MonitorStmt:
             SelectStmt *stmt = makeNode(SelectStmt);
             //List *arg = list_make1(makeNullAConst(-1));
             stmt->targetList = list_make1(make_star_target(-1));
-            stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_all", NULL));
+            stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_all"), -1));
             $$ = (Node*)stmt;
 		}
         | MONITOR COORDINATOR ALL

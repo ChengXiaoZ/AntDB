@@ -64,10 +64,17 @@ CREATE VIEW adbmgr.node AS
   FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid LEFT JOIN pg_catalog.mgr_node AS node_alise
   ON node_alise.oid = mgrnode.nodemasternameoid order by 3;
 
+--monitor all
+CREATE VIEW adbmgr.monitor_all AS
+        select * from mgr_monitor_all() order by 2;
+
+--monitor datanode all
 CREATE VIEW adbmgr.monitor_datanode_all AS
-	select * from mgr_monitor_dnmaster_all()
-	union all
-	select * from mgr_monitor_dnslave_all();
+        select * from mgr_monitor_dnmaster_all()
+        union all
+        select * from mgr_monitor_dnslave_all()
+        union all
+        select * from mgr_monitor_dnextra_all();
 
 --init all
 CREATE VIEW adbmgr.initall AS
