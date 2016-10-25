@@ -3417,19 +3417,19 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		temp_file = get_temp_file_name();
 		mgr_pg_dumpall(coordhostoid, coordport, appendnodeinfo.nodehost, temp_file);
 
-		/* step 6: start the datanode master with restoremode mode, and input all catalog message */
+		/* step 6: start the append coordiantor with restoremode mode, and input all catalog message */
 		mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, temp_file);
 		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost, temp_file);
 
-		/* step 7: stop the datanode master with restoremode, and then start it with "coordinator" mode */
+		/* step 7: stop the append coordiantor with restoremode, and then start it with "coordinator" mode */
 		mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 		mgr_start_node(CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 8: create node on all the coordinator */
 		mgr_create_node_on_all_coord(fcinfo, CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
 
-		/* step 9:*/
+		/* step 9: alter pgxc_node in append coordinator */
 		mgr_alter_pgxc_node(fcinfo, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
 
 		/* step 10: release the DDL lock */
