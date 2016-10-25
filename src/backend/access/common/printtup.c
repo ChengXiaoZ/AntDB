@@ -24,6 +24,9 @@
 #ifdef PGXC
 #include "pgxc/pgxc.h"
 #endif
+#ifdef ADB
+#include "catalog/pg_type.h"
+#endif
 
 static void printtup_startup(DestReceiver *self, int operation,
 				 TupleDesc typeinfo);
@@ -324,13 +327,31 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 	int			natts = typeinfo->natts;
 	int			i;
 
+#ifdef ADB
+	bool		have_anyarray = false;
+	Form_pg_attribute *atts = typeinfo->attrs;
+
+	for (i = 0; i < natts; i++)
+	{
+		if (atts[i]->atttypid == ANYARRAYOID)
+		{
+			have_anyarray = true;
+			break;
+		}
+	}
+#endif
+
 #ifdef PGXC
 	/*
 	 * If we are having DataRow-based tuple we do not have to encode attribute
 	 * values, just send over the DataRow message as we received it from the
 	 * Datanode
 	 */
+#ifdef ADB
+	if (slot->tts_dataRow && !have_anyarray)
+#else
 	if (slot->tts_dataRow)
+#endif
 	{
 		pq_putmessage('D', slot->tts_dataRow, slot->tts_dataLen);
 		return;

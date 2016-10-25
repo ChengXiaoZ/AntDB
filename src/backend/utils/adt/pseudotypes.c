@@ -30,6 +30,7 @@
 #include "access/htup_details.h"
 #include "access/htup.h"
 #include "catalog/pg_type.h"
+#include "pgxc/pgxc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #endif
@@ -147,54 +148,56 @@ Datum
 anyarray_out(PG_FUNCTION_ARGS)
 {
 #ifdef ADB
-	/*
-	 * Output prefix: (type_namespace_name.typename) to look up actual element
-	 * type at the destination node then output in usual format for array
-	 */
-	ArrayType  *v = PG_GETARG_ARRAYTYPE_P(0);
-	Oid 		element_type = ARR_ELEMTYPE(v);
-	Form_pg_type typeForm;
-	HeapTuple	typeTuple;
-	char	   *typname,
-			   *typnspname;
-	/* two identifiers, parenthesis, dot and trailing \0 */
-	char		prefix[2*NAMEDATALEN+4],
-			   *retval,
-			   *newval;
-	int 		prefixlen, retvallen;
-	Datum		array_out_result;
-	MemoryContext save_context;
+	if (!IS_PGXC_COORDINATOR)
+	{
+		/*
+		 * Output prefix: (type_namespace_name.typename) to look up actual element
+		 * type at the destination node then output in usual format for array
+		 */
+		ArrayType  *v = PG_GETARG_ARRAYTYPE_P(0);
+		Oid 		element_type = ARR_ELEMTYPE(v);
+		Form_pg_type typeForm;
+		HeapTuple	typeTuple;
+		char	   *typname,
+				   *typnspname;
+		/* two identifiers, parenthesis, dot and trailing \0 */
+		char		prefix[2*NAMEDATALEN+4],
+				   *retval,
+				   *newval;
+		int 		prefixlen, retvallen;
+		Datum		array_out_result;
+		MemoryContext save_context;
 
-	save_context = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
-	/* Figure out type name and type namespace */
-	typeTuple = SearchSysCache(TYPEOID,
-							   ObjectIdGetDatum(element_type),
-							   0, 0, 0);
-	if (!HeapTupleIsValid(typeTuple))
-		elog(ERROR, "cache lookup failed for type %u", element_type);
-	typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
-	typname = NameStr(typeForm->typname);
-	typnspname = get_namespace_name(typeForm->typnamespace);
+		save_context = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
+		/* Figure out type name and type namespace */
+		typeTuple = SearchSysCache(TYPEOID,
+								   ObjectIdGetDatum(element_type),
+								   0, 0, 0);
+		if (!HeapTupleIsValid(typeTuple))
+			elog(ERROR, "cache lookup failed for type %u", element_type);
+		typeForm = (Form_pg_type) GETSTRUCT(typeTuple);
+		typname = NameStr(typeForm->typname);
+		typnspname = get_namespace_name(typeForm->typnamespace);
 
-	sprintf(prefix, "(%s.%s)", typnspname, typname);
-	ReleaseSysCache(typeTuple);
-	MemoryContextSwitchTo(save_context);
+		sprintf(prefix, "(%s.%s)", typnspname, typname);
+		ReleaseSysCache(typeTuple);
+		MemoryContextSwitchTo(save_context);
 
-	/* Get standard output and make up prefixed result */
-	array_out_result = array_out(fcinfo);
-	retval = DatumGetCString(array_out_result);
-	prefixlen = strlen(prefix);
-	retvallen = strlen(retval);
-	newval = (char *) palloc(prefixlen + retvallen + 1);
-	strcpy(newval, prefix);
-	strcpy(newval + prefixlen, retval);
+		/* Get standard output and make up prefixed result */
+		array_out_result = array_out(fcinfo);
+		retval = DatumGetCString(array_out_result);
+		prefixlen = strlen(prefix);
+		retvallen = strlen(retval);
+		newval = (char *) palloc(prefixlen + retvallen + 1);
+		strcpy(newval, prefix);
+		strcpy(newval + prefixlen, retval);
 
-	pfree(retval);
+		pfree(retval);
 
-	PG_RETURN_CSTRING(newval);
-#else
-	return array_out(fcinfo);
+		PG_RETURN_CSTRING(newval);
+	}
 #endif
+	return array_out(fcinfo);
 }
 
 /*
