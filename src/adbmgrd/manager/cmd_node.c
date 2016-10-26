@@ -6237,18 +6237,16 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(nodetype));
-	ScanKeyInit(&key[1]
-		,Anum_mgr_node_nodeincluster
-		,BTEqualStrategyNumber
-		,F_BOOLEQ
-		,CharGetDatum(true));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
 		mgr_nodetmp->nodemasternameoid = newgtmtupleoid;
 		heap_inplace_update(noderel, tuple);
+		/*check the node is initialized or not*/
+		if (!mgr_nodetmp->nodeincluster)
+			continue;
 		/*refresh gtm extra recovery.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
@@ -6329,11 +6327,6 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	{
 		ereport(WARNING, (errmsg("refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename))));
 	}
-	if (!bgetextra)
-	{
-		pfree(infosendmsg.data);
-		return;
-	}
 	/*2.update datanode extra/slave nodemasternameoid, refresh recovery.conf, restart the node*/
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
@@ -6345,12 +6338,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 		,BTEqualStrategyNumber
 		,F_NAMEEQ
 		,NameGetDatum(&nodename));
-	ScanKeyInit(&key[2]
-		,Anum_mgr_node_nodeincluster
-		,BTEqualStrategyNumber
-		,F_BOOLEQ
-		,CharGetDatum(true));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 3, key);
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
@@ -6358,6 +6346,9 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 		/*update datanode extra/slave nodemasternameoid*/
 		mgr_nodetmp->nodemasternameoid = newmastertupleoid;
 		heap_inplace_update(noderel, tuple);
+		/*check the node is initialized or not*/
+		if (!mgr_nodetmp->nodeincluster)
+			continue;
 		/*refresh datanode extra/slave recovery.conf*/
 		strtmp = (aimtuplenodetype == CNDN_TYPE_DATANODE_SLAVE ? "extra":"slave");
 		resetStringInfo(&infosendmsg);
