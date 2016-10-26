@@ -172,6 +172,7 @@ DATA(insert ( 2244	bpchar_larger	bpchar_larger	-				1060	1042	_null_ _null_ ));
 DATA(insert ( 2797	tidlarger		tidlarger		-				2800	27		_null_ _null_ ));
 DATA(insert ( 3526	enum_larger		enum_larger		-				3519	3500	_null_ _null_ ));
 #ifdef ADB
+DATA(insert ( 3940	timestamptz_larger	timestamptz_larger	-		1324	3970	_null_	_null_ ));
 DATA(insert ( 4051	rowid_larger	rowid_larger	-				0		86		_null_ _null_ ));
 #endif /* ADB */
 #else /* PGXC */
@@ -220,6 +221,7 @@ DATA(insert ( 2245	bpchar_smaller	bpchar_smaller	-				1058	1042	_null_ _null_ ))
 DATA(insert ( 2798	tidsmaller		tidsmaller		-				2799	27		_null_ _null_ ));
 DATA(insert ( 3527	enum_smaller	enum_smaller	-				3518	3500	_null_ _null_ ));
 #ifdef ADB
+DATA(insert ( 3974	timestamptz_smaller	timestamptz_smaller	-		1322	3970	_null_	_null_ ));
 DATA(insert ( 4052	rowid_smaller	rowid_smaller	-				0		86		_null_ _null_ ));
 #endif /* ADB */
 #else /* PGXC */
