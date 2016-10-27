@@ -16,6 +16,7 @@ CATALOG(mgr_node,4948)
 	NameData	nodename;		/* node name */
 	Oid			nodehost;		/* node hostoid from host*/
 	char		nodetype;		/* node type */
+	char		nodesync;		/* node sync for slave/extra */
 	int32		nodeport;		/* node port */
 	bool		nodeinited;		/* is initialized */
 	bool		nodeprimary;	/* is nodeis_primary, in pgxc_node*/
@@ -37,16 +38,17 @@ typedef FormData_mgr_node *Form_mgr_node;
  *		compiler constants for mgr_node
  * ----------------
  */
-#define Natts_mgr_node							9
+#define Natts_mgr_node							10
 #define Anum_mgr_node_nodename					1
 #define Anum_mgr_node_nodehost					2
 #define Anum_mgr_node_nodetype					3
-#define Anum_mgr_node_nodeport					4
-#define Anum_mgr_node_nodeinited				5
-#define Anum_mgr_node_nodeprimary				6
-#define Anum_mgr_node_nodemasternameOid			7
-#define Anum_mgr_node_nodeincluster				8
-#define Anum_mgr_node_nodepath					9
+#define Anum_mgr_node_nodesync					4
+#define Anum_mgr_node_nodeport					5
+#define Anum_mgr_node_nodeinited				6
+#define Anum_mgr_node_nodeprimary				7
+#define Anum_mgr_node_nodemasternameOid			8
+#define Anum_mgr_node_nodeincluster				9
+#define Anum_mgr_node_nodepath					10
 
 #define CNDN_TYPE_COORDINATOR_MASTER		'c'
 #define CNDN_TYPE_COORDINATOR_SLAVE			's'

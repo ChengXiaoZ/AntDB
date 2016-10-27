@@ -57,6 +57,7 @@ CREATE VIEW adbmgr.node AS
     END AS type,
     node_alise.nodename AS mastername,
     mgrnode.nodeport    AS  port,
+    mgrnode.nodesync    AS  sync,
     mgrnode.nodepath    AS  path,
     mgrnode.nodeprimary AS primary,
     mgrnode.nodeinited  AS  initialized,

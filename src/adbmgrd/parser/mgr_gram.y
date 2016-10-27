@@ -1922,6 +1922,7 @@ reserved_keyword:
 	  FALSE_P
 	| NOT
 	| TRUE_P
+	| ON
 	;
 
 %%

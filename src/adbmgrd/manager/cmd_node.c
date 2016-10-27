@@ -45,6 +45,9 @@
 #define WAL_LEVEL_MODE	"hot_standby"
 #define APPEND_DNMASTER  1
 #define APPEND_CNMASTER  2
+#define SYNC            't'
+#define ASYNC           'f'
+#define SPACE           ' '
 
 typedef struct AppendNodeInfo
 {
@@ -95,7 +98,7 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
 static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid);
 static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype);
 
-#if (Natts_mgr_node != 9)
+#if (Natts_mgr_node != 10)
 #error "need change code"
 #endif
 
@@ -210,13 +213,32 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			datum[Anum_mgr_node_nodepath-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_node_nodepath-1] = true;
-		}else
+		}else if(strcmp(def->defname, "sync") == 0)
+        {
+			if(got[Anum_mgr_node_nodesync-1])
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("conflicting or redundant options")));
+			str = defGetString(def);
+
+			if(strcmp(str, "true") == 0 || strcmp(str, "on") == 0 || strcmp(str, "t") == 0)
+			{
+				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
+                got[Anum_mgr_node_nodesync-1] = true;
+			}else if(strcmp(str, "false") == 0 || strcmp(str, "off") == 0 || strcmp(str, "f") == 0)
+			{
+				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(ASYNC);
+                got[Anum_mgr_node_nodesync-1] = true;
+			}else
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("invalid value for parameter \"sync\": \"%s\", must be \"true|t|on\" or \"false|f|off\"", str)));
+			}
+        }else      
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" is not recognized", def->defname)
-				,errhint("option is host, port and path")));
+				,errhint("option is host, port, sync and path")));
 		}
-		
 	}
 
 	/* if not give, set to default */
@@ -239,6 +261,25 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			, errmsg("option \"port\" must be given")));
 	}
+    if(got[Anum_mgr_node_nodesync-1] == false) /* default values for user do not set sync in add slave/extra. */
+    {
+        if(CNDN_TYPE_COORDINATOR_SLAVE == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
+        {
+            datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
+        }
+        
+        if(CNDN_TYPE_DATANODE_EXTRA == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+        {
+            datum[Anum_mgr_node_nodesync-1] = CharGetDatum(ASYNC);
+        } 
+    }
+    if(got[Anum_mgr_node_nodesync-1] == true) /* default values for user set sync in add gtm/coord/datanode master.  */
+    {
+        if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
+        {
+            datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SPACE);
+        }
+    }
 	if(got[Anum_mgr_node_nodemasternameOid-1] == false)
 	{
 		if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
