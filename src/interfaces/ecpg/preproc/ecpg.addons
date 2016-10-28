@@ -460,10 +460,5 @@ ECPG: FetchStmtMOVEfetch_args rule
 		add_additional_variables($4, false);
 		$$ = cat_str(2, mm_strdup("move backward from"), cursor_marker);
 	}
-ECPG: limit_clauseLIMITselect_limit_value','select_offset_value block
-	{
-		mmerror(PARSE_ERROR, ET_WARNING, "no longer supported LIMIT #,# syntax passed to server");
-		$$ = cat_str(4, mm_strdup("limit"), $2, mm_strdup(","), $4);
-	}
 ECPG: SignedIconstIconst rule
 	| civar	{ $$ = $1; }

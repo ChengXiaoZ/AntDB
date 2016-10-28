@@ -9909,6 +9909,23 @@ select_limit:
 			| offset_clause limit_clause		{ $$ = list_make2($1, $2); }
 			| limit_clause						{ $$ = list_make2(NULL, $1); }
 			| offset_clause						{ $$ = list_make2($1, NULL); }
+			| LIMIT select_offset_value ',' select_limit_value
+				{
+					static bool limit_offset_warning = true;
+					/* WARNING it once */
+					if(limit_offset_warning)
+					{
+						/* WARNING because it was too confusing, bjm 2002-02-18 */
+						ereport(WARNING,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 /*errmsg("LIMIT #,# syntax is not supported"),*/
+							 errmsg("LIMIT #,# was too confusing"),
+							 errhint("Use separate LIMIT and OFFSET clauses."),
+							 parser_errposition(@1)));
+						limit_offset_warning = false;
+					}
+					$$ = list_make2($2, $4);
+				}
 		;
 
 opt_select_limit:
@@ -9919,15 +9936,6 @@ opt_select_limit:
 limit_clause:
 			LIMIT select_limit_value
 				{ $$ = $2; }
-			| LIMIT select_limit_value ',' select_offset_value
-				{
-					/* Disabled because it was too confusing, bjm 2002-02-18 */
-					ereport(ERROR,
-							(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("LIMIT #,# syntax is not supported"),
-							 errhint("Use separate LIMIT and OFFSET clauses."),
-							 parser_errposition(@1)));
-				}
 			/* SQL:2008 syntax */
 			| FETCH first_or_next opt_select_fetch_first_value row_or_rows ONLY
 				{ $$ = $3; }
