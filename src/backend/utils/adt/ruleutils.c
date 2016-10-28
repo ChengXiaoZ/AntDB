@@ -8425,7 +8425,7 @@ get_agg_expr(Aggref *aggref, deparse_context *context)
 
 #ifdef ADB
 		if (OidIsValid(aggform->aggfinalfn) &&
-			aggform->aggtranstype != INTERNALOID)
+			IsValidFQSAggTransType(aggform->aggtranstype))
 #else
 		if (OidIsValid(aggform->aggfinalfn))
 #endif

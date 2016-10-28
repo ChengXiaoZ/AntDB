@@ -749,4 +749,9 @@ DATA(insert OID = 3973 ( _date          ORANSP PGUID -1 f b A f t \054 0 3970 0 
 	 (typid) == ANYENUMOID || \
 	 (typid) == ANYRANGEOID)
 
+#ifdef ADB
+#define IsValidFQSAggTransType(typid)	\
+	((typid) != INTERNALOID && !IsPolymorphicType((typid)))
+#endif
+
 #endif   /* PG_TYPE_H */

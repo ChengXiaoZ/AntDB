@@ -1829,7 +1829,7 @@ ExecInitAgg(Agg *node, EState *estate, int eflags)
 		 */
 #ifdef ADB
 		if (IS_PGXC_DATANODE &&
-			aggform->aggtranstype != INTERNALOID)
+			IsValidFQSAggTransType(aggform->aggtranstype))
 #else
 		if (IS_PGXC_DATANODE)
 #endif
