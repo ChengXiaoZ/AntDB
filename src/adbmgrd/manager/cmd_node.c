@@ -3565,6 +3565,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	AppendNodeInfo appendnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	bool is_extra_exist, is_extra_sync;
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg, primary_conninfo_value;
@@ -3624,7 +3625,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 						get_hostaddress_from_hostoid(agtm_m_nodeinfo.nodehost),
 						agtm_m_nodeinfo.nodeport,
 						AGTM_USER,
-						agtm_m_nodeinfo.nodename);
+						"slave");
 
 		mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
@@ -3640,7 +3641,32 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 
 		/* step 7: update agtm master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
+		get_nodestatus(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodename, &is_extra_exist, &is_extra_sync);
+		if (is_extra_exist)
+		{
+			if (is_extra_sync)
+			{
+				if (is_sync(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodename))
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra,slave", &infosendmsg);
+				else
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
+			}
+			else
+			{
+				if (is_sync(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodename))
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
+				else
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+			}
+		}
+		else
+		{
+			if (is_sync(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodename))
+				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
+			else
+				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+		}
+
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								agtm_m_nodeinfo.nodepath,
 								&infosendmsg, 
@@ -3681,6 +3707,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	AppendNodeInfo appendnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	bool is_slave_exist, is_slave_sync;
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg, primary_conninfo_value;
@@ -3741,7 +3768,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 						get_hostaddress_from_hostoid(agtm_m_nodeinfo.nodehost),
 						agtm_m_nodeinfo.nodeport,
 						AGTM_USER,
-						agtm_m_nodeinfo.nodename);
+						"extra");
 
 		mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
@@ -3756,16 +3783,41 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		mgr_start_node(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 
 		/* step 7: update agtm master's postgresql.conf.*/
-		/*resetStringInfo(&infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", appendnodeinfo.nodename, &infosendmsg);
+		resetStringInfo(&infosendmsg);
+		get_nodestatus(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodename, &is_slave_exist, &is_slave_sync);
+		if (is_slave_exist)
+		{
+			if (is_slave_sync)
+			{
+				if (is_sync(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename))
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave,extra", &infosendmsg);
+				else
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
+			}
+			else
+			{
+				if (is_sync(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename))
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
+				else
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+			}
+		}
+		else
+		{
+			if (is_sync(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename))
+				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
+			else
+				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+		}
+
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								agtm_m_nodeinfo.nodepath,
 								&infosendmsg, 
 								agtm_m_nodeinfo.nodehost, 
-								&getAgentCmdRst); */
+								&getAgentCmdRst);
 
 		/* step 8: reload agtm master's postgresql.conf. */
-		//mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
+		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
 		/* step 9: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, false, true);
@@ -6775,7 +6827,6 @@ static bool is_sync(char nodetype, char *nodename)
 	HeapScanDesc rel_scan;
 	ScanKeyData key[4];
 	HeapTuple tuple;
-	bool getnode = false;
 
 	Assert(nodetype == CNDN_TYPE_COORDINATOR_SLAVE ||
 			nodetype == CNDN_TYPE_DATANODE_SLAVE ||
