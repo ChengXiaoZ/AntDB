@@ -2280,9 +2280,14 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 	if (result == COERCION_PATH_NONE &&
 		IsOracleCoerceFunc())
 	{
-		*funcid = ora_find_coerce_func(sourceTypeId, targetTypeId);
-		if (*funcid != InvalidOid)
-			result = COERCION_PATH_ORA_FUNC;
+		if (TypeCategory(targetTypeId) == TYPCATEGORY_STRING)
+			result = COERCION_PATH_COERCEVIAIO;
+		else
+		{
+			*funcid = ora_find_coerce_func(sourceTypeId, targetTypeId);
+			if (*funcid != InvalidOid)
+				result = COERCION_PATH_ORA_FUNC;
+		}
 	}
 #endif
 
