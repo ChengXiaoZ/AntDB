@@ -3741,19 +3741,19 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 
 		/* step 7: update agtm master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
-		get_nodestatus(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodename, &is_slave_exist, &is_slave_sync);
+		get_nodestatus(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodename, &is_slave_exist, &is_slave_sync);
 		if (is_slave_exist)
 		{
 			if (is_slave_sync)
 			{
-				if (is_sync(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename))
+				if (is_sync(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodename))
 					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave,extra", &infosendmsg);
 				else
 					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
 			}
 			else
 			{
-				if (is_sync(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename))
+				if (is_sync(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodename))
 					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
 				else
 					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
@@ -3761,7 +3761,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			if (is_sync(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename))
+			if (is_sync(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodename))
 				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
 			else
 				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
