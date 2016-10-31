@@ -93,9 +93,6 @@ static void pgxc_node_all_free(void);
 
 static int	get_int(PGXCNodeHandle * conn, size_t len, int *out);
 static int	get_char(PGXCNodeHandle * conn, char *out);
-#ifdef ADB
-static void pgxc_node_flush_read(PGXCNodeHandle *handle);
-#endif
 
 /*
  * Initialize PGXCNodeHandle struct
@@ -1951,7 +1948,7 @@ pgxc_node_flush(PGXCNodeHandle *handle)
  */
 #ifdef ADB
 #define FLUSH_READ_TIMEOUT 60	/* 60 seconds */
-static void pgxc_node_flush_read(PGXCNodeHandle *handle)
+void pgxc_node_flush_read(PGXCNodeHandle *handle)
 {
 	int	result;
 	time_t last_time;

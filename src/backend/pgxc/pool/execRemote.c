@@ -3500,9 +3500,10 @@ do_query(RemoteQueryState *node)
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("Unexpected response from Datanode")));
 		}
-		/* report error if any */
-		pgxc_node_report_error(node);
 	}
+
+	/* report error if any */
+	pgxc_node_report_error(node);
 
 	if (node->cursor_count > 0)
 	{
@@ -5158,6 +5159,12 @@ pgxc_node_report_error(RemoteQueryState *combiner)
 	if (combiner->errorMessage.len > 0)
 	{
 		char *code = combiner->errorCode;
+#ifdef ADB
+		int i;
+		for (i = 0; i < combiner->conn_count; i++)
+			pgxc_node_flush_read(combiner->connections[i]);
+#endif
+
 		if (combiner->errorDetail != NULL)
 			ereport(ERROR,
 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),

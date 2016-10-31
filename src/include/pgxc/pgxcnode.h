@@ -213,9 +213,7 @@ extern int	pgxc_node_is_data_enqueued(PGXCNodeHandle *conn);
 
 extern int	send_some(PGXCNodeHandle * handle, int len);
 extern int	pgxc_node_flush(PGXCNodeHandle *handle);
-#ifndef ADB
 extern void	pgxc_node_flush_read(PGXCNodeHandle *handle);
-#endif /* ADB */
 
 extern char get_message(PGXCNodeHandle *conn, int *len, char **msg);
 
