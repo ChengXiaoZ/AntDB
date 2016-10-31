@@ -99,6 +99,7 @@ static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid);
 static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype);
 static bool is_sync(char nodetype, char *nodename);
 static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *is_sync);
+static void mgr_set_master_sync(void);
 
 #if (Natts_mgr_node != 10)
 #error "need change code"
@@ -322,22 +323,6 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 
 	/*close relation */
 	heap_close(rel, RowExclusiveLock);
-	if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
-	{
-		/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
-		if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
-			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'slave'", false);
-		else if (CNDN_TYPE_DATANODE_EXTRA == nodetype)
-			mgr_parm_set_sync_master_slave(mastername.data, CNDN_TYPE_DATANODE_MASTER, "'extra'", false);
-	}
-	else if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
-	{
-		/*if insert datanode slave or extra, add new tuple for datanode master sync relation*/
-		if (GTM_TYPE_GTM_SLAVE == nodetype)
-			mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'slave'", false);
-		else if (GTM_TYPE_GTM_EXTRA == nodetype)
-			mgr_parm_set_sync_master_slave(mastername.data, GTM_TYPE_GTM_MASTER, "'extra'", false);
-	}
 		
 	/* Record dependencies on host */
 	myself.classId = NodeRelationId;
@@ -469,7 +454,6 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	MemoryContext context, old_context;
 	NameData name;
 	NameData nametmp;
-	NameData application_name;
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	char nodetype;
@@ -561,37 +545,10 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
-			/*delete the parm in mgr_updateparm for this type of node*/
-			mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &(mgr_node->nodename), nodetype, false, "synchronous_standby_names");
 			simple_heap_delete(rel, &(tuple->t_self));
 			CatalogUpdateIndexes(rel, tuple);
 			heap_freetuple(tuple);
 		}
-		if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
-		{
-			if (CNDN_TYPE_DATANODE_SLAVE == nodetype)
-			{
-				namestrcpy(&application_name, "'slave'");
-			}
-			else
-				namestrcpy(&application_name, "'extra'");
-			mgr_parm_alter_sync_master_slave(name.data, CNDN_TYPE_DATANODE_MASTER, application_name.data, nodetype);
-		}
-		else if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
-		{
-			if (GTM_TYPE_GTM_SLAVE == nodetype)
-			{
-				namestrcpy(&application_name, "'slave'");
-			}
-			else
-				namestrcpy(&application_name, "'extra'");
-			mgr_parm_alter_sync_master_slave(name.data, GTM_TYPE_GTM_MASTER, application_name.data, nodetype);
-		}
-	}
-	/*delete the parm in mgr_updateparm for this type and nodename in mgr_updateparm is MACRO_STAND_FOR_ALL_NODENAME*/
-	if (getnum == nodenum)
-	{
-		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &nametmp, nodetype, false, "synchronous_standby_names");
 	}
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel, RowExclusiveLock);
@@ -1007,9 +964,9 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	ManagerAgent *ma;
 	bool initdone = false;
 	bool isNull = false;
+	bool ismasterrunning = false;
 	Form_mgr_node mgr_node;
 	int cndnport;
-	bool ismasterrunning = false;
 	Datum DatumStartDnMaster,
 		DatumStopDnMaster;
 
@@ -5509,6 +5466,8 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		heap_endscan(info_out->rel_scan);
 		heap_close(info_out->rel_node, AccessShareLock);
 		pfree(info_out);
+		/*set gtm or datanode master synchronous_standby_names*/
+		mgr_set_master_sync();
 		SRF_RETURN_DONE(funcctx);
 	}
 
@@ -6891,9 +6850,6 @@ static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 
-	*is_exist = true;
-	*is_sync = true;
-
 	ScanKeyInit(&key[0]
 				,Anum_mgr_node_nodeinited
 				,BTEqualStrategyNumber
@@ -6932,7 +6888,8 @@ static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *
 	}
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-
+	Assert(mgr_node);
+	*is_exist = true;
 	if (mgr_node->nodesync == 't') /* sync */
 	{
 		*is_sync = true;
@@ -6949,3 +6906,79 @@ static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *
 	return;   
 }
 
+/*acoording to the value of nodesync in node systable, refresh synchronous_standby_names in postgresql.conf of gtm 
+* or datanode master.
+*/
+static void mgr_set_master_sync(void)
+{
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	Datum datumpath;
+	bool isNull = false;
+	bool bslave_exist = false;
+	bool bextra_exist = false;
+	bool bslave_sync = false;
+	bool bextra_sync = false;
+	char *path;
+	StringInfoData infosendmsg;
+	Form_mgr_node mgr_node;
+	GetAgentCmdRst getAgentCmdRst;
+	
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	getAgentCmdRst.ret = false;
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if (GTM_TYPE_GTM_MASTER != mgr_node->nodetype && CNDN_TYPE_DATANODE_MASTER != mgr_node->nodetype)
+			continue;
+		/*get master path*/
+		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column cndnpath is null")));
+		}		
+		path = TextDatumGetCString(datumpath);
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype)
+		{
+			/*gtm slave sync status*/
+			get_nodestatus(GTM_TYPE_GTM_SLAVE, NameStr(mgr_node->nodename), &bslave_exist, &bslave_sync);
+			/*gtm extra sync status*/
+			get_nodestatus(GTM_TYPE_GTM_EXTRA, NameStr(mgr_node->nodename), &bextra_exist, &bextra_sync);
+		}
+		else
+		{
+			/*datanode slave sync status*/
+			get_nodestatus(CNDN_TYPE_DATANODE_SLAVE, NameStr(mgr_node->nodename), &bslave_exist, &bslave_sync);
+			/*datanode extra sync status*/
+			get_nodestatus(CNDN_TYPE_DATANODE_EXTRA, NameStr(mgr_node->nodename), &bextra_exist, &bextra_sync);
+		}
+		if (bslave_sync && bextra_sync)
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave,extra", &infosendmsg);
+		else if (bslave_sync && (!bextra_sync))
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
+		else if ((!bslave_sync) && bextra_sync)
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
+		else
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+		
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, 
+								path,
+								&infosendmsg, 
+								mgr_node->nodehost, 
+								&getAgentCmdRst);
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+	}
+	heap_endscan(rel_scan);
+	heap_close(rel_node, RowExclusiveLock);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+
+}
