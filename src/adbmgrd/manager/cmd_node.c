@@ -1639,6 +1639,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_node->nodeinited = true;
 		mgr_node->nodetype = CNDN_TYPE_DATANODE_MASTER;
 		mgr_node->nodemasternameoid = 0;
+		mgr_node->nodesync = SPACE;
 		heap_inplace_update(noderel, aimtuple);
 		/*5.refresh parm systbl*/
 		bgetextra = mgr_check_node_exist_incluster(&dnslavename, nodetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
@@ -5062,8 +5063,10 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	char cmdtype = AGT_CMD_DN_FAILOVER;
 	char nodetype;
 	bool nodetypechange = false;
-	NameData value;
-	NameData nodenamedata;
+	bool bslave_exist = false;
+	bool bextra_exist = false;
+	bool bslave_sync = false;
+	bool bextra_sync = false;
 	
 	if (strcmp(typestr, "slave") == 0)
 	{
@@ -5075,29 +5078,34 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	}
 	else if (strcmp(typestr, "either") == 0)
 	{
-		namestrcpy(&nodenamedata, nodename);
-		if(mgr_parm_get_parmvalue(&nodenamedata, CNDN_TYPE_DATANODE_MASTER, "synchronous_standby_names", &value))
+		get_nodestatus(CNDN_TYPE_DATANODE_SLAVE, nodename, &bslave_exist, &bslave_sync);
+		get_nodestatus(CNDN_TYPE_DATANODE_EXTRA, nodename, &bextra_exist, &bextra_sync);
+		if (bslave_sync)
 		{
-			if (strstr(value.data, "slave") != NULL)
+			nodetype = CNDN_TYPE_DATANODE_SLAVE;
+			nodetypechange = false;
+		}
+		else if (bextra_sync)
+		{
+			nodetype = CNDN_TYPE_DATANODE_EXTRA;
+			nodetypechange = false;
+		}
+		else
+		{
+			if (bslave_exist)
 			{
 				nodetype = CNDN_TYPE_DATANODE_SLAVE;
 				nodetypechange = false;
 			}
-			else if (strstr(value.data, "extra") != NULL)
+			else if ((bextra_exist))
 			{
 				nodetype = CNDN_TYPE_DATANODE_EXTRA;
 				nodetypechange = false;
 			}
 			else
 			{
-				nodetype = CNDN_TYPE_DATANODE_SLAVE;
-				nodetypechange = true;
+				ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist", nodename)));
 			}
-		}
-		else
-		{
-			nodetype = CNDN_TYPE_DATANODE_SLAVE;
-			nodetypechange = true;
 		}
 	}
 	else
@@ -6136,8 +6144,11 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	char cmdtype = AGT_CMD_GTM_SLAVE_FAILOVER;
 	char nodetype = GTM_TYPE_GTM_SLAVE;
 	bool nodetypechange = false;
+	bool bslave_exist = false;
+	bool bextra_exist = false;
+	bool bslave_sync = false;
+	bool bextra_sync = false;
 	char *nodename = "gtm"; /*just use for input parameter*/
-	NameData value;
 	NameData nodenamedata;
 	ScanKeyData key[1];
 	HeapTuple tuple;
@@ -6172,29 +6183,36 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 		}
 		heap_endscan(scan);
 		heap_close(rel_node, RowExclusiveLock);
-
-		if(mgr_parm_get_parmvalue(&nodenamedata, GTM_TYPE_GTM_MASTER, "synchronous_standby_names", &value))
+		
+		get_nodestatus(GTM_TYPE_GTM_SLAVE, nodename, &bslave_exist, &bslave_sync);
+		get_nodestatus(GTM_TYPE_GTM_EXTRA, nodename, &bextra_exist, &bextra_sync);
+		
+		if (bslave_sync)
 		{
-			if (strstr(value.data, "slave") != NULL)
+			nodetype = GTM_TYPE_GTM_SLAVE;
+			nodetypechange = false;
+		}
+		else if (bextra_sync)
+		{
+			nodetype = GTM_TYPE_GTM_EXTRA;
+			nodetypechange = false;
+		}
+		else
+		{
+			if (bslave_exist)
 			{
 				nodetype = GTM_TYPE_GTM_SLAVE;
 				nodetypechange = false;
 			}
-			else if (strstr(value.data, "extra") != NULL)
+			else if (bextra_exist)
 			{
 				nodetype = GTM_TYPE_GTM_EXTRA;
 				nodetypechange = false;
 			}
 			else
 			{
-				nodetype = GTM_TYPE_GTM_SLAVE;
-				nodetypechange = true;
+				ereport(ERROR, (errmsg("gtm slave or extra does not exist")));
 			}
-		}
-		else
-		{
-			nodetype = GTM_TYPE_GTM_SLAVE;
-			nodetypechange = true;
 		}
 	}
 	else
@@ -6301,9 +6319,10 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	simple_heap_delete(noderel, &mastertuple->t_self);
 	CatalogUpdateIndexes(noderel, mastertuple);
 	ReleaseSysCache(mastertuple);
-	/*4.change slave or extra type to master type*/
+	/*4.change slave type to master type*/
 	mgr_node->nodetype = GTM_TYPE_GTM_MASTER;
 	mgr_node->nodemasternameoid = 0;
+	mgr_node->nodesync = SPACE;
 	heap_inplace_update(noderel, aimtuple);
 	/*for mgr_updateparm systbl*/
 	/*delete parm info in mgr_updateparm systbl*/
@@ -6328,14 +6347,14 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	{
 		ereport(LOG, (errmsg("refresh %s %s/postgresql.conf of gtm master fail", hostaddress, cndnPath)));
 	}
-	/*restart gtm extra or slave*/
+	/*restart new gtm master*/
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
 	if(!getAgentCmdRst->ret)
 	{
 		ereport(ERROR, (errmsg("agtm_ctl restart gtm %s fail", "master")));
 	}
-	/*6.update gtm extra or slave nodemasternameoid, refresh gtm extra recovery.conf*/
+	/*6.update gtm extra nodemasternameoid, refresh gtm extra recovery.conf*/
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
 		,BTEqualStrategyNumber
@@ -6347,6 +6366,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
 		mgr_nodetmp->nodemasternameoid = newgtmtupleoid;
+		mgr_nodetmp->nodesync = SYNC;
 		heap_inplace_update(noderel, tuple);
 		/*check the node is initialized or not*/
 		if (!mgr_nodetmp->nodeincluster)
@@ -6369,7 +6389,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		{
 			ereport(WARNING, (errmsg("refresh agtm %s fail", strlabel)));
 		}
-		/*restart gtm extra or slave*/
+		/*restart gtm extra*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, tuple, shutdown_f);
 		if(!getAgentCmdRst->ret)
@@ -6431,7 +6451,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 	{
 		ereport(WARNING, (errmsg("refresh postgresql.conf of datanode %s master fail", NameStr(mgr_node_master->nodename))));
 	}
-	/*2.update datanode extra/slave nodemasternameoid, refresh recovery.conf, restart the node*/
+	/*2.update datanode extra nodemasternameoid, refresh recovery.conf, restart the node*/
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
 		,BTEqualStrategyNumber
@@ -6449,6 +6469,7 @@ static void mgr_after_datanode_failover_handle(Relation noderel, GetAgentCmdRst 
 		Assert(mgr_nodetmp);
 		/*update datanode extra/slave nodemasternameoid*/
 		mgr_nodetmp->nodemasternameoid = newmastertupleoid;
+		mgr_nodetmp->nodesync = SYNC;
 		heap_inplace_update(noderel, tuple);
 		/*check the node is initialized or not*/
 		if (!mgr_nodetmp->nodeincluster)
@@ -6936,6 +6957,10 @@ static void mgr_set_master_sync(void)
 		Assert(mgr_node);
 		if (GTM_TYPE_GTM_MASTER != mgr_node->nodetype && CNDN_TYPE_DATANODE_MASTER != mgr_node->nodetype)
 			continue;
+		bslave_exist = false;
+		bslave_sync = false;
+		bextra_exist = false;
+		bextra_sync = false;
 		/*get master path*/
 		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
 		if(isNull)

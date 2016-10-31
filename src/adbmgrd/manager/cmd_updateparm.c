@@ -152,10 +152,10 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 		Assert(def && IsA(def, DefElem));
 		namestrcpy(&key, def->defname);	
 		namestrcpy(&value, defGetString(def));
-		if (strcmp(key.data, "port") == 0)
+		if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
+				, errmsg("permission denied: \"%\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
 		}
 		if (!node->is_force)
 		{
@@ -1059,46 +1059,6 @@ static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo val
 	return false;
 }
 
-/*delete the tuple for given nodename and nodetype*/
-void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype, bool bexpect, char *expectname)
-{
-	HeapTuple looptuple;
-	ScanKeyData scankey[2];
-	HeapScanDesc rel_scan;
-	Form_mgr_updateparm mgr_updateparm;
-	
-	ScanKeyInit(&scankey[0],
-		Anum_mgr_updateparm_nodename
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(nodename));
-	ScanKeyInit(&scankey[1],
-		Anum_mgr_updateparm_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(nodetype));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
-	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
-		Assert(mgr_updateparm);
-		if (bexpect)
-		{
-			if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), expectname) != 0)
-			{
-				simple_heap_delete(noderel, &looptuple->t_self);
-				CatalogUpdateIndexes(noderel, looptuple);
-			}
-		}
-		else
-		{
-			simple_heap_delete(noderel, &looptuple->t_self);
-			CatalogUpdateIndexes(noderel, looptuple);
-		}
-	}
-	heap_endscan(rel_scan);
-}
-
 /*update the tuple for given nodename and nodetype*/
 void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype)
 {
@@ -1156,17 +1116,7 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 	memset(isnull, 0, sizeof(isnull));
 	bgetextra = mgr_check_node_exist_incluster(oldmastername, oldslavetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
-	/*delete old master parm in mgr_updateparm systbl*/
-	mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, oldmastername, oldmastertype, bgetextra, "synchronous_standby_names");
-	if (bgetextra)
-	{
-		mgr_parm_set_sync_master_slave(oldslavename->data, CNDN_TYPE_DATANODE_MASTER, (oldslavetype == CNDN_TYPE_DATANODE_SLAVE ? "'extra'":"'slave'"), true);
-	}
 	namestrcpy(&namedatatmp, MACRO_STAND_FOR_ALL_NODENAME);
-	if (1 == olddnmasternum)
-	{
-		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &namedatatmp, oldmastertype, false, "synchronous_standby_names");
-	}
 	/*change oldslave parm*/
 	mgr_parmr_update_tuple_nodename_nodetype(rel_updateparm, oldslavename, oldslavetype, oldmastertype);
 	ScanKeyInit(&scankey[0],
@@ -1191,19 +1141,9 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
 			if(!HeapTupleIsValid(tuple))
 			{
-				if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") != 0)
-				{
-					namestrcpy(&(mgr_updateparm->updateparmnodename), oldslavename->data);
-					mgr_updateparm->updateparmnodetype = oldmastertype;
-					heap_inplace_update(rel_updateparm, looptuple);
-					CatalogUpdateIndexes(rel_updateparm, looptuple);
-				}
-				else
-				{
-					/*delete the old tuple*/
-					simple_heap_delete(rel_updateparm, &looptuple->t_self);
-					CatalogUpdateIndexes(rel_updateparm, looptuple);
-				}
+				/*delete the old tuple*/
+				simple_heap_delete(rel_updateparm, &looptuple->t_self);
+				CatalogUpdateIndexes(rel_updateparm, looptuple);
 			}
 			else
 			{
@@ -1223,8 +1163,6 @@ void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, c
 		{
 			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
 			Assert(mgr_updateparm);
-			if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") == 0)
-				continue;
 			/*check nodename, nodetype, key need record*/
 			tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(oldslavename), CharGetDatum(oldslavetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
 			if(!HeapTupleIsValid(tuple))
@@ -1377,158 +1315,6 @@ static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue
 	return true;
 }
 
-/*
-* set datanode master-slave replication sync relation: if master has two slave, the one is synchronous, the other is asynchronous; if 
-* master has only one slave, it is synchronous relation. insert one tuple to mgr_updateparm systbl to record master-slave sync relation
-*/
-void mgr_parm_set_sync_master_slave(char *mastername, char mastertype, char *application_name, bool forcereplace)
-{
-	Relation rel_updateparm;
-	HeapTuple newtuple;
-	HeapTuple tuple;
-	NameData parmname;
-	NameData masternamedata;
-	NameData application_name_data;
-	HeapScanDesc rel_scan;
-	ScanKeyData scankey[3];
-	bool bget = false;
-	Datum datum[Natts_mgr_updateparm];
-	bool isnull[Natts_mgr_updateparm];
-	
-	namestrcpy(&parmname, "synchronous_standby_names");
-	namestrcpy(&masternamedata, mastername);
-	namestrcpy(&application_name_data, application_name);
-	/*check the synchronous_standby_names*/
-	ScanKeyInit(&scankey[0],
-		Anum_mgr_updateparm_nodename
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(&masternamedata));
-	ScanKeyInit(&scankey[1],
-		Anum_mgr_updateparm_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(mastertype));
-	ScanKeyInit(&scankey[2],
-		Anum_mgr_updateparm_key
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(&parmname));
-	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
-	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		/*check the value, when it is null, update it*/
-		Form_mgr_updateparm mgr_updateparm;
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
-		Assert(mgr_updateparm);
-		if(strcmp(NameStr(mgr_updateparm->updateparmvalue),"''") == 0 || forcereplace)
-		{
-			namestrcpy(&(mgr_updateparm->updateparmvalue), application_name_data.data);
-			heap_inplace_update(rel_updateparm, tuple);
-		}
-		bget = true;
-		break;
-	}
-	if (!bget)
-	{
-		/*insert it*/
-		memset(datum, 0, sizeof(datum));
-		memset(isnull, 0, sizeof(isnull));
-		datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(PARM_TYPE_DATANODE);
-		datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&masternamedata);
-		datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(mastertype);
-		datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&parmname);
-		datum[Anum_mgr_updateparm_value-1] = NameGetDatum(application_name);
-		/* now, we can insert record */
-		newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
-		simple_heap_insert(rel_updateparm, newtuple);
-		CatalogUpdateIndexes(rel_updateparm, newtuple);
-		heap_freetuple(newtuple);
-	}
-	
-	heap_endscan(rel_scan);
-	heap_close(rel_updateparm, RowExclusiveLock);
-}
-
-/*when drop datanode slave or datanode extra, it should modify master_slave sync relation in mgr_updateparm systbl*/
-void mgr_parm_alter_sync_master_slave(char *mastername, char mastertype, char *application_name_drop, char slavetypedrop)
-{
-	Relation rel_updateparm;
-	HeapTuple tuple;
-	NameData parmname;
-	NameData masternamedata;
-	NameData application_name_data_new;
-	HeapScanDesc rel_scan;
-	ScanKeyData scankey[3];
-	char checkexisttype;
-
-	if (GTM_TYPE_GTM_SLAVE == slavetypedrop || GTM_TYPE_GTM_EXTRA == slavetypedrop)
-	{
-		checkexisttype = (GTM_TYPE_GTM_SLAVE == slavetypedrop ? GTM_TYPE_GTM_EXTRA:GTM_TYPE_GTM_SLAVE);
-	}
-	else
-	{
-		checkexisttype = (CNDN_TYPE_DATANODE_SLAVE == slavetypedrop ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
-	}
-	
-	if (CNDN_TYPE_DATANODE_SLAVE == slavetypedrop || GTM_TYPE_GTM_SLAVE == slavetypedrop)
-	{
-		namestrcpy(&application_name_data_new, "'extra'");
-	}
-	else if(CNDN_TYPE_DATANODE_EXTRA == slavetypedrop || GTM_TYPE_GTM_EXTRA == slavetypedrop)
-	{
-		namestrcpy(&application_name_data_new, "'slave'");
-	}
-	namestrcpy(&parmname, "synchronous_standby_names");
-	namestrcpy(&masternamedata, mastername);
-	/*check the synchronous_standby_names*/
-	ScanKeyInit(&scankey[0],
-		Anum_mgr_updateparm_nodename
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(&masternamedata));
-	ScanKeyInit(&scankey[1],
-		Anum_mgr_updateparm_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(mastertype));
-	ScanKeyInit(&scankey[2],
-		Anum_mgr_updateparm_key
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(&parmname));
-	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
-	rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		/*check the value, when it is null, update it*/
-		Form_mgr_updateparm mgr_updateparm;
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
-		Assert(mgr_updateparm);
-		if(strcmp(NameStr(mgr_updateparm->updateparmvalue), application_name_drop) == 0)
-		{
-			/*need update the value*/
-			if (mgr_check_node_exist_incluster(&masternamedata, checkexisttype, false))
-			{
-				namestrcpy(&(mgr_updateparm->updateparmvalue), application_name_data_new.data);
-				heap_inplace_update(rel_updateparm, tuple);
-			}
-			else
-			{
-				simple_heap_delete(rel_updateparm, &tuple->t_self);
-				CatalogUpdateIndexes(rel_updateparm, tuple);
-			}
-
-		}
-		break;
-	}
-
-	heap_endscan(rel_scan);
-	heap_close(rel_updateparm, RowExclusiveLock);
-}
-
-
 /*when gtm failover, the mgr_updateparm need modify: delete oldmaster parm and update slavetype to master for new master*/
 void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char mastertype, Name slavename, char slavetype, bool bget)
 {
@@ -1536,30 +1322,6 @@ void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char 
 	ScanKeyData scankey[2];
 	HeapScanDesc rel_scan;
 	Form_mgr_updateparm mgr_updateparm;
-	
-	/*delete old master parameters*/	
-	ScanKeyInit(&scankey[0],
-		Anum_mgr_updateparm_nodename
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(mastername));
-	ScanKeyInit(&scankey[1],
-		Anum_mgr_updateparm_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(mastertype));
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
-	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
-		Assert(mgr_updateparm);
-		if (strcasecmp(NameStr(mgr_updateparm->updateparmkey), "synchronous_standby_names") != 0 || !bget)
-		{
-			simple_heap_delete(noderel, &looptuple->t_self);
-			CatalogUpdateIndexes(noderel, looptuple);
-		}
-	}
-	heap_endscan(rel_scan);
 
 	/*update the old slave parameters to new master type*/
 	ScanKeyInit(&scankey[0],
@@ -1590,30 +1352,4 @@ void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char 
 		}
 	}
 	heap_endscan(rel_scan);
-	
-	if (bget)
-	{
-		mgr_parm_set_sync_master_slave(mastername->data, GTM_TYPE_GTM_MASTER, (slavetype == GTM_TYPE_GTM_SLAVE ? "'extra'":"'slave'"), true);
-	}
-}
-
-/*get given nodename nodetype key 's value*/
-bool mgr_parm_get_parmvalue(Name nodename, char nodetype, char *key, Name value)
-{
-	Form_mgr_updateparm mgr_updateparm;
-	HeapTuple tuple;
-	NameData parmname;
-	
-	namestrcpy(&parmname, key);
-	tuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(nodename), CharGetDatum(nodetype), NameGetDatum(&parmname));
-	if(HeapTupleIsValid(tuple))
-	{
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
-		Assert(mgr_updateparm);
-		namestrcpy(value, NameStr(mgr_updateparm->updateparmvalue));
-		ReleaseSysCache(tuple);
-		return true;
-	}
-	
-	return false;
 }
