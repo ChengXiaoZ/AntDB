@@ -1140,7 +1140,6 @@ Datum mgr_start_gtm_master(PG_FUNCTION_ARGS)
 static bool mgr_start_one_gtm_master(void)
 {
 	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tup_result;
 	HeapTuple aimtuple = NULL;
 	ScanKeyData key[0];
 	Relation rel_node;
@@ -1164,12 +1163,7 @@ static bool mgr_start_one_gtm_master(void)
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
-	//tupleret = heap_copytuple(aimtuple);
 	mgr_runmode_cndn_get_result(AGT_CMD_GTM_START_MASTER, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
-	tup_result = build_common_command_tuple(
-		&(getAgentCmdRst.nodename)
-		, getAgentCmdRst.ret
-		, getAgentCmdRst.description.data);
 	heap_endscan(rel_scan);
 	heap_close(rel_node, RowExclusiveLock);
 	pfree(getAgentCmdRst.description.data);
@@ -6942,6 +6936,8 @@ static void mgr_set_master_sync(void)
 	bool bslave_sync = false;
 	bool bextra_sync = false;
 	char *path;
+	char *address;
+	char *value;
 	StringInfoData infosendmsg;
 	Form_mgr_node mgr_node;
 	GetAgentCmdRst getAgentCmdRst;
@@ -6998,6 +6994,18 @@ static void mgr_set_master_sync(void)
 								&infosendmsg, 
 								mgr_node->nodehost, 
 								&getAgentCmdRst);
+
+		value = &infosendmsg.data[strlen("synchronous_standby_names")+1];
+		ereport(LOG, (errmsg("set hostoid %d path %s synchronous_standby_names=%s.", mgr_node->nodehost, path
+								,value)));
+		if (!getAgentCmdRst.ret)
+		{	
+			address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+			ereport(WARNING, (errmsg("set address %s path %s synchronous_standby_names=%s failed.", address, path
+										,value)));
+			pfree(address);
+		}
+
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&(getAgentCmdRst.description));
 	}

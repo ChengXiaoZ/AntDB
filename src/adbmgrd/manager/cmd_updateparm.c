@@ -155,7 +155,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 		if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				, errmsg("permission denied: \"%\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
+				, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
 		}
 		if (!node->is_force)
 		{
