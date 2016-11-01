@@ -102,7 +102,7 @@ extern char *defGetString(DefElem *def);
  * parse errors.  It is needed by PL/pgsql.
  */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
-%token <ival>	ICONST PARAM
+%token <ival>	ICONST 
 %token			TYPECAST DOT_DOT COLON_EQUALS
 
 %type <list>	stmtblock stmtmulti
@@ -133,7 +133,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword>	ADD_P DEPLOY DROP ALTER LIST
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
-%token<keyword>	HOST MONITOR PARM
+%token<keyword>	HOST MONITOR PARAM
 %token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
 %token<keyword> PASSWORD CLEAN RESET
 %token<keyword> START AGENT STOP FAILOVER
@@ -419,7 +419,16 @@ ConfigAllStmt:
 		};
 
 MonitorStmt:
-		MONITOR ALL
+	MONITOR
+	{
+                     
+            SelectStmt *stmt = makeNode(SelectStmt);
+	    stmt->targetList = list_make1(make_star_target(-1));
+	    stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_all"), -1));
+	    $$ = (Node*)stmt;
+
+	}
+        | MONITOR ALL
 		{
             SelectStmt *stmt = makeNode(SelectStmt);
             //List *arg = list_make1(makeNullAConst(-1));
@@ -427,6 +436,7 @@ MonitorStmt:
             stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_all"), -1));
             $$ = (Node*)stmt;
 		}
+
         | MONITOR COORDINATOR ALL
         {
             SelectStmt *stmt = makeNode(SelectStmt);
@@ -919,21 +929,21 @@ ResetUpdataparmStmt:
 		;
 
 ListParmStmt:
-	  LIST PARM
+	  LIST PARAM
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 			$$ = (Node*)stmt;
 		}
-	| LIST PARM '(' targetList ')'
+	| LIST PARAM '(' targetList ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = $4;
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 			$$ = (Node*)stmt;
 		}
-	| LIST PARM AConstList
+	| LIST PARAM AConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
@@ -941,7 +951,7 @@ ListParmStmt:
 			stmt->whereClause = make_column_in("nodename", $3);
 			$$ = (Node*)stmt;
 		}
-	| LIST PARM '(' targetList ')' AConstList
+	| LIST PARAM '(' targetList ')' AConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = $4;
@@ -1903,7 +1913,7 @@ unreserved_keyword:
 	| MONITOR
 	| NODE
 	| OFF
-	| PARM
+	| PARAM
 	| PASSWORD
 	| RESET
 	| S
