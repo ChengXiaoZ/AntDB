@@ -130,6 +130,7 @@ extern char *defGetString(DefElem *def);
 %type <str>		Ident SConst ColLabel var_name opt_boolean_or_string
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
+				opt_general_all
 
 %token<keyword>	ADD_P DEPLOY DROP ALTER LIST
 %token<keyword>	IF_P EXISTS NOT
@@ -420,7 +421,7 @@ ConfigAllStmt:
 		};
 
 MonitorStmt:
-	MONITOR
+	MONITOR opt_general_all
 	{
                      
             SelectStmt *stmt = makeNode(SelectStmt);
@@ -429,16 +430,7 @@ MonitorStmt:
 	    $$ = (Node*)stmt;
 
 	}
-        | MONITOR ALL
-		{
-            SelectStmt *stmt = makeNode(SelectStmt);
-            //List *arg = list_make1(makeNullAConst(-1));
-            stmt->targetList = list_make1(make_star_target(-1));
-            stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_all"), -1));
-            $$ = (Node*)stmt;
-		}
-
-        | MONITOR COORDINATOR ALL
+        | MONITOR COORDINATOR opt_general_all
         {
             SelectStmt *stmt = makeNode(SelectStmt);
             //List *arg = list_make1(makeNullAConst(-1));
@@ -446,14 +438,14 @@ MonitorStmt:
             stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_coord_all", NULL));
             $$ = (Node*)stmt;
         }
-		| MONITOR DATANODE ALL
+		| MONITOR DATANODE opt_general_all
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_datanode_all"), -1));
 			$$ = (Node*)stmt;
 		}
-		| MONITOR DATANODE MASTER ALL
+		| MONITOR DATANODE MASTER opt_general_all 
 		{
             SelectStmt *stmt = makeNode(SelectStmt);
             //List *arg = list_make1(makeNullAConst(-1));
@@ -461,7 +453,7 @@ MonitorStmt:
             stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_dnmaster_all", NULL));
             $$ = (Node*)stmt;
 		}
-		| MONITOR DATANODE SLAVE ALL
+		| MONITOR DATANODE SLAVE opt_general_all 
 		{
             SelectStmt *stmt = makeNode(SelectStmt);
             //List *arg = list_make1(makeNullAConst(-1));
@@ -469,7 +461,7 @@ MonitorStmt:
             stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_dnslave_all", NULL));
             $$ = (Node*)stmt;
 		}
-		| MONITOR DATANODE EXTRA ALL
+		| MONITOR DATANODE EXTRA opt_general_all 
 		{
             SelectStmt *stmt = makeNode(SelectStmt);
             //List *arg = list_make1(makeNullAConst(-1));
@@ -506,7 +498,10 @@ MonitorStmt:
             $$ = (Node*)stmt;
 		}
         ;
-		
+opt_general_all:
+	ALL { $$ = $1; }
+	| /*empty */{ $$ = NULL; }
+	;
 VariableSetStmt:
 			SET set_rest
 				{
