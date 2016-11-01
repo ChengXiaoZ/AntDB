@@ -258,10 +258,19 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 #ifdef PGXC
 	if (PGXCNodeIdentifier == 0)
 	{
+#ifdef ADB
+		/*
+		 * It is not necessary to check whether the node_oid
+		 * is valid or not. Such as "single" mode postgres.
+		 */
+		Oid node_oid = get_pgxc_nodeoid(PGXCNodeName);
+		PGXCNodeIdentifier = get_pgxc_node_id(node_oid);
+#else
 		char *node_name;
 		node_name = str_tolower(PGXCNodeName, strlen(PGXCNodeName), DEFAULT_COLLATION_OID);
 		PGXCNodeIdentifier = get_pgxc_node_id(get_pgxc_nodeoid(node_name));
 		pfree(node_name);
+#endif
 	}
 #endif
 
