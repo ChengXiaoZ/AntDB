@@ -114,6 +114,7 @@ static inline void
 SetHintBits(HeapTupleHeader tuple, Buffer buffer,
 			uint16 infomask, TransactionId xid)
 {
+	static int recovery_status = 2;	/* 2 for unknown */
 	if (TransactionIdIsValid(xid))
 	{
 		/* NB: xid must be known committed here! */
@@ -123,6 +124,14 @@ SetHintBits(HeapTupleHeader tuple, Buffer buffer,
 			return;				/* not flushed yet, so don't set hint */
 	}
 
+	/*
+	 * in standby mode we don't change it,
+	 * because maybe got error snapshot for this version
+	 */
+	if(recovery_status == 2)
+		recovery_status = RecoveryInProgress() ? 1:0;
+	if(recovery_status != 0)
+		return;
 	tuple->t_infomask |= infomask;
 	MarkBufferDirtyHint(buffer, true);
 }

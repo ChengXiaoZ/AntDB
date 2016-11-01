@@ -4537,6 +4537,10 @@ PostgresMain(int argc, char *argv[],
 	}
 #endif
 
+	if(RecoveryInProgress())
+	{
+		ereport(WARNING, (errmsg("standby node maybe get invalid data!!!")));
+	}
 	/*
 	 * POSTGRES main processing loop begins here
 	 *
