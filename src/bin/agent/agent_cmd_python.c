@@ -60,11 +60,7 @@ bool get_cpu_info(StringInfo hostinfostring)
 
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
         ereport(ERROR, (errmsg("%s: could not locate my own executable path", agent_argv0)));
-
-    get_parent_directory(my_exec_path);
-    get_parent_directory(my_exec_path);
-    strcpy(pghome, my_exec_path);
-    strcat(pghome, "/share/postgresql/");
+    get_share_path(my_exec_path, pghome);
 
     Py_Initialize();
     if (!Py_IsInitialized())
@@ -127,11 +123,7 @@ bool get_mem_info(StringInfo hostinfostring)
 
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
         ereport(ERROR, (errmsg("%s: could not locate my own executable path", agent_argv0)));
-
-    get_parent_directory(my_exec_path);
-    get_parent_directory(my_exec_path);
-    strcpy(pghome, my_exec_path);
-    strcat(pghome, "/share/postgresql/");
+    get_share_path(my_exec_path, pghome);
 
     Py_Initialize();
     if (!Py_IsInitialized())
@@ -200,11 +192,7 @@ bool get_disk_info(StringInfo hostinfostring)
 
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
         ereport(ERROR, (errmsg("%s: could not locate my own executable path", agent_argv0)));
-
-    get_parent_directory(my_exec_path);
-    get_parent_directory(my_exec_path);
-    strcpy(pghome, my_exec_path);
-    strcat(pghome, "/share/postgresql/");
+    get_share_path(my_exec_path, pghome);
 
     Py_Initialize();
     if (!Py_IsInitialized())
@@ -273,11 +261,7 @@ bool get_net_info(StringInfo hostinfostring)
     
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
         ereport(ERROR, (errmsg("%s: could not locate my own executable path.", agent_argv0)));
-
-    get_parent_directory(my_exec_path);
-    get_parent_directory(my_exec_path);
-    strcpy(pghome, my_exec_path);
-    strcat(pghome, "/share/postgresql/");
+    get_share_path(my_exec_path, pghome);
 
     Py_Initialize();
     if (!Py_IsInitialized())
@@ -334,11 +318,7 @@ bool get_host_info(StringInfo hostinfostring)
 
     if (find_my_exec(agent_argv0, my_exec_path) < 0)
         ereport(ERROR, (errmsg("%s: could not locate my own executable path.", agent_argv0)));
-
-    get_parent_directory(my_exec_path);
-    get_parent_directory(my_exec_path);
-    strcpy(pghome, my_exec_path);
-    strcat(pghome, "/share/postgresql/");
+    get_share_path(my_exec_path, pghome);
 
     Py_Initialize();
     if (!Py_IsInitialized())
