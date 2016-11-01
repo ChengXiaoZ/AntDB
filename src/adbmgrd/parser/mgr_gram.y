@@ -499,8 +499,8 @@ MonitorStmt:
 		}
         ;
 opt_general_all:
-	ALL { $$ = $1; }
-	| /*empty */{ $$ = NULL; }
+	ALL { $$ = pstrdup("all"); }
+	| /*empty */{ $$ = pstrdup("all"); }
 	;
 VariableSetStmt:
 			SET set_rest
