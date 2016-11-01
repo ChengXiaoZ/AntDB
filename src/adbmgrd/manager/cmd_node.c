@@ -608,9 +608,9 @@ Datum
 mgr_init_dn_slave(PG_FUNCTION_ARGS)
 {
 	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tuple
-			,aimtuple
-			,mastertuple;
+	HeapTuple tuple;
+	HeapTuple aimtuple;
+	HeapTuple mastertuple;
 	Relation rel_node;
 	HeapScanDesc scan;
 	Form_mgr_node mgr_node;
@@ -679,7 +679,7 @@ mgr_init_dn_slave(PG_FUNCTION_ARGS)
 		mastername = NameStr(mgr_node->nodename);
 		masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
 		ReleaseSysCache(mastertuple);
-		
+		initStringInfo(&(getAgentCmdRst.description));
 		mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, rel_node, aimtuple, masterhostaddress,masterport, mastername);
 		tuple = build_common_command_tuple(
 			&(getAgentCmdRst.nodename)
@@ -776,7 +776,7 @@ mgr_init_dn_extra(PG_FUNCTION_ARGS)
 		mastername = NameStr(mgr_node->nodename);
 		masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
 		ReleaseSysCache(mastertuple);
-		
+		initStringInfo(&(getAgentCmdRst.description));
 		mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, rel_node, aimtuple, masterhostaddress,masterport, mastername);
 		tuple = build_common_command_tuple(
 			&(getAgentCmdRst.nodename)
@@ -861,6 +861,7 @@ mgr_init_dn_slave_all(PG_FUNCTION_ARGS)
 	mastername = NameStr(mgr_node->nodename);
 	masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
 	ReleaseSysCache(mastertuple);
+	initStringInfo(&(getAgentCmdRst.description));
 	mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, info->rel_node, tuple, masterhostaddress, masterport, mastername);
 	pfree(masterhostaddress);
 	tup_result = build_common_command_tuple(
@@ -937,6 +938,7 @@ mgr_init_dn_extra_all(PG_FUNCTION_ARGS)
 	mastername = NameStr(mgr_node->nodename);
 	masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
 	ReleaseSysCache(mastertuple);
+	initStringInfo(&(getAgentCmdRst.description));
 	mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, info->rel_node, tuple, masterhostaddress, masterport, mastername);
 	pfree(masterhostaddress);
 	tup_result = build_common_command_tuple(
@@ -955,12 +957,12 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	char *cndnnametmp;
 	char *nodetypestr;
 	char nodetype;
-	Oid hostOid,
-		masteroid,
-		tupleOid;
+	Oid hostOid;
+	Oid	masteroid;
+	Oid	tupleOid;
 	StringInfoData buf;
-	StringInfoData infosendmsg,
-				strinfocoordport;
+	StringInfoData infosendmsg;
+	StringInfoData strinfocoordport;
 	ManagerAgent *ma;
 	bool initdone = false;
 	bool isNull = false;
@@ -968,9 +970,8 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	Form_mgr_node mgr_node;
 	int cndnport;
 	Datum DatumStartDnMaster,
-		DatumStopDnMaster;
+	DatumStopDnMaster;
 
-	initStringInfo(&(getAgentCmdRst->description));
 	getAgentCmdRst->ret = false;
 	initStringInfo(&infosendmsg);
 	/*get column values from aimtuple*/	
@@ -6322,8 +6323,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	/*delete parm info in mgr_updateparm systbl*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	/*update parm info in the mgr_updateparm systbl*/
-	bget = mgr_check_node_exist_incluster(&cndnname, nodetype, true);
-	mgr_parm_after_gtm_failover_handle(rel_updateparm, &cndnname, GTM_TYPE_GTM_MASTER, &cndnname, aimtuplenodetype, bget);
+	mgr_parm_after_gtm_failover_handle(rel_updateparm, &cndnname, GTM_TYPE_GTM_MASTER, &cndnname, aimtuplenodetype);
 	heap_close(rel_updateparm, RowExclusiveLock);
 	/*5. refresh new master postgresql.conf*/
 	resetStringInfo(&infosendmsg);
