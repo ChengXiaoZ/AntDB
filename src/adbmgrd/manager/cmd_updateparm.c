@@ -107,7 +107,8 @@ static void mgr_parm_in_master_all_not_in_slave(Relation rel_updateparm, int old
 static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue);
 
 /* 
-* for command: set {datanode|coordinaotr} xx {master|slave|extra} {key1=value1,key2=value2...} , to record the parameter in mgr_updateparm
+* for command: set {datanode|coordinaotr}  {master|slave|extra} {nodename|ALL} {key1=value1,key2=value2...} , 
+* set datanode all {key1=value1,key2=value2...}. to record the parameter in mgr_updateparm
 */
 void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -129,86 +130,102 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	bool isnull[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
+	char nodetype_original;
+	char dntypearray[]={CNDN_TYPE_DATANODE_MASTER, CNDN_TYPE_DATANODE_SLAVE, CNDN_TYPE_DATANODE_EXTRA};
 	int insertparmstatus;
 	int effectparmstatus;
 	int vartype;  /*the parm value type: bool, string, enum, int*/
 	int len = 0;
+	int iloop = 0;
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
 	parmtype =  node->parmtype;
 	/*nodename*/
 	namestrcpy(&nodename, node->nodename);
 	
+	nodetype_original = nodetype;
+	/*cmd:set datanode all (key=value,..)*/
+	if (CNDN_TYPE_DATANODE == nodetype_original)
+		Assert(strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0);
 	/*open systbl: mgr_parm*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	memset(datum, 0, sizeof(datum));
-	memset(isnull, 0, sizeof(isnull));
-
-	foreach(lc,node->options)
+	for (iloop=0; iloop<sizeof(dntypearray)/sizeof(dntypearray[0]); iloop++)
 	{
-		def = lfirst(lc);
-		Assert(def && IsA(def, DefElem));
-		namestrcpy(&key, def->defname);	
-		namestrcpy(&value, defGetString(def));
-		if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
+		if (CNDN_TYPE_DATANODE == nodetype_original)
+			nodetype = dntypearray[iloop];
+		memset(datum, 0, sizeof(datum));
+		memset(isnull, 0, sizeof(isnull));
+		foreach(lc,node->options)
 		{
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
-		}
-		if (!node->is_force)
-		{
-			/*check the parameter is right for the type node of postgresql.conf*/
-			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
-			if (PGC_STRING == vartype)
+			def = lfirst(lc);
+			Assert(def && IsA(def, DefElem));
+			namestrcpy(&key, def->defname);	
+			namestrcpy(&value, defGetString(def));
+			if (!iloop)
 			{
-				/*if the value of key is string, it need use signle quota*/
-				len = strlen(value.data);
-				if (value.data[0] != '\'' || value.data[len-1] != '\'')
+				if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
 				{
-					valuetmp.data[0]='\'';
-					strcpy(valuetmp.data+sizeof(char),value.data);
-					valuetmp.data[1+len]='\'';
-					valuetmp.data[2+len]='\0';
-					if (len > sizeof(value.data)-2-1)
-					{
-						valuetmp.data[sizeof(value.data)-2]='\'';
-						valuetmp.data[sizeof(value.data)-1]='\0';
-					}
-					namestrcpy(&value, valuetmp.data);
+					ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+						, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
 				}
 			}
-			/*check the key's value*/
-			if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
+			if (!node->is_force)
 			{
-				return;
+				/*check the parameter is right for the type node of postgresql.conf*/
+				mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+				if (PGC_STRING == vartype)
+				{
+					/*if the value of key is string, it need use signle quota*/
+					len = strlen(value.data);
+					if (value.data[0] != '\'' || value.data[len-1] != '\'')
+					{
+						valuetmp.data[0]='\'';
+						strcpy(valuetmp.data+sizeof(char),value.data);
+						valuetmp.data[1+len]='\'';
+						valuetmp.data[2+len]='\0';
+						if (len > sizeof(value.data)-2-1)
+						{
+							valuetmp.data[sizeof(value.data)-2]='\'';
+							valuetmp.data[sizeof(value.data)-1]='\0';
+						}
+						namestrcpy(&value, valuetmp.data);
+					}
+				}
+				/*check the key's value*/
+				if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
+				{
+					return;
+				}
 			}
-		}
-		/*check the parm exists already in mgr_updateparm systbl*/
-		insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, &nodename, &key, value.data);
-		if (PARM_NEED_NONE == insertparmstatus)
-			continue;
-		else if (PARM_NEED_UPDATE == insertparmstatus)
-		{
+			/*check the parm exists already in mgr_updateparm systbl*/
+			insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, &nodename, &key, value.data);
+			if (PARM_NEED_NONE == insertparmstatus)
+				continue;
+			else if (PARM_NEED_UPDATE == insertparmstatus)
+			{
+				/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
+				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus, false);
+				continue;
+			}
+			datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
+			datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&nodename);
+			datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
+			datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
+			datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&value);
+			/* now, we can insert record */
+			newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
+			simple_heap_insert(rel_updateparm, newtuple);
+			CatalogUpdateIndexes(rel_updateparm, newtuple);
+			heap_freetuple(newtuple);
 			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
 			mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus, false);
-			continue;
 		}
-		datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
-		datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&nodename);
-		datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
-		datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
-		datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&value);
-		/* now, we can insert record */
-		newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
-		simple_heap_insert(rel_updateparm, newtuple);
-		CatalogUpdateIndexes(rel_updateparm, newtuple);
-		heap_freetuple(newtuple);
-		/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-		mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus, false);
+		if (CNDN_TYPE_DATANODE != nodetype_original)
+			break;
+			
 	}
-
 	/*close relation */
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel_parm, RowExclusiveLock);
@@ -680,8 +697,9 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
 }
 
 /* 
-* for command: reset {datanode|coordinaotr} xx {master|slave|extra} {key1,key2...} , to remove the parameter in mgr_updateparm;
-*	if the reset parameters not in mgr_updateparm, report error; otherwise use the values which come from mgr_parm to replace the
+* for command: reset {datanode|coordinaotr} {master|slave|extra} {nodename | all}{key1,key2...} , reset datanode 
+* all. to remove the parameter in mgr_updateparm; if the reset parameters not in mgr_updateparm, report error; 
+* otherwise use the values which come from mgr_parm to replace the
 *	old values;
 */
 void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest)
@@ -708,136 +726,154 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	bool bget = false;
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
+	char nodetype_original;
+	char dntypearray[]={CNDN_TYPE_DATANODE_MASTER, CNDN_TYPE_DATANODE_SLAVE, CNDN_TYPE_DATANODE_EXTRA};
 	int effectparmstatus;
 	int vartype; /*the parm value type: bool, string, enum, int*/
+	int iloop = 0;
+
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
 	parmtype =  node->parmtype;
 	/*nodename*/
 	namestrcpy(&nodename, node->nodename);
-
+	nodetype_original = nodetype;
+	/*cmd:set datanode all (key=value,..)*/
+	if (CNDN_TYPE_DATANODE == nodetype_original)
+		Assert(strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0);
+	
 	/*open systbl: mgr_parm*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	memset(datum, 0, sizeof(datum));
-	memset(isnull, 0, sizeof(isnull));
-	memset(got, 0, sizeof(got));
-
-	foreach(lc,node->options)
+	for (iloop=0; iloop<sizeof(dntypearray)/sizeof(dntypearray[0]); iloop++)
 	{
-		def = lfirst(lc);
-		Assert(def && IsA(def, DefElem));
-		namestrcpy(&key, def->defname);
-		if (strcmp(key.data, "port") == 0)
+		if (CNDN_TYPE_DATANODE == nodetype_original)
+			nodetype = dntypearray[iloop];
+		memset(datum, 0, sizeof(datum));
+		memset(isnull, 0, sizeof(isnull));
+		memset(got, 0, sizeof(got));
+
+		foreach(lc,node->options)
 		{
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				, errmsg("permission denied: \"port\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get the gtm/coordinator/datanode port information")));
-		}
-		/*check the parameter is right for the type node of postgresql.conf*/
-		if (!node->is_force)
-			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
-		/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited*/
-		if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0)
-		{
-			ScanKeyInit(&scankey[0],
-				Anum_mgr_updateparm_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(nodetype));
-			ScanKeyInit(&scankey[1],
-				Anum_mgr_updateparm_key
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,NameGetDatum(&key));
-			rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, scankey);
-			while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+			def = lfirst(lc);
+			Assert(def && IsA(def, DefElem));
+			namestrcpy(&key, def->defname);
+			if (!iloop)
 			{
-				/*delete the tuple which nodetype is the given nodetype*/
-				simple_heap_delete(rel_updateparm, &looptuple->t_self);
-				CatalogUpdateIndexes(rel_updateparm, looptuple);
+				if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
+				{
+					ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+						, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
+				}
 			}
-			heap_endscan(rel_scan);
-			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
+			/*check the parameter is right for the type node of postgresql.conf*/
 			if (!node->is_force)
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
-			else
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
-		}
-		/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME, refresh the postgresql.conf of the node, and delete the tuple in mgr_updateparm which 
-		*nodetype and nodename is given; if MACRO_STAND_FOR_ALL_NODENAME in mgr_updateparm has the same nodetype, insert one tuple to *mgr_updateparm for record
-		*/
-		else 
-		{
-			ScanKeyInit(&scankey[0],
-				Anum_mgr_updateparm_nodename
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,NameGetDatum(&nodename));
-			ScanKeyInit(&scankey[1],
-				Anum_mgr_updateparm_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(nodetype));
-			ScanKeyInit(&scankey[2],
-				Anum_mgr_updateparm_key
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,NameGetDatum(&key));
-			rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
-			while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+				mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+			/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited*/
+			if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0)
 			{
-				/*delete the tuple which nodetype is the given nodetype and nodename*/
-				simple_heap_delete(rel_updateparm, &looptuple->t_self);
-				CatalogUpdateIndexes(rel_updateparm, looptuple);
+				ScanKeyInit(&scankey[0],
+					Anum_mgr_updateparm_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(nodetype));
+				ScanKeyInit(&scankey[1],
+					Anum_mgr_updateparm_key
+					,BTEqualStrategyNumber
+					,F_NAMEEQ
+					,NameGetDatum(&key));
+				rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 2, scankey);
+				while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+				{
+					/*delete the tuple which nodetype is the given nodetype*/
+					simple_heap_delete(rel_updateparm, &looptuple->t_self);
+					CatalogUpdateIndexes(rel_updateparm, looptuple);
+				}
+				heap_endscan(rel_scan);
+				/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
+				if (!node->is_force)
+					mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
+				else
+					mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 			}
-			heap_endscan(rel_scan);
-			
-			/*check the MACRO_STAND_FOR_ALL_NODENAME has the same nodetype*/
-			namestrcpy(&nodenametmp, MACRO_STAND_FOR_ALL_NODENAME);
-			bget = false;
-			ScanKeyInit(&scankey[0],
-				Anum_mgr_updateparm_nodename
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,NameGetDatum(&nodenametmp));
-			ScanKeyInit(&scankey[1],
-				Anum_mgr_updateparm_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(nodetype));
-			ScanKeyInit(&scankey[2],
-				Anum_mgr_updateparm_key
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,NameGetDatum(&key));
-			rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
-			while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+			/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME, refresh the postgresql.conf of the node, and delete the tuple in mgr_updateparm which 
+			*nodetype and nodename is given; if MACRO_STAND_FOR_ALL_NODENAME in mgr_updateparm has the same nodetype, insert one tuple to *mgr_updateparm for record
+			*/
+			else 
 			{
-				bget = true;
-				break;
+				ScanKeyInit(&scankey[0],
+					Anum_mgr_updateparm_nodename
+					,BTEqualStrategyNumber
+					,F_NAMEEQ
+					,NameGetDatum(&nodename));
+				ScanKeyInit(&scankey[1],
+					Anum_mgr_updateparm_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(nodetype));
+				ScanKeyInit(&scankey[2],
+					Anum_mgr_updateparm_key
+					,BTEqualStrategyNumber
+					,F_NAMEEQ
+					,NameGetDatum(&key));
+				rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
+				while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+				{
+					/*delete the tuple which nodetype is the given nodetype and nodename*/
+					simple_heap_delete(rel_updateparm, &looptuple->t_self);
+					CatalogUpdateIndexes(rel_updateparm, looptuple);
+				}
+				heap_endscan(rel_scan);
 				
+				/*check the MACRO_STAND_FOR_ALL_NODENAME has the same nodetype*/
+				namestrcpy(&nodenametmp, MACRO_STAND_FOR_ALL_NODENAME);
+				bget = false;
+				ScanKeyInit(&scankey[0],
+					Anum_mgr_updateparm_nodename
+					,BTEqualStrategyNumber
+					,F_NAMEEQ
+					,NameGetDatum(&nodenametmp));
+				ScanKeyInit(&scankey[1],
+					Anum_mgr_updateparm_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(nodetype));
+				ScanKeyInit(&scankey[2],
+					Anum_mgr_updateparm_key
+					,BTEqualStrategyNumber
+					,F_NAMEEQ
+					,NameGetDatum(&key));
+				rel_scan = heap_beginscan(rel_updateparm, SnapshotNow, 3, scankey);
+				while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+				{
+					bget = true;
+					break;
+					
+				}
+				heap_endscan(rel_scan);
+				if (bget)
+				{
+					datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
+					datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&nodename);
+					datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
+					datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
+					datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&defaultvalue);
+					/* now, we can insert record */
+					newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
+					simple_heap_insert(rel_updateparm, newtuple);
+					CatalogUpdateIndexes(rel_updateparm, newtuple);
+					heap_freetuple(newtuple);
+				}
+				/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
+				if (!node->is_force)
+					mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
+				else
+					mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 			}
-			heap_endscan(rel_scan);
-			if (bget)
-			{
-				datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
-				datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&nodename);
-				datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
-				datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
-				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&defaultvalue);
-				/* now, we can insert record */
-				newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
-				simple_heap_insert(rel_updateparm, newtuple);
-				CatalogUpdateIndexes(rel_updateparm, newtuple);
-				heap_freetuple(newtuple);
-			}
-			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			if (!node->is_force)
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
-			else
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 		}
+		if (CNDN_TYPE_DATANODE != nodetype_original)
+		break;
 	}
 
 	/*close relation */

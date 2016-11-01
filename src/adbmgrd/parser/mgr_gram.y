@@ -11,6 +11,7 @@
 #include "parser/scanner.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/mgr_parm.h"
+#include "catalog/mgr_updateparm.h"
 /*
  * The YY_EXTRA data that a flex scanner allows us to pass around.  Private
  * state needed for raw parsing/lexing goes here.
@@ -844,6 +845,26 @@ AddUpdataparmStmt:
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
+	| SET DATANODE ALL set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = CNDN_TYPE_DATANODE;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| SET DATANODE ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = CNDN_TYPE_DATANODE;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
 	| SET COORDINATOR MASTER set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
@@ -903,6 +924,26 @@ ResetUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
+	| RESET DATANODE ALL set_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = CNDN_TYPE_DATANODE;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| RESET DATANODE ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_DATANODE;
+				node->nodetype = CNDN_TYPE_DATANODE;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
