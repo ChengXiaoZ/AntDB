@@ -1655,6 +1655,14 @@ ExecEndModifyTable(ModifyTableState *node)
 	 */
 	for (i = 0; i < node->mt_nplans; i++)
 		ExecEndNode(node->mt_plans[i]);
+
+#ifdef ADB
+	/*
+	 * shut down remoteplans
+	 */
+	for (i = 0; i < node->mt_nplans; i++)
+		ExecEndNode(node->mt_remoterels[i]);
+#endif
 }
 
 void
