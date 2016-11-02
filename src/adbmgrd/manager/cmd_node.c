@@ -2807,7 +2807,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	AppendNodeInfo agtm_m_nodeinfo, agtm_s_nodeinfo, agtm_e_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
-    bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
+	bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
 	StringInfoData catcherrmsg;
@@ -2838,17 +2838,17 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_MASTER, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
-        get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &agtm_e_nodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &agtm_e_nodeinfo);
 
 		if (agtm_m_is_exist)
 		{
 			if (agtm_m_is_running)
 			{
 				/* append "host all postgres  ip/32" for agtm master pg_hba.conf and reload it. */
-                mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
+				mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-		    { ereport(ERROR, (errmsg("agtm master is not running.")));}
+			{ ereport(ERROR, (errmsg("agtm master is not running.")));}
 		}
 		else
 		{ ereport(ERROR, (errmsg("agtm master is not exist.")));}
@@ -2858,7 +2858,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 			if (agtm_s_is_running)
 			{
 				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
-                mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
+				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
 			{ ereport(ERROR, (errmsg("agtm slave is not running.")));}
@@ -2869,7 +2869,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 			if (agtm_e_is_running)
 			{
 				/* append "host all postgres ip/32" for agtm extra pg_hba.conf and reload it. */
-                mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
+				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
 			{ ereport(ERROR, (errmsg("agtm extra is not running.")));}
@@ -2880,6 +2880,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 2: update datanode master's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_get_agtm_host_and_port(&infosendmsg);
 		mgr_get_other_parm(CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
@@ -3078,6 +3079,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 		/* step 6: update datanode slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
@@ -3266,6 +3268,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 		/* step 6: update datanode extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_EXTRA, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
@@ -3440,6 +3443,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 
 		/* step 2: update coordinator master's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_get_agtm_host_and_port(&infosendmsg);
 		mgr_get_other_parm(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
@@ -3593,6 +3597,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 
 		/* step 4: update agtm slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
@@ -3736,6 +3741,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 
 		/* step 4: update agtm extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
