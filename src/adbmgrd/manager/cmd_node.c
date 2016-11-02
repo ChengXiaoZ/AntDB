@@ -428,7 +428,28 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			datum[Anum_mgr_node_nodepath-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_node_nodepath-1] = true;
-		}else
+
+		}else if(strcmp(def->defname, "sync") == 0)
+		{
+			if(got[Anum_mgr_node_nodesync-1])
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("conflicting or redundant options")));
+			str = defGetString(def);
+
+			if(strcmp(str, "true") == 0 || strcmp(str, "on") == 0 || strcmp(str, "t") == 0)
+			{
+				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
+				got[Anum_mgr_node_nodesync-1] = true;
+			}else if(strcmp(str, "false") == 0 || strcmp(str, "off") == 0 || strcmp(str, "f") == 0)
+			{
+				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(ASYNC);
+				got[Anum_mgr_node_nodesync-1] = true;
+			}else
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("invalid value for parameter \"sync\": \"%s\", must be \"true|t|on\" or \"false|f|off\"", str)));
+			}
+		}else      
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" is not recognized", def->defname)
@@ -436,6 +457,16 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
 	}
+	
+	if(got[Anum_mgr_node_nodesync-1] == true) 
+	{
+		if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
+		{
+			datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SPACE);
+			ereport(WARNING, (errmsg("the node master is can't set mode of sync,you should set to node of slave or extra ")));
+		}
+	}
+
 	new_tuple = heap_modify_tuple(oldtuple, cndn_dsc, datum,isnull, got);
 	simple_heap_update(rel, &oldtuple->t_self, new_tuple);
 	CatalogUpdateIndexes(rel, new_tuple);
