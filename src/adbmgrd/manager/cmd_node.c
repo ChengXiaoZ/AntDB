@@ -463,7 +463,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 		{
 			datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SPACE);
-			ereport(WARNING, (errmsg("the node master is can't set mode of sync,you should set to node of slave or extra ")));
+			ereport(WARNING, (errmsg("asynchronous cannot be set on the master node,you should set up the relationship from the node of slave or extra")));
 		}
 	}
 
