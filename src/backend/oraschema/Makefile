@@ -12,7 +12,7 @@ include $(top_builddir)/src/Makefile.global
 
 OBJS = convert.o nvarchar2.o orastr.o oradate.o others.o random.o varchar2.o oracoerce.o
 DATA = oracle_schema.sql
-SQL_FILES = oracle_type.sql oracle_proc.sql oracle_random.sql oracle_operator.sql 
+SQL_FILES = oracle_type.sql oracle_proc.sql oracle_random.sql oracle_operator.sql oracle_view.sql
 
 include $(top_srcdir)/src/backend/common.mk
 

@@ -1,10 +1,11 @@
 /*
- * oracle_type.sql
+ * Oracle Types
  *
- * Includes SQLs that create oracle data type.
+ * Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2016, ADB Development Group
+ *
+ * src/backend/oraschema/oracle_type.sql
  */
-
--- CREATE DOMAIN oracle.date AS pg_catalog.timestamp(0);
 
 /* CREATE CAST FOR NVARCHAR2 */
 CREATE CAST (nvarchar2 AS text) WITHOUT FUNCTION AS IMPLICIT;
@@ -132,5 +133,4 @@ CREATE CAST (nvarchar2 AS rid) WITH INOUT AS IMPLICIT;
 CREATE CAST (rid AS bpchar) WITH INOUT AS IMPLICIT;
 
 CREATE CAST (bpchar AS rid) WITH INOUT AS IMPLICIT;
-
 

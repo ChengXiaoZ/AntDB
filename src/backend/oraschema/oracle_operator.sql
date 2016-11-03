@@ -1,7 +1,10 @@
 /*
- * oracle_operator.sql
+ * Oracle Operators
  *
- * Includes SQLs that create oracle operator.
+ * Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2016, ADB Development Group
+ *
+ * src/backend/oraschema/oracle_operator.sql
  */
 
 DROP OPERATOR IF EXISTS oracle.+ (oracle.date, numeric);
@@ -30,5 +33,26 @@ CREATE OPERATOR oracle.- (
   LEFTARG   = oracle.date,
   RIGHTARG  = oracle.date,
   PROCEDURE = oracle.subtract
+);
+
+DROP OPERATOR IF EXISTS oracle.+ (oracle.date, interval);
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = interval,
+  PROCEDURE = oracle.date_pl_interval
+);
+
+DROP OPERATOR IF EXISTS oracle.+ (interval, oracle.date);
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = interval,
+  RIGHTARG  = oracle.date,
+  PROCEDURE = oracle.interval_pl_date
+);
+
+DROP OPERATOR IF EXISTS oracle.- (oracle.date, interval);
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = interval,
+  PROCEDURE = oracle.date_mi_interval
 );
 

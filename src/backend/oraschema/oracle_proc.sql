@@ -1,7 +1,10 @@
 /*
- * oracle_proc.sql
+ * Oracle Functions
  *
- * Includes SQLs that create oracle function.
+ * Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2016, ADB Development Group
+ *
+ * src/backend/oraschema/oracle_proc.sql
  */
 
 /*

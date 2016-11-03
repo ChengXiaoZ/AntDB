@@ -1,7 +1,10 @@
 /*
- * oracle_random.sql
+ * Oracle Random
  *
- * Includes SQLs that create oracle dbms random function.
+ * Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Copyright (c) 2014-2016, ADB Development Group
+ *
+ * src/backend/oraschema/oracle_random.sql
  */
 
 CREATE SCHEMA IF NOT EXISTS dbms_random;
