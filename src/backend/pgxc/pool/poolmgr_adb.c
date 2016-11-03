@@ -55,7 +55,7 @@
 #define SLOT_STATE_LOCKED			2
 #define SLOT_STATE_RELEASED			3
 
-#define PFREE_SAVE(p)				\
+#define PFREE_SAFE(p)				\
 	do{								\
 		void *p_ = (p);				\
 		if(p_)	pfree(p_);			\
@@ -2200,10 +2200,10 @@ static void reload_database_pools(PoolAgent *agent)
 	agent_release_connections(agent, false);
 
 	/* realloc */
-	PFREE_SAVE(agent->datanode_oids);
-	PFREE_SAVE(agent->dn_connections);
-	PFREE_SAVE(agent->coord_oids);
-	PFREE_SAVE(agent->coord_connections);
+	PFREE_SAFE(agent->datanode_oids);
+	PFREE_SAFE(agent->dn_connections);
+	PFREE_SAFE(agent->coord_oids);
+	PFREE_SAFE(agent->coord_connections);
 	{
 		int num_datanode,num_coord;
 		MemoryContext old_context = MemoryContextSwitchTo(agent->mctx);
@@ -2235,12 +2235,12 @@ recheck_node_pool_:
 				/* and node pool not in using */
 				&& node_pool_in_using(node_pool) == false)
 			{
-				PFREE_SAVE(connstr);
+				PFREE_SAFE(connstr);
 				destroy_node_pool(node_pool, true);
 				hash_seq_term(&hash_nodepool_status);
 				goto recheck_node_pool_;
 			}
-			PFREE_SAVE(connstr);
+			PFREE_SAFE(connstr);
 		}
 	}
 }
@@ -2301,7 +2301,7 @@ static int node_info_check(PoolAgent *agent)
 				res = POOL_CHECK_FAILED;
 				goto node_info_check_end_;
 			}
-			PFREE_SAVE(connstr);
+			PFREE_SAFE(connstr);
 			checked_oids = lappend_oid(checked_oids, node_pool->nodeoid);
 		}
 	}
