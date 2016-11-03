@@ -6210,8 +6210,9 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
 			Assert(mgr_node);
+			namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
+			break;
 		}
 		heap_endscan(scan);
 		heap_close(rel_node, RowExclusiveLock);

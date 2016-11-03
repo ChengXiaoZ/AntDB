@@ -820,6 +820,26 @@ AddUpdataparmStmt:
 				node->is_force= true;
 				$$ = (Node*)node;
 		}
+	|	SET GTM ALL set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	|	SET GTM ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force= true;
+				$$ = (Node*)node;
+		}
 	| SET DATANODE opt_dn_inner_type set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
@@ -899,6 +919,26 @@ ResetUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
+	| RESET GTM ALL set_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| RESET GTM ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
 		}

@@ -108,7 +108,8 @@ static bool mgr_parm_get_defaultvalue(char parmtype, Name key, Name defaultvalue
 
 /* 
 * for command: set {datanode|coordinaotr}  {master|slave|extra} {nodename|ALL} {key1=value1,key2=value2...} , 
-* set datanode all {key1=value1,key2=value2...}. to record the parameter in mgr_updateparm
+* set datanode all {key1=value1,key2=value2...},set gtm all {key1=value1,key2=value2...}, to record the parameter
+* in mgr_updateparm
 */
 void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -116,6 +117,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	Relation rel_parm;
 	Relation rel_node;
 	HeapTuple newtuple;
+	HeapTuple tuple;
 	NameData nodename;
 	Datum datum[Natts_mgr_updateparm];
 	ListCell *lc;
@@ -127,11 +129,16 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	NameData parmmin;
 	NameData parmmax;
 	NameData valuetmp;
+	HeapScanDesc scan;
+	ScanKeyData scankey[1];
+	Form_mgr_node mgr_node;
 	bool isnull[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	char nodetype_original;
 	char dntypearray[]={CNDN_TYPE_DATANODE_MASTER, CNDN_TYPE_DATANODE_SLAVE, CNDN_TYPE_DATANODE_EXTRA};
+	char gtmtypearray[]={GTM_TYPE_GTM_MASTER, GTM_TYPE_GTM_SLAVE, GTM_TYPE_GTM_EXTRA};
+	int nodearraylen = 1;		/*do not change the value 1*/
 	int insertparmstatus;
 	int effectparmstatus;
 	int vartype;  /*the parm value type: bool, string, enum, int*/
@@ -144,17 +151,40 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	namestrcpy(&nodename, node->nodename);
 	
 	nodetype_original = nodetype;
-	/*cmd:set datanode all (key=value,..)*/
-	if (CNDN_TYPE_DATANODE == nodetype_original)
+	/*cmd:set datanode/gtm all (key=value,..)*/
+	if (CNDN_TYPE_DATANODE == nodetype_original || CNDN_TYPE_GTM == nodetype_original)
+	{
 		Assert(strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0);
+		nodearraylen = (CNDN_TYPE_DATANODE == nodetype_original ? sizeof(dntypearray)/sizeof(dntypearray[0]): sizeof(gtmtypearray)/sizeof(gtmtypearray[0]));
+	}
 	/*open systbl: mgr_parm*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	for (iloop=0; iloop<sizeof(dntypearray)/sizeof(dntypearray[0]); iloop++)
+	/*get gtm name*/
+	if (CNDN_TYPE_GTM == nodetype_original)
+	{
+		ScanKeyInit(&scankey[0]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(GTM_TYPE_GTM_MASTER));
+		scan = heap_beginscan(rel_node, SnapshotNow, 1, scankey);
+		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			namestrcpy(&nodename, NameStr(mgr_node->nodename));
+			break;
+		}
+		heap_endscan(scan);		
+	}
+	for (iloop=0; iloop<nodearraylen; iloop++)
 	{
 		if (CNDN_TYPE_DATANODE == nodetype_original)
 			nodetype = dntypearray[iloop];
+		else if (CNDN_TYPE_GTM == nodetype_original)
+			nodetype = gtmtypearray[iloop];
 		memset(datum, 0, sizeof(datum));
 		memset(isnull, 0, sizeof(isnull));
 		foreach(lc,node->options)
@@ -222,7 +252,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
 			mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, value.data, effectparmstatus, false);
 		}
-		if (CNDN_TYPE_DATANODE != nodetype_original)
+		if (CNDN_TYPE_DATANODE != nodetype_original && CNDN_TYPE_GTM != nodetype_original)
 			break;
 			
 	}
@@ -698,9 +728,8 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
 
 /* 
 * for command: reset {datanode|coordinaotr} {master|slave|extra} {nodename | all}{key1,key2...} , reset datanode 
-* all. to remove the parameter in mgr_updateparm; if the reset parameters not in mgr_updateparm, report error; 
-* otherwise use the values which come from mgr_parm to replace the
-*	old values;
+* all {key1,key2...}, reset gtm all{key1,key2...}.  to remove the parameter in mgr_updateparm; if the reset parameters 
+* not in mgr_updateparm, report error; otherwise use the values which come from mgr_parm to replace the old values;
 */
 void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -709,6 +738,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	Relation rel_node;
 	HeapTuple newtuple;
 	HeapTuple looptuple;
+	HeapTuple tuple;
 	NameData nodename;
 	NameData nodenametmp;
 	NameData parmmin;
@@ -721,6 +751,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	NameData parmunit;
 	ScanKeyData scankey[3];
 	HeapScanDesc rel_scan;
+	Form_mgr_node mgr_node;
 	bool isnull[Natts_mgr_updateparm];
 	bool got[Natts_mgr_updateparm];
 	bool bget = false;
@@ -728,6 +759,8 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	char nodetype;			/*master/slave/extra*/
 	char nodetype_original;
 	char dntypearray[]={CNDN_TYPE_DATANODE_MASTER, CNDN_TYPE_DATANODE_SLAVE, CNDN_TYPE_DATANODE_EXTRA};
+	char gtmtypearray[]={GTM_TYPE_GTM_MASTER, GTM_TYPE_GTM_SLAVE, GTM_TYPE_GTM_EXTRA};
+	int nodearraylen = 1;		/*do not change the value 1*/
 	int effectparmstatus;
 	int vartype; /*the parm value type: bool, string, enum, int*/
 	int iloop = 0;
@@ -738,18 +771,41 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	/*nodename*/
 	namestrcpy(&nodename, node->nodename);
 	nodetype_original = nodetype;
-	/*cmd:set datanode all (key=value,..)*/
-	if (CNDN_TYPE_DATANODE == nodetype_original)
+	/*cmd:set datanode/gtm all (key=value,..)*/
+	if (CNDN_TYPE_DATANODE == nodetype_original || CNDN_TYPE_GTM == nodetype_original)
+	{
 		Assert(strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0);
+		nodearraylen = (CNDN_TYPE_DATANODE == nodetype_original ? sizeof(dntypearray)/sizeof(dntypearray[0]): sizeof(gtmtypearray)/sizeof(gtmtypearray[0]));
+	}
 	
 	/*open systbl: mgr_parm*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	for (iloop=0; iloop<sizeof(dntypearray)/sizeof(dntypearray[0]); iloop++)
+	/*get gtm name*/
+	if (CNDN_TYPE_GTM == nodetype_original)
+	{
+		ScanKeyInit(&scankey[0]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(GTM_TYPE_GTM_MASTER));
+		rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, scankey);
+		while ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			namestrcpy(&nodename, NameStr(mgr_node->nodename));
+			break;
+		}
+		heap_endscan(rel_scan);		
+	}
+	for (iloop=0; iloop<nodearraylen; iloop++)
 	{
 		if (CNDN_TYPE_DATANODE == nodetype_original)
 			nodetype = dntypearray[iloop];
+		else if (CNDN_TYPE_GTM == nodetype_original)
+			nodetype = gtmtypearray[iloop];
 		memset(datum, 0, sizeof(datum));
 		memset(isnull, 0, sizeof(isnull));
 		memset(got, 0, sizeof(got));
@@ -872,8 +928,8 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 					mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 			}
 		}
-		if (CNDN_TYPE_DATANODE != nodetype_original)
-		break;
+		if (CNDN_TYPE_DATANODE != nodetype_original && CNDN_TYPE_GTM != nodetype_original)
+			break;
 	}
 
 	/*close relation */
