@@ -15,6 +15,7 @@ PGAPPICON=win32
 subdir = src/bin/agent
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
 # We need libpython as a shared library.  In Python >=2.5, configure
 # asks Python directly.  But because this has been broken in Debian
@@ -58,7 +59,7 @@ CFLAGS += -I$(top_srcdir)/$(subdir) $(python_includespec)
 
 ifeq ($(shared_libpython),yes)
 # We put libpgport and libpgcommon into OBJS, so remove it from LIBS
-LIBS := $(filter-out -lpgport -lpgcommon, $(LIBS))
+LIBS := $(filter-out -lpgport -lpgcommon, $(LIBS) $(libpq_pgport))
 
 # The agent doesn't need everything that's in LIBS, however
 LIBS := $(filter-out -lz -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))

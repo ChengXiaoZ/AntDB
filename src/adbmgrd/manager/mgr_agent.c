@@ -313,8 +313,11 @@ char ma_get_message(ManagerAgent *ma, StringInfo buf)
 			if(ma_recv_data(ma) == false)
 				return '\0';
 		}
-		enlargeStringInfo(buf, n32);
+		if (n32 > buf->maxlen)
+			enlargeStringInfo(buf, n32+1);
 		memcpy(buf->data, in_buf->data + in_buf->cursor + 5, n32);
+		if (buf->data[n32-1] != '\0')
+			buf->data[n32] = '\0';
 		buf->len = n32;
 		buf->cursor = msg_type;
 	}

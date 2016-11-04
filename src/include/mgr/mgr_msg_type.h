@@ -50,6 +50,8 @@ typedef enum AgentCommand
 	,AGT_CMD_NODE_RELOAD
 	,AGT_CMD_CLEAN_NODE
 	,AGT_CMD_STOP_AGENT
+	,AGT_CMD_SHOW_AGTM_PARAM
+	,AGT_CMD_SHOW_CNDN_PARAM
 }AgentCommand;
 
 #endif /* MGR_MSG_TYPE_H */

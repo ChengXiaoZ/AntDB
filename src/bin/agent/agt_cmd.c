@@ -2,20 +2,23 @@
 /*
  * agent commands
  */
- 
+
 #include<unistd.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <pwd.h>
 #include "agent.h"
-
 #include "agt_msg.h"
 #include "agt_utility.h"
 #include "mgr/mgr_msg_type.h"
 #include "conf_scan.h"
 #include "hba_scan.h"
 #include "utils/memutils.h"
+#include "c.h"
+#include "postgres_fe.h"
+#include "../../interfaces/libpq/libpq-fe.h"
 
 #define BUFFER_SIZE 4096
 
@@ -47,6 +50,8 @@ extern bool get_disk_iops_info(StringInfo hostinfostring);
 static void cmd_rm_temp_file(StringInfo msg);
 static void cmd_clean_node_folder(StringInfo buf);
 static void cmd_stop_agent(void);
+static void cmd_get_showparam_values(char cmdtype, StringInfo buf);
+static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port, char * dbname);
 
 void do_agent_command(StringInfo buf)
 {
@@ -118,6 +123,12 @@ void do_agent_command(StringInfo buf)
 		break;
 	case AGT_CMD_STOP_AGENT:
 		cmd_stop_agent();
+		break;
+	case AGT_CMD_SHOW_AGTM_PARAM:
+		cmd_get_showparam_values(AGT_CMD_SHOW_AGTM_PARAM, buf);
+		break;
+	case AGT_CMD_SHOW_CNDN_PARAM:
+		cmd_get_showparam_values(AGT_CMD_SHOW_CNDN_PARAM, buf);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
@@ -893,4 +904,121 @@ static void cmd_stop_agent(void)
 	{
 		perror("stop agent fail: ");
 	}
+}
+
+/*
+* get the result of command: show nodename key , and support fuzzy query,for example: show nodename "log%"
+*/
+static void cmd_get_showparam_values(char cmdtype, StringInfo buf)
+{
+	StringInfoData output;
+	StringInfoData sqlstr;
+	const char *rec_msg_string;
+	char portstr[6];
+	char param[64];
+	char *valuestr;
+	struct passwd *pwd;
+	int resultlen = 0;
+	
+	initStringInfo(&output);
+	initStringInfo(&sqlstr);
+	rec_msg_string = agt_getmsgstring(buf);
+	/*get port*/
+	strcpy(portstr, rec_msg_string);
+	strcpy(param, rec_msg_string + strlen(portstr) + 1);
+	/*get param*/
+	appendStringInfo(&sqlstr, "select name, case when unit IS NULL  THEN case vartype when 'string' then quote_literal(setting) else setting end ELSE case unit  when '' then setting||unit else quote_literal(setting||unit) end  END from pg_settings where name like '%%%s%%' order by 1", param);
+	if (AGT_CMD_SHOW_CNDN_PARAM == cmdtype)
+	{
+		pwd = getpwuid(getuid());
+		valuestr = mgr_get_showparam(sqlstr.data, pwd->pw_name, "127.0.0.1", atoi(portstr), AGTM_DBNAME);
+	}
+	else
+	{
+		valuestr = mgr_get_showparam(sqlstr.data, AGTM_USER, "127.0.0.1", atoi(portstr), AGTM_DBNAME);
+	}
+	pfree(sqlstr.data);
+	if (valuestr != NULL)
+	{
+		resultlen = strlen(valuestr);
+		if (resultlen > output.maxlen)
+		{
+			enlargeStringInfo(&output, resultlen+1);
+			appendStringInfoString(&output, valuestr);
+		}
+		else
+			appendStringInfoString(&output, valuestr);
+		pfree(valuestr);
+	}
+	else
+	{
+		appendStringInfo(&output, "connect to %s to get the result failed", AGTM_DBNAME);
+	}
+	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	agt_flush();
+	pfree(output.data);
+}
+
+/*given one sqlstr, return the result*/
+static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port, char * dbname)
+{
+	StringInfoData constr;
+	PGconn* conn;
+	PGresult *res;
+	char *oneCoordValueStr = NULL;
+	int nrow = 0;
+	int iloop = 0;
+	
+	initStringInfo(&constr);
+	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
+	appendStringInfoCharMacro(&constr, '\0');
+	ereport(LOG,
+		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
+	conn = PQconnectdb(constr.data);
+	/* Check to see that the backend connection was successfully made */
+	if (PQstatus(conn) != CONNECTION_OK) 
+	{
+		pfree(constr.data);
+		ereport(ERROR,
+		(errmsg("%s", PQerrorMessage(conn))));
+		/*PQfinish(conn);*/
+		/*return NULL;*/
+	}
+	res = PQexec(conn, sqlstr);
+	if(PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		PQfinish(conn);
+		pfree(constr.data);
+		ereport(ERROR,
+		(errmsg("%s" , PQresultErrorMessage(res))));
+		/*PQclear(res);*/
+		/*return NULL;*/
+	}
+	/*check column number*/
+	Assert(2 == PQnfields(res));
+	/*get row num*/
+	nrow = PQntuples(res);
+	if (nrow)
+		oneCoordValueStr = (char *)palloc(nrow*64);
+	else
+		oneCoordValueStr = (char *)palloc(64);
+	/*get none*/
+	if (!nrow)
+	{
+		strcat(oneCoordValueStr,"no parameter be found");
+	}
+	for (iloop=0; iloop<nrow; iloop++)
+	{
+		strcat(oneCoordValueStr, PQgetvalue(res, iloop, 0 ));
+		strcat(oneCoordValueStr, " = ");
+		strcat(oneCoordValueStr, PQgetvalue(res, iloop, 1 ));
+		if(iloop != nrow-1)
+			strcat(oneCoordValueStr, "\t\n");
+		else
+			strcat(oneCoordValueStr, "\0");
+	}
+	PQclear(res);
+	PQfinish(conn);
+	pfree(constr.data);
+	return oneCoordValueStr;
 }

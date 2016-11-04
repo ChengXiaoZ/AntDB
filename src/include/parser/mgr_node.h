@@ -97,4 +97,11 @@ typedef struct MGRUpdateparmReset
 	List		*options;		/* list of DefElem */
 }MGRUpdateparmReset;
 
+typedef struct MGRShowParam
+{
+	NodeTag		type;
+	char		*nodename;
+	char		*param;		/*parameter of node*/
+}MGRShowParam;
+
 #endif /* MGR_NODE_H */

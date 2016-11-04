@@ -211,4 +211,5 @@ extern void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params,
 extern void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype);
 extern void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, char oldmastertype, Name oldslavename, int olddnslavename,  char oldslavetype, bool bgetextra);
 extern void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char mastertype, Name slavename, char slavetype);
+extern void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest);
 #endif /* MGR_CMDS_H */

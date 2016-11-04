@@ -115,7 +115,7 @@ extern char *defGetString(DefElem *def);
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
-				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt
+				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -142,7 +142,7 @@ extern char *defGetString(DefElem *def);
 %token<keyword> PASSWORD CLEAN RESET
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
-%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE
+%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -210,6 +210,7 @@ stmt :
 	| AddUpdataparmStmt
 	| ResetUpdataparmStmt
 	| CleanAllStmt
+	| ShowStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -794,6 +795,26 @@ AddUpdataparmStmt:
 				node->is_force= true;
 				$$ = (Node*)node;
 		}
+	|	SET GTM ALL set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	|	SET GTM ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force= true;
+				$$ = (Node*)node;
+		}
 	| SET DATANODE opt_dn_inner_type set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
@@ -873,6 +894,26 @@ ResetUpdataparmStmt:
 				node->nodetype = $3;
 				node->nodename = $4;
 				node->options = $5;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
+	| RESET GTM ALL set_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| RESET GTM ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = CNDN_TYPE_GTM;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
@@ -1868,6 +1909,15 @@ ListMonitor:
 			$$ = (Node*)stmt;
 		}
 	;
+ShowStmt:
+	SHOW	Ident	Ident
+	{
+		MGRShowParam *node = makeNode(MGRShowParam);
+		node->nodename = $2;
+		node->param = $3;
+		$$ = (Node*)node;
+	}
+	;
 
 unreserved_keyword:
 	  ADD_P
@@ -1928,6 +1978,7 @@ unreserved_keyword:
 	| RESET
 	| S
 	| SET
+	| SHOW
 	| SLAVE
 	| SMART
 	| START

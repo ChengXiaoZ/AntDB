@@ -180,18 +180,18 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
 			/* error message */
 			getAgentCmdRst->ret = false;
 			appendStringInfoString(&(getAgentCmdRst->description), ma_get_err_info(&recvbuf, AGT_MSG_RESULT));
-			ereport(DEBUG1, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 			break;
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			break;
+			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{
 			getAgentCmdRst->ret = true;
 			appendStringInfoString(&(getAgentCmdRst->description), run_success);
-			ereport(DEBUG1, (errmsg("%s", recvbuf.data)));
+			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
 			initdone = true;
 			break;
 		}
@@ -224,17 +224,17 @@ bool mgr_recv_msg_for_monitor(ManagerAgent *ma, bool *ret, StringInfo agentRstSt
 			/* error message */
 			*ret = false;
 			appendStringInfoString(agentRstStr, ma_get_err_info(agentRstStr, AGT_MSG_RESULT));
-			ereport(DEBUG1, (errmsg("%s", ma_get_err_info(agentRstStr, AGT_MSG_RESULT))));
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(agentRstStr, AGT_MSG_RESULT))));
 			break;
 		}else if (msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			break;
+			ereport(LOG, (errmsg("receive msg: %s", agentRstStr->data)));
 		}
 		else if (msg_type == AGT_MSG_RESULT)
 		{
 			*ret = true;
-			ereport(DEBUG1, (errmsg("%s", agentRstStr->data)));
+			ereport(LOG, (errmsg("receive msg: %s", agentRstStr->data)));
 			initdone = true;
 			break;
 		}

@@ -36,10 +36,13 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 		tag = "DEPLORY";
 		break;
 	case T_MGRUpdateparm:
-		tag = "SET PARM";
+		tag = "SET PARAM";
 		break;
 	case T_MGRUpdateparmReset:
-		tag = "RESET PARM";
+		tag = "RESET PARAM";
+		break;
+	case T_MGRShowParam:
+		tag = "SHOW PARAM";
 		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
@@ -83,6 +86,9 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRUpdateparmReset:
 		mgr_reset_updateparm((MGRUpdateparmReset*)parsetree, params, dest);
+		break;
+	case T_MGRShowParam:
+		mgr_showparam((MGRShowParam*)parsetree, params, dest);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
