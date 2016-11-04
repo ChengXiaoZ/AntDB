@@ -100,7 +100,7 @@ static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype);
 static bool is_sync(char nodetype, char *nodename);
 static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *is_sync);
 static void mgr_set_master_sync(void);
-
+static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync);
 #if (Natts_mgr_node != 10)
 #error "need change code"
 #endif
@@ -348,6 +348,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 	Datum datum[Natts_mgr_node];
 	bool isnull[Natts_mgr_node];
 	bool got[Natts_mgr_node];
+	bool new_sync;
 	HeapTuple searchHostTuple;	
 	TupleDesc cndn_dsc;
 	NameData hostname;
@@ -368,16 +369,8 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				 ,errmsg("%s \"%s\" does not exist", nodestring, NameStr(name))));
 	}
-	/*check this tuple initd or not, if it has inited and in cluster, cannot be alter*/
-	mgr_node = (Form_mgr_node)GETSTRUCT(oldtuple);
+    mgr_node = (Form_mgr_node)GETSTRUCT(oldtuple);
 	Assert(mgr_node);
-	if(mgr_node->nodeincluster)
-	{
-		heap_freetuple(oldtuple);
-		heap_close(rel, RowExclusiveLock);
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be changed", nodestring, NameStr(name))));
-	}
 	pfree(nodestring);
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
@@ -428,7 +421,6 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			datum[Anum_mgr_node_nodepath-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_node_nodepath-1] = true;
-
 		}else if(strcmp(def->defname, "sync") == 0)
 		{
 			if(got[Anum_mgr_node_nodesync-1])
@@ -440,15 +432,17 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 			{
 				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
 				got[Anum_mgr_node_nodesync-1] = true;
+				new_sync = true;
 			}else if(strcmp(str, "false") == 0 || strcmp(str, "off") == 0 || strcmp(str, "f") == 0)
-			{
+			{				
 				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(ASYNC);
 				got[Anum_mgr_node_nodesync-1] = true;
+				new_sync = false;
 			}else
 			{
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid value for parameter \"sync\": \"%s\", must be \"true|t|on\" or \"false|f|off\"", str)));
-			}
+			}			
 		}else      
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
@@ -457,19 +451,34 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
 	}
-	
+		
 	if(got[Anum_mgr_node_nodesync-1] == true) 
 	{
 		if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 		{
 			datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SPACE);
-			ereport(WARNING, (errmsg("asynchronous cannot be set on the master node,you should set up the relationship from the node of slave or extra")));
+			ereport(WARNING, (errmsg("you should set sync mode on slave or extra ")));
 		}
 	}
 
+	/*check this tuple initd or not, if it has inited and in cluster, check whether it can be alter*/		
+	if(mgr_node->nodeincluster)
+	{
+		if((got[Anum_mgr_node_nodehost-1] == true)||(got[Anum_mgr_node_nodeport-1] == true)||(got[Anum_mgr_node_nodepath-1] == true))
+		{
+			heap_freetuple(oldtuple);
+			heap_close(rel, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be changed", nodestring, NameStr(name))));
+		}		
+
+		mgr_alter_master_sync(nodetype, NameStr(name), new_sync);	
+	}
+	
 	new_tuple = heap_modify_tuple(oldtuple, cndn_dsc, datum,isnull, got);
 	simple_heap_update(rel, &oldtuple->t_self, new_tuple);
-	CatalogUpdateIndexes(rel, new_tuple);
+	CatalogUpdateIndexes(rel, new_tuple);	
+		
 	heap_freetuple(oldtuple);
 	/* at end, close relation */
 	heap_close(rel, RowExclusiveLock);
@@ -6728,3 +6737,142 @@ static void mgr_set_master_sync(void)
 	pfree(getAgentCmdRst.description.data);
 
 }
+/* the param:
+ nodetype is owned to the slave or the extra 
+ nodename is owned to the slave or the extra 
+ new_sync is a new synchronous relationship of slave to master 
+*/
+static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
+{
+	Relation rel;
+	HeapTuple checktuple;
+	HeapTuple tuple;
+	Form_mgr_node mgr_master_node;
+	StringInfoData infosendmsg;
+	GetAgentCmdRst getAgentCmdRst;
+	Datum datumpath;
+	bool bslave_exist = false;
+	bool bextra_exist = false;
+	bool bslave_sync = false;
+	bool bextra_sync = false;
+	bool isNull = false;
+	char *node_type_str;
+	char *address;
+	char *value;
+	char *master_node_path;
+
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	getAgentCmdRst.ret = false;
+	
+	if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
+	{
+		ereport(ERROR, (errmsg("You should  set The synchronous relationship on the slave node, because the master may have two slave ")));
+	}
+	node_type_str = mgr_nodetype_str(nodetype);
+	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	/* check exists */
+	checktuple = mgr_get_tuple_node_from_name_type(rel, nodename, nodetype);
+	if (!HeapTupleIsValid(checktuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
+				, errmsg("%s \"%s\" is not exists", node_type_str, nodename)));
+	}
+	
+	switch(nodetype)
+	{
+		case GTM_TYPE_GTM_SLAVE: 
+			/*gtm extra sync status*/
+			get_nodestatus(GTM_TYPE_GTM_EXTRA, nodename, &bextra_exist, &bextra_sync);
+		    	bslave_sync = new_sync;
+		break;
+		case GTM_TYPE_GTM_EXTRA: 
+			/*gtm slave sync status*/
+			get_nodestatus(GTM_TYPE_GTM_SLAVE, nodename, &bslave_exist, &bslave_sync);
+			bextra_sync = new_sync;
+		break;
+		case CNDN_TYPE_DATANODE_SLAVE: 
+			/*datanode extra sync status*/
+			get_nodestatus(CNDN_TYPE_DATANODE_EXTRA, nodename, &bextra_exist, &bextra_sync);	
+			bslave_sync = new_sync;			
+		break;
+		case CNDN_TYPE_DATANODE_EXTRA: 
+			/*datanode slave sync status*/
+			get_nodestatus(CNDN_TYPE_DATANODE_SLAVE, nodename, &bslave_exist, &bslave_sync);
+			bextra_sync = new_sync;
+		break;
+		default: break;
+	}
+	/* step 1: update datanode master's postgresql.conf.*/
+	resetStringInfo(&infosendmsg);
+	if (bslave_sync && bextra_sync)
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave,extra", &infosendmsg);
+	else if (bslave_sync && (!bextra_sync))
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
+	else if ((!bslave_sync) && bextra_sync)
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
+	else
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+	if((GTM_TYPE_GTM_SLAVE == nodetype)||(GTM_TYPE_GTM_EXTRA == nodetype))
+	{
+
+		node_type_str = mgr_nodetype_str(GTM_TYPE_GTM_MASTER);
+		tuple = mgr_get_tuple_node_from_name_type(rel, nodename, GTM_TYPE_GTM_MASTER);
+		if(!(HeapTupleIsValid(tuple)))
+		{
+			 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				 ,errmsg("%s \"%s\" does not exist",node_type_str, nodename))); 
+		}
+		mgr_master_node = (Form_mgr_node)GETSTRUCT(tuple);
+		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column cndnpath is null")));
+		}		
+		master_node_path = TextDatumGetCString(datumpath);
+	}else if((CNDN_TYPE_DATANODE_SLAVE == nodetype)||(CNDN_TYPE_DATANODE_EXTRA == nodetype))
+	{
+		node_type_str = mgr_nodetype_str(GTM_TYPE_GTM_MASTER);
+		tuple= mgr_get_tuple_node_from_name_type(rel, nodename, CNDN_TYPE_DATANODE_MASTER);
+		if(!(HeapTupleIsValid(tuple)))
+		{
+			 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				 ,errmsg("%s \"%s\" does not exist",node_type_str, nodename))); 
+		}
+		mgr_master_node = (Form_mgr_node)GETSTRUCT(tuple);
+
+		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column cndnpath is null")));
+		}		
+		master_node_path = TextDatumGetCString(datumpath);
+	}
+	
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+							master_node_path,
+							&infosendmsg, 
+							mgr_master_node->nodehost, 
+							&getAgentCmdRst);
+
+	/* step 2: reload datanode master's postgresql.conf. */
+	mgr_reload_conf(mgr_master_node->nodehost, master_node_path);
+	value = &infosendmsg.data[strlen("synchronous_standby_names")+1];
+	ereport(LOG, (errmsg("set hostoid %d path %s synchronous_standby_names=%s.", 
+										mgr_master_node->nodehost, master_node_path,value)));
+	if (!getAgentCmdRst.ret)
+	{	
+		address = get_hostaddress_from_hostoid(mgr_master_node->nodehost);
+		ereport(WARNING, (errmsg("set address %s path %s synchronous_standby_names=%s failed.",
+										address, master_node_path,value)));
+		pfree(address);
+	}
+	heap_close(rel, RowExclusiveLock);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+}
+
