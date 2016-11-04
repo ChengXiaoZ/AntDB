@@ -114,10 +114,10 @@ extern Datum mgr_stop_dn_slave_i(PG_FUNCTION_ARGS);
 extern Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shutdown_mode);
 
 extern Datum mgr_monitor_all(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_coord_all(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_dnmaster_all(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_dnslave_all(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_dnextra_all(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS);
 
 extern Datum mgr_append_dnmaster(PG_FUNCTION_ARGS);
 extern Datum mgr_append_dnslave(PG_FUNCTION_ARGS);
@@ -127,12 +127,7 @@ extern Datum mgr_append_agtmslave(PG_FUNCTION_ARGS);
 extern Datum mgr_append_agtmextra(PG_FUNCTION_ARGS);
 
 /* extern void mgr_configure_nodes_all(void); */
-Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);
-
-extern Datum mgr_monitor_coord_namelist(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_dnmaster_namelist(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_dnslave_namelist(PG_FUNCTION_ARGS);
-extern Datum mgr_monitor_dnextra_namelist(PG_FUNCTION_ARGS);
+extern Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);
 
 extern void mgr_start_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple);
 extern List * get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo
