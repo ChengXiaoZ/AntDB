@@ -647,19 +647,6 @@ static const struct cachedesc cacheinfo[] = {
 		256
 	},
 #endif
-#ifdef ADB
-	{AdbHaSyncLogRelationId,	/* ADBHASYNCLOGOID */
-		AdbHaSyncLogOidIndexId,
-		1,
-		{
-			ObjectIdAttributeNumber,
-			0,
-			0,
-			0
-		},
-		256
-	},
-#endif
 	{ProcedureRelationId,		/* PROCNAMEARGSNSP */
 		ProcedureNameArgsNspIndexId,
 		3,
