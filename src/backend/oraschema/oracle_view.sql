@@ -7,7 +7,7 @@
  * src/backend/oraschema/oracle_views.sql
  */
 
-CREATE OR REPLACE VIEW oracle.all_constraints AS
+CREATE OR REPLACE VIEW pg_catalog.all_constraints AS
     SELECT UPPER(con.table_schema) AS owner,
         UPPER(con.table_name) AS table_name,
         UPPER(con.constraint_name) AS constraint_name,
@@ -20,7 +20,7 @@ CREATE OR REPLACE VIEW oracle.all_constraints AS
     AND rol.rolname = CURRENT_USER
     ORDER BY con.table_schema, con.table_name;
 
-CREATE OR REPLACE VIEW oracle.all_cons_columns AS
+CREATE OR REPLACE VIEW pg_catalog.all_cons_columns AS
     SELECT UPPER(conclm.table_schema) AS owner,
         UPPER(conclm.table_name) AS table_name,
         UPPER(conclm.constraint_name) AS constraint_name,
@@ -36,7 +36,7 @@ CREATE OR REPLACE VIEW oracle.all_cons_columns AS
     AND rol.rolname = CURRENT_USER
     ORDER BY conclm.table_schema, conclm.table_name;
 
-CREATE OR REPLACE VIEW oracle.all_tab_cols AS
+CREATE OR REPLACE VIEW pg_catalog.all_tab_cols AS
     SELECT UPPER(clm.column_name) AS COLUMN_NAME,
         UPPER(clm.data_type) AS DATA_TYPE,
         clm.numeric_precision AS DATA_PRECISION,
@@ -51,7 +51,7 @@ CREATE OR REPLACE VIEW oracle.all_tab_cols AS
     AND rol.rolname = CURRENT_USER
     ORDER BY clm.table_schema, clm.table_name;
 
-CREATE OR REPLACE VIEW oracle.all_objects AS
+CREATE OR REPLACE VIEW pg_catalog.all_objects AS
     SELECT UPPER(nsp.nspname)::varchar2(30) AS owner,
         UPPER(cls.relname)::varchar2(30) AS object_name,
         CASE cls.relkind
