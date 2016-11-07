@@ -463,13 +463,13 @@ MonitorStmt:
 		};
 
 node_type:
-		DATANODE MASTER			{$$ = 'd';}
-		| DATANODE SLAVE		{$$ = 'b';}
-		| DATANODE EXTRA		{$$ = 'n';}
-		| COORDINATOR			{$$ = 'c';}
-		| GTM MASTER			{$$ = 'g';}
-		| GTM SLAVE				{$$ = 'p';}
-		| GTM EXTRA				{$$ = 'e';}
+		DATANODE MASTER			{$$ = CNDN_TYPE_DATANODE_MASTER;}
+		| DATANODE SLAVE		{$$ = CNDN_TYPE_DATANODE_SLAVE;}
+		| DATANODE EXTRA		{$$ = CNDN_TYPE_DATANODE_EXTRA;}
+		| COORDINATOR			{$$ = CNDN_TYPE_COORDINATOR_MASTER;}
+		| GTM MASTER			{$$ = GTM_TYPE_GTM_MASTER;}
+		| GTM SLAVE				{$$ = GTM_TYPE_GTM_SLAVE;}
+		| GTM EXTRA				{$$ = GTM_TYPE_GTM_EXTRA;}
 		;
 
 opt_general_all:
