@@ -507,8 +507,8 @@ set_rest_more:
 				}
 			;
 
-var_name:	Ident									{ $$ = $1; }
-			| var_name '.' Ident
+var_name:	IDENT									{ $$ = $1; }
+			| var_name '.' IDENT
 				{
 					$$ = palloc(strlen($1) + strlen($3) + 2);
 					sprintf($$, "%s.%s", $1, $3);
@@ -855,23 +855,23 @@ AddUpdataparmStmt:
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
-	| SET COORDINATOR MASTER set_ident set_parm_general_options
+	| SET COORDINATOR set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
 				node->parmtype = PARM_TYPE_COORDINATOR;
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $4;
-				node->options = $5;
+				node->nodename = $3;
+				node->options = $4;
 				node->is_force = false;
 				$$ = (Node*)node;
 		}
-	| SET COORDINATOR MASTER set_ident set_parm_general_options FORCE
+	| SET COORDINATOR set_ident set_parm_general_options FORCE
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
 				node->parmtype = PARM_TYPE_COORDINATOR;
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $4;
-				node->options = $5;
+				node->nodename = $3;
+				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
@@ -957,23 +957,23 @@ ResetUpdataparmStmt:
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
-	| RESET COORDINATOR MASTER set_ident set_parm_general_options
+	| RESET COORDINATOR set_ident set_parm_general_options
 		{
 				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_COORDINATOR;
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $4;
-				node->options = $5;
+				node->nodename = $3;
+				node->options = $4;
 				node->is_force = false;
 				$$ = (Node*)node;
 		}
-	| RESET COORDINATOR MASTER set_ident set_parm_general_options FORCE
+	| RESET COORDINATOR set_ident set_parm_general_options FORCE
 		{
 				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_COORDINATOR;
 				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $4;
-				node->options = $5;
+				node->nodename = $3;
+				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
