@@ -4022,7 +4022,7 @@ getAggregates(Archive *fout, int *numAggs)
 						  "WHERE proisagg AND ("
 						  "pronamespace NOT IN "
 						  "(SELECT oid FROM pg_namespace "
-						  "WHERE nspname = 'pg_catalog' OR spname = 'oracle')",
+						  "WHERE nspname = 'pg_catalog' OR nspname = 'oracle')",
 						  username_subquery);
 		if (binary_upgrade && fout->remoteVersion >= 90100)
 			appendPQExpBuffer(query,
