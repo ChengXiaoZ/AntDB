@@ -164,6 +164,7 @@ extern HeapTuple build_common_command_tuple(const Name name, bool success, const
 extern int pingNode(char *host, char *port);
 extern bool	mgr_check_host_in_use(Oid hostoid);
 extern void mgr_mark_node_in_cluster(Relation rel);
+extern TupleDesc get_showparam_command_tuple_desc(void);
 /* get the host address */
 char *get_hostaddress_from_hostoid(Oid hostOid);
 char *get_hostname_from_hostoid(Oid hostOid);

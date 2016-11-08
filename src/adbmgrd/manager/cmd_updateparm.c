@@ -1493,7 +1493,7 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 					, ALLOCSET_DEFAULT_MINSIZE
 					, ALLOCSET_DEFAULT_INITSIZE
 					, ALLOCSET_DEFAULT_MAXSIZE);
-	desc = get_common_command_tuple_desc();
+	desc = get_showparam_command_tuple_desc();
 	(*dest->rStartup)(dest, CMD_UTILITY, desc);
 	slot = MakeSingleTupleTableSlot(desc);
 	initStringInfo(&buf);

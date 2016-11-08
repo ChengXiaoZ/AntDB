@@ -6228,7 +6228,7 @@ char *mgr_nodetype_str(char nodetype)
 			nodestring = "gtm extra";
 			break;
 		case CNDN_TYPE_COORDINATOR_MASTER:
-			nodestring = "coordinator master";
+			nodestring = "coordinator";
 			break;
 		case CNDN_TYPE_COORDINATOR_SLAVE:
 			nodestring = "coordinator slave";

@@ -20,6 +20,7 @@
 #define MAXPATH (512-1)
 
 static TupleDesc common_command_tuple_desc = NULL;
+static TupleDesc showparam_command_tuple_desc = NULL;
 static void myUsleep(long microsec);
 
 TupleDesc get_common_command_tuple_desc(void)
@@ -448,4 +449,35 @@ bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int
 	PQfinish(conn);
 	pfree(constr.data);
 	return true;
+}
+
+/*
+* to make the columns name for the result of command: show nodename parameter
+*/
+TupleDesc get_showparam_command_tuple_desc(void)
+{
+	if(showparam_command_tuple_desc == NULL)
+	{
+		MemoryContext volatile old_context = MemoryContextSwitchTo(TopMemoryContext);
+		TupleDesc volatile desc = NULL;
+		PG_TRY();
+		{
+			desc = CreateTemplateTupleDesc(3, false);
+			TupleDescInitEntry(desc, (AttrNumber) 1, "type",
+							   NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 2, "success",
+							   BOOLOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 3, "message",
+							   TEXTOID, -1, 0);
+			common_command_tuple_desc = BlessTupleDesc(desc);
+		}PG_CATCH();
+		{
+			if(desc)
+				FreeTupleDesc(desc);
+			PG_RE_THROW();
+		}PG_END_TRY();
+		(void)MemoryContextSwitchTo(old_context);
+	}
+	Assert(common_command_tuple_desc);
+	return common_command_tuple_desc;
 }
