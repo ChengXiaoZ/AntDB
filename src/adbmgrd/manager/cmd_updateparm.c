@@ -1480,8 +1480,6 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 	Form_mgr_node mgr_node;
 	GetAgentCmdRst getAgentCmdRst;
 	HeapScanDesc rel_scan;
-	char nodetype;
-	char *address;
 	char *nodetypestr;
 	/*max port is 65535,so the length of portstr is 6*/
 	char portstr[6]="00000";
@@ -1523,9 +1521,6 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
-			/*get the node type, address, port*/
-			nodetype = mgr_node->nodetype;
-			address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 			/*send the command string to agent to get the value*/
 			sprintf(portstr, "%d", mgr_node->nodeport);
 			resetStringInfo(&(getAgentCmdRst.description));

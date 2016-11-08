@@ -130,7 +130,7 @@ extern char *defGetString(DefElem *def);
 %type <str>		Ident SConst ColLabel var_name opt_boolean_or_string
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
-				opt_general_all
+				opt_general_all var_dotparam var_showparam
 
 %type <chr>		node_type
 
@@ -514,7 +514,17 @@ var_name:	IDENT									{ $$ = $1; }
 					sprintf($$, "%s.%s", $1, $3);
 				}
 			;
-			
+var_dotparam:
+			Ident '.' Ident
+				{
+					$$ = palloc(strlen($1) + strlen($3) + 2);
+					sprintf($$, "%s.%s", $1, $3);
+				}
+			;
+var_showparam:
+			Ident							{ $$ = $1; }
+			| var_dotparam					{ $$ = $1; }
+			;
 var_list:	var_value								{ $$ = list_make1($1); }
 			| var_list ',' var_value				{ $$ = lappend($1, $3); }
 			;
@@ -602,6 +612,7 @@ general_option_item:
 	  ColLabel general_option_arg		{ $$ = (Node*)makeDefElem($1, $2); }
 	| ColLabel '=' general_option_arg	{ $$ = (Node*)makeDefElem($1, $3); }
 	| ColLabel 							{ $$ = (Node*)makeDefElem($1, NULL); }
+	| var_dotparam '=' general_option_arg { $$ = (Node*)makeDefElem($1, $3); }
 	;
 
 general_option_arg:
@@ -1910,7 +1921,7 @@ ListMonitor:
 		}
 	;
 ShowStmt:
-	SHOW	Ident	Ident
+	SHOW Ident var_showparam
 	{
 		MGRShowParam *node = makeNode(MGRShowParam);
 		node->nodename = $2;
