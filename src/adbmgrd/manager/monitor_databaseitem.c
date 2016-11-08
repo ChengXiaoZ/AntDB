@@ -262,15 +262,15 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 			iarray_heaphit_read_indexsize[iloop] = 0;
 		}
 		/*heaphit, heapread, indexsize*/
-		appendStringInfo(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit) from pg_statio_user_tables union all select sum(heap_blks_read) from pg_statio_user_tables union all select round(pg_database_size(datname)::numeric(18,4)/1024/1024) from pg_database where datname=\'%s\'", dbname);
+		appendStringInfoString(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit) from pg_statio_user_tables union all select sum(heap_blks_read) from pg_statio_user_tables union all select round(sum(pg_catalog.pg_table_size(c.oid))::numeric(18,4)/1024/1024) from pg_catalog.pg_class c  WHERE c.relkind = 'i';");
 		monitor_get_sum_all_onetypenode_onedb(rel_node, sqlstr_heaphit_read_indexsize.data, dbname, CNDN_TYPE_DATANODE_MASTER, iarray_heaphit_read_indexsize, 3);
 		
 		heaphit = iarray_heaphit_read_indexsize[0];
 		heapread = iarray_heaphit_read_indexsize[1];
 		if((heaphit + heapread) == 0)
-			heaphitrate = 1;
+			heaphitrate = 100;
 		else
-			heaphitrate = heaphit*1.0/(heaphit + heapread);
+			heaphitrate = heaphit*100.0/(heaphit + heapread);
 		/*the database index size, unit: MB */
 		indexsize = iarray_heaphit_read_indexsize[2];
 		
@@ -289,9 +289,9 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		commit = iarray_commit_connect_longidle_prepare[0];
 		rollback = iarray_commit_connect_longidle_prepare[1];
 		if((commit + rollback) == 0)
-			commitrate = 1;
+			commitrate = 100;
 		else
-			commitrate = commit*1.0/(commit + rollback);
+			commitrate = commit*100.0/(commit + rollback);
 		/*connect num*/
 		connectnum = iarray_commit_connect_longidle_prepare[2];
 		/*get long query num on coordinator*/
