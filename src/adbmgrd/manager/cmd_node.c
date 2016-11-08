@@ -451,16 +451,6 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
 	}
-		
-	if(got[Anum_mgr_node_nodesync-1] == true) 
-	{
-		if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
-		{
-			datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SPACE);
-			ereport(WARNING, (errmsg("you should set sync mode on slave or extra ")));
-		}
-	}
-
 	/*check this tuple initd or not, if it has inited and in cluster, check whether it can be alter*/		
 	if(mgr_node->nodeincluster)
 	{
@@ -471,8 +461,8 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be changed", nodestring, NameStr(name))));
 		}		
-
-		mgr_alter_master_sync(nodetype, NameStr(name), new_sync);	
+		if(got[Anum_mgr_node_nodesync-1] == true) 
+			mgr_alter_master_sync(nodetype, NameStr(name), new_sync);	
 	}
 	
 	new_tuple = heap_modify_tuple(oldtuple, cndn_dsc, datum,isnull, got);
@@ -6761,10 +6751,6 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 	char *value;
 	char *master_node_path;
 
-	initStringInfo(&infosendmsg);
-	initStringInfo(&(getAgentCmdRst.description));
-	getAgentCmdRst.ret = false;
-	
 	if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 	{
 		ereport(ERROR, (errmsg("You should  set The synchronous relationship on the slave node, because the master may have two slave ")));
@@ -6803,16 +6789,6 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 		break;
 		default: break;
 	}
-	/* step 1: update datanode master's postgresql.conf.*/
-	resetStringInfo(&infosendmsg);
-	if (bslave_sync && bextra_sync)
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave,extra", &infosendmsg);
-	else if (bslave_sync && (!bextra_sync))
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
-	else if ((!bslave_sync) && bextra_sync)
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
-	else
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 	if((GTM_TYPE_GTM_SLAVE == nodetype)||(GTM_TYPE_GTM_EXTRA == nodetype))
 	{
 
@@ -6852,7 +6828,24 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 		}		
 		master_node_path = TextDatumGetCString(datumpath);
 	}
-	
+	else
+	{
+		heap_close(rel, RowExclusiveLock);
+		return ;
+	}
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	getAgentCmdRst.ret = false;
+	/* step 1: update datanode master's postgresql.conf.*/
+	resetStringInfo(&infosendmsg);
+	if (bslave_sync && bextra_sync)
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave,extra", &infosendmsg);
+	else if (bslave_sync && (!bextra_sync))
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "slave", &infosendmsg);
+	else if ((!bslave_sync) && bextra_sync)
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
+	else
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 							master_node_path,
 							&infosendmsg, 
