@@ -104,4 +104,10 @@ typedef struct MGRShowParam
 	char		*param;		/*parameter of node*/
 }MGRShowParam;
 
+typedef struct MGRMonitorAgent
+{
+	NodeTag		type;
+	List		*hosts;		/* list of Value(String), NIL for ALL */
+}MGRMonitorAgent;
+
 #endif /* MGR_NODE_H */

@@ -4148,4 +4148,10 @@ BEGIN_NODE(MGRUpdateparmReset)
 END_NODE(MGRUpdateparmReset)
 #endif /* NO_NODE_MGRUpdateparmReset */
 
+#ifndef NO_NODE_MGRMonitorAgent
+BEGIN_NODE(MGRMonitorAgent)
+	NODE_NODE(List, hosts)
+END_NODE(MGRMonitorAgent)
+#endif /* NO_NODE_MGRMonitorAgent */
+
 #endif /* ADBMGRD */

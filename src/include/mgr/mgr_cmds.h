@@ -45,6 +45,7 @@ extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *d
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_deplory(MGRDeplory *node,  ParamListInfo params, DestReceiver *dest);
+extern void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceiver *dest);
 extern int ssh2_start_agent(const char *hostname, 
 							unsigned short port,
 					 		const char *username,

@@ -39,6 +39,13 @@ typedef struct StartAgentInfo
 	HeapScanDesc	rel_scan;
 }StartAgentInfo;
 
+typedef struct InitNodeInfo
+{
+	Relation rel_host;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitNodeInfo;
+
 #if (Natts_mgr_host != 7)
 #error "need change code"
 #endif
@@ -1097,4 +1104,130 @@ Datum mgr_stop_agent(PG_FUNCTION_ARGS)
 	}
 
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceiver *dest)
+{
+	InitNodeInfo *info;
+	HeapTuple tup;
+	TupleTableSlot *slot;
+	TupleDesc desc;
+	ManagerAgent *ma;
+	HeapTuple tup_result;
+	Form_mgr_host mgr_host;
+	MemoryContext context;
+	MemoryContext oldcontext;
+	bool success;
+	StringInfoData buf;
+
+	initStringInfo(&buf);
+
+	context = AllocSetContextCreate(CurrentMemoryContext, "monitor_agent"
+					, ALLOCSET_DEFAULT_MINSIZE
+					, ALLOCSET_DEFAULT_INITSIZE
+					, ALLOCSET_DEFAULT_MAXSIZE);
+	desc = get_common_command_tuple_desc();
+	(*dest->rStartup)(dest, CMD_UTILITY, desc);
+	slot = MakeSingleTupleTableSlot(desc);
+	oldcontext = CurrentMemoryContext;
+
+	if (node->hosts == NIL)
+	{
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		info->lcp =NULL;
+
+		while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+			Assert(mgr_host);
+
+			resetStringInfo(&buf);
+			MemoryContextSwitchTo(context);
+			MemoryContextResetAndDeleteChildren(context);
+
+			/* test is running ? */
+			ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+			if(ma_isconnected(ma))
+			{
+				success = true;
+				appendStringInfoString(&buf, "running");
+			}
+			else
+			{
+				success = false;
+				appendStringInfoString(&buf, "not running");
+			}
+			tup_result = build_common_command_tuple(&(mgr_host->hostname), success, buf.data);
+			ma_close(ma);
+
+			ExecClearTuple(slot);
+			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
+			MemoryContextSwitchTo(oldcontext);
+			(*dest->receiveSlot)(slot, dest);
+
+		}
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+	}
+	else
+	{
+		ListCell *lc;
+		Value *value;
+		NameData name;
+		TupleDesc host_desc;
+
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
+		heap_close(info->rel_host, AccessShareLock);
+
+		foreach(lc, node->hosts)
+		{
+			value = lfirst(lc);
+			Assert(value && IsA(value, String));
+			namestrcpy(&name, strVal(value));
+			tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+
+			resetStringInfo(&buf);
+			if (HeapTupleIsValid(tup))
+			{
+				/* test is running ? */
+				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+				if(ma_isconnected(ma))
+				{
+					success = true;
+					appendStringInfoString(&buf, "running");
+					ReleaseSysCache(tup);
+					ma_close(ma);
+				}
+				else
+				{
+					success = false;
+					appendStringInfoString(&buf, "not running");
+					ReleaseSysCache(tup);
+					ma_close(ma);
+				}
+			}
+			else
+			{
+				success = false;
+				appendStringInfoString(&buf, "host does not exist");
+			}
+
+			MemoryContextSwitchTo(context);
+			MemoryContextResetAndDeleteChildren(context);
+
+			tup_result = build_common_command_tuple(&name, success, buf.data);
+
+			ExecClearTuple(slot);
+			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
+			MemoryContextSwitchTo(oldcontext);
+			(*dest->receiveSlot)(slot, dest);
+		}
+		FreeTupleDesc(host_desc);
+		pfree(info);
+	}
 }

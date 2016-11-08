@@ -460,7 +460,20 @@ MonitorStmt:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_nodetype_all", arg));
 			$$ = (Node*)stmt;
-		};
+		}
+		| MONITOR AGENT opt_general_all
+		{
+			MGRMonitorAgent *stmt = makeNode(MGRMonitorAgent);
+			stmt->hosts = NIL;
+			$$ = (Node*)stmt;
+		}
+		| MONITOR AGENT ObjList
+		{
+			MGRMonitorAgent *stmt = makeNode(MGRMonitorAgent);
+			stmt->hosts = $3;
+			$$ = (Node*)stmt;
+		}
+		;
 
 node_type:
 		DATANODE MASTER			{$$ = CNDN_TYPE_DATANODE_MASTER;}
@@ -689,7 +702,7 @@ AConstList:
 	| Ident						{ $$ = list_make1(makeAConst(makeString($1), @1)); }
 	;
 NodeConstList:
-	  NodeConstList	Ident	{ $$ = lappend($1, makeStringConst($2, @2)); }
+	  NodeConstList ',' Ident	{ $$ = lappend($1, makeStringConst($3, @3)); }
 	| Ident						{ $$ = list_make1(makeStringConst($1, @1)); }
 	;
 targetList:
