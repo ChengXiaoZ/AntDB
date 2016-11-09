@@ -759,7 +759,7 @@ AlterHostStmt:
 	;
 
 StartAgentStmt:
-		START AGENT ALL opt_general_options
+		START AGENT opt_general_all opt_general_options
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = make_start_agent_args($4);
