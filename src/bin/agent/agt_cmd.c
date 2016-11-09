@@ -94,20 +94,25 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_PSQL_CMD:
 		cmd_node_init(cmd_type, buf, "psql", PSQL_VERSION);
 		break;
+	/*modify gtm|coordinator|datanode postgresql.conf*/
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF:
 		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF, buf);
 		break;
+	/*modify gtm|coordinator|datanode recovery.conf*/
 	case AGT_CMD_CNDN_REFRESH_RECOVERCONF:
 		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_RECOVERCONF, buf);
 		break;
+	/*modify gtm|coordinator|datanode pg_hba.conf*/
 	case AGT_CMD_CNDN_REFRESH_PGHBACONF:
 		cmd_node_refresh_pghba_paras(buf);
 		break;
+	/*modify gtm|coordinator|datanode postgresql.conf and reload it*/
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD:
 		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, buf);
 		break;
-	case AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE:
-		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE, buf);
+	/*modify gtm|coordinator|datanode postgresql.conf, delete the given parameter*/
+	case AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE:
+		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, buf);
 		break;
 	case AGT_CMD_CNDN_RENAME_RECOVERCONF:
 		cmd_rename_recovery(buf);
@@ -468,9 +473,9 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	/*get datapath*/
 	strcpy(datapath, rec_msg_string);
 	/*check file exists*/
-	if (AGT_CMD_CNDN_REFRESH_PGSQLCONF == cmdtype || AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD == cmdtype || AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE == cmdtype)
+	if (AGT_CMD_CNDN_REFRESH_PGSQLCONF == cmdtype || AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD == cmdtype || AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE == cmdtype)
 	{
-		if (AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE == cmdtype)
+		if (AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE == cmdtype)
 			bforce = true;
 		appendStringInfo(&pgconffile, "%s/postgresql.conf", datapath);
 		if(access(pgconffile.data, F_OK) !=0 )
@@ -613,6 +618,7 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bf
 			}
 			break;
 		}
+		/*delete the parameter*/
 		else if (bforce && info->name != '\0' && strcmp(key, info->name) == 0)
 		{
 			getkey = true;

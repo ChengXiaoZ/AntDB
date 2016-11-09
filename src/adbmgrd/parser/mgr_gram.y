@@ -625,6 +625,7 @@ general_option_item:
 	  ColLabel general_option_arg		{ $$ = (Node*)makeDefElem($1, $2); }
 	| ColLabel '=' general_option_arg	{ $$ = (Node*)makeDefElem($1, $3); }
 	| ColLabel 							{ $$ = (Node*)makeDefElem($1, NULL); }
+	| var_dotparam						{ $$ = (Node*)makeDefElem($1, NULL); }
 	| var_dotparam '=' general_option_arg { $$ = (Node*)makeDefElem($1, $3); }
 	;
 
@@ -1962,29 +1963,28 @@ unreserved_keyword:
 	| FAILOVER
 	| FAST
 	| FORCE
-	| GET_CLUSTER_FOURITEM
-	| GET_CLUSTER_HEADPAGE_LINE
-	| GET_CLUSTER_SUMMARY
-	| GET_DATABASE_SUMMARY
-	| GET_DATABASE_TPS_QPS
-	| GET_DATABASE_TPS_QPS_INTERVAL_TIME
-	| GET_HOST_LIST_ALL
-	| GET_HOST_LIST_SPEC
-	| GET_HOST_HISTORY_USAGE
+	| GET_AGTM_NODE_TOPOLOGY
 	| GET_ALARM_INFO_ASC
 	| GET_ALARM_INFO_COUNT
 	| GET_ALARM_INFO_DESC
 	| GET_ALL_NODENAME_IN_SPEC_HOST
-	| GET_AGTM_NODE_TOPOLOGY
+	| GET_CLUSTER_FOURITEM
+	| GET_CLUSTER_HEADPAGE_LINE
+	| GET_CLUSTER_SUMMARY
 	| GET_COORDINATOR_NODE_TOPOLOGY
+	| GET_DATABASE_SUMMARY
+	| GET_DATABASE_TPS_QPS
+	| GET_DATABASE_TPS_QPS_INTERVAL_TIME
 	| GET_DATANODE_NODE_TOPOLOGY
 	| GET_DB_THRESHOLD_ALL_TYPE
+	| GET_HOST_HISTORY_USAGE
+	| GET_HOST_LIST_ALL
+	| GET_HOST_LIST_SPEC
 	| GET_SLOWLOG
 	| GET_SLOWLOG_COUNT
-	| GET_THRESHOLD_TYPE
 	| GET_THRESHOLD_ALL_TYPE
+	| GET_THRESHOLD_TYPE
 	| GET_USER_INFO
-	| RESOLVE_ALARM
 	| GTM
 	| HOST
 	| I
@@ -2000,6 +2000,7 @@ unreserved_keyword:
 	| PARAM
 	| PASSWORD
 	| RESET
+	| RESOLVE_ALARM
 	| S
 	| SET
 	| SHOW
@@ -2008,13 +2009,14 @@ unreserved_keyword:
 	| START
 	| STOP
 	| TO
+	| UPDATE_PASSWORD
 	| UPDATE_THRESHOLD_VALUE
 	| UPDATE_USER
-	| UPDATE_PASSWORD
 	;
 
 reserved_keyword:
-	  FALSE_P
+	  ALL
+	| FALSE_P
 	| NOT
 	| TRUE_P
 	| ON

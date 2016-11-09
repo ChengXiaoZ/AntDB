@@ -680,14 +680,14 @@ static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *get
 		if (!bforce)
 			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, infosendmsg, hostoid, getAgentCmdRst);
 		else
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
 	}
 	else
 	{
 		if (!bforce)
 			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, infosendmsg, hostoid, getAgentCmdRst);
 		else
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
 	}
 
 	if (getAgentCmdRst->ret != true)
