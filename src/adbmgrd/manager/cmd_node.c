@@ -2555,9 +2555,9 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 2: update datanode master's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_get_other_parm(CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_get_agtm_host_and_port(&infosendmsg);
-		mgr_get_other_parm(CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								appendnodeinfo.nodepath,
@@ -2754,10 +2754,10 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 		/* step 6: update datanode slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								appendnodeinfo.nodepath,
 								&infosendmsg, 
@@ -2943,10 +2943,10 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 		/* step 6: update datanode extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_EXTRA, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								appendnodeinfo.nodepath,
 								&infosendmsg, 
@@ -3118,9 +3118,9 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 
 		/* step 2: update coordinator master's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_get_other_parm(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_get_agtm_host_and_port(&infosendmsg);
-		mgr_get_other_parm(CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								appendnodeinfo.nodepath,
@@ -3272,10 +3272,10 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 
 		/* step 4: update agtm slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								appendnodeinfo.nodepath,
 								&infosendmsg, 
@@ -3410,16 +3410,16 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 
 		/* step 2: reload agtm master. */
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
-	
+
 		/* step 3: basebackup for datanode master using pg_basebackup command. */
 		mgr_pgbasebackup(GTM_TYPE_GTM_EXTRA, &appendnodeinfo, &agtm_m_nodeinfo);
 
 		/* step 4: update agtm extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", appendnodeinfo.nodeport, &infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
 								appendnodeinfo.nodepath,
 								&infosendmsg, 
