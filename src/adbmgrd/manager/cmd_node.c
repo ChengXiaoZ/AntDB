@@ -3633,8 +3633,8 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
-
-		ereport(ERROR, (errmsg("could not connect socket for agent.")));
+		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+						get_hostname_from_hostoid(appendnodeinfo->nodehost))));
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -3968,8 +3968,8 @@ static void mgr_reload_conf(Oid hostoid, char *nodepath)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
-        
-        ereport(ERROR, (errmsg("could not connect socket for agent.")));
+		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+						get_hostname_from_hostoid(hostoid))));
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -4236,8 +4236,8 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
-
-		ereport(ERROR, (errmsg("could not connect socket for agent.")));
+		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+						get_hostname_from_hostoid(hostoid))));
 		return;
 	}
 
@@ -4734,6 +4734,8 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+						get_hostname_from_hostoid(appendnodeinfo->nodehost))));
 		return;
 	}
 
