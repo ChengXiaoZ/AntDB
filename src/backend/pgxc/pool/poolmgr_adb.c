@@ -11,6 +11,7 @@
 #include "commands/dbcommands.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
+#include "lib/ilist.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "nodes/nodes.h"
@@ -83,12 +84,11 @@ typedef enum SlotStateType
 /* Connection pool entry */
 typedef struct ADBNodePoolSlot
 {
+	dlist_node			dnode;
 	PGconn				*conn;
 	struct ADBNodePool	*parent;
 	struct PoolAgent	*owner;				/* using bye */
 	char				*last_error;		/* palloc in PoolerMemoryContext */
-	struct ADBNodePoolSlot *prev;
-	struct ADBNodePoolSlot *next;
 	time_t				released_time;
 	PostgresPollingStatusType
 						poll_state;			/* when state equal SLOT_BUSY_CONNECTING
@@ -103,10 +103,10 @@ typedef struct ADBNodePoolSlot
 typedef struct ADBNodePool
 {
 	Oid			nodeoid;	/* Node Oid related to this pool */
-	ADBNodePoolSlot *uninit_slot;
-	ADBNodePoolSlot *released_slot;
-	ADBNodePoolSlot *idle_slot;
-	ADBNodePoolSlot *busy_slot;
+	dlist_head	uninit_slot;
+	dlist_head	released_slot;
+	dlist_head	idle_slot;
+	dlist_head	busy_slot;
 	char	   *connstr;
 	Size		last_idle;
 	struct DatabasePool *parent;
@@ -214,7 +214,6 @@ static int send_local_commands(PoolAgent *agent, List *datanodelist, List *coord
 static void destroy_slot(ADBNodePoolSlot *slot, bool send_cancel);
 static void release_slot(ADBNodePoolSlot *slot, bool force_close);
 static void idle_slot(ADBNodePoolSlot *slot, bool reset);
-static void slot_move_to_list(ADBNodePoolSlot *slot, ADBNodePoolSlot **list);
 static void destroy_node_pool(ADBNodePool *node_pool, bool bfree);
 static bool node_pool_in_using(ADBNodePool *node_pool);
 static time_t close_timeout_idle_slots(time_t timeout);
@@ -330,6 +329,7 @@ static void PoolerLoop(void)
 	DatabasePool *db_pool;
 	ADBNodePool *nodes_pool;
 	ADBNodePoolSlot *slot;
+	dlist_iter iter;
 	HASH_SEQ_STATUS hseq1,hseq2;
 	sigjmp_buf	local_sigjmp_buf;
 	time_t next_close_idle_time, cur_time;
@@ -422,8 +422,9 @@ static void PoolerLoop(void)
 			hash_seq_init(&hseq2, db_pool->htab_nodes);
 			while((nodes_pool = hash_seq_search(&hseq2)) != NULL)
 			{
-				for(slot = nodes_pool->busy_slot;slot;slot=slot->next)
+				dlist_foreach(iter, &(nodes_pool->busy_slot))
 				{
+					slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
 					rval = 0;	/* temp use rval for poll event */
 					switch(slot->slot_state)
 					{
@@ -899,7 +900,8 @@ agent_destroy(PoolAgent *agent)
 	Size	i;
 	ADBNodePool *node_pool;
 	DatabasePool *db_pool;
-	ADBNodePoolSlot *slot,*tmp;
+	dlist_mutable_iter miter;
+	ADBNodePoolSlot *slot;
 	HASH_SEQ_STATUS hseq1,hseq2;
 
 	AssertArg(agent);
@@ -933,15 +935,15 @@ agent_destroy(PoolAgent *agent)
 		hash_seq_init(&hseq2, db_pool->htab_nodes);
 		while((node_pool = hash_seq_search(&hseq2)) != NULL)
 		{
-			for(slot = node_pool->released_slot;slot;)
+			dlist_foreach_modify(miter, &node_pool->released_slot)
 			{
-				tmp = slot;
-				slot = tmp->next;
-				Assert(tmp->slot_state = SLOT_STATE_RELEASED);
-				if(tmp->owner == agent)
+				slot = dlist_container(ADBNodePoolSlot, dnode, miter.cur);
+				Assert(slot->slot_state == SLOT_STATE_RELEASED);
+				if(slot->owner == agent)
 				{
-					Assert(tmp->last_user_pid == agent->pid);
-					idle_slot(tmp, true);
+					Assert(slot->last_user_pid == agent->pid);
+					dlist_delete(miter.cur);
+					idle_slot(slot, true);
 				}
 			}
 		}
@@ -1507,7 +1509,8 @@ static void agent_check_waiting_slot(PoolAgent *agent)
 						break;
 					}
 					slot->slot_state = SLOT_STATE_QUERY_PARAMS_SESSION;
-					slot_move_to_list(slot, &(slot->parent->busy_slot));
+					dlist_delete(&slot->dnode);
+					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 					break;
 				}
 				goto send_local_params_;
@@ -1523,7 +1526,8 @@ static void agent_check_waiting_slot(PoolAgent *agent)
 						break;
 					}
 					slot->slot_state = SLOT_STATE_QUERY_RESET_ALL;
-					slot_move_to_list(slot, &(slot->parent->busy_slot));
+					dlist_delete(&slot->dnode);
+					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 				}else
 				{
 					slot->slot_state = SLOT_STATE_LOCKED;
@@ -1543,7 +1547,8 @@ send_local_params_:
 						break;
 					}
 					slot->slot_state = SLOT_STATE_QUERY_PARAMS_LOCAL;
-					slot_move_to_list(slot, &(slot->parent->busy_slot));
+					dlist_delete(&slot->dnode);
+					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 					break;
 				}
 				goto send_agtm_port_;
@@ -1559,7 +1564,8 @@ send_agtm_port_:
 					}
 					slot->last_agtm_port = agent->agtm_port;
 					slot->slot_state = SLOT_STATE_QUERY_AGTM_PORT;
-					slot_move_to_list(slot, &(slot->parent->busy_slot));
+					dlist_delete(&slot->dnode);
+					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 				}else
 				{
 					slot->slot_state = SLOT_STATE_LOCKED;
@@ -1576,10 +1582,13 @@ send_agtm_port_:
 	}PG_CATCH();
 	{
 		agent = volAgent;
-		foreach(lc, agent->list_wait)
-			idle_slot(lfirst(lc), true);
-		list_free(agent->list_wait);
-		agent->list_wait = NIL;
+		while(agent->list_wait != NIL)
+		{
+			slot = linitial(agent->list_wait);
+			agent->list_wait = list_delete_first(agent->list_wait);
+			dlist_delete(&slot->dnode);
+			idle_slot(slot, true);
+		}
 		PG_RE_THROW();
 	}PG_END_TRY();
 
@@ -1644,9 +1653,10 @@ next_save_:
 		}PG_CATCH();
 		{
 			agent = volAgent;
-			foreach(lc,agent->list_wait)
+			while(agent->list_wait != NIL)
 			{
-				slot = lfirst(lc);
+				slot = linitial(agent->list_wait);
+				agent->list_wait = list_delete_first(agent->list_wait);
 				oid = slot->parent->nodeoid;
 
 				count = agent->num_coord_connections;
@@ -1669,17 +1679,16 @@ next_save_:
 				}
 re_find_:
 				Assert(i<count);
+				dlist_delete(&slot->dnode);
 				release_slot(slot, false);
 			}
-			list_free(agent->list_wait);
-			agent->list_wait = NIL;
 			PG_RE_THROW();
 		}PG_END_TRY();
 
 		foreach(lc,agent->list_wait)
 		{
 			slot = lfirst(lc);
-			slot_move_to_list(slot, NULL);
+			dlist_delete(&slot->dnode);
 			slot->has_temp = agent->is_temp;
 		}
 		list_free(agent->list_wait);
@@ -1978,6 +1987,21 @@ static void destroy_slot(ADBNodePoolSlot *slot, bool send_cancel)
 {
 	AssertArg(slot);
 
+#if 0
+	{
+		/* check slot in using ? */
+		ListCell *lc;
+		PoolAgent *agent;
+		Size i;
+		for(i=0;i<agentCount;++i)
+		{
+			agent = poolAgents[i];
+			foreach(lc, agent->list_wait)
+				Assert(lfirst(lc) != slot);
+		}
+	}
+#endif
+
 	if(slot->conn)
 	{
 		if(send_cancel)
@@ -1994,7 +2018,7 @@ static void destroy_slot(ADBNodePoolSlot *slot, bool send_cancel)
 		pfree(slot->last_error);
 		slot->last_error = NULL;
 	}
-	slot_move_to_list(slot, &(slot->parent->uninit_slot));
+	dlist_push_head(&slot->parent->uninit_slot, &slot->dnode);
 }
 
 static void release_slot(ADBNodePoolSlot *slot, bool force_close)
@@ -2006,7 +2030,7 @@ static void release_slot(ADBNodePoolSlot *slot, bool force_close)
 	}else if(check_slot_status(slot) != false)
 	{
 		slot->slot_state = SLOT_STATE_RELEASED;
-		slot_move_to_list(slot, &(slot->parent->released_slot));
+		dlist_push_head(&slot->parent->released_slot, &slot->dnode);
 	}
 }
 
@@ -2041,72 +2065,31 @@ static void idle_slot(ADBNodePoolSlot *slot, bool reset)
 			return;
 		}
 		slot->slot_state = SLOT_STATE_QUERY_RESET_ALL;
-		slot_move_to_list(slot, &(slot->parent->busy_slot));
+		dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 	}else
 	{
 		slot->last_agtm_port = 0;
-		slot_move_to_list(slot, &(slot->parent->idle_slot));
-	}
-}
-
-static void slot_move_to_list(ADBNodePoolSlot *slot, ADBNodePoolSlot **list)
-{
-	ADBNodePool *node_pool;
-	AssertArg(slot);
-	if(list && *list == slot)
-		return;
-
-	node_pool = slot->parent;
-	if(node_pool->uninit_slot == slot)
-		node_pool->uninit_slot = slot->next;
-	else if(node_pool->released_slot == slot)
-		node_pool->released_slot = slot->next;
-	else if(node_pool->idle_slot == slot)
-		node_pool->idle_slot = slot->next;
-	else if(node_pool->busy_slot == slot)
-		node_pool->busy_slot = slot->next;
-
-	if(slot->prev)
-		slot->prev->next = slot->next;
-	if(slot->next)
-		slot->next->prev = slot->prev;
-	slot->prev = NULL;
-	if(list)
-	{
-#ifdef USE_ASSERT_CHECKING
-		if(list == &(node_pool->uninit_slot))
-			AssertState(slot->slot_state == SLOT_STATE_UNINIT);
-		else if(list == &(node_pool->released_slot))
-			AssertState(slot->slot_state == SLOT_STATE_RELEASED);
-		else if(list == &(node_pool->idle_slot))
-			AssertState(slot->slot_state == SLOT_STATE_IDLE);
-		else
-			Assert(list == &(node_pool->busy_slot));
-#endif /* USE_ASSERT_CHECKING */
-		if(*list)
-			(*list)->prev = slot;
-		slot->next = *list;
-		*list = slot;
+		dlist_push_head(&slot->parent->idle_slot, &slot->dnode);
 	}
 }
 
 static void destroy_node_pool(ADBNodePool *node_pool, bool bfree)
 {
 	ADBNodePoolSlot *slot;
-	ADBNodePoolSlot **slots[4];
+	dlist_head *dheads[4];
+	dlist_iter iter;
 	Size i;
 	AssertArg(node_pool);
 
-	slots[0] = &(node_pool->uninit_slot);
-	slots[1] = &(node_pool->released_slot);
-	slots[2] = &(node_pool->idle_slot);
-	slots[3] = &(node_pool->busy_slot);
-	for(i=0;i<lengthof(slots);++i)
+	dheads[0] = &(node_pool->uninit_slot);
+	dheads[1] = &(node_pool->released_slot);
+	dheads[2] = &(node_pool->idle_slot);
+	dheads[3] = &(node_pool->busy_slot);
+	for(i=0;i<lengthof(dheads);++i)
 	{
-		while(*slots[i])
+		dlist_foreach(iter, dheads[i]);
 		{
-			slot = *slots[i];
-			*slots[i] = slot->next;
+			slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
 			PQfinish(slot->conn);
 			if(slot->last_error)
 				pfree(slot->last_error);
@@ -2120,6 +2103,10 @@ static void destroy_node_pool(ADBNodePool *node_pool, bool bfree)
 		if(node_pool->connstr)
 			pfree(node_pool->connstr);
 		hash_search(node_pool->parent->htab_nodes, &node_pool->nodeoid, HASH_REMOVE, NULL);
+	}else
+	{
+		for(i=0;i<lengthof(dheads);++i)
+			dlist_init(dheads[i]);
 	}
 }
 
@@ -2160,6 +2147,7 @@ static time_t close_timeout_idle_slots(time_t timeout)
 	DatabasePool *db_pool;
 	ADBNodePool *node_pool;
 	ADBNodePoolSlot *slot;
+	dlist_mutable_iter miter;
 	time_t earliest_time = time(NULL);
 
 	hash_seq_init(&hash_database_stats, htab_database);
@@ -2168,13 +2156,18 @@ static time_t close_timeout_idle_slots(time_t timeout)
 		hash_seq_init(&hash_nodepool_status, db_pool->htab_nodes);
 		while((node_pool = hash_seq_search(&hash_nodepool_status)) != NULL)
 		{
-			for(slot=node_pool->idle_slot;slot;slot=slot->next)
+			dlist_foreach_modify(miter, &node_pool->idle_slot)
 			{
+				slot = dlist_container(ADBNodePoolSlot, dnode, miter.cur);
 				Assert(slot->slot_state == SLOT_STATE_IDLE);
 				if(slot->released_time <= timeout)
+				{
+					dlist_delete(miter.cur);
 					destroy_slot(slot, false);
-				else if(earliest_time > slot->released_time)
+				}else if(earliest_time > slot->released_time)
+				{
 					earliest_time = slot->released_time;
+				}
 			}
 		}
 	}
@@ -2402,7 +2395,8 @@ static void process_slot_event(ADBNodePoolSlot *slot)
 					Assert(slot->parent);
 					slot->last_agtm_port = 0;
 					slot->slot_state = SLOT_STATE_IDLE;
-					slot_move_to_list(slot, &(slot->parent->idle_slot));
+					dlist_delete(&slot->dnode);
+					dlist_push_head(&slot->parent->idle_slot, &slot->dnode);
 				}
 			}
 		}
@@ -2464,9 +2458,10 @@ reget_slot_result_:
 static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, const List *node_list, PoolAgent *agent)
 {
 	ListCell *lc;
-	ADBNodePoolSlot *slot;
+	ADBNodePoolSlot *slot,*tmp_slot;
 	ADBNodePool *node_pool;
 	MemoryContext oldcontex;
+	dlist_iter iter;
 	int index;
 	bool found;
 
@@ -2486,9 +2481,7 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 		{
 			HTAB * volatile htab = agent->db_pool->htab_nodes;
 			const Oid * volatile poid = oids+index;
-			memset(node_pool, 0, sizeof(*node_pool));
 			node_pool->parent = agent->db_pool;
-			node_pool->nodeoid = oids[index];
 			PG_TRY();
 			{
 				char *str = build_node_conn_str(node_pool->nodeoid, node_pool->parent);
@@ -2499,10 +2492,13 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 				hash_search(htab, poid, HASH_REMOVE, &found);
 				PG_RE_THROW();
 			}PG_END_TRY();
-		}else
-		{
-			Assert(node_pool->nodeoid == oids[index]);
+			node_pool->last_idle = 0;
+			dlist_init(&node_pool->uninit_slot);
+			dlist_init(&node_pool->released_slot);
+			dlist_init(&node_pool->idle_slot);
+			dlist_init(&node_pool->busy_slot);
 		}
+		Assert(node_pool->nodeoid == oids[index]);
 
 		/*
 		 * we append NULL value to list_wait first
@@ -2512,46 +2508,56 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 		MemoryContextSwitchTo(oldcontex);
 
 		/* first find released by this agent */
-		for(slot=node_pool->released_slot;slot;slot=slot->next)
+		slot = NULL;
+		dlist_foreach(iter, &node_pool->released_slot)
 		{
-			Assert(slot->slot_state == SLOT_STATE_RELEASED);
-			if(slot->last_user_pid == agent->pid)
+			tmp_slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
+			AssertState(tmp_slot->slot_state == SLOT_STATE_RELEASED);
+			if(tmp_slot->last_user_pid == agent->pid)
+			{
+				AssertState(tmp_slot->owner == agent);
+				slot = tmp_slot;
 				break;
+			}
 		}
 
 		/* second find idle slot */
 		if(slot == NULL)
 		{
-			if(node_pool->idle_slot)
+			dlist_foreach(iter, &node_pool->idle_slot)
 			{
-				slot = node_pool->idle_slot;
-				Assert(slot->prev == NULL);
-				node_pool->idle_slot = slot->next;
-				if(node_pool->idle_slot)
-					node_pool->idle_slot->prev = NULL;
+				tmp_slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
+				AssertState(tmp_slot->slot_state == SLOT_STATE_IDLE);
+				if(tmp_slot->owner == NULL)
+				{
+					slot = tmp_slot;
+					break;
+				}
 			}
 		}
 
 		/* not found, we use a uninit slot */
 		if(slot == NULL)
 		{
-			if(node_pool->uninit_slot)
+			dlist_foreach(iter, &node_pool->uninit_slot)
 			{
-				slot = node_pool->uninit_slot;
-				Assert(slot->prev == NULL);
-				node_pool->uninit_slot = slot->next;
-				if(node_pool->uninit_slot)
-					node_pool->uninit_slot->prev = NULL;
+				tmp_slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
+				AssertState(tmp_slot->slot_state == SLOT_STATE_UNINIT);
+				if(tmp_slot->owner == NULL)
+				{
+					slot = tmp_slot;
+					break;
+				}
 			}
 		}
 
 		/* not got any slot, we alloc a new slot */
 		if(slot == NULL)
 		{
-			Assert(node_pool->uninit_slot == NULL);
 			slot = MemoryContextAllocZero(PoolerMemoryContext, sizeof(*slot));
 			slot->parent = node_pool;
 			slot->slot_state = SLOT_STATE_UNINIT;
+			dlist_push_head(&node_pool->uninit_slot, &slot->dnode);
 		}
 
 		/* save slot into agent waiting list */
@@ -2578,7 +2584,9 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			slot->slot_state = SLOT_STATE_CONNECTING;
 			slot->poll_state = PGRES_POLLING_WRITING;
 			slot->conn->funs = &funs;
-			slot_move_to_list(slot, &(slot->parent->busy_slot));
+
+			dlist_delete(&slot->dnode);
+			dlist_push_head(&(node_pool->busy_slot), &(slot->dnode));
 		}
 		slot->owner = agent;
 	}
@@ -2607,25 +2615,15 @@ static void agent_acquire_connections(PoolAgent *agent, const List *datanodelist
 		{
 			slot = lfirst(lc);
 			if(slot)
+			{
+				dlist_delete(&slot->dnode);
 				idle_slot(slot, true);
+			}
 		}
 		list_free(agent->list_wait);
 		agent->list_wait = NIL;
 		PG_RE_THROW();
 	}PG_END_TRY();
-
-	/*result = palloc((list_length(datanodelist) + list_length(coordlist)) * sizeof(int));
-
-	if(agent_acquire_conn_list(agent->dn_connections, agent->datanode_oids, datanodelist, agent, lastError) == false
-		|| agent_acquire_conn_list(agent->coord_connections, agent->coord_oids, coordlist, agent, lastError) == false)
-	{
-		pfree(result);
-		return NULL;
-	}
-
-	agent_lock_connect_list(agent->dn_connections, datanodelist, result, agent);
-	agent_lock_connect_list(agent->coord_connections, coordlist, &(result[list_length(datanodelist)]), agent);
-	return result;*/
 }
 
 static void cancel_query_on_connections(PoolAgent *agent, Size count, ADBNodePoolSlot **slots, const List *nodelist)
