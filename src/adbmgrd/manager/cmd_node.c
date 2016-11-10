@@ -2565,6 +2565,8 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 3: update datanode master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
@@ -2575,6 +2577,8 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 								&infosendmsg,
 								appendnodeinfo.nodehost,
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 4: block all the DDL lock */
 		mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo);
@@ -2746,6 +2750,8 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&infosendmsg,
 								parentnodeinfo.nodehost,
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 4: reload datanode master. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
@@ -2764,6 +2770,8 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 7: update datanode slave's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -2782,6 +2790,8 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 8: start datanode slave. */
 		mgr_start_node(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -2819,6 +2829,8 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								parentnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
@@ -2859,7 +2871,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
-	bool dnmaster_is_running; /* datanode master status */
+	bool dnmaster_is_running; 			/* datanode master status */
 	bool is_slave_exist, is_slave_sync;
 	StringInfoData  infosendmsg;
 	volatile bool catcherr = false;
@@ -2935,6 +2947,8 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 								&infosendmsg,
 								parentnodeinfo.nodehost,
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 4: reload datanode master. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
@@ -2953,6 +2967,8 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 7: update datanode extra's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -2971,6 +2987,8 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 8: start datanode extra. */
 		mgr_start_node(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -3008,6 +3026,8 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								parentnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 10: reload datanode master's postgresql.conf. */
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
@@ -3128,6 +3148,8 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 3: update coordinator master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
@@ -3138,6 +3160,9 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 								&infosendmsg,
 								appendnodeinfo.nodehost,
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+
 		/* add host line for exist already */
 		mgr_add_hbaconf_all(appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
 
@@ -3282,6 +3307,8 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 5: update agtm slave's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3300,6 +3327,8 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 6: start agtm slave. */
 		mgr_start_node(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -3337,6 +3366,8 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								agtm_m_nodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 8: reload agtm master's postgresql.conf. */
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
@@ -3408,6 +3439,8 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								&infosendmsg,
 								agtm_m_nodeinfo.nodehost,
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 2: reload agtm master. */
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
@@ -3426,6 +3459,8 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 5: update agtm extra's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3444,6 +3479,8 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 6: start agtm extra. */
 		mgr_start_node(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -3481,6 +3518,8 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								agtm_m_nodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 8: reload agtm master's postgresql.conf. */
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
@@ -3582,6 +3621,10 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
 	if (isNull)
 	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
@@ -3624,7 +3667,6 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 									get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
 									,parentnodeinfo->nodeport
 									,appendnodeinfo->nodepath);
-	
 	}
 
 	ma = ma_connect_hostoid(appendnodeinfo->nodehost);
@@ -3655,6 +3697,9 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+
 }
 
 static bool is_node_running(char *hostaddr, int32 hostport)
@@ -3711,6 +3756,9 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(noderelation), &isNull);
 	if (isNull)
 	{
+		ReleaseSysCache(mastertuple);
+		heap_close(noderelation, AccessShareLock);
+
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
@@ -3779,6 +3827,13 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+
+		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+						get_hostname_from_hostoid(mgr_node->nodehost))));
 		return;
 	}
 
@@ -3894,6 +3949,8 @@ static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 	HeapTuple tuple;
 	Datum datumPath;
 	bool isNull;
+	Oid hostoid;
+	char *nodepath;
 	Form_mgr_node mgr_node;
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -3944,11 +4001,15 @@ static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 							mgr_node->nodehost,
 							&getAgentCmdRst);
 
-	mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+	hostoid = mgr_node->nodehost;
+	nodepath = TextDatumGetCString(datumPath);
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
+
+	/* reload it at last */
+	mgr_reload_conf(hostoid, nodepath);
 }
 
 static void mgr_reload_conf(Oid hostoid, char *nodepath)
@@ -4072,6 +4133,8 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+						get_hostname_from_hostoid(dnhostoid))));
 		return;
 	}
 
@@ -4143,6 +4206,13 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 			ma_close(ma);
+
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+
+			ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+							get_hostname_from_hostoid(mgr_node->nodehost))));
 			return;
 		}
 
@@ -4154,19 +4224,19 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 						,mgr_node->nodeport
 						,DEFAULT_DB
 						,user);
-		
+
 		addressnode = get_hostaddress_from_hostoid(dnhostoid);
 
-        if (nodetype == CNDN_TYPE_COORDINATOR_MASTER)
-		    appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
-						    ,dnname
-						    ,addressnode
-						    ,dnport);
-        if (nodetype == CNDN_TYPE_DATANODE_MASTER)
-		    appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
-						    ,dnname
-						    ,addressnode
-						    ,dnport);
+		if (nodetype == CNDN_TYPE_COORDINATOR_MASTER)
+			appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
+							,dnname
+							,addressnode
+							,dnport);
+		if (nodetype == CNDN_TYPE_DATANODE_MASTER)
+			appendStringInfo(&psql_cmd, " CREATE NODE \\\"%s\\\" WITH (TYPE = 'datanode', HOST='%s', PORT=%d);"
+							,dnname
+							,addressnode
+							,dnport);
 
 		appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
 
@@ -4184,6 +4254,11 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 			getAgentCmdRst.ret = false;
 			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 			ma_close(ma);
+
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+
 			return;
 		}
 
@@ -4264,6 +4339,8 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
 
 static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
@@ -4288,6 +4365,8 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+						get_hostname_from_hostoid(hostoid))));
 		return;
 	}
 
@@ -4309,6 +4388,9 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
+
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
 
 static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port, char *temp_file)
@@ -4335,6 +4417,8 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+						get_hostname_from_hostoid(dn_master_oid))));
 		return;
 	}
 
@@ -4381,6 +4465,8 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+						get_hostname_from_hostoid(hostoid))));
 		return;
 	}
 
@@ -4402,6 +4488,9 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
+
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
 
 static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *temp_file)
@@ -4428,6 +4517,8 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *t
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+						get_hostname_from_hostoid(dnmasteroid))));
 		return;
 	}
 
@@ -4450,6 +4541,9 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *t
 	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
 	pfree(hostaddr);
+
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
 
 static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo)
@@ -4526,8 +4620,16 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 								&infosendmsg,
 								mgr_node->nodehost,
 								&getAgentCmdRst);
-		
-		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+		if (!getAgentCmdRst.ret)
+		{
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+			pfree(host);
+
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		}
+
 	}
 
 	if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
@@ -4547,14 +4649,24 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 								&infosendmsg,
 								mgr_node->nodehost,
 								&getAgentCmdRst);
-		
-		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+
+		if (!getAgentCmdRst.ret)
+		{
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+			pfree(host);
+
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		}
 	}
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
 	pfree(host);
+
+	mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
 }
 
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
@@ -4693,12 +4805,16 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	appendnodeinfo->nodeport = mgr_node->nodeport;
 	appendnodeinfo->nodehost = mgr_node->nodehost;
-    appendnodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
+	appendnodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
 
 	/*get nodepath from tuple*/
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
 	if (isNull)
 	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
@@ -4709,7 +4825,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-    pfree(hostaddr);
+	pfree(hostaddr);
 }
 
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
@@ -4758,6 +4874,9 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
 	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
+
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
 
 /*
@@ -5320,7 +5439,7 @@ void mgr_send_conf_parameters(char filetype, char *datapath, StringInfo infosend
 {
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg
-									,buf;
+				,buf;
 	bool execok;
 	
 	initStringInfo(&sendstrmsg);
