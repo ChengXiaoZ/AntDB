@@ -101,6 +101,7 @@ static bool is_sync(char nodetype, char *nodename);
 static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *is_sync);
 static void mgr_set_master_sync(void);
 static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync);
+static Datum get_failover_node_type(char *node_name, char slave_type, char extra_type, bool force);
 #if (Natts_mgr_node != 10)
 #error "need change code"
 #endif
@@ -4769,13 +4770,11 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 {
 	char *typestr = PG_GETARG_CSTRING(0);
 	char *nodename = PG_GETARG_CSTRING(1);
+	char *force_str = PG_GETARG_CSTRING(2);
 	char cmdtype = AGT_CMD_DN_FAILOVER;
 	char nodetype;
-	bool nodetypechange = false;
-	bool bslave_exist = false;
-	bool bextra_exist = false;
-	bool bslave_sync = false;
-	bool bextra_sync = false;
+	bool force = false;
+	Datum datum;
 	
 	if (strcmp(typestr, "slave") == 0)
 	{
@@ -4787,43 +4786,19 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	}
 	else if (strcmp(typestr, "either") == 0)
 	{
-		get_nodestatus(CNDN_TYPE_DATANODE_SLAVE, nodename, &bslave_exist, &bslave_sync);
-		get_nodestatus(CNDN_TYPE_DATANODE_EXTRA, nodename, &bextra_exist, &bextra_sync);
-		if (bslave_sync)
-		{
-			nodetype = CNDN_TYPE_DATANODE_SLAVE;
-			nodetypechange = false;
-		}
-		else if (bextra_sync)
-		{
-			nodetype = CNDN_TYPE_DATANODE_EXTRA;
-			nodetypechange = false;
-		}
-		else
-		{
-			if (bslave_exist)
-			{
-				nodetype = CNDN_TYPE_DATANODE_SLAVE;
-				nodetypechange = false;
-			}
-			else if ((bextra_exist))
-			{
-				nodetype = CNDN_TYPE_DATANODE_EXTRA;
-				nodetypechange = false;
-			}
-			else
-			{
-				ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist", nodename)));
-			}
-		}
+		if(strcmp(force_str, "force") ==0)
+			force = true;
+		datum = get_failover_node_type(nodename, CNDN_TYPE_DATANODE_SLAVE, CNDN_TYPE_DATANODE_EXTRA, force);
+		nodetype = DatumGetChar(datum);
 	}
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			,errmsg("no such node type: %s", typestr)));
 	}
-
-	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, nodetypechange);
+	if(CNDN_TYPE_NONE_TYPE == nodetype)
+		ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist incluster", nodename)));
+	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
 }
 
 /*
@@ -5850,21 +5825,35 @@ void mgr_mark_node_in_cluster(Relation rel)
 Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 {
 	char *typestr = PG_GETARG_CSTRING(0);
+	char *force_str = PG_GETARG_CSTRING(1);
 	char cmdtype = AGT_CMD_GTM_SLAVE_FAILOVER;
 	char nodetype = GTM_TYPE_GTM_SLAVE;
-	bool nodetypechange = false;
-	bool bslave_exist = false;
-	bool bextra_exist = false;
-	bool bslave_sync = false;
-	bool bextra_sync = false;
-	char *nodename = "gtm"; /*just use for input parameter*/
+	char *nodename = NULL; /*just use for input parameter*/
+	bool force = false;
 	NameData nodenamedata;
 	ScanKeyData key[1];
 	HeapTuple tuple;
 	Relation rel_node;
 	HeapScanDesc scan;
 	Form_mgr_node mgr_node;
-	
+	Datum datum;
+	/*get GTM master name*/
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(GTM_TYPE_GTM_MASTER));
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
+		Assert(mgr_node);
+	}
+	heap_endscan(scan);
+	heap_close(rel_node, RowExclusiveLock);
+	nodename = nodenamedata.data;	
 	if (strcmp(typestr, "slave") == 0)
 	{
 		nodetype = GTM_TYPE_GTM_SLAVE;
@@ -5874,63 +5863,20 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 		nodetype = GTM_TYPE_GTM_EXTRA;
 	}
 	else if (strcmp(typestr, "either") == 0)
-	{
-		/*get master-slave sync relation*/
-
-		ScanKeyInit(&key[0]
-			,Anum_mgr_node_nodetype
-			,BTEqualStrategyNumber
-			,F_CHAREQ
-			,CharGetDatum(GTM_TYPE_GTM_MASTER));
-		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
-			Assert(mgr_node);
-		}
-		heap_endscan(scan);
-		heap_close(rel_node, RowExclusiveLock);
-		
-		get_nodestatus(GTM_TYPE_GTM_SLAVE, nodename, &bslave_exist, &bslave_sync);
-		get_nodestatus(GTM_TYPE_GTM_EXTRA, nodename, &bextra_exist, &bextra_sync);
-		
-		if (bslave_sync)
-		{
-			nodetype = GTM_TYPE_GTM_SLAVE;
-			nodetypechange = false;
-		}
-		else if (bextra_sync)
-		{
-			nodetype = GTM_TYPE_GTM_EXTRA;
-			nodetypechange = false;
-		}
-		else
-		{
-			if (bslave_exist)
-			{
-				nodetype = GTM_TYPE_GTM_SLAVE;
-				nodetypechange = false;
-			}
-			else if (bextra_exist)
-			{
-				nodetype = GTM_TYPE_GTM_EXTRA;
-				nodetypechange = false;
-			}
-			else
-			{
-				ereport(ERROR, (errmsg("gtm slave or extra does not exist")));
-			}
-		}
+	{	
+		if(strcmp(force_str, "force") ==0)
+			force = true;
+		datum = get_failover_node_type(nodename, GTM_TYPE_GTM_SLAVE, GTM_TYPE_GTM_EXTRA, force);
+		nodetype = DatumGetChar(datum);
 	}
 	else
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			,errmsg("no such gtm type: %s", typestr)));
 	}
-	
-	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, nodetypechange);
+	if(CNDN_TYPE_NONE_TYPE == nodetype)
+		ereport(ERROR, (errmsg("gtm slave or extra does not exist incluster")));
+	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
 }
 
 /*
@@ -6871,3 +6817,113 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 	pfree(getAgentCmdRst.description.data);
 }
 
+static Datum get_failover_node_type(char *node_name, char slave_type, char extra_type, bool force)
+{
+	bool bslave_exist = false;
+	bool bextra_exist = false;
+	bool bslave_sync = false;
+	bool bextra_sync = false;
+	bool bslave_running = false;
+	bool bextra_running = false;
+	bool bslave_incluster = false;
+	bool bextra_incluster = false;
+	bool ret = false;
+
+	Relation rel_node;
+	HeapTuple aimtuple;
+	Form_mgr_node mgr_node;
+	StringInfoData port;
+	char *host_addr = NULL;
+	char node_type = CNDN_TYPE_NONE_TYPE;
+	/*
+		1、checking whether the standby node is incluster 
+		2、checking whether the standby node is running
+		3、sync mode priority higher than async mode
+	*/
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, node_name, slave_type);
+	if (HeapTupleIsValid(aimtuple))
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
+		Assert(mgr_node);
+		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		initStringInfo(&port);
+		appendStringInfo(&port, "%d", mgr_node->nodeport);
+		ret = pingNode(host_addr, port.data);
+		if(ret == 0)
+			bslave_running = true;
+		else
+			bslave_running = false;
+		if(mgr_node->nodesync == 't')
+			bslave_sync = true;
+		else
+			bslave_sync = false;
+
+		bslave_incluster = mgr_node->nodeincluster;
+		bslave_exist = true;
+		pfree(port.data);
+		pfree(host_addr);
+	}		
+	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, node_name, extra_type);
+	if (HeapTupleIsValid(aimtuple))
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
+		Assert(mgr_node);
+		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		initStringInfo(&port);
+		appendStringInfo(&port, "%d", mgr_node->nodeport);
+		ret = pingNode(host_addr, port.data);
+		if(ret == 0)
+			bextra_running = true;
+		else
+			bextra_running = false;
+		if(mgr_node->nodesync == 't')
+			bextra_sync = true;
+		else
+			bextra_sync = false;
+		bextra_incluster = mgr_node->nodeincluster;
+		bextra_exist = true;
+		pfree(port.data);
+		pfree(host_addr);
+	}
+	
+	if(bslave_exist == false && bextra_exist == false)
+		ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist", node_name)));
+	if((bslave_running == false || bslave_incluster == false)&&(bextra_running == false || bextra_incluster == false))
+		ereport(ERROR, (errmsg("The datanode slave and extra %s is not running or not exist incluster", node_name)));	
+	else
+	{
+		if(bslave_sync == true && bslave_running == true && bslave_incluster == true)
+		{
+			node_type = slave_type;
+		}
+		else if(bextra_sync == true && bextra_running == true && bextra_incluster == true)
+		{
+			node_type = extra_type;
+		}
+		else if(bslave_sync == false && bslave_running == true && bslave_incluster == true)
+		{
+			node_type = slave_type;
+		}	
+		else if(bextra_sync == false && bextra_running == true && bextra_incluster == true)
+		{
+			node_type = extra_type;
+		}		
+	}
+	if(force == false)
+	{
+		if(node_type == slave_type && bslave_sync == false)
+		{
+			if(bextra_sync == true)
+				ereport(ERROR, (errmsg("The node extra %s is sync mode,\nhint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
+		}
+		else if(node_type == extra_type && bextra_sync == false)
+		{
+			if(bslave_sync == true)
+				ereport(ERROR, (errmsg("The node extra %s is sync mode,\nhint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
+		}		
+	}
+	/*close relation */
+	heap_close(rel_node, RowExclusiveLock);
+	return CharGetDatum(node_type);
+}

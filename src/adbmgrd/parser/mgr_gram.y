@@ -130,7 +130,7 @@ extern char *defGetString(DefElem *def);
 %type <str>		Ident SConst ColLabel var_name opt_boolean_or_string
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
-				opt_general_all var_dotparam var_showparam
+				opt_general_all opt_general_force var_dotparam var_showparam
 
 %type <chr>		node_type
 
@@ -1743,6 +1743,16 @@ FailoverStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
 		}
+	| FAILOVER DATANODE Ident FORCE
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);
+		List *args = list_make1(makeStringConst("either", -1));
+		args = lappend(args,makeStringConst($3, -1));
+		args = lappend(args,makeStringConst("force", -1));
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
+		$$ = (Node*)stmt;
+	}
 	| FAILOVER GTM SLAVE
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -1751,7 +1761,7 @@ FailoverStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
 		}
-	| FAILOVER GTM EXTRA
+	| FAILOVER GTM EXTRA 
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("extra", -1));
@@ -1759,15 +1769,20 @@ FailoverStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
 		}
-	| FAILOVER GTM
+	| FAILOVER GTM opt_general_force
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("either", -1));
+			if($3 != NULL)
+				args = lappend(args,makeStringConst($3, @3));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
 		}
 	;
+opt_general_force:
+	FORCE      {$$ = pstrdup("force");}
+	|/*empty*/ {$$ = NULL;}
 /* cndn end*/
 
 DeploryStmt:
@@ -1961,8 +1976,7 @@ unreserved_keyword:
 	| EXTRA
 	| F
 	| FAILOVER
-	| FAST
-	| FORCE
+	| FAST	
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_ALARM_INFO_ASC
 	| GET_ALARM_INFO_COUNT
@@ -2017,6 +2031,7 @@ unreserved_keyword:
 reserved_keyword:
 	  ALL
 	| FALSE_P
+	| FORCE
 	| NOT
 	| TRUE_P
 	| ON
