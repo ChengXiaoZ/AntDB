@@ -97,6 +97,7 @@ typedef struct ADBNodePoolSlot
 	int					last_user_pid;
 	int					last_agtm_port;		/* last send agtm port */
 	bool				has_temp;			/* have temp object? */
+	int					retry;				/* try to reconnect times, at most three times */
 } ADBNodePoolSlot;
 
 /* Pool of connections to specified pgxc node */
@@ -164,7 +165,10 @@ int			MinPoolSize = 1;
 int			MaxPoolSize = 100;
 int			PoolRemoteCmdTimeout = 0;
 
-bool			PersistentConnections = false;
+bool		PersistentConnections = false;
+
+/* connect retry times */
+int 		RetryTimes = 3;	
 
 /* Flag to tell if we are Postgres-XC pooler process */
 static bool am_pgxc_pooler = false;
@@ -853,6 +857,8 @@ agent_init(PoolAgent *agent, const char *database, const char *user_name,
 	int num_coord,num_datanode;
 	volatile bool has_error;
 
+	num_coord = 0;
+	num_datanode = 0;
 	AssertArg(agent);
 	if(database == NULL || user_name == NULL)
 		return false;
@@ -1575,7 +1581,29 @@ send_agtm_port_:
 				break;
 			}
 			if(slot->slot_state == SLOT_STATE_ERROR)
-				ereport(ERROR, (errmsg("%s", PQerrorMessage(slot->conn))));
+			{
+				if(slot->retry < RetryTimes)
+				{
+					ADBNodePool *node_pool;
+					node_pool = slot->parent;
+					PQfinish(slot->conn);
+					slot->conn = PQconnectStart(node_pool->connstr);
+
+					if(slot->conn == NULL)
+					{
+						ereport(ERROR,
+							(errcode(ERRCODE_OUT_OF_MEMORY)
+							,errmsg("out of memory")));
+					}else if(PQstatus(slot->conn) != CONNECTION_BAD)
+					{
+						slot->slot_state = SLOT_STATE_CONNECTING;
+						slot->poll_state = PGRES_POLLING_WRITING;						
+					}
+					slot->retry++;
+				}
+			}
+			if(slot->slot_state == SLOT_STATE_ERROR)
+				ereport(ERROR, (errmsg("reconnect three thimes , %s", PQerrorMessage(slot->conn))));
 			else if(slot->slot_state != SLOT_STATE_LOCKED)
 				all_ready = false;
 		}
@@ -2584,7 +2612,7 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			slot->slot_state = SLOT_STATE_CONNECTING;
 			slot->poll_state = PGRES_POLLING_WRITING;
 			slot->conn->funs = &funs;
-
+			slot->retry = 0;
 			dlist_delete(&slot->dnode);
 			dlist_push_head(&(node_pool->busy_slot), &(slot->dnode));
 		}
