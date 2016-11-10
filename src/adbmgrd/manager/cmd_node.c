@@ -576,10 +576,17 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
+			/*delete the parm in mgr_updateparm for this type of node*/
+			mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &(mgr_node->nodename), nodetype);
 			simple_heap_delete(rel, &(tuple->t_self));
 			CatalogUpdateIndexes(rel, tuple);
 			heap_freetuple(tuple);
 		}
+	}
+	/*delete the parm in mgr_updateparm for this type and nodename in mgr_updateparm is MACRO_STAND_FOR_ALL_NODENAME*/
+	if (getnum == nodenum)
+	{
+		mgr_parmr_delete_tuple_nodename_nodetype(rel_updateparm, &nametmp, nodetype);
 	}
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel, RowExclusiveLock);
@@ -1669,7 +1676,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		heap_inplace_update(noderel, aimtuple);
 		/*5.refresh parm systbl*/
 		bgetextra = mgr_check_node_exist_incluster(&dnslavename, nodetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
-		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype, bgetextra);
+		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype);
 		/*6.refresh extra recovery.conf*/
 		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype, bgetextra);
 	}
