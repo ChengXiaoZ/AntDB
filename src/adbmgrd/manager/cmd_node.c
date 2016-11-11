@@ -2492,8 +2492,6 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
 	StringInfoData  infosendmsg;
-	volatile bool catcherr = false;
-	StringInfoData catcherrmsg;
 	NameData nodename;
 	Oid coordhostoid;
 	int32 coordport;
@@ -2501,8 +2499,8 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	char *temp_file;
 	Oid dnhostoid;
 	int32 dnport;
-	PGconn *pg_conn = NULL;
-	PGresult *res;
+	PGconn * volatile pg_conn = NULL;
+	PGresult * volatile res = NULL;
 	HeapTuple tup_result;
 	HeapTuple aimtuple = NULL;
 	char coordport_buf[10];
@@ -2515,7 +2513,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY_HOLD();
+	PG_TRY();
 	{
 		/* get node info for append datanode master */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_MASTER, &appendnodeinfo);
@@ -2641,31 +2639,18 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step10: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, false, true);
-	}PG_CATCH_HOLD();
+	}PG_CATCH();
 	{
-		catcherr = true;
-	}PG_END_TRY_HOLD();
+		if(pg_conn)
+		{
+			PQclear(res);
+			PQfinish(pg_conn);
+			pg_conn = NULL;
+		}
+		PG_RE_THROW();
+	}PG_END_TRY();
 
-	if (catcherr)
-	{
-		initStringInfo(&catcherrmsg);
-		geterrmsg(&catcherrmsg);
-		errdump();
-	}
-
-	if(pg_conn)
-	{
-		PQfinish(pg_conn);
-		pg_conn = NULL;
-	}
-
-	tup_result = build_common_command_tuple(
-		&nodename
-		,catcherr == false ? true : false
-		,catcherr == false ? "success" : catcherrmsg.data);
-
-	if (catcherr)
-		pfree(catcherrmsg.data);
+	tup_result = build_common_command_tuple(&nodename, true, "success");
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -2683,8 +2668,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	bool dnmaster_is_running; /* datanode master status */
 	bool is_extra_exist, is_extra_sync;
 	StringInfoData  infosendmsg;
-	volatile bool catcherr = false;
-	StringInfoData catcherrmsg, primary_conninfo_value;
+	StringInfoData primary_conninfo_value;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
@@ -2696,7 +2680,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY_HOLD();
+	PG_TRY();
 	{
 		/* get node info both slave and master node. */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_SLAVE, &appendnodeinfo);
@@ -2845,25 +2829,12 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		/* step 11: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, false, true);
 
-	}PG_CATCH_HOLD();
+	}PG_CATCH();
 	{
-		catcherr = true;
-	}PG_END_TRY_HOLD();
+		PG_RE_THROW();
+	}PG_END_TRY();
 
-	if (catcherr)
-	{
-		initStringInfo(&catcherrmsg);
-		geterrmsg(&catcherrmsg);
-		errdump();
-	}
-
-	tup_result = build_common_command_tuple(
-		&nodename
-		,catcherr == false ? true : false
-		,catcherr == false ? "success" : catcherrmsg.data);
-
-	if (catcherr)
-		pfree(catcherrmsg.data);
+	tup_result = build_common_command_tuple(&nodename, true, "success");
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -2881,8 +2852,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	bool dnmaster_is_running; 			/* datanode master status */
 	bool is_slave_exist, is_slave_sync;
 	StringInfoData  infosendmsg;
-	volatile bool catcherr = false;
-	StringInfoData catcherrmsg, primary_conninfo_value;
+	StringInfoData primary_conninfo_value;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
@@ -2894,7 +2864,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY_HOLD();
+	PG_TRY();
 	{
 		/* get node info both slave and master node. */
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_EXTRA, &appendnodeinfo);
@@ -2913,14 +2883,14 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 			if (agtm_m_is_running)
 			{
 				/* append "host all postgres  ip/32" for agtm master pg_hba.conf and reload it. */
-                mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
+				mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
 			{	ereport(ERROR, (errmsg("agtm master is not running.")));}
 		}
 		else
 		{	ereport(ERROR, (errmsg("agtm master is not exist.")));}
-		
+
 		if (agtm_s_is_exist)
 		{
 			if (agtm_s_is_running)
@@ -3042,25 +3012,12 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		/* step 11: update node system table's column to set initial is true*/
 		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_EXTRA, false, true);
 
-	}PG_CATCH_HOLD();
+	}PG_CATCH();
 	{
-		catcherr = true;
-	}PG_END_TRY_HOLD();
+		PG_RE_THROW();
+	}PG_END_TRY();
 
-	if (catcherr)
-	{
-		initStringInfo(&catcherrmsg);
-		geterrmsg(&catcherrmsg);
-		errdump();
-	}
-
-	tup_result = build_common_command_tuple(
-		&nodename
-		,catcherr == false ? true : false
-		,catcherr == false ? "success" : catcherrmsg.data);
-
-	if (catcherr)
-		pfree(catcherrmsg.data);
+	tup_result = build_common_command_tuple(&nodename, true, "success");
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3081,13 +3038,11 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	char *temp_file;
 	Oid coordhostoid;
 	int32 coordport;
-	PGconn *pg_conn = NULL;
-	PGresult *res;
+	PGconn * volatile pg_conn = NULL;
+	PGresult * volatile res =NULL;
 	HeapTuple aimtuple = NULL;
 	HeapTuple tup_result;
 	char coordport_buf[10];
-	volatile bool catcherr = false;
-	StringInfoData catcherrmsg;
 	NameData nodename;
 
 	initStringInfo(&(getAgentCmdRst.description));
@@ -3098,7 +3053,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	Assert(appendnodeinfo.nodename);
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
-	PG_TRY_HOLD();
+	PG_TRY();
 	{
 		/* get node info for append coordinator master */
 		mgr_get_appendnodeinfo(CNDN_TYPE_COORDINATOR_MASTER, &appendnodeinfo);
@@ -3228,30 +3183,18 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 
 		/* step 11: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, false, true);
-	}PG_CATCH_HOLD();
+	}PG_CATCH();
 	{
-		catcherr = true;
-	}PG_END_TRY_HOLD();
-	
-	if (catcherr)
-	{
-		initStringInfo(&catcherrmsg);
-		geterrmsg(&catcherrmsg);
-		errdump();
-	}
-	if(pg_conn)
-	{
-		PQfinish(pg_conn);
-		pg_conn = NULL;
-	}
+		if(pg_conn)
+		{
+			PQclear(res);
+			PQfinish(pg_conn);
+			pg_conn = NULL;
+		}
+		PG_RE_THROW();
+	}PG_END_TRY();
 
-	tup_result = build_common_command_tuple(
-		&nodename
-		,catcherr == false ? true : false
-		,catcherr == false ? "success" : catcherrmsg.data);
-
-	if (catcherr)
-		pfree(catcherrmsg.data);
+	tup_result = build_common_command_tuple(&nodename, true, "success");
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3262,9 +3205,8 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	AppendNodeInfo agtm_m_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool is_extra_exist, is_extra_sync;
-	StringInfoData  infosendmsg;
-	volatile bool catcherr = false;
-	StringInfoData catcherrmsg, primary_conninfo_value;
+	StringInfoData infosendmsg;
+	StringInfoData primary_conninfo_value;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
@@ -3276,7 +3218,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY_HOLD();
+	PG_TRY();
 	{
 		/* get agtm slave and agtm master node info. */
 		mgr_get_appendnodeinfo(GTM_TYPE_GTM_SLAVE, &appendnodeinfo);
@@ -3382,25 +3324,12 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		/* step 9: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, false, true);
 
-	}PG_CATCH_HOLD();
+	}PG_CATCH();
 	{
-		catcherr = true;
-	}PG_END_TRY_HOLD();
+		PG_RE_THROW();
+	}PG_END_TRY();
 
-	if (catcherr)
-	{
-		initStringInfo(&catcherrmsg);
-		geterrmsg(&catcherrmsg);
-		errdump();
-	}
-
-	tup_result = build_common_command_tuple(
-		&nodename
-		,catcherr == false ? true : false
-		,catcherr == false ? "success" : catcherrmsg.data);
-
-	if (catcherr)
-		pfree(catcherrmsg.data);
+	tup_result = build_common_command_tuple(&nodename, true, "success");
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3412,8 +3341,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool is_slave_exist, is_slave_sync;
 	StringInfoData  infosendmsg;
-	volatile bool catcherr = false;
-	StringInfoData catcherrmsg, primary_conninfo_value;
+	StringInfoData primary_conninfo_value;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
@@ -3425,7 +3353,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 
 	namestrcpy(&nodename, appendnodeinfo.nodename);
 
-	PG_TRY_HOLD();
+	PG_TRY();
 	{
 		/* get agtm extra, agtm master and agtm slave node info. */
 		mgr_get_appendnodeinfo(GTM_TYPE_GTM_EXTRA, &appendnodeinfo);
@@ -3534,25 +3462,12 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		/* step 9: update node system table's column to set initial is true */
 		mgr_set_inited_incluster(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, false, true);
 
-	}PG_CATCH_HOLD();
+	}PG_CATCH();
 	{
-		catcherr = true;
-	}PG_END_TRY_HOLD();
+        PG_RE_THROW();
+	}PG_END_TRY();
 
-	if (catcherr)
-	{
-		initStringInfo(&catcherrmsg);
-		geterrmsg(&catcherrmsg);
-		errdump();
-	}
-
-	tup_result = build_common_command_tuple(
-		&nodename
-		,catcherr == false ? true : false
-		,catcherr == false ? "success" : catcherrmsg.data);
-
-	if (catcherr)
-		pfree(catcherrmsg.data);
+	tup_result = build_common_command_tuple(&nodename, true, "success");
 
 	return HeapTupleGetDatum(tup_result);
 }
