@@ -444,6 +444,10 @@ static void PoolerLoop(void)
 					case SLOT_STATE_QUERY_RESET_ALL:
 						rval = POLLIN;
 						break;
+					case SLOT_STATE_ERROR:
+						if(PQisBusy(slot->conn))
+							rval = POLLIN;
+						break;
 					default:
 						break;
 					}
@@ -1600,6 +1604,8 @@ send_agtm_port_:
 						slot->poll_state = PGRES_POLLING_WRITING;						
 					}
 					slot->retry++;
+					ereport(DEBUG1, (errmsg("[pool] reconnect three thimes : %d, backend pid : %d",
+						slot->retry,slot->owner->pid)));
 				}
 			}
 			if(slot->slot_state == SLOT_STATE_ERROR)
@@ -2046,6 +2052,7 @@ static void destroy_slot(ADBNodePoolSlot *slot, bool send_cancel)
 		pfree(slot->last_error);
 		slot->last_error = NULL;
 	}
+	Assert(slot->conn == NULL && slot->slot_state == SLOT_STATE_UNINIT);
 	dlist_push_head(&slot->parent->uninit_slot, &slot->dnode);
 }
 
@@ -2115,7 +2122,7 @@ static void destroy_node_pool(ADBNodePool *node_pool, bool bfree)
 	dheads[3] = &(node_pool->busy_slot);
 	for(i=0;i<lengthof(dheads);++i)
 	{
-		dlist_foreach(iter, dheads[i]);
+		dlist_foreach(iter, dheads[i])
 		{
 			slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
 			PQfinish(slot->conn);
@@ -2390,6 +2397,13 @@ static void process_slot_event(ADBNodePoolSlot *slot)
 		}
 		break;
 	case SLOT_STATE_ERROR:
+		if(PQisBusy(slot->conn)
+			&& get_slot_result(slot) == false
+			&& slot->owner == NULL)
+			{
+				dlist_delete(&slot->dnode);
+				destroy_slot(slot, false);
+			}
 		break;
 	case SLOT_STATE_QUERY_AGTM_PORT:
 	case SLOT_STATE_QUERY_PARAMS_SESSION:
@@ -2400,7 +2414,10 @@ static void process_slot_event(ADBNodePoolSlot *slot)
 			if(slot->slot_state == SLOT_STATE_ERROR)
 			{
 				if(slot->owner == NULL)
+				{
+					dlist_delete(&slot->dnode);
 					destroy_slot(slot, false);
+				}
 				break;
 			}
 			slot->slot_state += 1;
@@ -2545,6 +2562,9 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			{
 				AssertState(tmp_slot->owner == agent);
 				slot = tmp_slot;
+				ereport(DEBUG1,
+					(errmsg("[pool] get slot from released_slot, backend pid : %d,",
+					agent->pid)));
 				break;
 			}
 		}
@@ -2559,6 +2579,9 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 				if(tmp_slot->owner == NULL)
 				{
 					slot = tmp_slot;
+					ereport(DEBUG1,
+					(errmsg("[pool] get slot from idle_slot, backend pid : %d,",
+					agent->pid)));
 					break;
 				}
 			}
@@ -2574,6 +2597,9 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 				if(tmp_slot->owner == NULL)
 				{
 					slot = tmp_slot;
+					ereport(DEBUG1,
+					(errmsg("[pool] get slot from uninit_slot, slot state : %d, backend pid : %d,",
+					slot->slot_state, agent->pid)));
 					break;
 				}
 			}
@@ -2586,6 +2612,8 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			slot->parent = node_pool;
 			slot->slot_state = SLOT_STATE_UNINIT;
 			dlist_push_head(&node_pool->uninit_slot, &slot->dnode);
+			ereport(DEBUG1,
+					(errmsg("[pool] Alloc new slot, slot state SLOT_STATE_UNINIT")));
 		}
 
 		/* save slot into agent waiting list */
@@ -2613,6 +2641,9 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			slot->poll_state = PGRES_POLLING_WRITING;
 			slot->conn->funs = &funs;
 			slot->retry = 0;
+			ereport(DEBUG1,
+					(errmsg("[pool] begin connect, connstr : %s,backend pid :%d slot state SLOT_STATE_CONNECTING",
+					node_pool->connstr, agent->pid)));
 			dlist_delete(&slot->dnode);
 			dlist_push_head(&(node_pool->busy_slot), &(slot->dnode));
 		}
@@ -3044,6 +3075,8 @@ static List* pool_get_nodeid_list(StringInfo buf)
 static void on_exit_pooler(int code, Datum arg)
 {
 	closesocket(server_fd);
+	while(agentCount)
+		agent_destroy(poolAgents[--agentCount]);
 	/* destroy agents and MemoryContext*/
 	destroy_htab_database();
 }
