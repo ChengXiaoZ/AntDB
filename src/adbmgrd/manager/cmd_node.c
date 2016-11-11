@@ -7041,14 +7041,12 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		if(node_type == slave_type && bslave_sync == false)
 		{
 			if(bextra_sync == true && bextra_incluster == true)
-				ereport(ERROR, (errmsg("The node extra %s is sync mode,but it's not running\n
-				hint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
+				ereport(ERROR, (errmsg("The node extra %s is sync mode,but it's not running.\nhint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
 		}
 		else if(node_type == extra_type && bextra_sync == false)
 		{
 			if(bslave_sync == true && bslave_incluster == true)
-				ereport(ERROR, (errmsg("The node slave %s is sync mode,but it's not running\n
-				hint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
+				ereport(ERROR, (errmsg("The node slave %s is sync mode,but it's not running.\nhint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
 		}		
 	}
 	/*close relation */
