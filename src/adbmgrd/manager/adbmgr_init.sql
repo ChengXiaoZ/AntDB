@@ -36,10 +36,12 @@ SELECT
 		WHEN 'g' THEN 'gtm master'::text
 		WHEN 'p' THEN 'gtm slave'::text
 		WHEN 'e' THEN 'gtm extra'::text
+		WHEN 'G' THEN 'gtm master|slave|extra'::text
+		WHEN 'D' THEN 'datanode master|slave|extra'::text
 	END AS nodetype,
 	updateparmkey			AS	key,
 	updateparmvalue			AS	value
-FROM pg_catalog.mgr_updateparm order by updateparmnodename;
+FROM pg_catalog.mgr_updateparm order by 1,2;
 
 CREATE VIEW adbmgr.node AS
   SELECT

@@ -210,9 +210,9 @@ extern bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *addre
 extern void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg);
 extern void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest);
-extern void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype, int oldmasternum);
-extern void mgr_update_parm_after_dn_failover(Name oldmastername, int olddnmasternum, char oldmastertype, Name oldslavename, int olddnslavename,  char oldslavetype);
-extern void mgr_parm_after_gtm_failover_handle(Relation noderel, Name mastername, char mastertype, Name slavename, char slavetype);
+extern void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype);
+extern void mgr_update_parm_after_dn_failover(Name oldmastername, char oldmastertype, Name oldslavename, char oldslavetype);
+extern void mgr_parm_after_gtm_failover_handle(Name mastername, char mastertype, Name slavename, char slavetype);
 extern void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
 #endif /* MGR_CMDS_H */

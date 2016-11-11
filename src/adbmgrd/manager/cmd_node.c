@@ -96,7 +96,6 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
 static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
 static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid);
-static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype);
 static bool is_sync(char nodetype, char *nodename);
 static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *is_sync);
 static void mgr_set_master_sync(void);
@@ -1319,8 +1318,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	char *nodetypestr;
 	char nodetype;
 	int32 cndnport;
-	int masternumtmp = 0;
-	int slavenumtmp = 0;
 	int masterport;
 	Oid hostOid;
 	Oid nodemasternameoid;
@@ -1663,8 +1660,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 			return;
 		}
 		/*3.delete old master record in node systbl*/
-		masternumtmp = mgr_get_num_nodetype_node_incluster(noderel, CNDN_TYPE_DATANODE_MASTER);
-		slavenumtmp = mgr_get_num_nodetype_node_incluster(noderel, nodetype);
 		simple_heap_delete(noderel, &mastertuple->t_self);
 		CatalogUpdateIndexes(noderel, mastertuple);
 		ReleaseSysCache(mastertuple);
@@ -1676,7 +1671,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		heap_inplace_update(noderel, aimtuple);
 		/*5.refresh parm systbl*/
 		bgetextra = mgr_check_node_exist_incluster(&dnslavename, nodetype==CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE, true);
-		mgr_update_parm_after_dn_failover(&dnmastername, masternumtmp, CNDN_TYPE_DATANODE_MASTER, &dnslavename, slavenumtmp, nodetype);
+		mgr_update_parm_after_dn_failover(&dnmastername, CNDN_TYPE_DATANODE_MASTER, &dnslavename, nodetype);
 		/*6.refresh extra recovery.conf*/
 		mgr_after_datanode_failover_handle(noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype, bgetextra);
 	}
@@ -5938,7 +5933,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Form_mgr_node mgr_node_dnmaster;
 	HeapTuple tuple;
 	HeapTuple mastertuple;
-	Relation rel_updateparm;
 	Oid hostOidtmp;
 	Oid hostOid;
 	Oid nodemasternameoid;
@@ -6020,12 +6014,8 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	mgr_node->nodemasternameoid = 0;
 	mgr_node->nodesync = SPACE;
 	heap_inplace_update(noderel, aimtuple);
-	/*for mgr_updateparm systbl*/
-	/*delete parm info in mgr_updateparm systbl*/
-	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
-	/*update parm info in the mgr_updateparm systbl*/
-	mgr_parm_after_gtm_failover_handle(rel_updateparm, &cndnname, GTM_TYPE_GTM_MASTER, &cndnname, aimtuplenodetype);
-	heap_close(rel_updateparm, RowExclusiveLock);
+	/*for mgr_updateparm systbl, drop the old master param, update slave parm info in the mgr_updateparm systbl*/
+	mgr_parm_after_gtm_failover_handle(&cndnname, GTM_TYPE_GTM_MASTER, &cndnname, aimtuplenodetype);
 	/*5. refresh new master postgresql.conf*/
 	resetStringInfo(&infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
@@ -6430,33 +6420,6 @@ static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid)
 	}
 	heap_endscan(scan);
 	return false;
-}
-
-/*get the num of node for given nodetype*/
-static int mgr_get_num_nodetype_node_incluster(Relation rel, char nodetype)
-{
-	ScanKeyData key[2];
-	HeapTuple tuple;
-	HeapScanDesc scan;
-	int num = 0;
-	
-	ScanKeyInit(&key[0]
-		,Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(nodetype));
-	ScanKeyInit(&key[1],
-		Anum_mgr_node_nodeincluster
-		,BTEqualStrategyNumber
-		,F_BOOLEQ
-		,BoolGetDatum(true));
-	scan = heap_beginscan(rel, SnapshotNow, 2, key);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		num++;
-	}
-	heap_endscan(scan);
-	return num;	
 }
 
 /*check given type of node exist*/

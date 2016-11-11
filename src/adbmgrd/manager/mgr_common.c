@@ -192,7 +192,7 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
 		{
 			getAgentCmdRst->ret = true;
 			appendStringInfoString(&(getAgentCmdRst->description), run_success);
-			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+			ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
 			initdone = true;
 			break;
 		}
