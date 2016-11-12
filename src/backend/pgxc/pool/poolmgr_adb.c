@@ -2112,7 +2112,7 @@ static void destroy_node_pool(ADBNodePool *node_pool, bool bfree)
 {
 	ADBNodePoolSlot *slot;
 	dlist_head *dheads[4];
-	dlist_iter iter;
+	dlist_node *node;
 	Size i;
 	AssertArg(node_pool);
 
@@ -2122,13 +2122,17 @@ static void destroy_node_pool(ADBNodePool *node_pool, bool bfree)
 	dheads[3] = &(node_pool->busy_slot);
 	for(i=0;i<lengthof(dheads);++i)
 	{
-		dlist_foreach(iter, dheads[i])
+		while(!dlist_is_empty(dheads[i]))
 		{
-			slot = dlist_container(ADBNodePoolSlot, dnode, iter.cur);
-			PQfinish(slot->conn);
+			node = dlist_pop_head_node(dheads[i]);
+			slot = dlist_container(ADBNodePoolSlot, dnode, node);
 			if(slot->last_error)
+			{
 				pfree(slot->last_error);
+				slot->last_error = NULL;
+			}
 			pfree(slot);
+			slot = NULL;
 		}
 	}
 
