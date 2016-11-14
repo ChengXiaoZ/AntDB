@@ -81,6 +81,12 @@ typedef enum SlotStateType
 		if(p_)	pfree(p_);			\
 	}while(0)
 
+#define INIT_PARAMS_MAGIC(agent_, member)	((agent_)->member = 0)
+#define INIT_SLOT_PARAMS_MAGIC(slot_, member) ((slot_)->member = 0)
+#define UPDATE_PARAMS_MAGIC(agent_, member)	(++((agent_)->member))
+#define COPY_PARAMS_MAGIC(dest_, src_)		((dest_) = (src_))
+#define EQUAL_PARAMS_MAGIC(l_, r_)			((l_) == (r_))
+
 /* Connection pool entry */
 typedef struct ADBNodePoolSlot
 {
@@ -98,6 +104,8 @@ typedef struct ADBNodePoolSlot
 	int					last_agtm_port;		/* last send agtm port */
 	bool				has_temp;			/* have temp object? */
 	int					retry;				/* try to reconnect times, at most three times */
+	uint32				session_magic;		/* sended session params magic number */
+	uint32				local_magic;		/* sended local params magic number */
 } ADBNodePoolSlot;
 
 /* Pool of connections to specified pgxc node */
@@ -146,6 +154,8 @@ typedef struct PoolAgent
 	Oid			   *coord_oids;
 	char		   *session_params;
 	char		   *local_params;
+	uint32			session_magic;	/* magic number for session_params */
+	uint32			local_magic;	/* magic number for local_params */
 	List		   *list_wait;		/* List of ADBNodePoolSlot in connecting */
 	MemoryContext	mctx;
 	/* Process ID of postmaster child process associated to pool agent */
@@ -642,6 +652,8 @@ static void agent_create(volatile pgsocket new_fd)
 		agent = MemoryContextAllocZero(context, sizeof(*agent));
 		agent->port.fdsock = new_fd;
 		agent->mctx = context;
+		INIT_PARAMS_MAGIC(agent, session_magic);
+		INIT_PARAMS_MAGIC(agent, local_magic);
 	}PG_CATCH();
 	{
 		closesocket(new_fd);
@@ -1511,6 +1523,7 @@ static void agent_check_waiting_slot(PoolAgent *agent)
 				break;
 			case SLOT_STATE_IDLE:
 			case SLOT_STATE_END_RESET_ALL:
+send_session_params_:
 				if(agent->session_params != NULL)
 				{
 					if(!PQsendQuery(slot->conn, agent->session_params))
@@ -1519,6 +1532,7 @@ static void agent_check_waiting_slot(PoolAgent *agent)
 						break;
 					}
 					slot->slot_state = SLOT_STATE_QUERY_PARAMS_SESSION;
+					COPY_PARAMS_MAGIC(slot->session_magic, agent->session_magic);
 					dlist_delete(&slot->dnode);
 					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 					break;
@@ -1538,6 +1552,12 @@ static void agent_check_waiting_slot(PoolAgent *agent)
 					slot->slot_state = SLOT_STATE_QUERY_RESET_ALL;
 					dlist_delete(&slot->dnode);
 					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
+				}else if(!EQUAL_PARAMS_MAGIC(slot->session_magic, agent->session_magic))
+				{
+					goto send_session_params_;
+				}else if(!EQUAL_PARAMS_MAGIC(slot->local_magic, agent->local_magic))
+				{
+					goto send_local_params_;
 				}else
 				{
 					slot->slot_state = SLOT_STATE_LOCKED;
@@ -1557,6 +1577,7 @@ send_local_params_:
 						break;
 					}
 					slot->slot_state = SLOT_STATE_QUERY_PARAMS_LOCAL;
+					COPY_PARAMS_MAGIC(slot->local_magic, agent->session_magic);
 					dlist_delete(&slot->dnode);
 					dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
 					break;
@@ -2426,6 +2447,12 @@ static void process_slot_event(ADBNodePoolSlot *slot)
 			}
 			slot->slot_state += 1;
 
+			if(slot->slot_state == SLOT_STATE_END_RESET_ALL)
+			{
+				INIT_SLOT_PARAMS_MAGIC(slot, session_magic);
+				INIT_SLOT_PARAMS_MAGIC(slot, local_magic);
+			}
+
 			if(slot->owner == NULL)
 			{
 				if(slot->slot_state == SLOT_STATE_END_RESET_ALL)
@@ -2615,6 +2642,8 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			slot = MemoryContextAllocZero(PoolerMemoryContext, sizeof(*slot));
 			slot->parent = node_pool;
 			slot->slot_state = SLOT_STATE_UNINIT;
+			INIT_SLOT_PARAMS_MAGIC(slot, session_magic);
+			INIT_SLOT_PARAMS_MAGIC(slot, local_magic);
 			dlist_push_head(&node_pool->uninit_slot, &slot->dnode);
 			ereport(DEBUG1,
 					(errmsg("[pool] Alloc new slot, slot state SLOT_STATE_UNINIT")));
@@ -2893,6 +2922,10 @@ static int agent_session_command(PoolAgent *agent, const char *set_command, Pool
 		strcat(*ppstr, ";");
 		strcat(*ppstr, set_command);
 	}
+	if(command_type == POOL_CMD_LOCAL_SET)
+		UPDATE_PARAMS_MAGIC(agent, local_magic);
+	else
+		UPDATE_PARAMS_MAGIC(agent, session_magic);
 
 	/*
 	 * Launch the new command to all the connections already hold by the agent
