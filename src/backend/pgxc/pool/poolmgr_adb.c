@@ -1546,7 +1546,7 @@ send_session_params_:
 				}
 				goto send_local_params_;
 			case SLOT_STATE_LOCKED:
-				break;
+				continue;
 			case SLOT_STATE_RELEASED:
 				if(slot->last_user_pid != agent->pid)
 				{
@@ -1640,6 +1640,8 @@ send_agtm_port_:
 				ereport(ERROR, (errmsg("reconnect three thimes , %s", PQerrorMessage(slot->conn))));
 			else if(slot->slot_state != SLOT_STATE_LOCKED)
 				all_ready = false;
+			else
+				dlist_delete(&slot->dnode);
 		}
 	}PG_CATCH();
 	{
@@ -1750,7 +1752,6 @@ re_find_:
 		foreach(lc,agent->list_wait)
 		{
 			slot = lfirst(lc);
-			dlist_delete(&slot->dnode);
 			slot->has_temp = agent->is_temp;
 		}
 		list_free(agent->list_wait);
