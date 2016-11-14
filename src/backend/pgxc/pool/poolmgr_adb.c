@@ -921,10 +921,9 @@ agent_destroy(PoolAgent *agent)
 {
 	Size	i;
 	ADBNodePool *node_pool;
-	DatabasePool *db_pool;
 	dlist_mutable_iter miter;
 	ADBNodePoolSlot *slot;
-	HASH_SEQ_STATUS hseq1,hseq2;
+	HASH_SEQ_STATUS hseq;
 
 	AssertArg(agent);
 
@@ -951,23 +950,31 @@ agent_destroy(PoolAgent *agent)
 	}
 	Assert(i<=agentCount);
 
-	hash_seq_init(&hseq1, htab_database);
-	while((db_pool = hash_seq_search(&hseq1)) != NULL)
+	hash_seq_init(&hseq, agent->db_pool->htab_nodes);
+	while((node_pool = hash_seq_search(&hseq)) != NULL)
 	{
-		hash_seq_init(&hseq2, db_pool->htab_nodes);
-		while((node_pool = hash_seq_search(&hseq2)) != NULL)
+		dlist_foreach_modify(miter, &node_pool->released_slot)
 		{
-			dlist_foreach_modify(miter, &node_pool->released_slot)
+			slot = dlist_container(ADBNodePoolSlot, dnode, miter.cur);
+			Assert(slot->slot_state == SLOT_STATE_RELEASED);
+			if(slot->owner == agent)
 			{
-				slot = dlist_container(ADBNodePoolSlot, dnode, miter.cur);
-				Assert(slot->slot_state == SLOT_STATE_RELEASED);
-				if(slot->owner == agent)
-				{
-					Assert(slot->last_user_pid == agent->pid);
-					dlist_delete(miter.cur);
-					idle_slot(slot, true);
-				}
+				Assert(slot->last_user_pid == agent->pid);
+				dlist_delete(miter.cur);
+				idle_slot(slot, true);
 			}
+		}
+	}
+
+	while(agent->list_wait != NIL)
+	{
+		slot = linitial(agent->list_wait);
+		agent->list_wait = list_delete_first(agent->list_wait);
+		if(slot != NULL)
+		{
+			Assert(slot->owner == agent);
+			dlist_delete(&slot->dnode);
+			idle_slot(slot, true);
 		}
 	}
 
