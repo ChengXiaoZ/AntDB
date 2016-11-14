@@ -760,25 +760,22 @@ AlterHostStmt:
 	;
 
 StartAgentStmt:
-		START AGENT opt_general_all opt_general_options
+		START AGENT ALL opt_password
 		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = make_start_agent_args($4);
-			args = lappend(args, makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_agent", args));
+			MGRStartAgent *stmt = makeNode(MGRStartAgent);
+			stmt->hosts = NIL;
+			stmt->password = $4;
 			$$ = (Node*)stmt;
 		}
-	 | START AGENT Ident opt_general_options
+		| START AGENT ObjList opt_password
 		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = make_start_agent_args($4);
-			args = lappend(args, makeStringConst($3, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_agent", args));
+			MGRStartAgent *stmt = makeNode(MGRStartAgent);
+			stmt->hosts = $3;
+			stmt->password = $4;
 			$$ = (Node*)stmt;
 		}
 		;
+
 StopAgentStmt:
 		STOP AGENT ALL
 		{

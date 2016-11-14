@@ -110,4 +110,11 @@ typedef struct MGRMonitorAgent
 	List		*hosts;		/* list of Value(String), NIL for ALL */
 }MGRMonitorAgent;
 
+typedef struct MGRStartAgent
+{
+	NodeTag		type;
+	List		*hosts;		/* list of Value(String), NIL for ALL */
+	char		*password;
+}MGRStartAgent;
+
 #endif /* MGR_NODE_H */

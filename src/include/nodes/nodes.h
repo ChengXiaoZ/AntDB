@@ -481,6 +481,7 @@ typedef enum NodeTag
 	,T_MGRUpdateparmReset
 	,T_MGRShowParam
 	,T_MGRMonitorAgent
+	,T_MGRStartAgent
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor

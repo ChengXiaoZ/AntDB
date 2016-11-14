@@ -448,133 +448,6 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 	heap_close(rel, RowExclusiveLock);
 }
 
-Datum
-mgr_start_agent(PG_FUNCTION_ARGS)
-{
-	FuncCallContext *funcctx;
-	StartAgentInfo *info;
-	HeapTuple tup;
-	HeapTuple tup_result;
-	Form_mgr_host mgr_host;
-	ManagerAgent *ma;
-	ScanKeyData	 key[1];
-
-	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcontext;
-
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-		info = palloc(sizeof(*info));
-		info->rel_host = heap_open(HostRelationId, AccessShareLock);
-		
-		if(PG_ARGISNULL(1)) /* no argument, start all */
-			info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
-		else
-		{
-			Datum host_name = DirectFunctionCall1(namein, PG_GETARG_DATUM(1));
-			ScanKeyInit(&key[0]
-						,Anum_mgr_host_hostname
-						,BTEqualStrategyNumber
-						,F_NAMEEQ
-						,host_name);
-			info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 1, key);
-		}
-		
-		/* save info */
-		funcctx->user_fctx = info;
-
-		MemoryContextSwitchTo(oldcontext);
-	}
-
-	funcctx = SRF_PERCALL_SETUP();
-	Assert(funcctx);
-	info = funcctx->user_fctx;
-	Assert(info);
-
-	tup = heap_getnext(info->rel_scan, ForwardScanDirection);
-	if(tup == NULL)
-	{
-		/* end of row */
-		heap_endscan(info->rel_scan);
-		heap_close(info->rel_host, AccessShareLock);
-		pfree(info);
-		SRF_RETURN_DONE(funcctx);
-	}
-
-	mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-	Assert(mgr_host);
-
-	/* test is running ? */
-	ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-	if(ma_isconnected(ma))
-	{
-		tup_result = build_common_command_tuple(&(mgr_host->hostname)
-			, true, _("running"));
-	}else
-	{
-		StringInfoData exec_path;
-		StringInfoData message;
-		Datum datum;
-		char *host_addr;
-		int ret;
-		bool isNull;
-
-		/* get exec path */
-		datum = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
-		if(isNull)
-		{
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-				, errmsg("column hostpghome is null")));
-		}
-		initStringInfo(&exec_path);
-		appendStringInfoString(&exec_path, TextDatumGetCString(datum));
-		if(exec_path.data[exec_path.len] != '/')
-			appendStringInfoChar(&exec_path, '/');
-		appendStringInfoString(&exec_path, "bin/agent");
-		/* append argument */
-		appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
-
-		/* get host address */
-		datum = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
-		if(isNull)
-			host_addr = NameStr(mgr_host->hostname);
-		else
-			host_addr = TextDatumGetCString(datum);
-
-		/* exec start */
-		initStringInfo(&message);
-		if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
-		{
-			appendStringInfoString(&message, _("telnet not support yet"));
-			ret = 1;
-		}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
-		{
-			ret = ssh2_start_agent(host_addr
-				, mgr_host->hostport
-				, NameStr(mgr_host->hostuser)
-				, PG_ARGISNULL(0) ? "" : PG_GETARG_CSTRING(0) /* password for libssh2*/
-				, exec_path.data
-				, &message);
-		}else
-		{
-			appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
-			ret = 1;
-		}
-		tup_result = build_common_command_tuple(
-			  &(mgr_host->hostname)
-			, ret == 0 ? true:false
-			, message.data);
-		pfree(message.data);
-		pfree(exec_path.data);
-	}
-
-	ma_close(ma);
-	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
-}
-
 void mgr_deplory(MGRDeplory *node, ParamListInfo params, DestReceiver *dest)
 {
 	FILE volatile *tar = NULL;
@@ -1104,6 +977,233 @@ Datum mgr_stop_agent(PG_FUNCTION_ARGS)
 	}
 
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *dest)
+{
+	InitNodeInfo *info;
+	HeapTuple tup;
+	TupleTableSlot *slot;
+	TupleDesc desc;
+	ManagerAgent *ma;
+	HeapTuple tup_result;
+	Form_mgr_host mgr_host;
+	MemoryContext context;
+	MemoryContext oldcontext;
+	int ret;
+	StringInfoData buf;
+
+	initStringInfo(&buf);
+
+	context = AllocSetContextCreate(CurrentMemoryContext, "start_agent"
+					, ALLOCSET_DEFAULT_MINSIZE
+					, ALLOCSET_DEFAULT_INITSIZE
+					, ALLOCSET_DEFAULT_MAXSIZE);
+	desc = get_common_command_tuple_desc();
+	(*dest->rStartup)(dest, CMD_UTILITY, desc);
+	slot = MakeSingleTupleTableSlot(desc);
+	oldcontext = CurrentMemoryContext;
+
+	if (node->hosts == NIL)
+	{
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		info->lcp =NULL;
+
+		while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+			Assert(mgr_host);
+
+			resetStringInfo(&buf);
+			MemoryContextSwitchTo(context);
+			MemoryContextResetAndDeleteChildren(context);
+
+			ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+			if(ma_isconnected(ma))
+			{
+				tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("running"));
+			}else
+			{
+				StringInfoData exec_path;
+				StringInfoData message;
+				Datum datum;
+				char *host_addr;
+				int ret;
+				bool isNull;
+
+				/* get exec path */
+				datum = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
+				if(isNull)
+				{
+					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+						, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+						, errmsg("column hostpghome is null")));
+				}
+
+				initStringInfo(&exec_path);
+				appendStringInfoString(&exec_path, TextDatumGetCString(datum));
+				if(exec_path.data[exec_path.len] != '/')
+					appendStringInfoChar(&exec_path, '/');
+				appendStringInfoString(&exec_path, "bin/agent");
+
+				/* append argument */
+				appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
+
+				/* get host address */
+				datum = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+				if(isNull)
+					host_addr = NameStr(mgr_host->hostname);
+				else
+					host_addr = TextDatumGetCString(datum);
+
+				/* exec start */
+				initStringInfo(&message);
+				if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
+				{
+					appendStringInfoString(&message, _("telnet not support yet"));
+					ret = 1;
+				}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
+				{
+					ret = ssh2_start_agent(host_addr
+						, mgr_host->hostport
+						, NameStr(mgr_host->hostuser)
+						, node->password /* password for libssh2*/
+						, exec_path.data
+						, &message);
+				}else
+				{
+					appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
+					ret = 1;
+				}
+
+				tup_result = build_common_command_tuple(&(mgr_host->hostname), ret == 0 ? true:false, message.data);
+				pfree(message.data);
+				pfree(exec_path.data);
+				ma_close(ma);
+			}
+
+			ExecClearTuple(slot);
+			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
+			MemoryContextSwitchTo(oldcontext);
+			(*dest->receiveSlot)(slot, dest);
+		}
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+	}
+	else
+	{
+		ListCell *lc;
+		Value *value;
+		NameData name;
+		TupleDesc host_desc;
+		StringInfoData message;
+
+		initStringInfo(&message);
+
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
+		heap_close(info->rel_host, AccessShareLock);
+
+		foreach(lc, node->hosts)
+		{
+			value = lfirst(lc);
+			Assert(value && IsA(value, String));
+			namestrcpy(&name, strVal(value));
+
+			tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+			resetStringInfo(&message);
+
+			if (HeapTupleIsValid(tup))
+			{
+
+				mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+				Assert(mgr_host);
+
+				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+				if (ma_isconnected(ma))
+				{
+					appendStringInfoString(&message, "running");
+					ret = 0;
+				}
+				else
+				{
+					StringInfoData exec_path;
+					Datum datumpath;
+					char *host_addr;
+					int ret;
+					bool isNull;
+
+					/* get exec path */
+					datumpath = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
+					if(isNull)
+					{
+						ReleaseSysCache(tup);
+						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+							, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+							, errmsg("column hostpghome is null")));
+					}
+					initStringInfo(&exec_path);
+					appendStringInfoString(&exec_path, TextDatumGetCString(datumpath));
+					if(exec_path.data[exec_path.len] != '/')
+						appendStringInfoChar(&exec_path, '/');
+					appendStringInfoString(&exec_path, "bin/agent");
+
+					/* append argument */
+					appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
+
+					/* get host address */
+					datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+					if(isNull)
+						host_addr = NameStr(mgr_host->hostname);
+					else
+						host_addr = TextDatumGetCString(datumpath);
+
+					/* exec start */
+					if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
+					{
+						ReleaseSysCache(tup);
+						appendStringInfoString(&message, _("telnet not support yet"));
+						ret = 1;
+					}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
+					{
+						ret = ssh2_start_agent(host_addr
+							, mgr_host->hostport
+							, NameStr(mgr_host->hostuser)
+							, node->password /* password for libssh2*/
+							, exec_path.data
+							, &message);
+					}else
+					{
+					    ReleaseSysCache(tup);
+						appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
+						ret = 1;
+					}
+
+					ReleaseSysCache(tup);
+				}
+			}else
+			{
+
+				appendStringInfoString(&message, "host does not exist");
+				ret = 1;
+			}
+			MemoryContextSwitchTo(context);
+			MemoryContextResetAndDeleteChildren(context);
+
+			tup_result = build_common_command_tuple(&name, ret == 0 ? true:false, message.data);
+
+			ExecClearTuple(slot);
+			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
+			MemoryContextSwitchTo(oldcontext);
+			(*dest->receiveSlot)(slot, dest);
+		}
+		FreeTupleDesc(host_desc);
+		pfree(info);
+	}
 }
 
 void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceiver *dest)

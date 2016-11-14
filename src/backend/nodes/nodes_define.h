@@ -4154,4 +4154,12 @@ BEGIN_NODE(MGRMonitorAgent)
 END_NODE(MGRMonitorAgent)
 #endif /* NO_NODE_MGRMonitorAgent */
 
+#ifndef NO_NODE_MGRStartAgent
+BEGIN_NODE(MGRStartAgent)
+	NODE_NODE(List, hosts)
+	NODE_STRING(password)
+END_NODE(MGRStartAgent)
+#endif /* NO_NODE_MGRStartAgent */
+
+
 #endif /* ADBMGRD */
