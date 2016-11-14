@@ -123,11 +123,9 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
-	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
-	parmtype =  node->parmtype;
 	/*nodename*/
 	namestrcpy(&nodename, node->nodename);
 	/*open systbl: mgr_parm*/
