@@ -4005,6 +4005,9 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 		case USE_XSD_DATES:
 			/* Compatible with ISO-8601 date formats */
 #ifdef ADB
+			/* oracle date will ignore fractional second */
+			if (is_ora_date)
+				fsec = 0;
 			if (is_ora_date &&
 				tm->tm_hour == 0 &&
 				tm->tm_min == 0 &&
