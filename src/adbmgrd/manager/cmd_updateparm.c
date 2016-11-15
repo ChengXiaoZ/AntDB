@@ -31,6 +31,9 @@
 #include "utils/guc_tables.h"
 #include "parser/scansup.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 #if (Natts_mgr_updateparm != 5)
 #error "need change code"
 #endif
@@ -67,46 +70,14 @@ const char *const GucContext_Parmnames[] =
 	 /* PGC_USERSET */ "user"
 };
 
-/*check the enum type parm's value is right*/
-const int enumparnnum = 22;
-struct enumstruct
-{
-  char name[50];
-  int valuenum;
-  char value[20][20];
-}enumstruct[22] = {
-	{"backslash_quote", 3, {"safe_encoding", "on", "off"}},
-	{"bytea_output", 2, {"escape","hex"}},
-	{"client_min_messages", 9, {"debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"}},
-	{"constraint_exclusion", 3, {"partition", "on", "off"}},
-	{"default_transaction_isolation", 4, {"serializable", "repeatable read", "read committed", "read uncommitted"}},
-	{"grammar", 2, {"postgres", "oracle"}},
-	{"IntervalStyle", 4, {"postgres", "postgres_verbose", "sql_standard", "iso_8601"}},
-	{"log_error_verbosity", 3, {"terse", "default", "verbose"}},
-	{"log_min_error_statement", 11, {"debug5", "debug4", "debug3", "debug2", "debug1", "info", "notice", "warning", "error", "log", "fatal", "panic"}},
-	{"log_min_messages", 12, {"debug5", "debug4", "debug3", "debug2", "debug1", "info", "notice", "warning", "error", "log", "fatal", "panic"}},
-	{"log_statement", 4, {"none", "ddl", "mod", "all"}},
-	{"remotetype", 4, {"application", "coordinator", "datanode", "rxactmgr"}},
-	{"session_replication_role", 3, {"origin", "replica", "local"}},
-	{"snapshot_level", 6, {"mvcc", "now", "self", "any", "toast", "dirty"}},
-	{"synchronous_commit", 4, {"local", "remote_write", "on", "off"}},
-	{"syslog_facility", 8, {"local0", "local1", "local2", "local3", "local4", "local5", "local6", "local7"}},
-	{"trace_recovery_messages", 9, {"debug5", "debug4", "debug3", "debug2", "debug1", "log", "notice", "warning", "error"}},
-	{"track_functions", 3, {"none", "pl", "all"}},
-	{"wal_level", 3, {"minimal", "archive", "hot_standby"}},
-	{"wal_sync_method", 4, {"fsync", "fdatasync", "open_sync", "open_datasync"}},
-	{"xmlbinary", 2, {"base64", "hex"}},
-	{"xmloption", 2, {"content", "document"}}
-};
-
-static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus);
+static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
 static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus, bool bforce);
 static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce);
 static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
-static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax);
+static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax, StringInfo enumvalue);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
-static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo valuelist);
+static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist);
 
 /* 
 * for command: set {datanode|coordinaotr}  {master|slave|extra} {nodename|ALL} {key1=value1,key2=value2...} , 
@@ -176,6 +147,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 	NameData parmmin;
 	NameData parmmax;
 	NameData valuetmp;
+	StringInfoData enumvalue;
 	bool isnull[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
 	int insertparmstatus;
@@ -186,6 +158,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 	parmtype =  node->parmtype;
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
+	initStringInfo(&enumvalue);
 
 	foreach(lc,node->options)
 	{
@@ -195,13 +168,15 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 		namestrcpy(&value, defGetString(def));
 		if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
 		{
+			pfree(enumvalue.data);
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
 		}
 		if (!node->is_force)
 		{
 			/*check the parameter is right for the type node of postgresql.conf*/
-			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+			resetStringInfo(&enumvalue);
+			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue);
 			if (PGC_STRING == vartype)
 			{
 				/*if the value of key is string, it need use signle quota*/
@@ -221,7 +196,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 				}
 			}
 			/*check the key's value*/
-			if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data) != 1)
+			if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data, &enumvalue) != 1)
 			{
 				return;
 			}
@@ -249,12 +224,13 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 		/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
 		mgr_reload_parm(rel_node, nodename->data, nodetype, key.data, value.data, effectparmstatus, false);
 	}
+	pfree(enumvalue.data);
 }
 
 /*
 *check the given parameter nodetype, key,value in mgr_parm, if not in, shows the parameter is not right in postgresql.conf
 */
-static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus)
+static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue)
 {
 	HeapTuple tuple;
 	char *gucconntent;
@@ -262,6 +238,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	Datum datumparmunit;
 	Datum datumparmmin;
 	Datum datumparmmax;
+	Datum datumenumvalues;
 	bool isNull = false;
 	NameData valuetmp;
 	int len = 0;
@@ -286,8 +263,6 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 							, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
 					mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
-					Assert(mgr_parm);
-					gucconntent = NameStr(mgr_parm->parmcontext);
 			}
 			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 		}
@@ -389,7 +364,17 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	else
 	{
 		namestrcpy(parmmax,TextDatumGetCString(datumparmmax));
-	}	
+	}
+	/*get enumvalues*/
+	datumenumvalues = heap_getattr(tuple, Anum_mgr_parm_enumval, RelationGetDescr(noderel), &isNull);
+	if(isNull)
+	{
+		appendStringInfo(enumvalue, "%s", "0");
+	}
+	else
+	{
+		appendStringInfo(enumvalue, "%s", TextDatumGetCString(datumenumvalues));
+	}
 	
 	if (strcasecmp(gucconntent, GucContext_Parmnames[PGC_USERSET]) == 0 || strcasecmp(gucconntent, GucContext_Parmnames[PGC_SUSET]) == 0 || strcasecmp(gucconntent, GucContext_Parmnames[PGC_SIGHUP]) == 0)
 	{
@@ -829,6 +814,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	ScanKeyData scankey[3];
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
+	StringInfoData enumvalue;
 	bool isnull[Natts_mgr_updateparm];
 	bool got[Natts_mgr_updateparm];
 	bool bget = false;
@@ -842,6 +828,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	int vartype; /*the parm value type: bool, string, enum, int*/
 	int iloop = 0;
 
+	initStringInfo(&enumvalue);
 	Assert(node && node->nodename && node->nodetype && node->parmtype);
 	nodetype = node->nodetype;
 	parmtype =  node->parmtype;
@@ -902,7 +889,10 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 			}
 			/*check the parameter is right for the type node of postgresql.conf*/
 			if (!node->is_force)
-				mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus);
+			{
+				resetStringInfo(&enumvalue);
+				mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue);
+			}
 			/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited*/
 			if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0)
 			{
@@ -1009,6 +999,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 			break;
 	}
 
+	pfree(enumvalue.data);
 	/*close relation */
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel_parm, RowExclusiveLock);
@@ -1018,7 +1009,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 /*
 * check the guc value for postgresql.conf
 */
-static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax)
+static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax, StringInfo enumvalue)
 {
 	int elevel = ERROR;
 	int flags;
@@ -1124,24 +1115,20 @@ static int mgr_check_parm_value(char *name, char *value, int vartype, char *parm
 
 		case PGC_ENUM:
 			{
-					StringInfoData valuelist;
-					initStringInfo(&valuelist);
-					if (!mgr_parm_enum_lookup_by_name(name, value, &valuelist))
-					{
-						ereport(elevel,
-								(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				if (!mgr_parm_enum_lookup_by_name(value, enumvalue))
+				{
+					ereport(elevel,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("invalid value for parameter \"%s\": \"%s\"",
-								name, value),
-								 errhint("Available values: %s", _(valuelist.data))));
-						pfree(valuelist.data);
-						return 0;
-					}
-				pfree(valuelist.data);
+						name, value),
+						 errhint("Available values: %s", _(enumvalue->data))));
+					return 0;
+				}
 				break;
 			}
 		default:
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					, errmsg("the parm type \"d\" does not exist")));
+					, errmsg("the param type \"d\" does not exist")));
 	}
 	return 1;
 }
@@ -1196,36 +1183,34 @@ static int mgr_get_parm_unit_type(char *nodename, char *parmunit)
 }
 
 /*check enum type of parm's value is right*/
-static bool mgr_parm_enum_lookup_by_name(char *name, char *value, StringInfo valuelist)
+static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 {
-	int iloop = 0;
-	int jloop = 0;
-	for(iloop=0; iloop < enumparnnum; iloop++)
+	char pvaluearray[256];		/*the max length of enumvals in pg_settings less than 256*/
+	char *pvaluetmp;
+	char *ptr;
+	char *pvalue;
+	bool ret = false;
+	/*the content of valuelist like this "{xx,xx,xx}", so it need copy from 1 to len -2*/
+	pvalue = strstr(valuelist->data, value);
+	if (pvalue != NULL)
 	{
-		/*check name*/
-		if (strcmp(name, enumstruct[iloop].name) ==0)
+		strncpy(pvaluearray, &(valuelist->data[1]), (valuelist->len-2) < 255 ? (valuelist->len-2):255);
+		pvaluearray[(valuelist->len-2) < 255 ? (valuelist->len-2):255] = '\0';
+		ptr = strtok_r(pvaluearray, ",", &pvaluetmp);  
+		while(ptr != NULL)
 		{
-			/*check value*/
-			for(jloop=0; jloop<enumstruct[iloop].valuenum; jloop++)
+			if (strcmp(ptr, value) == 0)
 			{
-				if (strcmp(enumstruct[iloop].value[jloop], value) == 0)
-				{
-					return true;
-				}
+				ret = true;
+				break;
 			}
-			
-			/*get the right value list*/
-			resetStringInfo(valuelist);
-			for(jloop=0; jloop<enumstruct[iloop].valuenum -1; jloop++)
-			{
-				appendStringInfo(valuelist, "%s, ", enumstruct[iloop].value[jloop]);
-			}
-			appendStringInfo(valuelist, "%s", enumstruct[iloop].value[jloop]);
-			return false;
+			ptr = strtok_r(NULL, ",", &pvaluetmp);
+
 		}
-		
+
 	}
-	return false;
+
+	return ret;
 }
 
 /*delete the tuple for given nodename and nodetype*/

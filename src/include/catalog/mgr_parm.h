@@ -22,6 +22,7 @@ CATALOG(mgr_parm,4928) BKI_WITHOUT_OIDS
 	text		parmunit;
 	text		parmminval;			/* parm comment */
 	text		parmmaxval;
+	text		parmenumval;
 #endif								/* CATALOG_VARLEN */
 } FormData_mgr_parm;
 
@@ -36,7 +37,7 @@ typedef FormData_mgr_parm *Form_mgr_parm;
  *		compiler constants for mgr_parm
  * ----------------
  */
-#define Natts_mgr_parm				8
+#define Natts_mgr_parm				9
 #define Anum_mgr_parm_type			1
 #define Anum_mgr_parm_name			2
 #define Anum_mgr_parm_value			3
@@ -45,6 +46,7 @@ typedef FormData_mgr_parm *Form_mgr_parm;
 #define Anum_mgr_parm_unit			6
 #define Anum_mgr_parm_minval		7
 #define Anum_mgr_parm_maxval		8
+#define Anum_mgr_parm_enumval		9
 
 #define PARM_TYPE_GTM 				'G'
 #define PARM_TYPE_COORDINATOR		'C'
