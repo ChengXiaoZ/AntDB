@@ -75,7 +75,7 @@ pool_listen()
 		return -1;
 
 	/* tell kernel we're a server */
-	if (listen(fd, 5) < 0)
+	if (listen(fd, MaxBackends > PG_SOMAXCONN ? PG_SOMAXCONN:MaxBackends) < 0)
 		return -1;
 
 	/* Arrange to unlink the socket file at exit */
