@@ -1081,9 +1081,8 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 				tup_result = build_common_command_tuple(&(mgr_host->hostname), ret == 0 ? true:false, message.data);
 				pfree(message.data);
 				pfree(exec_path.data);
-				ma_close(ma);
 			}
-
+			ma_close(ma);
 			ExecClearTuple(slot);
 			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
 			MemoryContextSwitchTo(oldcontext);
@@ -1119,13 +1118,13 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 
 			if (HeapTupleIsValid(tup))
 			{
-
 				mgr_host = (Form_mgr_host)GETSTRUCT(tup);
 				Assert(mgr_host);
 
 				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
 				if (ma_isconnected(ma))
 				{
+					ReleaseSysCache(tup);
 					appendStringInfoString(&message, "running");
 					ret = 0;
 				}
@@ -1187,7 +1186,7 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 				}
 			}else
 			{
-
+				ReleaseSysCache(tup);
 				appendStringInfoString(&message, "host does not exist");
 				ret = 1;
 			}
@@ -1196,6 +1195,7 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 
 			tup_result = build_common_command_tuple(&name, ret == 0 ? true:false, message.data);
 
+			ma_close(ma);
 			ExecClearTuple(slot);
 			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
 			MemoryContextSwitchTo(oldcontext);
@@ -1315,6 +1315,7 @@ void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceive
 			{
 				success = false;
 				appendStringInfoString(&buf, "host does not exist");
+				ReleaseSysCache(tup);
 			}
 
 			MemoryContextSwitchTo(context);
