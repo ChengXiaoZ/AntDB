@@ -31,7 +31,6 @@
 #include "libpq/libpq-fe.h"
 #include "libpq/libpq-int.h"
 
-#define MAX_IDLE_TIME 60
 #define START_POOL_ALLOC	512
 #define STEP_POLL_ALLOC		8
 
@@ -176,6 +175,9 @@ int			MaxPoolSize = 100;
 int			PoolRemoteCmdTimeout = 0;
 
 bool		PersistentConnections = false;
+
+/* pool time out */
+extern int  pool_time_out;
 
 /* connect retry times */
 int 		RetryTimes = 3;	
@@ -376,7 +378,7 @@ static void PoolerLoop(void)
 	}
 	on_proc_exit(on_exit_pooler, (Datum)0);
 	cur_time = time(NULL);
-	next_close_idle_time = cur_time + MAX_IDLE_TIME;
+	next_close_idle_time = cur_time + pool_time_out;
 
 	if(sigsetjmp(local_sigjmp_buf, 1) != 0)
 	{
@@ -558,8 +560,8 @@ static void PoolerLoop(void)
 		/* close timeout idle slot(s) */
 		if(cur_time >= next_close_idle_time)
 		{
-			next_close_idle_time = close_timeout_idle_slots(cur_time - MAX_IDLE_TIME)
-				+ MAX_IDLE_TIME;
+			next_close_idle_time = close_timeout_idle_slots(cur_time - pool_time_out)
+				+ pool_time_out;
 		}
 	}
 }
