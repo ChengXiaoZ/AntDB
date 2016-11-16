@@ -369,7 +369,8 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	datumenumvalues = heap_getattr(tuple, Anum_mgr_parm_enumval, RelationGetDescr(noderel), &isNull);
 	if(isNull)
 	{
-		appendStringInfo(enumvalue, "%s", "0");
+		/*never come here*/
+		appendStringInfo(enumvalue, "%s", "{0}");
 	}
 	else
 	{
@@ -1185,17 +1186,34 @@ static int mgr_get_parm_unit_type(char *nodename, char *parmunit)
 /*check enum type of parm's value is right*/
 static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 {
-	char pvaluearray[256];		/*the max length of enumvals in pg_settings less than 256*/
+	char pvaluearray[256]="";		/*the max length of enumvals in pg_settings less than 256*/
 	char *pvaluetmp;
 	char *ptr;
 	char *pvalue;
+	char *pvaluespecial=",debug2,";	/*debug equals debug2*/
 	bool ret = false;
+	
+	Assert(value != NULL);
+	Assert(valuelist->data != NULL);
+	
+	/*special handling, because "debug" equals "debug2"*/
+	if (strcmp("debug", value) == 0)
+	{
+		pvalue = strstr(valuelist->data, pvaluespecial);
+		if (pvalue != NULL)
+			return true;
+	}
 	/*the content of valuelist like this "{xx,xx,xx}", so it need copy from 1 to len -2*/
-	pvalue = strstr(valuelist->data, value);
-	if (pvalue != NULL)
+	if (valuelist->len > 2)
 	{
 		strncpy(pvaluearray, &(valuelist->data[1]), (valuelist->len-2) < 255 ? (valuelist->len-2):255);
 		pvaluearray[(valuelist->len-2) < 255 ? (valuelist->len-2):255] = '\0';
+		resetStringInfo(valuelist);
+		appendStringInfoString(valuelist, pvaluearray);
+	}
+	pvalue = strstr(valuelist->data, value);
+	if (pvalue != NULL)
+	{
 		ptr = strtok_r(pvaluearray, ",", &pvaluetmp);  
 		while(ptr != NULL)
 		{
@@ -1207,7 +1225,6 @@ static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 			ptr = strtok_r(NULL, ",", &pvaluetmp);
 
 		}
-
 	}
 
 	return ret;
