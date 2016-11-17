@@ -5911,7 +5911,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 			,errmsg("no such gtm type: %s", typestr)));
 	}
 	if(CNDN_TYPE_NONE_TYPE == nodetype)
-		ereport(ERROR, (errmsg("gtm slave or extra is not exist incluster")));
+		ereport(ERROR, (errmsg("gtm slave or extra does not exist incluster")));
 	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
 }
 
@@ -6705,7 +6705,7 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 
 	if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 	{
-		ereport(ERROR, (errmsg("You should  set The synchronous relationship on the slave node, because the master may have two slave ")));
+		ereport(ERROR, (errmsg("synchronous relationship must set on the slave or the extra node")));
 	}
 	node_type_str = mgr_nodetype_str(nodetype);
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
@@ -6714,7 +6714,7 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 	if (!HeapTupleIsValid(checktuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
-				, errmsg("%s \"%s\" is not exists", node_type_str, nodename)));
+				, errmsg("%s \"%s\" dose not exists", node_type_str, nodename)));
 	}
 	
 	switch(nodetype)
@@ -6892,9 +6892,9 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 	}
 	
 	if(bslave_exist == false && bextra_exist == false)
-		ereport(ERROR, (errmsg("datanode slave and extra \"%s\" is not exist", node_name)));
+		ereport(ERROR, (errmsg("both of datanode slave and extra \"%s\" do not exist", node_name)));
 	if((bslave_running == false || bslave_incluster == false)&&(bextra_running == false || bextra_incluster == false))
-		ereport(ERROR, (errmsg("The datanode slave and extra %s is not running or not exist incluster", node_name)));	
+		ereport(ERROR, (errmsg("both of datanode slave and extra %s are not running or do not exist incluster", node_name)));	
 	else
 	{
 		if(bslave_sync == true && bslave_running == true && bslave_incluster == true)
@@ -6921,7 +6921,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 			if(bextra_sync == true && bextra_incluster == true)
 			{
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("The node extra %s is sync mode,but it's not running.", node_name)
+				, errmsg("the extra node %s is sync mode,but it's not running.", node_name)
 				, errhint("you can add \'force\' at the end,and enforcing execute failover.")));
 			}				
 		}
@@ -6930,7 +6930,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 			if(bslave_sync == true && bslave_incluster == true)
 			{
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("The node slave %s is sync mode,but it's not running.", node_name)
+				, errmsg("the slave node %s is sync mode,but it's not running.", node_name)
 				, errhint("you can add \'force\' at the end,and enforcing execute failover.")));			
 			}	
 		}		
