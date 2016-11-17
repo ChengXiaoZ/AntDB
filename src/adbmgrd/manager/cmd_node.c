@@ -4833,7 +4833,7 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 			,errmsg("no such node type: %s", typestr)));
 	}
 	if(CNDN_TYPE_NONE_TYPE == nodetype)
-		ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist incluster", nodename)));
+		ereport(ERROR, (errmsg("datanode slave or extra \"%s\" is not exist incluster", nodename)));
 	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
 }
 
@@ -5911,7 +5911,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 			,errmsg("no such gtm type: %s", typestr)));
 	}
 	if(CNDN_TYPE_NONE_TYPE == nodetype)
-		ereport(ERROR, (errmsg("gtm slave or extra does not exist incluster")));
+		ereport(ERROR, (errmsg("gtm slave or extra is not exist incluster")));
 	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
 }
 
@@ -6892,7 +6892,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 	}
 	
 	if(bslave_exist == false && bextra_exist == false)
-		ereport(ERROR, (errmsg("datanode slave and extra \"%s\" does not exist", node_name)));
+		ereport(ERROR, (errmsg("datanode slave and extra \"%s\" is not exist", node_name)));
 	if((bslave_running == false || bslave_incluster == false)&&(bextra_running == false || bextra_incluster == false))
 		ereport(ERROR, (errmsg("The datanode slave and extra %s is not running or not exist incluster", node_name)));	
 	else
@@ -6915,16 +6915,24 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		}		
 	}
 	if(force == false)
-	{
+	{		
 		if(node_type == slave_type && bslave_sync == false)
 		{
 			if(bextra_sync == true && bextra_incluster == true)
-				ereport(ERROR, (errmsg("The node extra %s is sync mode,but it's not running.\nhint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+				, errmsg("The node extra %s is sync mode,but it's not running.", node_name)
+				, errhint("you can add \'force\' at the end,and enforcing execute failover.")));
+			}				
 		}
 		else if(node_type == extra_type && bextra_sync == false)
 		{
 			if(bslave_sync == true && bslave_incluster == true)
-				ereport(ERROR, (errmsg("The node slave %s is sync mode,but it's not running.\nhint:you can add \'force\' at the end,and enforcing execute failover ", node_name)));	
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+				, errmsg("The node slave %s is sync mode,but it's not running.", node_name)
+				, errhint("you can add \'force\' at the end,and enforcing execute failover.")));			
+			}	
 		}		
 	}
 	/*close relation */
