@@ -627,9 +627,10 @@
 ##------------------------------------------------------------------------------
 # ADB OPTIONS
 ##------------------------------------------------------------------------------
-#enable_adb_ha_sync = on			# Enable record each commit sql for HA synchronization
+#enable_adb_ha_sync = off			# Enable record each commit sql for HA synchronization
 #enable_adb_ha_sync_select = off	# Disable record SELECT SQL
 #adb_ha_param_delimiter = '$&#$'		# Delimiter for recording execute sql
+#enable_stable_func_shipping = off     # Enable stable function shipping.
 #pool_time_out = 60                 # close connection from poolmgr to datanode idle process max time
 #------------------------------------------------------------------------------
 # CONFIG FILE INCLUDES

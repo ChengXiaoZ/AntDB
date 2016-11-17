@@ -39,6 +39,9 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
+#ifdef ADB
+extern bool enable_stable_func_shipping;
+#endif
 
 /*
  * Shippability_context
@@ -1496,6 +1499,20 @@ pgxc_is_expr_shippable(Expr *node, bool *has_aggs)
 bool
 pgxc_is_func_shippable(Oid funcid)
 {
+#ifdef ADB
+	/*
+	 * ADBQ: here we treat function which is stable or immutable
+	 * shippable to make sure query is shippable, maybe cause
+	 * some wrong.
+	 */
+	 if (enable_stable_func_shipping)
+	 {
+		char func_vol = func_volatile(funcid);
+		return (func_vol == PROVOLATILE_STABLE) ||
+			(func_vol == PROVOLATILE_IMMUTABLE);
+	 }
+#endif
+
 	/*
 	 * For the time being a function is thought as shippable
 	 * only if it is immutable.

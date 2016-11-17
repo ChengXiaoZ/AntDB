@@ -517,6 +517,7 @@ char		*nls_timestamp_tz_format;
 bool		enable_adb_ha_sync;
 bool		enable_adb_ha_sync_select;
 char		*adb_ha_param_delimiter;
+bool		enable_stable_func_shipping;
 char		*AGtmHost;
 int			AGtmPort;
 int			pool_time_out;
@@ -1696,7 +1697,7 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_adb_ha_sync,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -1706,6 +1707,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_adb_ha_sync_select,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_stable_func_shipping", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables stable function shipping to ship query directly to datanode."),
+			NULL
+		},
+		&enable_stable_func_shipping,
 		false,
 		NULL, NULL, NULL
 	},
