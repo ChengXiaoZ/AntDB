@@ -1,0 +1,56 @@
+<!--
+doc/src/sgml/ref/mgr_drop_host.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-DROPHOST">
+  <refmeta>
+    <refentrytitle>DROP HOST</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>DROP HOST</refname>
+    <refpurpose>drop a host from ADB cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-drophost">
+    <primary>DROP HOST</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+DROP HOST [IF EXISTS] [ ( <replaceable class="parameter">name</replaceable> [, ...] ) ]
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Drop a host from ADB cluster
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Drop local from cluster:
+      <programlisting>
+        DROP HOST local;
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-addhost"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>

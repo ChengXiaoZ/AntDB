@@ -259,4 +259,19 @@
 
  </reference>
 
+<reference id="reference-manage">
+  <title>ADB Server manage</title>
+
+  <partintro>
+   <para>
+    This part contains reference information for ADB servers manage and
+    support utilities.
+   </para>
+  </partintro>
+
+   &mgrAddHost;
+   &mgrDropHost;
+
+</reference>
+
 </part>

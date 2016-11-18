@@ -189,3 +189,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY psqlRef            SYSTEM "psql-ref.sgml">
 <!ENTITY reindexdb          SYSTEM "reindexdb.sgml">
 <!ENTITY vacuumdb           SYSTEM "vacuumdb.sgml">
+
+<!-- ADB manage command -->
+<!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
+<!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">

@@ -1,0 +1,138 @@
+<!--
+doc/src/sgml/ref/mgr_add_host.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ADDHOST">
+  <refmeta>
+    <refentrytitle>ADD HOST</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ADD HOST</refname>
+    <refpurpose>add a host to ADB cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-addhost">
+    <primary>ADD HOST</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ADD HOST [IF NOT EXISTS] <replaceable class="parameter">name</replaceable>
+     [ ( <replaceable class="parameter">option</replaceable> [, ...] ) ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+     ADDRESS <replaceable class="parameter">host_address</replaceable>
+     AGENTPORT <replaceable class="parameter">agent_port_number</replaceable>
+     PGHOME <replaceable class="parameter">adb_home_path</replaceable>
+     PORT <replaceable class="parameter">port_number</replaceable>
+     PROTOCOL <replaceable class="parameter">protocol_type</replaceable>
+     USER <replaceable class="parameter">user_name</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Add a host to ADB cluster
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">host_address</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host address, for now only can be a IP address, not support hostname.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">agent_port_number</replaceable>
+        </term>
+        <listitem>
+          <para>
+            ADB manager command agent listen TCP port.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">adb_home_path</replaceable>
+        </term>
+        <listitem>
+          <para>
+            ADB programs install absolute path.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">port_number</replaceable>
+        </term>
+        <listitem>
+          <para>
+            <replaceable class="parameter">protocol_type</replaceable> listen port number.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">protocol_type</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Connect <replaceable class="parameter">host_address</replaceable> using protocol:<literal>ssh</literal>, <literal>telnet</literal>.
+          </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">user_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Select host's user name for run ADB
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Add localhost to cluster:
+      <programlisting>
+        ADD HOST local (ADDRESS '127.0.0.1', USER myuser);
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-drophost"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>
