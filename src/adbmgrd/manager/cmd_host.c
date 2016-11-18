@@ -1141,6 +1141,7 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 					if(isNull)
 					{
 						ReleaseSysCache(tup);
+						ma_close(ma);
 						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 							, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 							, errmsg("column hostpghome is null")));
@@ -1184,9 +1185,9 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 
 					ReleaseSysCache(tup);
 				}
+				ma_close(ma);
 			}else
 			{
-				ReleaseSysCache(tup);
 				appendStringInfoString(&message, "host does not exist");
 				ret = 1;
 			}
@@ -1195,7 +1196,6 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 
 			tup_result = build_common_command_tuple(&name, ret == 0 ? true:false, message.data);
 
-			ma_close(ma);
 			ExecClearTuple(slot);
 			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
 			MemoryContextSwitchTo(oldcontext);
@@ -1315,7 +1315,6 @@ void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceive
 			{
 				success = false;
 				appendStringInfoString(&buf, "host does not exist");
-				ReleaseSysCache(tup);
 			}
 
 			MemoryContextSwitchTo(context);
