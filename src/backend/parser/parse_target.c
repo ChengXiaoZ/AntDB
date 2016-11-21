@@ -439,7 +439,8 @@ transformAssignedExpr(ParseState *pstate,
 
 #ifdef ADB
 	if (IsOracleParseGram(pstate) &&
-		exprKind == EXPR_KIND_INSERT_TARGET &&
+		(exprKind == EXPR_KIND_INSERT_TARGET ||
+		 exprKind == EXPR_KIND_UPDATE_TARGET) &&
 		IsA(expr, Const) &&
 		((Const *)expr)->constisnull)
 		expr = (Expr *)makeNullConst(attrtype, attrtypmod, attrcollation);
@@ -531,7 +532,8 @@ transformAssignedExpr(ParseState *pstate,
 		Node	   *orig_expr = (Node *) expr;
 #ifdef ADB
 		if (IsOracleParseGram(pstate) &&
-			exprKind == EXPR_KIND_INSERT_TARGET)
+			(exprKind == EXPR_KIND_INSERT_TARGET ||
+			 exprKind == EXPR_KIND_UPDATE_TARGET))
 		{
 			CoercionForm cformat = COERCE_EXPLICIT_CAST;
 			OraCoerceKind sv_coerce_kind = current_coerce_kind;
