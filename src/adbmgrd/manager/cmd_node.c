@@ -6023,6 +6023,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	/*5. refresh new master postgresql.conf*/
 	resetStringInfo(&infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
+	bget = mgr_check_node_exist_incluster(&cndnname, nodetype, true);
 	if (bget)
 	{
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", aimtuplenodetype == GTM_TYPE_GTM_SLAVE ? "extra":"slave", &infosendmsg);
