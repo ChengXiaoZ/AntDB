@@ -3859,7 +3859,8 @@ static struct config_enum ConfigureNamesEnum[] =
 	{
 		{"command_mode", PGC_SUSET, UNGROUPED,
 			gettext_noop("Set command mode"),
-			NULL
+			NULL,
+			GUC_REPORT | GUC_NO_RESET_ALL
 		},
 		&mgr_cmd_mode,
 		CMD_MODE_MGR, command_mode,
