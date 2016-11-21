@@ -779,18 +779,14 @@ StartAgentStmt:
 StopAgentStmt:
 		STOP AGENT ALL
 		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent", args));
+			MGRStopAgent *stmt = makeNode(MGRStopAgent);
+			stmt->hosts = NIL;
 			$$ = (Node*)stmt;
 		}
-	|	STOP AGENT Ident
+		| STOP AGENT ObjList
 		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($3, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent", args));
+			MGRStopAgent *stmt = makeNode(MGRStopAgent);
+			stmt->hosts = $3;
 			$$ = (Node*)stmt;
 		}
 		;

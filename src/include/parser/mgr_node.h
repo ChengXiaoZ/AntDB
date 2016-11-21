@@ -117,4 +117,10 @@ typedef struct MGRStartAgent
 	char		*password;
 }MGRStartAgent;
 
+typedef struct MGRStopAgent
+{
+	NodeTag		type;
+	List		*hosts;		/* list of Value(String), NIL for ALL */
+}MGRStopAgent;
+
 #endif /* MGR_NODE_H */

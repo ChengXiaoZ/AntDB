@@ -5273,9 +5273,6 @@ DESCR("init datanode extra all");
 DATA(insert OID = 3846 (  mgr_clean_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_clean_all _null_ _null_ _null_ ));
 DESCR("clean all");
 
-DATA(insert OID = 3939 ( mgr_stop_agent		PGNSP PGUID 12 10 400 0 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_stop_agent _null_ _null_ _null_ ));
-DESCR("stop agen");
-
 #endif
 
 /*
