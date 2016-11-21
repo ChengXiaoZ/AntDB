@@ -96,6 +96,9 @@ typedef struct _psqlSettings
 	FILE	   *cur_cmd_source; /* describe the status of the current main
 								 * loop */
 	bool		cur_cmd_interactive;
+#ifdef ADB
+	bool		is_manage;		/* is server adb managerd */
+#endif /* ADB */
 	int			sversion;		/* backend server version */
 	const char *progname;		/* in case you renamed psql */
 	char	   *inputfile;		/* file being currently processed, if any */

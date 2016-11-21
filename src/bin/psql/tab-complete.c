@@ -875,6 +875,9 @@ void
 initialize_readline(void)
 {
 	rl_readline_name = (char *) pset.progname;
+#ifdef ADB
+	if(pset.is_manage == false)
+#endif
 	rl_attempted_completion_function = (void *) psql_completion;
 
 	rl_basic_word_break_characters = WORD_BREAKS;

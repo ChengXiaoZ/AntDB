@@ -25,6 +25,7 @@ my $docdir = $ARGV[0] or die "$0: missing required argument: docdir\n";
 my $hfile = $ARGV[1] . '.h'
   or die "$0: missing required argument: output file\n";
 my $cfile = $ARGV[1] . '.c';
+my $docdir_mgr = $ARGV[2] or die "$0: missing required argument: docdir-mgr\n";
 
 my $hfilebasename;
 if ($hfile =~ m!.*/([^/]+)$!)
@@ -181,8 +182,11 @@ sql_help_$id(PQExpBuffer buf)
 }
 
 print HFILE "
-
+#ifdef ADB
+static const struct _helpStruct ADB_QL_HELP[] = {
+#else /* ADB */
 static const struct _helpStruct QL_HELP[] = {
+#endif /* ADB */
 ";
 foreach (sort keys %entries)
 {
@@ -200,10 +204,137 @@ print HFILE "
     { NULL, NULL, NULL }    /* End of list marker */
 };
 
-
+#ifdef ADB 
+#define ADB_QL_HELP_COUNT	"
+  . scalar(keys %entries) . "		/* number of help items */
+#define ADB_QL_MAX_CMD_LEN	$maxlen		/* largest strlen(cmd) */
+#else /* ADB */
 #define QL_HELP_COUNT	"
   . scalar(keys %entries) . "		/* number of help items */
 #define QL_MAX_CMD_LEN	$maxlen		/* largest strlen(cmd) */
+#endif /* ADB */
+
+";
+
+$maxlen = 0;
+%entries = ();
+closedir DIR;
+opendir(DIR, $docdir_mgr)
+  or die "$0: could not open documentation source dir '$docdir_mgr': $!\n";
+
+foreach my $file (sort readdir DIR)
+{
+	my (@cmdnames, $cmddesc, $cmdsynopsis);
+	$file =~ /^mgr_.*\.sgml$/ or next;
+
+	open(FILE, "$docdir_mgr/$file") or next;
+	my $filecontent = join('', <FILE>);
+	close FILE;
+
+	# Ignore files that are not for Manage language statements
+	$filecontent =~
+	  m!<refmiscinfo>\s*Manage - Language Statements\s*</refmiscinfo>!i
+	  or next;
+
+	# Collect multiple refnames
+  LOOP:
+	{
+		$filecontent =~ m!\G.*?<refname>\s*([a-z ]+?)\s*</refname>!cgis
+		  and push @cmdnames, $1
+		  and redo LOOP;
+	}
+	$filecontent =~ m!<refpurpose>\s*(.+?)\s*</refpurpose>!is
+	  and $cmddesc = $1;
+	$filecontent =~ m!<synopsis>\s*(.+?)\s*</synopsis>!is
+	  and $cmdsynopsis = $1;
+
+	if (@cmdnames && $cmddesc && $cmdsynopsis)
+	{
+		s/\"/\\"/g foreach @cmdnames;
+
+		$cmddesc =~ s/<[^>]+>//g;
+		$cmddesc =~ s/\s+/ /g;
+		$cmddesc =~ s/\"/\\"/g;
+
+		my @params = ();
+
+		my $nl_count = () = $cmdsynopsis =~ /\n/g;
+
+		$cmdsynopsis =~ m!</>!
+		  and die "$0:$file: null end tag not supported in synopsis\n";
+		$cmdsynopsis =~ s/%/%%/g;
+
+		while ($cmdsynopsis =~ m!<(\w+)[^>]*>(.+?)</\1[^>]*>!)
+		{
+			my $match = $2;
+			$match =~ s/<[^>]+>//g;
+			$match =~ s/%%/%/g;
+			push @params, $match;
+			$cmdsynopsis =~ s!<(\w+)[^>]*>.+?</\1[^>]*>!%s!;
+		}
+		$cmdsynopsis =~ s/\r?\n/\\n/g;
+		$cmdsynopsis =~ s/\"/\\"/g;
+
+		foreach my $cmdname (@cmdnames)
+		{
+			$entries{$cmdname} = {
+				cmddesc     => $cmddesc,
+				cmdsynopsis => $cmdsynopsis,
+				params      => \@params,
+				nl_count    => $nl_count };
+			$maxlen =
+			  ($maxlen >= length $cmdname) ? $maxlen : length $cmdname;
+		}
+	}
+	else
+	{
+		die "$0: parsing file '$file' failed (N='@cmdnames' D='$cmddesc')\n";
+	}
+}
+
+foreach (sort keys %entries)
+{
+	my $prefix = "\t" x 5 . '  ';
+	my $id     = $_;
+	$id =~ s/ /_/g;
+	my $synopsis = "\"$entries{$_}{cmdsynopsis}\"";
+	$synopsis =~ s/\\n/\\n"\n$prefix"/g;
+	my @args =
+	  ("buf", $synopsis, map("_(\"$_\")", @{ $entries{$_}{params} }));
+	print HFILE "extern void mgr_help_$id(PQExpBuffer buf);\n";
+	print CFILE "void
+mgr_help_$id(PQExpBuffer buf)
+{
+\tappendPQExpBuffer(" . join(",\n$prefix", @args) . ");
+}
+
+";
+}
+
+print HFILE "
+
+static const struct _helpStruct MGR_HELP[] = {
+";
+foreach (sort keys %entries)
+{
+	my $id = $_;
+	$id =~ s/ /_/g;
+	print HFILE "    { \"$_\",
+      N_(\"$entries{$_}{cmddesc}\"),
+      mgr_help_$id,
+      $entries{$_}{nl_count} },
+
+";
+}
+
+print HFILE "
+    { NULL, NULL, NULL }    /* End of list marker */
+};
+
+
+#define MGR_HELP_COUNT	"
+  . scalar(keys %entries) . "		/* number of help items */
+#define MGR_MAX_CMD_LEN	$maxlen		/* largest strlen(cmd) */
 
 
 #endif /* $define */

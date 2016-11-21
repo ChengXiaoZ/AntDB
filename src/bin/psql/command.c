@@ -1877,6 +1877,24 @@ SyncVariables(void)
 
 	/* send stuff to it, too */
 	PQsetErrorVerbosity(pset.db, pset.verbosity);
+#ifdef ADB
+	/* is server ADB managerd? */
+	{
+		const char *cmd_mode = PQparameterStatus(pset.db, "command_mode");
+		if(cmd_mode != NULL
+			&& (strcmp(cmd_mode, "manager") == 0
+				|| strcmp(cmd_mode, "mgr") == 0
+				|| strcmp(cmd_mode, "manage") == 0
+				)
+			)
+		{
+			pset.is_manage = true;
+		}else
+		{
+			pset.is_manage = false;
+		}
+	}
+#endif /* ADB */
 }
 
 /*

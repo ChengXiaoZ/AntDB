@@ -304,7 +304,22 @@ void
 helpSQL(const char *topic, unsigned short int pager)
 {
 #define VALUE_OR_NULL(a) ((a) ? (a) : "")
-
+#ifdef ADB
+	const struct _helpStruct *QL_HELP;
+	int QL_HELP_COUNT;
+	int QL_MAX_CMD_LEN;
+	if(pset.is_manage)
+	{
+		QL_HELP = MGR_HELP;
+		QL_HELP_COUNT = MGR_HELP_COUNT;
+		QL_MAX_CMD_LEN = MGR_MAX_CMD_LEN;
+	}else
+	{
+		QL_HELP = ADB_QL_HELP;
+		QL_HELP_COUNT = ADB_QL_HELP_COUNT;
+		QL_MAX_CMD_LEN = ADB_QL_MAX_CMD_LEN;
+	}
+#endif /* ADB */
 	if (!topic || strlen(topic) == 0)
 	{
 		/* Print all the available command names */
@@ -336,6 +351,7 @@ helpSQL(const char *topic, unsigned short int pager)
 
 		for (i = 0; i < nrows; i++)
 		{
+#ifndef ADB
 			fprintf(output, "  ");
 			for (j = 0; j < ncolumns - 1; j++)
 				fprintf(output, "%-*s",
@@ -344,6 +360,25 @@ helpSQL(const char *topic, unsigned short int pager)
 			if (i + j * nrows < QL_HELP_COUNT)
 				fprintf(output, "%s",
 						VALUE_OR_NULL(QL_HELP[i + j * nrows].cmd));
+#else /* ADB */
+			int index;
+			fprintf(output, "  ");
+			for (j = 0; j < ncolumns - 1; j++)
+			{
+				index = i + j * nrows;
+				if(index < QL_HELP_COUNT)
+				fprintf(output, "%-*s",
+						QL_MAX_CMD_LEN + 1, QL_HELP[index].cmd);
+				else
+					break;
+			}
+			if (i + j * nrows < QL_HELP_COUNT)
+			{
+				index = i + j * nrows;
+				if(index < QL_HELP_COUNT)
+					fprintf(output, "%s", QL_HELP[index].cmd);
+			}
+#endif /* ADB */
 			fputc('\n', output);
 		}
 

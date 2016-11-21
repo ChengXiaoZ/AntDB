@@ -17,6 +17,7 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 REFDOCDIR= $(top_srcdir)/doc-xc/src/sgml/ref
+REFDOCDIR_MGR = $(top_srcdir)/doc/src/sgml/ref
 
 MAKESGMLDIR = $(top_builddir)/src/pgxc/tools/makesgml
 SGMLDIR= $(top_builddir)/doc-xc/src/sgml
@@ -44,10 +45,10 @@ kwlookup.c: % : $(top_srcdir)/src/backend/parser/%
 	rm -f $@ && $(LN_S) $< .
 
 sql_help.c: sql_help.h ;
-sql_help.h: create_help.pl $(wildcard $(REFDOCDIR)/*.sgml)
+sql_help.h: create_help.pl $(wildcard $(REFDOCDIR)/*.sgml) $(wildcard $(REFDOCDIR_MGR)/mgr_*.sgml)
 	$(MAKE) -C $(MAKESGMLDIR)
 	$(MAKE) -C $(SGMLDIR) sgml-files
-	$(PERL) $< $(REFDOCDIR) $*
+	$(PERL) $< $(REFDOCDIR) $* $(REFDOCDIR_MGR)
 
 # psqlscan is compiled as part of mainloop
 mainloop.o: psqlscan.c
