@@ -6080,6 +6080,150 @@ ATAddCheckConstraint(List **wqueue, AlteredTableInfo *tab, Relation rel,
 	}
 }
 
+#ifdef ADB
+/*
+ * Check foreign key constraint which will obviously lead to mistakes.
+ *
+ * Tenet:
+ * 		Every node of the foreign key rel can reference correct tuple
+ * of the primary key rel.
+ */
+static void
+check_valid_fkconstraint(const char *constraintName,
+						 Relation rel,
+						 Relation pkrel,
+						 const int16 *constraintKey,
+						 int constraintNKeys,
+						 const int16 *foreignKey,
+						 int foreignNKeys,
+						 char foreignUpdateType,
+						 char foreignDeleteType,
+						 char foreignMatchType)
+{
+	RelationLocInfo *rloc = RelationGetLocInfo(rel);
+	RelationLocInfo *pkrloc = RelationGetLocInfo(pkrel);
+	List *nodes_diff;
+	bool same_dist_col;
+	int i;
+
+	Assert(rloc && pkrloc);
+
+	/*
+	 * Whatever distribution type, the primary key rel's node list should
+	 * totally contain the node list of the foreign key rel, otherwise it
+	 * is an invalid constraint.
+	 */
+	nodes_diff = list_difference_int(rloc->nodeList, pkrloc->nodeList);
+	if (nodes_diff != NIL)
+	{
+		pfree(nodes_diff);
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_FOREIGN_KEY),
+			errmsg("Cannot create foreign key \"%s\" which cannot be "
+				"referenced in the primary key table", constraintName),
+			errhint("because of different distribution of nodes")));
+		return ;
+	}
+
+	/*
+	 * It is a valid foreign key constraint if the primary key table is
+	 * replicated.
+	 */
+	if (IsRelationReplicated(pkrloc))
+		return ;
+
+	/*
+	 * Can not be in the same partition with primary key rel if distribution
+	 * type of any relation is round robin.
+	 */
+	if (rloc->locatorType == LOCATOR_TYPE_RROBIN ||
+		pkrloc->locatorType == LOCATOR_TYPE_RROBIN)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_FOREIGN_KEY),
+			errmsg("Cannot create foreign key \"%s\" which cannot be "
+				"referenced in the primary key table", constraintName),
+			errhint("because of round robin distribution type")));
+		return ;
+	}
+
+	/*
+	 * They must have the same distribution nodes if the primary key table
+	 * is not replicated.
+	 */
+	nodes_diff = list_difference_int(pkrloc->nodeList, rloc->nodeList);
+	if (nodes_diff != NIL)
+	{
+		pfree(nodes_diff);
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_FOREIGN_KEY),
+			errmsg("Cannot create foreign key \"%s\" which cannot be "
+				"referenced in the primary key table", constraintName),
+			errhint("because of different distribution of nodes")));
+		return ;
+	}
+
+	/*
+	 * It is a valid constraint if table has only one node.
+	 */
+	if (list_length(rloc->nodeList) == 1)
+		return ;
+
+	/*
+	 * They must have the same distribution type if the primary key table is
+	 * not replicated.
+	 */
+	if (rloc->locatorType != pkrloc->locatorType)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_INVALID_FOREIGN_KEY),
+			errmsg("Cannot create foreign key \"%s\" which cannot be "
+				"referenced in the primary key table", constraintName),
+			errhint("because of different types of distribution")));
+		return ;
+	}
+
+	/*
+	 * See pgxc_check_fk_shippability.
+	 */
+	if (IsRelationDistributedByUserDefined(rloc))
+		return ;
+
+	/*
+	 * They must have the same distribution columns if the primary key table
+	 * is not replicated.
+	 */
+	if (IsRelationDistributedByValue(rloc))
+	{
+		same_dist_col = false;
+		for (i = 0; i < constraintNKeys; i++)
+		{
+			if (constraintKey[i] == rloc->partAttrNum &&
+				foreignKey[i] == pkrloc->partAttrNum)
+				same_dist_col = true; 
+		}
+		
+		if (!same_dist_col)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FOREIGN_KEY),
+				errmsg("Cannot create foreign key \"%s\" which cannot be "
+					"referenced in the primary key table", constraintName),
+				errhint("because cannot make sure foreign key table has the "
+					"same partition with the primary key table")));
+
+		if (foreignUpdateType == FKCONSTR_ACTION_SETNULL ||
+			foreignUpdateType == FKCONSTR_ACTION_SETDEFAULT ||
+			foreignDeleteType == FKCONSTR_ACTION_SETNULL ||
+			foreignDeleteType == FKCONSTR_ACTION_SETDEFAULT)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FOREIGN_KEY),
+				errmsg("Cannot create foreign key \"%s\" which cannot be "
+					"referenced in the primary key table", constraintName),
+				errhint("because value which is set on delete/update exists in only one node")));
+	}
+}
+#endif
+
 /*
  * Add a foreign-key constraint to a single table
  *
@@ -6441,6 +6585,20 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("Cannot create foreign key whose evaluation cannot be enforced to remote nodes")));
+
+#ifdef ADB
+		/* Check the validity of the foreign key constraint */
+		check_valid_fkconstraint(fkconstraint->conname,
+								 rel,
+								 pkrel,
+								 fkattnum,
+								 numfks,
+								 pkattnum,
+								 numpks,
+								 fkconstraint->fk_upd_action,
+								 fkconstraint->fk_del_action,
+								 fkconstraint->fk_matchtype);
+#endif
 	}
 #endif
 
