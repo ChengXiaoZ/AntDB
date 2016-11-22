@@ -213,6 +213,9 @@ extern Oid	list_nth_oid(const List *list, int n);
 extern bool list_member(const List *list, const void *datum);
 extern bool list_member_ptr(const List *list, const void *datum);
 extern bool list_member_int(const List *list, int datum);
+#ifdef ADB
+extern bool list_member_int_idx(const List *list, int datum, int* idx);
+#endif
 extern bool list_member_oid(const List *list, Oid datum);
 
 extern List *list_delete(List *list, void *datum);

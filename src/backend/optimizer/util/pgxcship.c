@@ -2084,6 +2084,35 @@ pgxc_check_index_shippability(RelationLocInfo *relLocInfo,
 				 * remotely as the distribution column is included in index.
 				 */
 				break;
+#ifdef ADB
+			case LOCATOR_TYPE_USER_DEFINED:
+				{
+					List *attr_diff = NIL;
+
+					/* Index contains expressions, it cannot be shipped safely */
+					if (indexExprs != NIL)
+					{
+						result = false;
+						break;
+					}
+
+					/* Nothing to do if no attributes */
+					if (indexAttrs == NIL)
+						break;
+
+					/*
+					 * Check that all distribution columns are included in the list of
+					 * index columns.
+					 */
+					attr_diff = list_difference_int(relLocInfo->funcAttrNums, indexAttrs);
+					if (attr_diff != NIL)
+					{
+						pfree(attr_diff);
+						result = false;
+					}
+				}
+				break;
+#endif
 
 			/* Those types are not supported yet */
 			case LOCATOR_TYPE_RANGE:
@@ -2193,6 +2222,63 @@ pgxc_check_fk_shippability(RelationLocInfo *parentLocInfo,
 				break;
 			}
 
+#ifdef ADB
+			if (IsRelationDistributedByUserDefined(parentLocInfo))
+			{
+				List *childRefsDiff = NIL;
+				List *parentRefsDiff = NIL;
+				ListCell *cell1 = NULL;
+				ListCell *cell2 = NULL;
+				int childAttIdx, parentAttIdx;
+				bool isChildAttDist, isParentAttDist;
+
+				/* Parent and child need to have the same distribution function */
+				Assert(OidIsValid(parentLocInfo->funcid));
+				Assert(OidIsValid(childLocInfo->funcid));
+				if (parentLocInfo->funcid != childLocInfo->funcid)
+				{
+					result = false;
+					break;
+				}
+				Assert(list_length(childLocInfo->funcAttrNums) ==
+					list_length(parentLocInfo->funcAttrNums));
+
+				/* Child foreign key should contain all distribution columns. */
+				childRefsDiff = list_difference_int(childLocInfo->funcAttrNums, childRefs);
+				if (childRefsDiff != NIL)
+				{
+					pfree(childRefsDiff);
+					result = false;
+					break;
+				}
+
+				/* Parent foreign key should contain all distribution columns. */
+				parentRefsDiff = list_difference_int(parentLocInfo->funcAttrNums, parentRefs);
+				if (parentRefsDiff != NIL)
+				{
+					pfree(parentRefsDiff);
+					result = false;
+					break;
+				}
+
+				/* Parent and child distribution columns need to have the same order. */
+				forboth (cell1, childRefs, cell2, parentRefs)
+				{
+					isChildAttDist = list_member_int_idx(childLocInfo->funcAttrNums,
+														lfirst_int(cell1), &childAttIdx);
+					isParentAttDist = list_member_int_idx(parentLocInfo->funcAttrNums,
+														lfirst_int(cell2), &parentAttIdx);
+					if (!isChildAttDist && !isParentAttDist)
+						continue;
+
+					if (!(childAttIdx == parentAttIdx && parentAttIdx >= 0))
+					{
+						result = false;
+						break;
+					}
+				}
+			} else
+#endif
 			/*
 			 * Check that child and parents are referenced using their
 			 * distribution column.
@@ -2203,24 +2289,6 @@ pgxc_check_fk_shippability(RelationLocInfo *parentLocInfo,
 				result = false;
 				break;
 			}
-
-#ifdef ADB
-			if (IsRelationDistributedByUserDefined(parentLocInfo))
-			{
-				if (parentLocInfo->funcid != childLocInfo->funcid)
-				{
-					result = false;
-					break;
-				}
-
-				if (list_difference_int(childLocInfo->funcAttrNums, childRefs) != NIL ||
-					list_difference_int(parentLocInfo->funcAttrNums, parentRefs) != NIL)
-				{
-					result = false;
-					break;
-				}
-			}
-#endif
 
 			/* By being here, parent-child constraint can be shipped correctly */
 			break;

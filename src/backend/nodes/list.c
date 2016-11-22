@@ -501,6 +501,34 @@ list_member_int(const List *list, int datum)
 	return false;
 }
 
+#ifdef ADB
+bool
+list_member_int_idx(const List *list, int datum, int* idx)
+{
+	const ListCell *cell;
+	
+	Assert(IsIntegerList(list));
+	check_list_invariants(list);
+
+	if (idx)
+		*idx = -1;
+
+	foreach(cell, list)
+	{
+		if (idx)
+			(*idx)++;
+
+		if (lfirst_int(cell) == datum)
+			return true;
+	}
+
+	if (idx)
+		*idx = -1;
+
+	return false;
+}
+#endif
+
 /*
  * Return true iff the OID 'datum' is a member of the list.
  */
