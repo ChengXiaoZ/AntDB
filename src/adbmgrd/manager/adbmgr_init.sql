@@ -967,12 +967,7 @@ RETURNS NULL ON NULL INPUT;
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
 --insert into parm select '*', name, setting, unit, context, vartype,  min_val, max_val, enumvals from pg_settings order by 2;
 --update parm set id1='#' where name in ('adb_ha_param_delimiter', 'agtm_host', 'agtm_port', 'enable_adb_ha_sync', 'enable_adb_ha_sync_select', 'enable_fast_query_shipping', 'enable_remotegroup', 'enable_remotejoin', 'enable_remotelimit', 'enable_remotesort', 'enforce_two_phase_commit', 'grammar', 'max_coordinators', 'max_datanodes', 'max_pool_size', 'min_pool_size', 'nls_date_format', 'nls_timestamp_format', 'nls_timestamp_tz_format', 'persistent_datanode_connections', 'pgxc_node_name', 'pgxcnode_cancel_delay', 'pool_remote_cmd_timeout', 'remotetype', 'require_replicated_table_pkey', 'snapshot_level', 'xc_enable_node_tcp_log', 'xc_maintenance_mode');
---update parm set setting='0' where name = 'max_wal_senders';
---update parm set setting='0' where name = 'wal_keep_segments';
 --update parm set setting='minimal' where name = 'wal_level';
---update parm set setting='10' where name = 'max_prepared_transactions';
---update parm set setting='stderr' where name = 'log_destination';
---update parm set setting='off' where name = 'logging_collector';
 --update parm set setting='localhost' where name = 'agtm_host';
 --pg_dump -p xxxx -d postgres -t parm -f cn1.txt --inserts -a
 
@@ -1095,7 +1090,7 @@ INSERT INTO adbmgr.parm VALUES ('*', 'lock_timeout', '0', 'user', 'integer', 'ms
 INSERT INTO adbmgr.parm VALUES ('*', 'log_autovacuum_min_duration', '-1', 'sighup', 'integer', 'ms', '-1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_checkpoints', 'off', 'sighup', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_connections', 'off', 'backend', 'bool', NULL, NULL, NULL, NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'log_destination', 'stderr', 'sighup', 'string', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'log_destination', 'csvlog', 'sighup', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_directory', 'pg_log', 'sighup', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_disconnections', 'off', 'backend', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_duration', 'off', 'superuser', 'bool', NULL, NULL, NULL, NULL);
@@ -1118,7 +1113,7 @@ INSERT INTO adbmgr.parm VALUES ('*', 'log_statement_stats', 'off', 'superuser', 
 INSERT INTO adbmgr.parm VALUES ('*', 'log_temp_files', '-1', 'superuser', 'integer', 'kB', '-1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_timezone', 'Hongkong', 'sighup', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'log_truncate_on_rotation', 'off', 'sighup', 'bool', NULL, NULL, NULL, NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'logging_collector', 'off', 'postmaster', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'logging_collector', 'on', 'postmaster', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'maintenance_work_mem', '16384', 'user', 'integer', 'kB', '1024', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_connections', '100', 'postmaster', 'integer', '', '1', '8388607', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_files_per_process', '1000', 'postmaster', 'integer', '', '25', '2147483647', NULL);
@@ -1127,11 +1122,11 @@ INSERT INTO adbmgr.parm VALUES ('*', 'max_identifier_length', '63', 'internal', 
 INSERT INTO adbmgr.parm VALUES ('*', 'max_index_keys', '32', 'internal', 'integer', '', '32', '32', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_locks_per_transaction', '64', 'postmaster', 'integer', '', '10', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_pred_locks_per_transaction', '64', 'postmaster', 'integer', '', '10', '2147483647', NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'max_prepared_transactions', '10', 'postmaster', 'integer', '', '0', '536870911', NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'max_prepared_transactions', '100', 'postmaster', 'integer', '', '0', '536870911', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_stack_depth', '2048', 'superuser', 'integer', 'kB', '100', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_standby_archive_delay', '30000', 'sighup', 'integer', 'ms', '-1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_standby_streaming_delay', '30000', 'sighup', 'integer', 'ms', '-1', '2147483647', NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'max_wal_senders', '0', 'postmaster', 'integer', '', '0', '8388607', NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'max_wal_senders', '5', 'postmaster', 'integer', '', '0', '8388607', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'password_encryption', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'port', '5100', 'postmaster', 'integer', '', '1', '65535', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'post_auth_delay', '0', 'backend', 'integer', 's', '0', '2147', NULL);
@@ -1201,7 +1196,7 @@ INSERT INTO adbmgr.parm VALUES ('*', 'vacuum_multixact_freeze_table_age', '15000
 INSERT INTO adbmgr.parm VALUES ('*', 'wal_block_size', '8192', 'internal', 'integer', '', '8192', '8192', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'wal_buffers', '512', 'postmaster', 'integer', '8kB', '-1', '262143', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'wal_debug', 'off', 'superuser', 'bool', NULL, NULL, NULL, NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'wal_keep_segments', '0', 'sighup', 'integer', '', '0', '2147483647', NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'wal_keep_segments', '32', 'sighup', 'integer', '', '0', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'wal_level', 'minimal', 'postmaster', 'enum', NULL, NULL, NULL, '{minimal,archive,hot_standby}');
 INSERT INTO adbmgr.parm VALUES ('*', 'wal_receiver_status_interval', '10', 'sighup', 'integer', 's', '0', '2147483', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'wal_receiver_timeout', '60000', 'sighup', 'integer', 'ms', '0', '2147483647', NULL);
