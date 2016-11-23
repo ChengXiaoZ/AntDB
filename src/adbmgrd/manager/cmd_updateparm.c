@@ -440,13 +440,19 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value)
 {
 	HeapTuple tuple;
+	HeapTuple newtuple;
 	HeapTuple alltype_tuple;
 	Form_mgr_updateparm mgr_updateparm;
 	Form_mgr_updateparm mgr_updateparm_alltype;
 	NameData name_standall;
+	NameData valuedata;
 	HeapScanDesc rel_scan;
 	HeapScanDesc rel_scanall;
 	ScanKeyData scankey[3];
+	TupleDesc tupledsc;
+	Datum datum[Natts_mgr_updateparm];
+	bool isnull[Natts_mgr_updateparm];
+	bool got[Natts_mgr_updateparm];
 	char allnodetype;
 	int delnum = 0;
 	int ret;
@@ -488,6 +494,7 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 		{
 			/*2,3. check need update*/
 			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
+			Assert(mgr_updateparm);
 			if (strcmp(value, NameStr(mgr_updateparm->updateparmvalue)) == 0)
 			{
 				delnum += mgr_delete_tuple_not_all(noderel, nodetype, key);
@@ -501,8 +508,16 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 			{
 				mgr_delete_tuple_not_all(noderel, nodetype, key);
 				/*update parm's value*/
-				namestrcpy(&(mgr_updateparm->updateparmvalue), value);
-				heap_inplace_update(noderel, tuple);
+				memset(datum, 0, sizeof(datum));
+				memset(isnull, 0, sizeof(isnull));
+				memset(got, 0, sizeof(got));
+				namestrcpy(&valuedata, value);
+				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&valuedata);
+				got[Anum_mgr_updateparm_value-1] = true;
+				tupledsc = RelationGetDescr(noderel);
+				newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
+				simple_heap_update(noderel, &tuple->t_self, newtuple);
+				CatalogUpdateIndexes(noderel, newtuple);
 				heap_endscan(rel_scan);
 				return PARM_NEED_UPDATE;
 			}
@@ -578,6 +593,7 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 		if (HeapTupleIsValid(tuple))
 		{
 			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
+			Assert(mgr_updateparm);
 			if (strcmp(NameStr(mgr_updateparm->updateparmvalue), value) == 0)
 			{
 				heap_endscan(rel_scan);
@@ -587,8 +603,16 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 			else
 			{
 				/*update parm's value*/
-				namestrcpy(&(mgr_updateparm->updateparmvalue), value);
-				heap_inplace_update(noderel, tuple);
+				memset(datum, 0, sizeof(datum));
+				memset(isnull, 0, sizeof(isnull));
+				memset(got, 0, sizeof(got));
+				namestrcpy(&valuedata, value);
+				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&valuedata);
+				got[Anum_mgr_updateparm_value-1] = true;
+				tupledsc = RelationGetDescr(noderel);
+				newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
+				simple_heap_update(noderel, &tuple->t_self, newtuple);
+				CatalogUpdateIndexes(noderel, newtuple);
 				heap_endscan(rel_scan);
 				heap_endscan(rel_scanall);
 				return PARM_NEED_UPDATE;
@@ -967,8 +991,8 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 		}
 		/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME or nodetype is datanode master/slave/extra, refresh the postgresql.conf 
-		* of the node, and delete the tuple in mgr_updateparm which nodetype and nodename is given;ifMACRO_STAND_FOR_ALL_NODENAME 
-		* in mgr_updateparm has the same nodetype, insert one tuple to *mgr_updateparm for record
+		* of the node, and delete the tuple in mgr_updateparm which nodetype and nodename is given;if MACRO_STAND_FOR_ALL_NODENAME 
+		* in mgr_updateparm has the same nodetype, insert one tuple to mgr_updateparm for record
 		*/
 		else 
 		{
@@ -1360,12 +1384,13 @@ void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, char oldnodetype, char newnodetype)
 {
 	HeapTuple looptuple;
+	HeapTuple newtuple;
 	ScanKeyData scankey[2];
 	HeapScanDesc rel_scan;
-	NameData namedatatmp;
-	Form_mgr_updateparm mgr_updateparm;
-
-	namestrcpy(&namedatatmp, MACRO_STAND_FOR_ALL_NODENAME);
+	TupleDesc tupledsc;
+	Datum datum[Natts_mgr_updateparm];
+	bool isnull[Natts_mgr_updateparm];
+	bool got[Natts_mgr_updateparm];
 	
 	ScanKeyInit(&scankey[0],
 		Anum_mgr_updateparm_nodename
@@ -1378,13 +1403,18 @@ void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 		,F_CHAREQ
 		,CharGetDatum(oldnodetype));
 	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
+	tupledsc = RelationGetDescr(noderel);
 	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
-		Assert(mgr_updateparm);
-		mgr_updateparm->updateparmnodetype = newnodetype;
-		heap_inplace_update(noderel, looptuple);
-		CatalogUpdateIndexes(noderel, looptuple);
+		/*update parm's type*/
+		memset(datum, 0, sizeof(datum));
+		memset(isnull, 0, sizeof(isnull));
+		memset(got, 0, sizeof(got));
+		datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(newnodetype);
+		got[Anum_mgr_updateparm_nodetype-1] = true;
+		newtuple = heap_modify_tuple(looptuple, tupledsc, datum,isnull, got);	
+		simple_heap_update(noderel, &looptuple->t_self, newtuple);
+		CatalogUpdateIndexes(noderel, newtuple);
 	}
 	heap_endscan(rel_scan);
 }
