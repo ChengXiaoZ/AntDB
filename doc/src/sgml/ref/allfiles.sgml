@@ -200,10 +200,10 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrMonitorAgent    SYSTEM "mgr_monitor_agent.sgml">
 <!ENTITY mgrMonitorNode     SYSTEM "mgr_monitor_node.sgml">
-<!ENTITY mgrDropHost        SYSTEM "mgr_init_all.sgml">
-<!ENTITY mgrStopNode        SYSTEM "mgr_reset.sgml">
-<!ENTITY mgrStopNode        SYSTEM "mgr_set.sgml">
-<!ENTITY mgrStopNode        SYSTEM "mgr_show.sgml">
+<!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
+<!ENTITY mgrReset           SYSTEM "mgr_reset.sgml">
+<!ENTITY mgrSet        		SYSTEM "mgr_set.sgml">
+<!ENTITY mgrShow        	SYSTEM "mgr_show.sgml">
 <!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
 <!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
 <!ENTITY mgrStopNode        SYSTEM "mgr_stop_node.sgml">

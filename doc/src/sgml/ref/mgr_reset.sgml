@@ -15,7 +15,7 @@ ADB documentation
     <refpurpose>reset the parameter's value in the file of postgres.conf to the default </refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-set">
+  <indexterm zone="mgr-reset">
     <primary>RESET</primary>
   </indexterm>
 
