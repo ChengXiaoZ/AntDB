@@ -272,7 +272,9 @@
    &mgrAddHost;
    &mgrDropHost;
    &mgrStopAgent;
+   &mgrStartAgent;
    &mgrStop;
+   &mgrStart;
 
 </reference>
 

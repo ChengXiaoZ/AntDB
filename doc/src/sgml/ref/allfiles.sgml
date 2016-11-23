@@ -194,4 +194,6 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
+<!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
 <!ENTITY mgrStop            SYSTEM "mgr_stop.sgml">
+<!ENTITY mgrStart           SYSTEM "mgr_start.sgml">
