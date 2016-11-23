@@ -696,7 +696,7 @@ DESCR("oracle nvarchar2(length)");
 #define NVARCHAR2OID	3969
 
 /* oracle.date */
-DATA(insert OID = 3970 ( date           ORANSP PGUID 8 FLOAT8PASSBYVAL d D f t \054 0	0 3973 domain_in ora_date_out domain_recv timestamptz_send - - - d p f 1184 0 0 0 _null_ _null_ _null_ ));
+DATA(insert OID = 3970 ( date           ORANSP PGUID 8 FLOAT8PASSBYVAL d D f t \054 0	0 3973 domain_in ora_date_out domain_recv timestamptz_send - - - d p f 1184 6 0 0 _null_ _null_ _null_ ));
 DESCR("oracle's date");
 #define ORADATEOID		3970
 
