@@ -1,0 +1,53 @@
+<!--
+doc/src/sgml/ref/mgr_deploy.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-DEPLOY">
+  <refmeta>
+    <refentrytitle>DEPLOY</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>DEPLOY</refname>
+    <refpurpose>deploy ADB's binary files and other installation files to the specified host</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-deploy">
+    <primary>DEPLOY</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+	DEPLOY { ALL 
+	| <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ];
+    
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+     deploy ADB's binary files and other installation files to the specified host.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Alter datanode slave:
+      <programlisting>
+		deploy all password 123; 
+		deploy localhost1;
+		deploy all 123;
+      </programlisting>
+    </para>
+  </refsect1>
+
+
+
+</refentry>

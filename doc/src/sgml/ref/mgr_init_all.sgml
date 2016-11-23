@@ -1,0 +1,48 @@
+<!--
+doc/src/sgml/ref/mgr_init_all.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-INITALL">
+  <refmeta>
+    <refentrytitle>INIT ALL</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>INIT ALL</refname>
+    <refpurpose>Initialize the ADB cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-initall">
+    <primary>INIT ALL</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+		INIT ALL;
+
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+     Initialize the ADB cluster
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+ 
+      <programlisting>
+		init all;
+      </programlisting>
+    </para>
+  </refsect1>
+
+</refentry>

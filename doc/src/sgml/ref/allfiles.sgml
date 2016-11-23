@@ -193,6 +193,10 @@ Complete list of usable sgml source files in this directory.
 <!-- ADB manage command -->
 <!ENTITY mgrAddNode         SYSTEM "mgr_add_node.sgml">
 <!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
+<!ENTITY mgrAlter           SYSTEM "mgr_alter.sgml">
+<!ENTITY mgrAlterHost       SYSTEM "mgr_alter_host.sgml">
+<!ENTITY mgrAppend          SYSTEM "mgr_append.sgml">
+<!ENTITY mgrDeploy          SYSTEM "mgr_deploy.sgml">
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
 <!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
@@ -200,3 +204,14 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrStopNode        SYSTEM "mgr_stop_node.sgml">
 <!ENTITY mgrStartNode       SYSTEM "mgr_start_node.sgml">
 <!ENTITY mgrMonitorNode     SYSTEM "mgr_monitor_node.sgml">
+
+
+
+
+
+
+
+
+
+
+

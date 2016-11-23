@@ -1,0 +1,66 @@
+<!--
+doc/src/sgml/ref/mgr_append.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-APPEND">
+  <refmeta>
+    <refentrytitle>APPEND</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>APPEND</refname>
+    <refpurpose>alter the parameters of node in the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-alter">
+    <primary>APPEND</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+		APPEND <replaceable class="parameter">option</replaceable> <replaceable class="parameter">nodename</replaceable>;
+		
+		<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+		<replaceable class="parameter">GTM SLAVE</replaceable>
+		<replaceable class="parameter">GTM EXTRA</replaceable>
+		<replaceable class="parameter">COORDINATOR</replaceable>
+		<replaceable class="parameter">DATANODE MASTER</replaceable>
+		<replaceable class="parameter">DATANODE SLAVE</replaceable>
+		<replaceable class="parameter">DATANODE EXTRA</replaceable>
+	
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      append a node to ADB cluster.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+	 <para>
+		nodename node name,corresponds to the name column in the node table.
+	 </para>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Alter datanode slave:
+      <programlisting>
+		append gtm extra gtm1;
+		append datanode master db1;
+		append coordinator coord1;
+      </programlisting>
+    </para>
+  </refsect1>
+
+
+</refentry>

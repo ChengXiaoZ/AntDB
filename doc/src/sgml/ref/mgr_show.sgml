@@ -1,0 +1,48 @@
+<!--
+doc/src/sgml/ref/mgr_show.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-SHOW">
+  <refmeta>
+    <refentrytitle>SHOW</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>SHOW</refname>
+    <refpurpose>display the contents of the specifed parameter in the file of postgres.conf</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-show">
+    <primary>SHOW</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+		SHOW <replaceable class="parameter">nodename</replaceable> <replaceable class="parameter">option</replaceable>;
+		where option can be one of any parameter in the postgres.conf
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+		
+    <para>
+		display the contents of the specifed parameter in the file of postgres.conf.In addition it display master and standby nodes
+		and support fuzzy queries.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>	
+    <para>
+	Fuzzy query parameters with the sync.
+      <programlisting>
+        show db1 sync;
+      </programlisting>
+    </para>
+  </refsect1>
+
+</refentry>

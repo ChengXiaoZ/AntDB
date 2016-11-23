@@ -1,0 +1,95 @@
+<!--
+doc/src/sgml/ref/mgr_set.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-RESET">
+  <refmeta>
+    <refentrytitle>RESET</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>RESET</refname>
+    <refpurpose>reset the parameter's value in the file of postgres.conf to the default </refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-set">
+    <primary>RESET</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+	RESET {<replaceable class="parameter">option1</replaceable> ALL |<replaceable class="parameter">option2</replaceable> <replaceable class="parameter">nodename</replaceable> } 
+	( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ];
+	
+	<phrase>where <replaceable class="parameter">option1</replaceable> can be one of:</phrase>
+	<replaceable class="parameter">GTM</replaceable>
+	<replaceable class="parameter">COORDINATOR</replaceable>
+	<replaceable class="parameter">DATANODE</replaceable>
+	<replaceable class="parameter">DATANODE MASTER</replaceable>
+	<replaceable class="parameter">DATANODE SLAVE</replaceable>
+	<replaceable class="parameter">DATANODE EXTRA</replaceable>
+	
+	<phrase>where <replaceable class="parameter">option2</replaceable> can be one of:</phrase>
+	<replaceable class="parameter">GTM MASTER</replaceable>
+	<replaceable class="parameter">GTM SLAVE</replaceable>
+	<replaceable class="parameter">GTM EXTRA</replaceable>
+	<replaceable class="parameter">COORDINATOR</replaceable>
+	<replaceable class="parameter">DATANODE MASTER</replaceable>
+	<replaceable class="parameter">DATANODE SLAVE</replaceable>
+	<replaceable class="parameter">DATANODE EXTRA</replaceable>
+	
+	<phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
+	the parameter that in the file of postgres.conf
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      reset the value of parameter which in the file of postgres.conf to the default, it won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update PARA table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">Parameter</replaceable>
+        </term>
+        <listitem>
+          <para>
+            the parameter that in the file of postgres.conf
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+     reset the value of 'synchronous_commit' and 'max_wal_senders' which in the file of postgres.conf to the default:
+      <programlisting>
+        reset gtm master gtm_master(synchronous_commit = off, max_wal_senders = 10);
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-set"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>

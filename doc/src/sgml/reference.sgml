@@ -271,6 +271,10 @@
 
    &mgrAddNode;
    &mgrAddHost;
+   &mgrAlter;
+   &mgrAlterHost;
+   &mgrAppend;
+   &mgrDeploy;
    &mgrDropHost;
    &mgrStopAgent;
    &mgrStartAgent;
@@ -278,6 +282,9 @@
    &mgrStopNode;
    &mgrStartNode;
    &mgrMonitorNode;
+   
+   
+   
 
 </reference>
 
