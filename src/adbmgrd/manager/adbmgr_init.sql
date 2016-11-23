@@ -104,6 +104,34 @@ CREATE VIEW adbmgr.initall AS
 	UNION ALL
 	SELECT 'config coordinator' AS "operation type", * FROM mgr_configure_nodes_all(NULL);
 
+--start gtm all
+CREATE VIEW adbmgr.start_gtm_all AS
+	SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm_master('gtm')
+	UNION all
+	SELECT 'start gtm slave' AS "operation type", * FROM mgr_start_gtm_slave('gtm')
+	UNION all
+	SELECT 'start gtm extra' AS "operation type", * FROM mgr_start_gtm_extra('gtm');
+--stop gtm all
+CREATE VIEW adbmgr.stop_gtm_all AS
+	SELECT 'start gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave('gtm')
+	UNION all
+	SELECT 'start gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra('gtm')
+	UNION all
+	SELECT 'start gtm master' AS "operation type", * FROM mgr_stop_gtm_master('gtm');
+--stop gtm all -m f
+CREATE VIEW adbmgr.stop_gtm_all_f AS
+	SELECT 'start gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_f('gtm')
+	UNION all
+	SELECT 'start gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_f('gtm')
+	UNION all
+	SELECT 'start gtm master' AS "operation type", * FROM mgr_stop_gtm_master_f('gtm');
+--stop gtm all -m i
+CREATE VIEW adbmgr.stop_gtm_all_i AS
+	SELECT 'start gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_i('gtm')
+	UNION all
+	SELECT 'start gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_i('gtm')
+	UNION all
+	SELECT 'start gtm master' AS "operation type", * FROM mgr_stop_gtm_master_i('gtm');
 --init datanode all
 CREATE VIEW adbmgr.initdatanodeall AS
     SELECT 'init datanode master' AS "operation type",* FROM mgr_init_dn_master(NULL)

@@ -1337,6 +1337,13 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_extra", args));
 			$$ = (Node*)stmt;
 		}
+	| START GTM ALL
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("start_gtm_all"), -1));
+			$$ = (Node*)stmt;
+		}
 	|	START COORDINATOR NodeConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -1483,6 +1490,27 @@ StopNodeMasterStmt:
 			List *args = list_make1(makeStringConst("gtm", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra_i", args));
+			$$ = (Node*)stmt;
+		}
+	| STOP GTM ALL opt_stop_mode_s
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all"), -1));
+			$$ = (Node*)stmt;
+		}
+	| STOP GTM ALL opt_stop_mode_f
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_f"), -1));
+			$$ = (Node*)stmt;
+		}
+	| STOP GTM ALL opt_stop_mode_i
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_i"), -1));
 			$$ = (Node*)stmt;
 		}
 	|	STOP COORDINATOR AConstList opt_stop_mode_s
