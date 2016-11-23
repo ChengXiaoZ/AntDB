@@ -51,6 +51,7 @@
 #define PM_MSG_SET_COMMAND			's'
 #define PM_MSG_CLOSE_CONNECT		'C'
 #define PM_MSG_ERROR				'E'
+#define PM_MSG_CLOSE_IDLE_CONNECT	'S'
 
 typedef enum SlotStateType
 {
@@ -236,6 +237,7 @@ static time_t close_timeout_idle_slots(time_t timeout);
 static bool pool_exec_set_query(PGconn *conn, const char *query, StringInfo errMsg);
 static int pool_wait_pq(PGconn *conn);
 static int pq_custom_msg(PGconn *conn, char id, int msgLength);
+static void close_idle_connection(void);
 
 /* for hash DatabasePool */
 static HTAB *htab_database;
@@ -1436,6 +1438,11 @@ static void agent_handle_input(PoolAgent * agent, StringInfo s)
 				pool_sendres(&agent->port, res);
 				if(msg.data)
 					pfree(msg.data);
+			}
+			break;
+		case PM_MSG_CLOSE_IDLE_CONNECT:
+			{
+				close_idle_connection();
 			}
 			break;
 		default:
@@ -3194,4 +3201,47 @@ static int pq_custom_msg(PGconn *conn, char id, int msgLength)
 		return 0;
 	}
 	return -1;
+}
+
+static void close_idle_connection(void)
+{
+	HASH_SEQ_STATUS hash_database_stats;
+	HASH_SEQ_STATUS hash_nodepool_status;
+	DatabasePool *db_pool;
+	ADBNodePool *node_pool;
+	ADBNodePoolSlot *slot;
+	dlist_mutable_iter miter;
+
+	if(htab_database == NULL)
+		return;
+
+	hash_seq_init(&hash_database_stats, htab_database);
+	while((db_pool = hash_seq_search(&hash_database_stats)) != NULL)
+	{
+		hash_seq_init(&hash_nodepool_status, db_pool->htab_nodes);
+		while((node_pool = hash_seq_search(&hash_nodepool_status)) != NULL)
+		{
+			dlist_foreach_modify(miter, &node_pool->idle_slot)
+			{
+				slot = dlist_container(ADBNodePoolSlot, dnode, miter.cur);
+				Assert(slot->slot_state == SLOT_STATE_IDLE);
+				dlist_delete(miter.cur);
+				destroy_slot(slot, false);
+			}
+		}
+	}	
+}
+
+Datum pool_close_idle_conn(PG_FUNCTION_ARGS)
+{
+	StringInfoData buf;
+	Assert(poolHandle != NULL);
+
+	pq_beginmessage(&buf, PM_MSG_CLOSE_IDLE_CONNECT);
+	/* send message */
+	pool_putmessage(&poolHandle->port, (char)(buf.cursor), buf.data, buf.len);
+	pool_flush(&poolHandle->port);
+
+	pfree(buf.data);
+	PG_RETURN_BOOL(true);
 }

@@ -155,4 +155,6 @@ extern bool IsPoolHandle(void);
 /* Send commands to alter the behavior of current transaction */
 extern int PoolManagerSendLocalCommand(int dn_count, int* dn_list, int co_count, int* co_list);
 
+extern Datum pool_close_idle_conn(PG_FUNCTION_ARGS);
+
 #endif
