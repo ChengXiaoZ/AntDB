@@ -2069,6 +2069,15 @@ exec_bind_message(StringInfo input_message)
 			int16		pformat;
 
 			plength = pq_getmsgint(input_message, 4);
+#ifdef ADB
+			/*
+			 * We treat blank string as NULL value in oracle grammar.
+			 * ADBQ: is there anything unknown wrong ?
+			 */
+			if (IsOracleGram(psrc->grammar))
+				isNull = (plength == -1 || plength == 0);
+			else
+#endif
 			isNull = (plength == -1);
 
 			if (!isNull)

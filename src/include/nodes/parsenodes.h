@@ -61,6 +61,7 @@ typedef enum ParseGrammar
 	PARSE_GRAM_POSTGRES = 0,
 	PARSE_GRAM_ORACLE
 }ParseGrammar;
+#define IsOracleGram(gram)	((gram) == PARSE_GRAM_ORACLE)
 #endif
 
 #ifdef ADBMGRD
