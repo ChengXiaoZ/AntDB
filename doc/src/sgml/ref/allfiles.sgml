@@ -197,6 +197,6 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
 <!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
 <!ENTITY mgrMonitorAgent    SYSTEM "mgr_monitor_agent.sgml">
-<!ENTITY mgrStop_node       SYSTEM "mgr_stop_node.sgml">
-<!ENTITY mgrStart_node      SYSTEM "mgr_start_node.sgml">
-<!ENTITY mgrMonitor_node    SYSTEM "mgr_monitor_node.sgml">
+<!ENTITY mgrStopNode        SYSTEM "mgr_stop_node.sgml">
+<!ENTITY mgrStartNode       SYSTEM "mgr_start_node.sgml">
+<!ENTITY mgrMonitorNode     SYSTEM "mgr_monitor_node.sgml">
