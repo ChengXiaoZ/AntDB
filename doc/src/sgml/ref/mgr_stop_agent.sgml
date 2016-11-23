@@ -1,0 +1,69 @@
+<!--
+doc/src/sgml/ref/mgr_stop_agent.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-STOPAGENT">
+  <refmeta>
+    <refentrytitle>STOP AGENT</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>STOP AGENT</refname>
+    <refpurpose>stop the agent process on the ADB host</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-stopagent">
+    <primary>STOP AGENT</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+STOP AGENT [ALL | <replaceable class="parameter">hostname</replaceable>[,...]];
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Stop the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">hostname</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host name, not support IP address.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Stop all agent process:
+      <programlisting>
+        STOP AGENT ALL;
+      </programlisting>
+    </para>
+    <para>
+      Stop agent process to hostname1,hostname2:
+      <programlisting>
+        STOP AGENT hostname1,hostname2;
+      </programlisting>
+    </para>
+  </refsect1>
+
+
+</refentry>
