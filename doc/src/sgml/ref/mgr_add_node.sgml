@@ -1,0 +1,118 @@
+<!--
+doc/src/sgml/ref/mgr_add_node.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ADDNODE">
+  <refmeta>
+    <refentrytitle>ADD</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ADD</refname>
+    <refpurpose>add one line node infomation in node table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-addnode">
+    <primary>ADD</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ADD <replaceable class="parameter">nodetype</replaceable> [IF NOT EXISTS] <replaceable class="parameter">nodetype</replaceable> (HOST = <replaceable class="parameter">IP_address</replaceable>,
+					PORT = <replaceable class="parameter">port_number</replaceable>,
+					SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+					PATH = <replaceable class="parameter">pg_data</replaceable>);
+
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+	GTM MASTER
+	GTM SLAVE
+	GTM EXTRA
+	COORDINATOR
+	DATANODE MASTER
+	DATANODE SLAVE
+	DATANODE EXTRA
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Add one line node infomation in node table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">nodename</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">HOST</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Your host name for install ADB cluster.
+          </para>
+        </listitem>
+      </varlistentry>
+	  
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PORT</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Your port in your host..
+          </para>
+        </listitem>
+      </varlistentry> 
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">SYNC</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
+          </para>
+        </listitem>
+      </varlistentry> 
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PATH</replaceable>
+        </term>
+        <listitem>
+          <para>
+            your data directory.
+          </para>
+        </listitem>
+      </varlistentry>  
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+    <para>
+     add one line for host table:
+      <programlisting>
+        add datanode master db2(host=localhost2, port=15533,path='/opt/ADB/db2');
+      </programlisting>
+    </para>
+  </refsect1>
+
+</refentry>

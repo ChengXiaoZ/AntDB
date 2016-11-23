@@ -191,6 +191,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY vacuumdb           SYSTEM "vacuumdb.sgml">
 
 <!-- ADB manage command -->
+<!ENTITY mgrAddNode         SYSTEM "mgr_add_node.sgml">
 <!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">

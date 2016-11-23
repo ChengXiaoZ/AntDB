@@ -269,6 +269,7 @@
    </para>
   </partintro>
 
+   &mgrAddNode;
    &mgrAddHost;
    &mgrDropHost;
    &mgrStopAgent;
