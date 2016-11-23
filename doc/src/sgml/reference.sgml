@@ -273,8 +273,10 @@
    &mgrDropHost;
    &mgrStopAgent;
    &mgrStartAgent;
+   &mgrMonitorAgent;
    &mgrStop;
    &mgrStart;
+   &mgrMonitor;
 
 </reference>
 

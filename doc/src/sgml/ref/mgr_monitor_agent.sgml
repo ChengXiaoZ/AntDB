@@ -1,0 +1,69 @@
+<!--
+doc/src/sgml/ref/mgr_monitor_agent.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-MONITORAGENT">
+  <refmeta>
+    <refentrytitle>MONITOR AGENT</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>MONITOR AGENT</refname>
+    <refpurpose>monitor the agent process on the ADB host</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-monitoragent">
+    <primary>MONITOR AGENT</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+MONITOR AGENT [ALL | <replaceable class="parameter">hostname</replaceable>[,...]];
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      monitor the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">hostname</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host name, not support IP address.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      monitor all agent process:
+      <programlisting>
+        MONITOR AGENT ALL;
+      </programlisting>
+    </para>
+    <para>
+      monitor agent process to hostname1,hostname2:
+      <programlisting>
+        MONITOR AGENT hostname1,hostname2;
+      </programlisting>
+    </para>
+  </refsect1>
+
+
+</refentry>
