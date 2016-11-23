@@ -1,9 +1,9 @@
 <!--
-doc/src/sgml/ref/mgr_stop.sgml
+doc/src/sgml/ref/mgr_stop_node.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-STOP">
+<refentry id="MGR-STOPNODE">
   <refmeta>
     <refentrytitle>STOP</refentrytitle>
     <manvolnum>7</manvolnum>
@@ -15,7 +15,7 @@ ADB documentation
     <refpurpose>stop the node on the ADB host</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-stop">
+  <indexterm zone="mgr-stopnode">
     <primary>STOP</primary>
   </indexterm>
 

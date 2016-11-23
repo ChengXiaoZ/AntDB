@@ -1,9 +1,9 @@
 <!--
-doc/src/sgml/ref/mgr_start.sgml
+doc/src/sgml/ref/mgr_start_node.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-START">
+<refentry id="MGR-STARTNODE">
   <refmeta>
     <refentrytitle>START</refentrytitle>
     <manvolnum>7</manvolnum>
@@ -15,7 +15,7 @@ ADB documentation
     <refpurpose>start the node on the ADB host</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-start">
+  <indexterm zone="mgr-startnode">
     <primary>START</primary>
   </indexterm>
 

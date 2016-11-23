@@ -275,9 +275,9 @@
    &mgrStopAgent;
    &mgrStartAgent;
    &mgrMonitorAgent;
-   &mgrStop;
-   &mgrStart;
-   &mgrMonitor;
+   &mgrStopNode;
+   &mgrStartNode;
+   &mgrMonitorNode;
 
 </reference>
 

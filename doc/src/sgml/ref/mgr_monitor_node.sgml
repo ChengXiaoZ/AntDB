@@ -1,9 +1,9 @@
 <!--
-doc/src/sgml/ref/mgr_monitor.sgml
+doc/src/sgml/ref/mgr_monitor_node.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-MONITOR">
+<refentry id="MGR-MONITORNODE">
   <refmeta>
     <refentrytitle>MONITOR</refentrytitle>
     <manvolnum>7</manvolnum>
@@ -15,7 +15,7 @@ ADB documentation
     <refpurpose>monitor the current state of the ADB cluster node</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-monitor">
+  <indexterm zone="mgr-monitornode">
     <primary>MONITOR</primary>
   </indexterm>
 
