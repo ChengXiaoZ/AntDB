@@ -4065,8 +4065,8 @@ multiple_set_clause:
 name: ColId
 	;
 
-name_list: name				{ $$ = list_make1($1); }
-	| name_list ',' name	{ $$ = lappend($1, $3); }
+name_list: name				{ $$ = list_make1(makeString($1)); }
+	| name_list ',' name	{ $$ = lappend($1, makeString($3)); }
 	;
 
 /* Any not-fully-reserved word --- these names can be, eg, role names.
