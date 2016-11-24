@@ -8,6 +8,7 @@ int agtm_listen_port = 0;
 static StringInfoData agtm_pq_buf = {NULL, 0, 0, 0};
 
 static void start_agtm_listen(void);
+static void close_agtm_socket(int code, Datum arg);
 static int agtm_ReadCommand(StringInfo inBuf);
 static int agtm_setup_select_recv_fd(fd_set *rset, fd_set *wset, List *list, int maxfd);
 static int agtm_select_fd(fd_set *rset, fd_set *wset, int maxfd);
@@ -27,6 +28,7 @@ static void start_agtm_listen(void)
 		ereport(ERROR, (errcode_for_socket_access(),
 			errmsg("Can not create %s socket:%m", _("IPv4"))));
 	}
+	on_proc_exit(close_agtm_socket, 0);
 
 	memset(&listen_addr, 0, sizeof(listen_addr));
 	listen_addr.sin_family = AF_INET;
@@ -51,6 +53,15 @@ static void start_agtm_listen(void)
 	}
 	agtm_listen_socket = sock;
 	agtm_listen_port = htons(listen_addr.sin_port);
+}
+
+static void close_agtm_socket(int code, Datum arg)
+{
+	if(agtm_listen_socket != PGINVALID_SOCKET)
+	{
+		closesocket(agtm_listen_socket);
+		agtm_listen_socket = PGINVALID_SOCKET;
+	}
 }
 
 static int agtm_ReadCommand(StringInfo inBuf)
