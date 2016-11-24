@@ -641,6 +641,10 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt)
 	 */
 	qry->resultRelation = setTargetTable(pstate, stmt->relation,
 										 false, false, ACL_INSERT);
+#ifdef ADB
+	if(pstate->p_grammar == PARSE_GRAM_ORACLE)
+		addRTEtoQuery(pstate, rt_fetch(qry->resultRelation, pstate->p_rtable), false, true, true);
+#endif /* ADB */
 
 	/* Validate stmt->cols list, or build default list if no list given */
 	icolumns = checkInsertTargets(pstate, stmt->cols, &attrnos);

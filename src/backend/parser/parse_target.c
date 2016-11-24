@@ -979,7 +979,23 @@ checkInsertTargets(ParseState *pstate, List *cols, List **attrnos)
 			ResTarget  *col = (ResTarget *) lfirst(tl);
 			char	   *name = col->name;
 			int			attrno;
-
+#ifdef ADB
+			if(pstate->p_grammar == PARSE_GRAM_ORACLE)
+			{
+				/* oracle grammar support table and column alias */
+				Var *var;
+				ColumnRef cref;
+				NodeSetTag(&cref, T_ColumnRef);
+				cref.fields = lcons(makeString(name), col->indirection);
+				cref.location = col->location;
+				var = (Var*)transformExpr(pstate, (Node*)&cref, EXPR_KIND_INSERT_TARGET);
+				Assert(IsA(var, Var));
+				name = col->name = strVal(llast(cref.fields));
+				col->indirection = NIL;
+				attrno = var->varattno;
+				pfree(var);
+			}else
+#endif /* ADB */
 			/* Lookup column name, ereport on failure */
 			attrno = attnameAttNum(pstate->p_target_relation, name, false);
 			if (attrno == InvalidAttrNumber)

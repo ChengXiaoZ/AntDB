@@ -186,7 +186,7 @@ static Node* make_any_sublink(Node *testexpr, const char *operName, Node *subsel
 %type <subclus> OptSubCluster OptSubClusterInternal
 %type <distby>	OptDistributeBy
 
-%type <istmt>	insert_rest
+%type <istmt>	insert_rest insert_rest_no_cols
 
 %type <into>  create_as_target /*into_clause*/
 
@@ -3833,20 +3833,72 @@ InsertStmt:
 			$5->withClause = $1;
 			$$ = (Node *) $5;
 		}
+	| opt_with_clause INSERT INTO qualified_name opt_as ColId insert_rest_no_cols returning_clause
+		{
+			$4->alias = makeNode(Alias);
+			$4->alias->aliasname = $6;
+			$4->alias->colnames = NIL;
+			$7->relation = $4;
+			$7->returningList = $8;
+			$7->withClause = $1;
+			$$ = (Node *) $7;
+		}
+	| opt_with_clause INSERT INTO qualified_name opt_as ColId '(' insert_column_list ')' insert_rest_no_cols returning_clause
+		{
+			$4->alias = makeNode(Alias);
+			$4->alias->aliasname = $6;
+			$10->relation = $4;
+			$10->cols = $8;
+			$10->returningList = $11;
+			$10->withClause = $1;
+			$$ = (Node *) $10;
+		}
+	| opt_with_clause INSERT INTO qualified_name opt_as ColId '(' insert_column_list ')' '(' insert_column_list ')' SelectStmt returning_clause
+		{
+			/*
+			 * $8 can not use "name_list", it have conflict.
+			 * we need let insert_column_list to name_list
+			 */
+			InsertStmt *insert;
+			ListCell *lc;
+			ResTarget *res;
+			List *alias_col = NIL;
+			foreach(lc, $8)
+			{
+				res = lfirst(lc);
+				if(res->indirection)
+				{
+					ereport(ERROR,
+						(ERRCODE_SYNTAX_ERROR,
+						errmsg("%s at or near \"%s\"", _("syntax error"), res->name),
+						parser_errposition(res->location)));
+				}
+				alias_col = lappend(alias_col, makeString(res->name));
+			}
+			list_free_deep($8);
+			insert = makeNode(InsertStmt);
+			insert->cols = $11;
+			insert->selectStmt = $13;
+			$4->alias = makeNode(Alias);
+			$4->alias->aliasname = $6;
+			$4->alias->colnames = alias_col;
+			insert->relation = $4;
+			insert->returningList = $14;
+			insert->withClause = $1;
+			$$ = (Node *)insert;
+		}
 	;
 
-insert_rest:
+opt_as:	AS									{}
+		| /*EMPTY*/							{}
+		;
+
+insert_rest_no_cols:
 		SelectStmt
 			{
 				$$ = makeNode(InsertStmt);
 				$$->cols = NIL;
 				$$->selectStmt = $1;
-			}
-		| '(' insert_column_list ')' SelectStmt
-			{
-				$$ = makeNode(InsertStmt);
-				$$->cols = $2;
-				$$->selectStmt = $4;
 			}
 		| DEFAULT VALUES
 			{
@@ -3855,6 +3907,19 @@ insert_rest:
 				$$->selectStmt = NULL;
 			}
 	;
+
+insert_rest:
+		 '(' insert_column_list ')' SelectStmt
+			{
+				$$ = makeNode(InsertStmt);
+				$$->cols = $2;
+				$$->selectStmt = $4;
+			}
+		| insert_rest_no_cols
+			{
+				$$ = $1;
+			}
+		;
 
 insert_column_list:
 		insert_column_item
