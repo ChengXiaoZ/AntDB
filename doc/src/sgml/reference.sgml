@@ -285,10 +285,12 @@
    &mgrSet;
    &mgrShow;
    &mgrStopAgent;
+   &mgrStopAll;
    &mgrStopCoordinator;
    &mgrStopDatanode;
    &mgrStopGtm;
    &mgrStartAgent;
+   &mgrStartAll;
    &mgrStartGtm;
    &mgrStartCoordinator;
    &mgrStartDatanode;

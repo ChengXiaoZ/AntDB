@@ -1,0 +1,53 @@
+<!--
+doc/src/sgml/ref/mgr_start_all.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-STARTALL">
+  <refmeta>
+    <refentrytitle>START all</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>START ALL</refname>
+    <refpurpose>start all the node on the ADB cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-startall">
+    <primary>START ALL</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+START ALL ;
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+      <para>start all the node on the ADB cluster.</para>
+      <para>Start order:</para>
+      <para>    1, start gtm master</para>
+      <para>    2, start gtm slave (If you configure it)</para>
+      <para>    3, start gtm extra (If you configure it)</para>
+      <para>    4, start coordinator all</para>
+      <para>    5, start datanode master all</para>
+      <para>    6, start datandoe slave all (If you configure it)</para>
+      <para>    7, start datanode extra all (If you configure it)</para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Start all node on the ADB cluster:
+      <programlisting>
+        start all ;
+      </programlisting>
+    </para>
+  </refsect1>
+
+</refentry>
