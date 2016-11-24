@@ -2169,6 +2169,7 @@ static void destroy_node_pool(ADBNodePool *node_pool, bool bfree)
 				pfree(slot->last_error);
 				slot->last_error = NULL;
 			}
+			PQfinish(slot->conn);
 			pfree(slot);
 			slot = NULL;
 		}
