@@ -1,39 +1,33 @@
 <!--
-doc/src/sgml/ref/mgr_add_node.sgml
+doc/src/sgml/ref/mgr_add_coordinator.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-ADDNODE">
+<refentry id="MGR-ADDCOORDINATOR">
   <refmeta>
-    <refentrytitle>ADD</refentrytitle>
+    <refentrytitle>ADD COORDINATOR</refentrytitle>
     <manvolnum>7</manvolnum>
     <refmiscinfo>Manage - Language Statements</refmiscinfo>
   </refmeta>
 
   <refnamediv>
-    <refname>ADD</refname>
-    <refpurpose>add one line node infomation in node table</refpurpose>
+    <refname>ADD COORDINATOR</refname>
+    <refpurpose>add one line coordinator node type infomation in node table</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-addnode">
-    <primary>ADD</primary>
+  <indexterm zone="mgr-addcoordinator">
+    <primary>ADD COORDINATOR</primary>
   </indexterm>
 
   <refsynopsisdiv>
     <synopsis>
-ADD <replaceable class="parameter">nodetype</replaceable> [IF NOT EXISTS] <replaceable class="parameter">nodetype</replaceable> (HOST = <replaceable class="parameter">IP_address</replaceable>,
-					PORT = <replaceable class="parameter">port_number</replaceable>,
-					SYNC = <replaceable class="parameter">sync_mode</replaceable>,
-					PATH = <replaceable class="parameter">pg_data</replaceable>);
+ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">nodename</replaceable> ( <replaceable class="parameter">option</replaceable> );
 
-<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
-	GTM MASTER
-	GTM SLAVE
-	GTM EXTRA
-	COORDINATOR
-	DATANODE MASTER
-	DATANODE SLAVE
-	DATANODE EXTRA
+<phrase>where <replaceable class="parameter">option</replaceable> must be list below:</phrase>
+    HOST = <replaceable class="parameter">IP_address</replaceable>,
+    PORT = <replaceable class="parameter">port_number</replaceable>,
+    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+    PATH = <replaceable class="parameter">pg_data</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -41,7 +35,7 @@ ADD <replaceable class="parameter">nodetype</replaceable> [IF NOT EXISTS] <repla
     <title>Description</title>
 
     <para>
-      Add one line node infomation in node table.
+      Add one line coordinator node type infomation in node table.
     </para>
   </refsect1>
 
@@ -108,9 +102,9 @@ ADD <replaceable class="parameter">nodetype</replaceable> [IF NOT EXISTS] <repla
   <refsect1>
     <title>Examples</title>
     <para>
-     add one line for host table:
+     add one coordinator( name is "coordname") for node table:
       <programlisting>
-        add datanode master db2(host=localhost2, port=15533,path='/opt/ADB/db2');
+        add coordinator coordname(host=localhost2, port=15534, path='/opt/ADB/coord1');
       </programlisting>
     </para>
   </refsect1>

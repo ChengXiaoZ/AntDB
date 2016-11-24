@@ -269,7 +269,9 @@
    </para>
   </partintro>
 
-   &mgrAddNode;
+   &mgrAddGtm;
+   &mgrAddCoordinator;
+   &mgrAddDatanode;
    &mgrAddHost;
    &mgrAlter;
    &mgrAlterHost;
