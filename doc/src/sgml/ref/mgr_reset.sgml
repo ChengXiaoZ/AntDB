@@ -21,8 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-	RESET {<replaceable class="parameter">option1</replaceable> ALL |<replaceable class="parameter">option2</replaceable> <replaceable class="parameter">nodename</replaceable> } 
-	( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ];
+	RESET {<replaceable class="parameter">option1</replaceable> ALL |<replaceable class="parameter">option2</replaceable> <replaceable class="parameter">nodename</replaceable> } ( parameter [, ...] ) [ FORCE ];
 	
 	<phrase>where <replaceable class="parameter">option1</replaceable> can be one of:</phrase>
 	<replaceable class="parameter">GTM</replaceable>
