@@ -1,0 +1,63 @@
+<!--
+doc/src/sgml/ref/mgr_start_datanode.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-STARTDATANODE">
+  <refmeta>
+    <refentrytitle>START DATANODE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>START DATANODE</refname>
+    <refpurpose>start the datanode node type on the ADB host</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-startdatanode">
+    <primary>START DATANODE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">nodename</replaceable> [,...]};
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Start the datanode node type on the ADB host.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">nodename</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Start all datanode master:
+      <programlisting>
+        start datanode master all;
+      </programlisting>
+    </para>
+  </refsect1>
+
+
+</refentry>

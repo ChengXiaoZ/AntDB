@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-START AGENT [ALL | <replaceable class="parameter">hostname</replaceable>[,...]];
+START AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [,...] ];
     </synopsis>
   </refsynopsisdiv>
 

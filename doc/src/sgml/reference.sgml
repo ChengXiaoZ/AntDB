@@ -287,7 +287,9 @@
    &mgrStopDatanode;
    &mgrStopGtm;
    &mgrStartAgent;
-   &mgrStartNode;
+   &mgrStartGtm;
+   &mgrStartCoordinator;
+   &mgrStartDatanode;
 
 </reference>
 

@@ -202,14 +202,16 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrMonitorNode     SYSTEM "mgr_monitor_node.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
 <!ENTITY mgrReset           SYSTEM "mgr_reset.sgml">
-<!ENTITY mgrSet        		SYSTEM "mgr_set.sgml">
-<!ENTITY mgrShow        	SYSTEM "mgr_show.sgml">
+<!ENTITY mgrSet             SYSTEM "mgr_set.sgml">
+<!ENTITY mgrShow            SYSTEM "mgr_show.sgml">
 <!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
 <!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
 <!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
 <!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
 <!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
-<!ENTITY mgrStartNode       SYSTEM "mgr_start_node.sgml">
+<!ENTITY mgrStartGtm        SYSTEM "mgr_start_gtm.sgml">
+<!ENTITY mgrStartCoordinator SYSTEM "mgr_start_coordinator.sgml">
+<!ENTITY mgrStartDatanode   SYSTEM "mgr_start_datanode.sgml">
 
 
 

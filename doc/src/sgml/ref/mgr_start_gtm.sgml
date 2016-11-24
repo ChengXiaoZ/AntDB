@@ -1,39 +1,27 @@
 <!--
-doc/src/sgml/ref/mgr_start_node.sgml
+doc/src/sgml/ref/mgr_start_gtm.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-STARTNODE">
+<refentry id="MGR-STARTGTM">
   <refmeta>
-    <refentrytitle>START</refentrytitle>
+    <refentrytitle>START GTM</refentrytitle>
     <manvolnum>7</manvolnum>
     <refmiscinfo>Manage - Language Statements</refmiscinfo>
   </refmeta>
 
   <refnamediv>
-    <refname>START</refname>
-    <refpurpose>start the node on the ADB host</refpurpose>
+    <refname>START GTM</refname>
+    <refpurpose>start the gtm node type on the ADB host</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-startnode">
-    <primary>START</primary>
+  <indexterm zone="mgr-startgtm">
+    <primary>START GTM</primary>
   </indexterm>
 
   <refsynopsisdiv>
     <synopsis>
-START ALL;
-START <replaceable class="parameter">option</replaceable> [ALL | <replaceable class="parameter">nodename</replaceable>[,...]];
-
-<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
-    GTM
-    GTM MASTER
-    GTM SLAVE
-    GTM EXTRA
-    COORDINATOR
-    DATANODE
-    DATANODE MASTER
-    DATANODE SLAVE
-    DATANODE EXTRA
+START GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">nodename</replaceable> };
     </synopsis>
   </refsynopsisdiv>
 
@@ -41,7 +29,7 @@ START <replaceable class="parameter">option</replaceable> [ALL | <replaceable cl
     <title>Description</title>
 
     <para>
-      start the ADB cluster node.
+      start the gtm node type on the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -64,9 +52,9 @@ START <replaceable class="parameter">option</replaceable> [ALL | <replaceable cl
     <title>Examples</title>
 
     <para>
-      Start all datanode master:
+      Start gtm master name is "gtmname":
       <programlisting>
-        start datanode master all;
+        start gtm master gtmname;
       </programlisting>
     </para>
   </refsect1>
