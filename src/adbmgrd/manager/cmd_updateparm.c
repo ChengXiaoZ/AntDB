@@ -78,7 +78,7 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax, StringInfo enumvalue);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
 static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist);
-
+static void mgr_string_add_single_quota(Name value);
 /* 
 * for command: set {datanode|coordinaotr}  {master|slave|extra} {nodename|ALL} {key1=value1,key2=value2...} , 
 * set datanode all {key1=value1,key2=value2...},set gtm all {key1=value1,key2=value2...}, set gtm master|slave|extra
@@ -154,10 +154,11 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 	StringInfoData enumvalue;
 	bool isnull[Natts_mgr_updateparm];
 	char parmtype;			/*coordinator or datanode or gtm */
+	char *pvalue;
 	int insertparmstatus;
 	int effectparmstatus;
 	int vartype;  /*the parm value type: bool, string, enum, int*/
-	int len = 0;
+	int ipoint = 0;
 	Assert(node && node->parmtype);
 	parmtype =  node->parmtype;
 	memset(datum, 0, sizeof(datum));
@@ -184,25 +185,63 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 			if (PGC_STRING == vartype)
 			{
 				/*if the value of key is string, it need use signle quota*/
-				len = strlen(value.data);
-				if (value.data[0] != '\'' || value.data[len-1] != '\'')
+				mgr_string_add_single_quota(&value);
+			}
+			/* allow whitespace between integer and unit */
+			if (PGC_INT == vartype)
+			{
+				pvalue = value.data;
+				ipoint = 0;
+				/*skip head space*/
+				while (isspace((unsigned char) *pvalue))
 				{
-					valuetmp.data[0]='\'';
-					strcpy(valuetmp.data+sizeof(char),value.data);
-					valuetmp.data[1+len]='\'';
-					valuetmp.data[2+len]='\0';
-					if (len > sizeof(value.data)-2-1)
+					pvalue++;
+				}
+				while(*pvalue != '\0' && *pvalue != ' ')
+				{
+					valuetmp.data[ipoint] = *pvalue;
+					ipoint++;
+					pvalue++;
+				}
+				/*skip the space between value and unit*/
+				while (isspace((unsigned char) *pvalue))
+				{
+					pvalue++;
+				}
+				if (*pvalue < '0' || *pvalue > '9')
+				{
+					/*get the unit*/
+					while(*pvalue != '\0' && *pvalue != ' ')
 					{
-						valuetmp.data[sizeof(value.data)-2]='\'';
-						valuetmp.data[sizeof(value.data)-1]='\0';
+						valuetmp.data[ipoint] = *pvalue;
+						ipoint++;
+						pvalue++;
 					}
-					namestrcpy(&value, valuetmp.data);
+					/*skip the space after unit*/
+					while (isspace((unsigned char) *pvalue))
+					{
+						pvalue++;
+					}
+					if ('\0' == *pvalue)
+					{
+						valuetmp.data[ipoint]='\0';
+						namestrcpy(&value, valuetmp.data);
+					}
 				}
 			}
+
 			/*check the key's value*/
 			if (mgr_check_parm_value(key.data, value.data, vartype, parmunit.data, parmmin.data, parmmax.data, &enumvalue) != 1)
 			{
 				return;
+			}
+		}
+		else
+		{
+			/*check the value is not integer or real, add single quota for it if it not using single quota*/
+			if(strspn(value.data,"0123456789.") != strlen(value.data) || (strspn(value.data,"0123456789.") == strlen(value.data) && 1 != strspn(value.data,".")))
+			{
+				mgr_string_add_single_quota(&value);
 			}
 		}
 		/*check the parm exists already in mgr_updateparm systbl*/
@@ -1624,4 +1663,37 @@ static bool mgr_recv_showparam_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmd
 	}
 	pfree(recvbuf.data);
 	return initdone;
+}
+
+/*
+* if the value is string and not using single quota, add single quota for it
+*/
+static void mgr_string_add_single_quota(Name value)
+{
+	int len;
+	NameData valuetmp;
+
+	/*if the value of key is string, it need use single quota*/
+	len = strlen(value->data);
+	if (0 == len)
+	{
+		namestrcpy(value, "''");
+	}
+	else if (value->data[0] != '\'' || value->data[len-1] != '\'')
+	{
+		valuetmp.data[0]='\'';
+		strcpy(valuetmp.data+sizeof(char),value->data);
+		valuetmp.data[1+len]='\'';
+		valuetmp.data[2+len]='\0';
+		if (len > sizeof(value->data)-2-1)
+		{
+			valuetmp.data[sizeof(value->data)-2]='\'';
+			valuetmp.data[sizeof(value->data)-1]='\0';
+		}
+		namestrcpy(value, valuetmp.data);
+	}
+	else
+	{
+		/*do nothing*/
+	}
 }
