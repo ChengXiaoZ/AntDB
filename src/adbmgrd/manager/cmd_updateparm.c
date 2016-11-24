@@ -182,9 +182,9 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 			/*check the parameter is right for the type node of postgresql.conf*/
 			resetStringInfo(&enumvalue);
 			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue, bneednotice);
-			if (PGC_STRING == vartype)
+			if (PGC_STRING == vartype || (PGC_ENUM == vartype && strstr(value.data, " ") != NULL))
 			{
-				/*if the value of key is string, it need use signle quota*/
+				/*if the value of key is string or the type is enum and value include space, it need use signle quota*/
 				mgr_string_add_single_quota(&value);
 			}
 			/* allow whitespace between integer and unit */
@@ -239,7 +239,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 		else
 		{
 			/*check the value is not integer or real, add single quota for it if it not using single quota*/
-			if(strspn(value.data,"0123456789.") != strlen(value.data) || (strspn(value.data,"0123456789.") == strlen(value.data) && 1 != strspn(value.data,".")))
+			if(strspn(value.data,"0123456789.") != strlen(value.data))
 			{
 				mgr_string_add_single_quota(&value);
 			}
@@ -283,8 +283,6 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	Datum datumparmmax;
 	Datum datumenumvalues;
 	bool isNull = false;
-	NameData valuetmp;
-	int len = 0;
 	
 	/*check the name of key exist in mgr_parm system table, if the key in gtm or cn or dn, the parmtype in 
 	* mgr_parm is '*'; if the key only in cn or dn, the parmtype in mgr_parm is '#', if the key only in 
@@ -360,23 +358,10 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 		
 	/*get the default value*/
 	namestrcpy(value, NameStr(mgr_parm->parmvalue));
-	if (PGC_STRING == *vartype)
+	if (PGC_STRING == *vartype || (PGC_ENUM == *vartype && strstr(value->data, " ") != NULL))
 	{
-		/*if the value of key is string, it need use signle quota*/
-		len = strlen(value->data);
-		if (value->data[0] != '\'' || value->data[len-1] != '\'')
-		{
-			valuetmp.data[0]='\'';
-			strcpy(valuetmp.data+sizeof(char),value->data);
-			valuetmp.data[1+len]='\'';
-			valuetmp.data[2+len]='\0';
-			if (len > sizeof(value->data)-2-1)
-			{
-				valuetmp.data[sizeof(value->data)-2]='\'';
-				valuetmp.data[sizeof(value->data)-1]='\0';
-			}
-			namestrcpy(value, valuetmp.data);
-		}
+		/*if the value of key is string or the type is enum and value includes space, it need use signle quota*/
+		mgr_string_add_single_quota(value);
 	}
 	/*get parm unit*/
 	datumparmunit = heap_getattr(tuple, Anum_mgr_parm_unit, RelationGetDescr(noderel), &isNull);
@@ -1337,12 +1322,26 @@ static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 	char *pvalue;
 	char *pvaluespecial=",debug2,";	/*debug equals debug2*/
 	bool ret = false;
+	int ipos = 0;
+	NameData valueinputdata;
+	NameData valuecheckdata;
 	
 	Assert(value != NULL);
 	Assert(valuelist->data != NULL);
-	
+	/*valuelist replaces double quota to single quota*/
+	if (strstr(valuelist->data, "\"") != NULL)
+	{
+		while(ipos < valuelist->len)
+		{
+			if ('\"' == valuelist->data[ipos])
+				valuelist->data[ipos] = '\'';
+			ipos++;
+		}
+	}
+	namestrcpy(&valueinputdata, value);
+	mgr_string_add_single_quota(&valueinputdata);
 	/*special handling, because "debug" equals "debug2"*/
-	if (strcmp("debug", value) == 0)
+	if (strcmp("'debug'", valueinputdata.data) == 0)
 	{
 		pvalue = strstr(valuelist->data, pvaluespecial);
 		if (pvalue != NULL)
@@ -1356,20 +1355,17 @@ static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 		resetStringInfo(valuelist);
 		appendStringInfoString(valuelist, pvaluearray);
 	}
-	pvalue = strstr(valuelist->data, value);
-	if (pvalue != NULL)
+	ptr = strtok_r(pvaluearray, ",", &pvaluetmp); 
+	while(ptr != NULL)
 	{
-		ptr = strtok_r(pvaluearray, ",", &pvaluetmp);  
-		while(ptr != NULL)
+		namestrcpy(&valuecheckdata, ptr);
+		mgr_string_add_single_quota(&valuecheckdata);
+		if (strcmp(valuecheckdata.data, valueinputdata.data) == 0)
 		{
-			if (strcmp(ptr, value) == 0)
-			{
-				ret = true;
-				break;
-			}
-			ptr = strtok_r(NULL, ",", &pvaluetmp);
-
+			ret = true;
+			break;
 		}
+		ptr = strtok_r(NULL, ",", &pvaluetmp);
 	}
 
 	return ret;
