@@ -13,7 +13,6 @@
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
-#include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
@@ -2096,49 +2095,17 @@ a_expr:	c_expr
 		}
 	| a_expr IS NULL_P							%prec IS
 		{
-			/*
-			 * Blank string is known as NULL value in oracle grammar but not in postgres
-			 * grammar.
-			 *
-			 * And sometimes data may insert in postgres grammar and select in oracle grammar,
-			 * so "IS NULL" cannot chose tuple which is blank string and it is wrong in oracle.
-			 *
-			 * Above all, transform automatically:
-			 *						a_expr is NULL
-			 *					=>
-			 *						((a_expr is NULL) OR (a_expr = ''))
-			 */
 			NullTest *n = makeNode(NullTest);
-			A_Expr *auto_expr;
-			Const *blank;
 			n->arg = (Expr *) $1;
 			n->nulltesttype = IS_NULL;
-			blank = makeConst(UNKNOWNOID, -1, InvalidOid, -2, CStringGetDatum(""), false, false);
-			auto_expr = makeSimpleA_Expr(AEXPR_OP, "=", $1, (Node *) blank, @1);			
-			$$ = (Node *) makeA_Expr(AEXPR_OR, NIL, (Node *) n, (Node *) auto_expr, @1);
+			$$ = (Node *) n;
 		}
 	| a_expr IS NOT NULL_P						%prec IS
 		{
-			/*
-			 * Blank string is known as NULL value in oracle grammar but not in postgres
-			 * grammar.
-			 *
-			 * And sometimes data may insert in postgres grammar and select in oracle grammar,
-			 * so "IS NOT NULL" will chose tuple which is blank string and it is wrong in oracle.
-			 *
-			 * Above all, transform automatically:
-			 *						a_expr is not NULL
-			 *					=>
-			 *						((a_expr is not NULL) AND (a_expr <> ''))
-			 */
 			NullTest *n = makeNode(NullTest);
-			A_Expr *auto_expr;
-			Const *blank;
 			n->arg = (Expr *) $1;
 			n->nulltesttype = IS_NOT_NULL;
-			blank = makeConst(UNKNOWNOID, -1, InvalidOid, -2, CStringGetDatum(""), false, false);
-			auto_expr = makeSimpleA_Expr(AEXPR_OP, "<>", $1, (Node *) blank, @1);			
-			$$ = (Node *) makeA_Expr(AEXPR_AND, NIL, (Node *) n, (Node *) auto_expr, @1);
+			$$ = (Node *) n;
 		}
 	| a_expr BETWEEN b_expr AND b_expr			%prec BETWEEN
 		{

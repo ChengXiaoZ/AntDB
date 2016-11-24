@@ -353,6 +353,69 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 				/* the argument can be any type, so don't coerce it */
 				n->argisrow = type_is_rowtype(exprType((Node *) n->arg));
 				result = expr;
+#ifdef ADB
+				/*
+				 * Blank string is known as NULL value in oracle grammar but
+				 * it is NOT NULL in postgres grammar.
+				 *
+				 * Sometimes data maybe inserted in postgres grammar and
+				 * select in oracle grammar. Then
+				 *
+				 * "IS NULL" cannot chose tuple which is blank string and it is
+				 * wrong in oracle.
+				 *
+				 * "IS NOT NULL" will chose tuple which is blank string and it is
+				 * also wrong in oracle.
+				 *
+				 * Above all, transform NullTest expression which is used in
+				 * WHERE clause and its argument is one of character types
+				 * automatically by the rules as below.
+				 *
+				 * a_expr is NULL     => ((a_expr is NULL) OR (a_expr = ''))
+				 *
+				 * a_expr is not NULL => ((a_expr is not NULL) AND (a_expr <> ''))
+				 *
+				 */
+				if (IsOracleParseGram(pstate) &&
+					pstate->p_expr_kind == EXPR_KIND_WHERE &&
+					IS_CHARACTER_TYPE(exprType((Node *) n->arg)))
+				{
+					Expr *auto_expr = NULL;
+					Const *blank = makeConst(UNKNOWNOID,
+											 -1,
+											 InvalidOid,
+											 -2,
+											 CStringGetDatum(""),
+											 false,
+											 false);
+					switch (n->nulltesttype)
+					{
+						case IS_NULL:
+							auto_expr = make_op(pstate,
+												list_make1(makeString("=")),
+												(Node *) n->arg,
+												(Node *) blank,
+												-1);
+							result = (Node *) makeBoolExpr(OR_EXPR,
+												list_make2(n, auto_expr),
+												exprLocation((Node *) expr));
+							break;
+						case IS_NOT_NULL:
+							auto_expr = make_op(pstate,
+												list_make1(makeString("<>")),
+												(Node *) n->arg,
+												(Node *) blank,
+												-1);
+							result = (Node *) makeBoolExpr(AND_EXPR,
+												list_make2(n, auto_expr),
+												exprLocation((Node *) expr));
+							break;
+						default:
+							Assert(0);
+							break;
+					}
+				}
+#endif
 				break;
 			}
 
