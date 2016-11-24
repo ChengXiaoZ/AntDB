@@ -1,0 +1,69 @@
+<!--
+doc/src/sgml/ref/mgr_stop_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-STOPGTM">
+  <refmeta>
+    <refentrytitle>STOP GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>STOP GTM</refname>
+    <refpurpose>stop the gtm type on the ADB host</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-stopgtm">
+    <primary>STOP GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+STOP GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">nodename</replaceable> } [ <replaceable class="parameter">stop_mode</replaceable> ];
+
+<phrase>where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
+    MODE SMART     | MODE S
+    MODE FAST      | MODE F
+    MODE IMMEDIATE | MODE I
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Stop the gtm type on the ADB host.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">nodename</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Stop gtm master "gtmname" using immediate mode:
+      <programlisting>
+        stop gtm master gtmname mode i;
+      </programlisting>
+    </para>
+
+  </refsect1>
+
+
+</refentry>

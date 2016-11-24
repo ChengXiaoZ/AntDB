@@ -275,21 +275,19 @@
    &mgrAlterHost;
    &mgrAppend;
    &mgrDeploy;
-   &mgrDropHost; 
-   &mgrInitAll;   
+   &mgrDropHost;
+   &mgrInitAll;
    &mgrMonitorAgent;
    &mgrMonitorNode;
    &mgrReset;
-   &mgrSet;  
+   &mgrSet;
    &mgrShow;
    &mgrStopAgent;
-   &mgrStartAgent;  
-   &mgrStopNode;
-   &mgrStartNode;     
-   
-   
-   
-   
+   &mgrStopCoordinator;
+   &mgrStopDatanode;
+   &mgrStopGtm;
+   &mgrStartAgent;
+   &mgrStartNode;
 
 </reference>
 

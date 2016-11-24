@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-STOP AGENT [ALL | <replaceable class="parameter">hostname</replaceable>[,...]];
+STOP AGENT [ ALL | <replaceable class="parameter">hostname</replaceable>[,...] ];
     </synopsis>
   </refsynopsisdiv>
 
