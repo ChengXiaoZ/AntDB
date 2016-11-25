@@ -238,6 +238,7 @@ static bool pool_exec_set_query(PGconn *conn, const char *query, StringInfo errM
 static int pool_wait_pq(PGconn *conn);
 static int pq_custom_msg(PGconn *conn, char id, int msgLength);
 static void close_idle_connection(void);
+static void check_idle_slot(void);
 
 /* for hash DatabasePool */
 static HTAB *htab_database;
@@ -3206,6 +3207,17 @@ static int pq_custom_msg(PGconn *conn, char id, int msgLength)
 
 static void close_idle_connection(void)
 {
+	time_t cur_time;
+	cur_time = time(NULL);
+	close_timeout_idle_slots(cur_time + pool_time_out);	
+
+	/* to test idle slot, never run in common*/
+	if(false)
+		check_idle_slot();
+}
+
+static void check_idle_slot(void)
+{
 	HASH_SEQ_STATUS hash_database_stats;
 	HASH_SEQ_STATUS hash_nodepool_status;
 	DatabasePool *db_pool;
@@ -3230,7 +3242,7 @@ static void close_idle_connection(void)
 				destroy_slot(slot, false);
 			}
 		}
-	}	
+	}
 }
 
 Datum pool_close_idle_conn(PG_FUNCTION_ARGS)
