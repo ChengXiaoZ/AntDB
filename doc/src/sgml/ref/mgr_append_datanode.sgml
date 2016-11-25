@@ -1,0 +1,68 @@
+<!--
+doc/src/sgml/ref/mgr_appenddatanode.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-APPENDDATANODE">
+  <refmeta>
+    <refentrytitle>APPEND DATANODE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>APPEND DATANODE</refname>
+    <refpurpose>append a new datanode to the cluster which is running</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-appenddatanode">
+    <primary>APPEND DATANODE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+APPEND DATANODE <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable>;
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">MASTER</replaceable>
+    <replaceable class="parameter">SLAVE</replaceable>
+    <replaceable class="parameter">EXTRA</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      append a new datanode to the cluster which is running.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+     <para>
+      nodename :the name of datanode which you want to append to the cluster,corresponds to the name column in the NODE table.
+     </para>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Alter datanode slave:
+      <programlisting>
+       append datanode master db1;
+       append datanode slave db1;
+       append datanode extra db1;
+      </programlisting>
+    </para>
+  </refsect1>
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-appendgtm"></member>
+   <member><xref linkend="mgr-appendcoordinator"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>

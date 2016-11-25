@@ -1,42 +1,36 @@
 <!--
-doc/src/sgml/ref/mgr_alter.sgml
+doc/src/sgml/ref/mgr_alter_datanode.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-ALTER">
+<refentry id="MGR-ALTERDATANODE">
   <refmeta>
-    <refentrytitle>ALTER</refentrytitle>
+    <refentrytitle>ALTER DATANODE</refentrytitle>
     <manvolnum>7</manvolnum>
     <refmiscinfo>Manage - Language Statements</refmiscinfo>
   </refmeta>
 
   <refnamediv>
-    <refname>ALTER</refname>
-    <refpurpose>alter the parameters of node in the cluster</refpurpose>
+    <refname>ALTER DATANODE</refname>
+    <refpurpose>alter the parameters of datanode node in the cluster</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-alter">
-    <primary>ALTER</primary>
+  <indexterm zone="mgr-alterdatanode">
+    <primary>ALTER DATANODE</primary>
   </indexterm>
 
   <refsynopsisdiv>
     <synopsis>
-	ALTER <replaceable class="parameter">option</replaceable> <replaceable class="parameter">nodename</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );
-    
-		<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
-		<replaceable class="parameter">GTM MASTER</replaceable>
-		<replaceable class="parameter">GTM SLAVE</replaceable>
-		<replaceable class="parameter">GTM EXTRA</replaceable>
-		<replaceable class="parameter">COORDINATOR</replaceable>
-		<replaceable class="parameter">DATANODE MASTER</replaceable>
-		<replaceable class="parameter">DATANODE SLAVE</replaceable>
-		<replaceable class="parameter">DATANODE EXTRA</replaceable>
-	 
-		<phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
-		<replaceable class="parameter">HOST</replaceable>
-		<replaceable class="parameter">PORT</replaceable>
-		<replaceable class="parameter">PATH</replaceable>
-		<replaceable class="parameter">SYNC</replaceable>
+ALTER DATANODE <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );   
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">MASTER</replaceable>
+    <replaceable class="parameter">SLAVE</replaceable>
+    <replaceable class="parameter">EXTRA</replaceable>
+<phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">HOST</replaceable>
+    <replaceable class="parameter">PORT</replaceable>
+    <replaceable class="parameter">PATH</replaceable>
+    <replaceable class="parameter">SYNC</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -44,7 +38,7 @@ ADB documentation
     <title>Description</title>
 
     <para>
-      alter the parameters of node in the cluster
+      alter the parameters of datanode node in the cluster
     </para>
   </refsect1>
 
@@ -110,6 +104,14 @@ ADB documentation
     </para>
   </refsect1>
 
+    <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-altergtm"></member>
+	  <member><xref linkend="mgr-altercoordinator"></member>
+    </simplelist>
+  </refsect1>
 
 
 </refentry>

@@ -21,24 +21,22 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-		SHOW <replaceable class="parameter">nodename</replaceable> <replaceable class="parameter">option</replaceable>;
-		where option can be one of any parameter in the postgres.conf
+SHOW <replaceable class="parameter">nodename</replaceable> <replaceable class="parameter">option</replaceable>;
+where option can be one of any parameter in the postgres.conf
     </synopsis>
   </refsynopsisdiv>
 
   <refsect1>
-    <title>Description</title>
-		
+    <title>Description</title>	
     <para>
-		display the contents of the specifed parameter in the file of postgres.conf.In addition it display master and standby nodes
-		and support fuzzy queries.
+      display the contents of the specifed parameter in the file of postgres.conf.In addition it display master and standby nodes,and support fuzzy queries.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Examples</title>	
     <para>
-	Fuzzy query parameters with the sync.
+      Fuzzy query parameters with the sync.
       <programlisting>
         show db1 sync;
       </programlisting>

@@ -21,15 +21,15 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-	ALTER HOST<replaceable class="parameter">hostname</replaceable>( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );
+ALTER HOST<replaceable class="parameter">hostname</replaceable>( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );
 
-	<phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
-		<replaceable class="parameter">ADDRESS</replaceable>
-		<replaceable class="parameter">AGENTPORT</replaceable>
-		<replaceable class="parameter">PGHOME</replaceable>
-		<replaceable class="parameter">PORT</replaceable>
-		<replaceable class="parameter">PROTOCOL</replaceable>
-		<replaceable class="parameter">USER</replaceable>
+<phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">ADDRESS</replaceable>
+    <replaceable class="parameter">AGENTPORT</replaceable>
+    <replaceable class="parameter">PGHOME</replaceable>
+    <replaceable class="parameter">PORT</replaceable>
+    <replaceable class="parameter">PROTOCOL</replaceable>
+    <replaceable class="parameter">USER</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -124,13 +124,6 @@ ADB documentation
     </para>
   </refsect1>
 
-  <refsect1>
-    <title>See Also</title>
-
-    <simplelist type="inline">
-      <member><xref linkend="mgr-addhost"></member>
-    </simplelist>
-  </refsect1>
-
+ 
 
 </refentry>

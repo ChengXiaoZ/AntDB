@@ -21,9 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-	DEPLOY { ALL 
-	| <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ];
-    
+DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ];   
     </synopsis>
   </refsynopsisdiv>
 
@@ -41,9 +39,9 @@ ADB documentation
     <para>
       Alter datanode slave:
       <programlisting>
-		deploy all password 123; 
-		deploy localhost1;
-		deploy all 123;
+        deploy all password 123; 
+        deploy localhost1;
+        deploy all 123;
       </programlisting>
     </para>
   </refsect1>

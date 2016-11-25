@@ -1,0 +1,117 @@
+<!--
+doc/src/sgml/ref/mgr_alter_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ALTERGTM">
+  <refmeta>
+    <refentrytitle>ALTER GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ALTER GTM</refname>
+    <refpurpose>alter the parameters of gtm node in the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-altergtm">
+    <primary>ALTER GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ALTER GTM <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );   
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">MASTER</replaceable>
+    <replaceable class="parameter">SLAVE</replaceable>
+    <replaceable class="parameter">EXTRA</replaceable>
+<phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">HOST</replaceable>
+    <replaceable class="parameter">PORT</replaceable>
+    <replaceable class="parameter">PATH</replaceable>
+    <replaceable class="parameter">SYNC</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      alter the parameters of gtm node in the cluster
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">HOST</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host address, for now only can be a IP address, not support hostname.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PORT</replaceable>
+        </term>
+        <listitem>
+          <para>
+            port_number,Listen port number.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PATH</replaceable>
+        </term>
+        <listitem>
+          <para>
+            node_path,The path of the node to store data.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">SYNC</replaceable>
+        </term>
+        <listitem>
+          <para>
+           sync_mode,The relation of master and standby node.
+          </para>
+        </listitem>
+      </varlistentry>
+	</variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Alter gtm slave:
+      <programlisting>
+        alter gtm slave gtm1(port = 5445);
+      </programlisting>
+    </para>
+  </refsect1>
+
+    <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-alterdatanode"></member>
+	  <member><xref linkend="mgr-altercoordinator"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>

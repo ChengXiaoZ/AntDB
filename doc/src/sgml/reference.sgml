@@ -273,16 +273,12 @@
    &mgrAddCoordinator;
    &mgrAddDatanode;
    &mgrAddHost;
-   &mgrAlter;
    &mgrAlterHost;
-   &mgrAppend;
    &mgrDeploy;
    &mgrDropHost;
    &mgrInitAll;
    &mgrMonitorAgent;
    &mgrMonitorNode;
-   &mgrReset;
-   &mgrSet;
    &mgrShow;
    &mgrStopAgent;
    &mgrStopAll;
@@ -294,6 +290,23 @@
    &mgrStartGtm;
    &mgrStartCoordinator;
    &mgrStartDatanode;
+
+   &mgrAlterHost; 
+   &mgrDeploy;
+   &mgrInitAll;   
+   &mgrShow;   
+   &mgrAppendGtm;
+   &mgrAppendDatanode;
+   &mgrAppendCoordinator;
+   &mgrSetGtm;
+   &mgrSetDatanode;
+   &mgrSetCoordinator;
+   &mgrResetGtm;
+   &mgrResetDatanode;
+   &mgrResetCoordinator;
+   &mgrAlterGtm;
+   &mgrAlterDatanode;
+   &mgrAlterCoordinator;
 
 </reference>
 

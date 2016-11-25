@@ -1,0 +1,63 @@
+<!--
+doc/src/sgml/ref/mgr_append_coordinator.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-APPENDCOORDINATOR">
+  <refmeta>
+    <refentrytitle>APPEND COORDINATOR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>APPEND</refname>
+    <refpurpose>append a new coordinator to the cluster which is running</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-appendcoordinator">
+    <primary>APPEND COORDINATOR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+APPEND COORDINATOR <replaceable class="parameter">nodename</replaceable>;
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+    append a new coordinator to the cluster which is running.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+	 <para>
+      nodename :the name of coordinator which you want to append to the cluster,corresponds to the name column in the NODE table.
+	 </para>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Alter datanode slave:
+      <programlisting>
+      append coordinator coord1;
+      </programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-appendgtm"></member>
+   <member><xref linkend="mgr-appenddatanode"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>

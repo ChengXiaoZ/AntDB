@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-		INIT ALL;
+INIT ALL;
 
     </synopsis>
   </refsynopsisdiv>

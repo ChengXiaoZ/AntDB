@@ -191,30 +191,48 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY vacuumdb           SYSTEM "vacuumdb.sgml">
 
 <!-- ADB manage command -->
+
 <!ENTITY mgrAddGtm          SYSTEM "mgr_add_gtm.sgml">
 <!ENTITY mgrAddCoordinator  SYSTEM "mgr_add_coordinator.sgml">
 <!ENTITY mgrAddDatanode     SYSTEM "mgr_add_datanode.sgml">
 <!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
-<!ENTITY mgrAlter           SYSTEM "mgr_alter.sgml">
 <!ENTITY mgrAlterHost       SYSTEM "mgr_alter_host.sgml">
-<!ENTITY mgrAppend          SYSTEM "mgr_append.sgml">
+<!ENTITY mgrAlterCoordinator    SYSTEM "mgr_alter_coordinator.sgml">
+<!ENTITY mgrAlterDatanode            SYSTEM "mgr_alter_datanode.sgml">
+<!ENTITY mgrAlterGtm            SYSTEM "mgr_alter_gtm.sgml">
+<!ENTITY mgrAppendCoordinator   SYSTEM "mgr_append_coordinator.sgml">
+<!ENTITY mgrAppendDatanode      SYSTEM "mgr_append_datanode.sgml">
+<!ENTITY mgrAppendGtm           SYSTEM "mgr_append_gtm.sgml">
 <!ENTITY mgrDeploy          SYSTEM "mgr_deploy.sgml">
-<!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
-<!ENTITY mgrMonitorAgent    SYSTEM "mgr_monitor_agent.sgml">
-<!ENTITY mgrMonitorNode     SYSTEM "mgr_monitor_node.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
-<!ENTITY mgrReset           SYSTEM "mgr_reset.sgml">
-<!ENTITY mgrSet             SYSTEM "mgr_set.sgml">
+<!ENTITY mgrResetGtm           SYSTEM "mgr_reset_gtm.sgml">
+<!ENTITY mgrResetDatanode      SYSTEM "mgr_reset_datanode.sgml">
+<!ENTITY mgrResetCoordinator   SYSTEM "mgr_reset_coordinator.sgml">
+<!ENTITY mgrSetCoordinator   SYSTEM "mgr_set_coordinator.sgml">
+<!ENTITY mgrSetDatanode      SYSTEM "mgr_set_datanode.sgml">
+<!ENTITY mgrSetGtm           SYSTEM "mgr_set_gtm.sgml">
 <!ENTITY mgrShow            SYSTEM "mgr_show.sgml">
-<!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
-<!ENTITY mgrStopAll         SYSTEM "mgr_stop_all.sgml">
-<!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
-<!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
-<!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
 <!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
 <!ENTITY mgrStartAll        SYSTEM "mgr_start_all.sgml">
-<!ENTITY mgrStartGtm        SYSTEM "mgr_start_gtm.sgml">
-<!ENTITY mgrStartCoordinator SYSTEM "mgr_start_coordinator.sgml">
 <!ENTITY mgrStartDatanode   SYSTEM "mgr_start_datanode.sgml">
+<!ENTITY mgrStartCoordinator SYSTEM "mgr_start_coordinator.sgml">
+<!ENTITY mgrStartGtm        SYSTEM "mgr_start_gtm.sgml">
+<!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
+<!ENTITY mgrStopAll         SYSTEM "mgr_stop_all.sgml">
+<!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
+<!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
+<!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
+
+
+
+
+
+
+
+
+
+
+
+>>>>>>> 把帮助文档中的alter,reset,set,append命令给拆分的更细为，类似alter gtm，reset gtm
 
 

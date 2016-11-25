@@ -1,0 +1,68 @@
+<!--
+doc/src/sgml/ref/mgr_appendgtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-APPENDGTM">
+  <refmeta>
+    <refentrytitle>APPEND GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>APPEND GTM</refname>
+    <refpurpose>append a new gtm to the cluster which is running</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-appendgtm">
+    <primary>APPEND GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+APPEND GTM <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable>;
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">SLAVE</replaceable>
+    <replaceable class="parameter">EXTRA</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      append a new gtm to the cluster which is running.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+     <para>
+      nodename :the name of gtm which you want to append to the cluster,corresponds to the name column in the NODE table.
+     </para>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Alter datanode slave:
+      <programlisting>
+       append gtm slave gtm1;
+       append gtm extra gtm1;
+      </programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-appenddatanode"></member>
+   <member><xref linkend="mgr-appendcoordinator"></member>
+  </simplelist>
+ </refsect1>
+ 
+
+</refentry>

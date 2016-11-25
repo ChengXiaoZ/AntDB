@@ -1,0 +1,80 @@
+<!--
+doc/src/sgml/ref/mgr_set_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-SETGTM">
+  <refmeta>
+    <refentrytitle>SET GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>SET GTM</refname>
+    <refpurpose>change the the value of parameter in the file of postgres.conf which is own to gtm</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-setgtm">
+    <primary>SET GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+SET GTM { ALL | <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable> } ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ];
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">MASTER</replaceable>
+    <replaceable class="parameter">SLAVE</replaceable>
+    <replaceable class="parameter">EXTRA</replaceable>
+<phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
+    the parameter that in the file of postgres.conf
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      change the the value of parameter in the file of postgres.conf and update PARA table, it won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update PARA table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">Parameter</replaceable>
+        </term>
+        <listitem>
+          <para>
+            the parameter that in the file of postgres.conf
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      change the the value of 'synchronous_commit' and 'max_wal_senders' in the file of postgres.conf:
+      <programlisting>
+        set gtm master gtm_master(synchronous_commit = off, max_wal_senders = 10);
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-resetgtm"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>

@@ -1,0 +1,81 @@
+<!--
+doc/src/sgml/ref/mgr_reset_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-RESETGTM">
+  <refmeta>
+    <refentrytitle>RESET GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>RESET GTM</refname>
+    <refpurpose>reset the parameter's value in the file of postgres.conf which is own to gtm to the default</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-resetgtm">
+    <primary>RESET GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+RESET GTM { ALL | <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable> } ( parameter [, ...] ) [ FORCE ];
+<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">MASTER</replaceable>
+    <replaceable class="parameter">SLAVE</replaceable>
+    <replaceable class="parameter">EXTRA</replaceable>
+<phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
+    the parameter that in the file of postgres.conf
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+       reset the value of parameter to the default and the parameter which is own to the file of postgres.conf , the operator won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update PARA table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">Parameter</replaceable>
+        </term>
+        <listitem>
+          <para>
+            the parameter that in the file of postgres.conf
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      reset the value of 'synchronous_commit' and 'max_wal_senders' to the default which is own to the file of postgres.conf:
+      <programlisting>
+        reset gtm master gtm_master(synchronous_commit, max_wal_senders);
+        reset gtm all(synchronous_commit, max_wal_senders);
+      </programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-setgtm"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>
