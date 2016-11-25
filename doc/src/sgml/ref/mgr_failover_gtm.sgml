@@ -1,0 +1,84 @@
+<!--
+doc/src/sgml/ref/mgr_failover_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-FAILOVERGTM">
+  <refmeta>
+    <refentrytitle>FAILOVER GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>FAILOVER GTM</refname>
+    <refpurpose>pormote gtm slave to gtm master</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-failovergtm">
+    <primary>FAILOVER GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+FAILOVER GTM  [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</replaceable> [ FORCE ];
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      pormote gtm slave to gtm master, which is synchronized;
+     If the gtm slave is not synchronized, and want to pormote it to gtm master ,use "force" at command end;
+     For the command "failover gtm", it checks the type of gtm slave first, if it is not synchronized then checks the type of gtm extra.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">nodename</replaceable>
+        </term>
+        <listitem>
+          <para>
+            The gtm slave or gtm extra name
+          </para>
+        </listitem>
+      </varlistentry>
+			
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      promote one gtm slave or extra to master, which must be synchronized:
+      <programlisting>
+        failover gtm;
+      </programlisting>
+    </para>
+    <para>
+      promote one gtm slave or extra to master, no matter it is synchronized or not:
+      <programlisting>
+        failover gtm force;
+      </programlisting>
+    </para>
+    <para>
+      promote one gtm slave to master, which type is gtm slave:
+      <programlisting>
+        failover gtm slave;
+      </programlisting>
+    </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-appendgtm"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

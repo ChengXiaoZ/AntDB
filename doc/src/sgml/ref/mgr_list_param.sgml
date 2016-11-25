@@ -1,0 +1,119 @@
+<!--
+doc/src/sgml/ref/mgr_list_param.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-LISTPARAM">
+  <refmeta>
+    <refentrytitle>LIST PARAM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>LIST PARAM</refname>
+    <refpurpose>show the content of parameter table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-listparam">
+    <primary>LIST PARAM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+LIST PARAM  [<replaceable class="parameter">option</replaceable>] [<replaceable class="parameter">nodename</replaceable>[, ...] ];
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">NODENAME</replaceable>
+    <replaceable class="parameter">NODETYPE</replaceable>
+    <replaceable class="parameter">KEY</replaceable>
+    <replaceable class="parameter">VALUE</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      show the content of parameter table.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">NODENAME</replaceable>
+        </term>
+        <listitem>
+          <para>
+            The gtm ,coordinator or datanode name..
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">NODETYPE</replaceable>
+        </term>
+        <listitem>
+          <para>
+            The type of gtm ,coordinator or datanode.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">KEY</replaceable>
+        </term>
+        <listitem>
+          <para>
+            The parameter that in the file of postgres.conf.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">VALUE</replaceable>
+        </term>
+        <listitem>
+          <para>
+            The value of parameter.
+          </para>
+        </listitem>
+      </varlistentry>
+			
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      list the all content of parameter table:
+      <programlisting>
+        list param;
+      </programlisting>
+    </para>
+    <para>
+      list the content of param,which name is "dn"::
+      <programlisting>
+        list param dn1;
+      </programlisting>
+    </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-setgtm"></member>
+			<member><xref linkend="mgr-setcoordinator"></member>
+      <member><xref linkend="mgr-setdatanode"></member>
+      <member><xref linkend="mgr-resetgtm"></member>
+			<member><xref linkend="mgr-resetcoordinator"></member>
+      <member><xref linkend="mgr-resetdatanode"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

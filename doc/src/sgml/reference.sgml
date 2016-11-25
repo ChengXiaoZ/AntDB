@@ -281,9 +281,18 @@
    &mgrAppendCoordinator;
    &mgrAppendDatanode;
    &mgrAppendGtm;
+	 &mgrCleanAll
    &mgrDeploy;
+	 &mgrDropCoordinator
+	 &mgrDropDatanode
+	 &mgrDropGtm
    &mgrDropHost;
+	 &mgrFailoverDatanode
+	 &mgrFailoverGtm
    &mgrInitAll;
+	 &mgrListHost
+	 &mgrListNode
+	 &mgrListParam
    &mgrMonitorAgent;
    &mgrMonitorAll;
    &mgrMonitorCoordinator;

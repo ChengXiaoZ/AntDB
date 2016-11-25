@@ -1,0 +1,62 @@
+<!--
+doc/src/sgml/ref/mgr_clean_all.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-CLEANALL">
+  <refmeta>
+    <refentrytitle>CLEAN ALL</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CLEAN ALL</refname>
+    <refpurpose>clean the cluster ,delete the data of cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-dropgtm">
+    <primary>CLEAN ALL</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+CLEAN ALL;
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      Clean the cluster ,delete the data of cluster.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+        </term>
+        <listitem>
+          <para>
+          </para>
+        </listitem>
+			</varlistentry>
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+    <para>
+     clean all the data of cluster:
+      <programlisting>
+        clean all;
+      </programlisting>
+    </para>
+  </refsect1>
+
+</refentry>

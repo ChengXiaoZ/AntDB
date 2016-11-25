@@ -1,0 +1,163 @@
+<!--
+doc/src/sgml/ref/mgr_list_host.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-LISTHOST">
+  <refmeta>
+    <refentrytitle>LIST HOST</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>LIST HOST</refname>
+    <refpurpose>show the content of host table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-listhost">
+    <primary>LIST HOST</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+LIST HOST  [<replaceable class="parameter">option</replaceable>] [<replaceable class="parameter">hostname</replaceable>[, ...] ];
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">NAME</replaceable>
+    <replaceable class="parameter">USER</replaceable>
+    <replaceable class="parameter">PORT</replaceable>
+    <replaceable class="parameter">PROTOCOL</replaceable>
+    <replaceable class="parameter">AGENTPORT</replaceable>
+    <replaceable class="parameter">ADDRESS</replaceable>
+    <replaceable class="parameter">PGHOME</replaceable>
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+      show the content of host table.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">NAME</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host name.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">USER</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Select host's user name for run ADB
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PORT</replaceable>
+        </term>
+        <listitem>
+          <para>
+            <replaceable class="parameter">protocol_type</replaceable> listen port number.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PROTOCOL</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Connect <replaceable class="parameter">host_address</replaceable> using protocol:<literal>ssh</literal>, <literal>telnet</literal>.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">AGENTPORT</replaceable>
+        </term>
+        <listitem>
+          <para>
+            ADB manager command agent listen TCP port.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">ADDRESS</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host address, for now only can be a IP address, not support hostname.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">PGHOME</replaceable>
+        </term>
+        <listitem>
+          <para>
+            ADB programs install absolute path.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">hostname</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Host name, not support IP address.
+          </para>
+        </listitem>
+      </varlistentry>
+			
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      list the all content of host table:
+      <programlisting>
+        list host;
+      </programlisting>
+    </para>
+    <para>
+      list  the content of host,which name is "host1":
+      <programlisting>
+        list host host1;
+      </programlisting>
+    </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-addhost"></member>
+			<member><xref linkend="mgr-alterhost"></member>
+      <member><xref linkend="mgr-drophost"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>
