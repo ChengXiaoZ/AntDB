@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-MONITOR AGENT [ALL | <replaceable class="parameter">hostname</replaceable>[,...]];
+MONITOR AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [, ...] ];
     </synopsis>
   </refsynopsisdiv>
 
@@ -60,7 +60,7 @@ MONITOR AGENT [ALL | <replaceable class="parameter">hostname</replaceable>[,...]
     <para>
       monitor agent process to hostname1,hostname2:
       <programlisting>
-        MONITOR AGENT hostname1,hostname2;
+        MONITOR AGENT hostname1, hostname2;
       </programlisting>
     </para>
   </refsect1>

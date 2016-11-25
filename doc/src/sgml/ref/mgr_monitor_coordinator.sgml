@@ -1,0 +1,78 @@
+<!--
+doc/src/sgml/ref/mgr_monitor_coordinator.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-MONITORCOORDINATOR">
+  <refmeta>
+    <refentrytitle>MONITOR COORDINATOR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>MONITOR COORDINATOR</refname>
+    <refpurpose>monitor the current state of coordinator in the ADB cluster node</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-monitorcoordinator">
+    <primary>MONITOR COORDINATOR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+MONITOR COORDINATOR [ ALL | <replaceable class="parameter">nodename</replaceable> [, ...] ];
+    </synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+monitor the current state of coordinator in the ADB cluster node.
+    </para>
+    <para>
+node has three operating conditions:running, not running and reject connection.
+    </para>
+
+    <para>
+running means is server is accepting connections;
+    </para>
+
+    <para>
+not running means is could not establish connection;
+    </para>
+
+    <para>
+reject connection means is server is alive but rejecting connections(e.g., recovery model or startup model).
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">nodename</replaceable>
+        </term>
+        <listitem>
+          <para>
+            Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      monitor the state for all coordinator:
+      <programlisting>
+        monitor coordinator all;
+      </programlisting>
+    </para>
+  </refsect1>
+
+
+</refentry>

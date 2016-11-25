@@ -277,8 +277,8 @@
    &mgrDeploy;
    &mgrDropHost;
    &mgrInitAll;
-   &mgrMonitorAgent;
-   &mgrMonitorNode;
+   &mgrReset;
+   &mgrSet;
    &mgrShow;
    &mgrStopAgent;
    &mgrStopAll;
@@ -291,6 +291,11 @@
    &mgrStartCoordinator;
    &mgrStartDatanode;
 
+   &mgrMonitorAgent;
+   &mgrMonitorAll;
+   &mgrMonitorCoordinator;
+   &mgrMonitorDatanode;
+   &mgrMonitorGtm;
    &mgrAlterHost; 
    &mgrDeploy;
    &mgrInitAll;   

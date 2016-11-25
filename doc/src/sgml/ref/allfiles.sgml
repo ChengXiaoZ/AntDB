@@ -204,6 +204,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrAppendDatanode      SYSTEM "mgr_append_datanode.sgml">
 <!ENTITY mgrAppendGtm           SYSTEM "mgr_append_gtm.sgml">
 <!ENTITY mgrDeploy          SYSTEM "mgr_deploy.sgml">
+<!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
 <!ENTITY mgrResetGtm           SYSTEM "mgr_reset_gtm.sgml">
 <!ENTITY mgrResetDatanode      SYSTEM "mgr_reset_datanode.sgml">
@@ -222,17 +223,11 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
 <!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
 <!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
+<!ENTITY mgrMonitorAgent    SYSTEM "mgr_monitor_agent.sgml">
+<!ENTITY mgrMonitorAll      SYSTEM "mgr_monitor_all.sgml">
+<!ENTITY mgrMonitorCoordinator SYSTEM "mgr_monitor_coordinator.sgml">
+<!ENTITY mgrMonitorDatanode SYSTEM "mgr_monitor_datanode.sgml">
+<!ENTITY mgrMonitorGtm      SYSTEM "mgr_monitor_gtm.sgml">
 
-
-
-
-
-
-
-
-
-
-
->>>>>>> 把帮助文档中的alter,reset,set,append命令给拆分的更细为，类似alter gtm，reset gtm
 
 
