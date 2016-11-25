@@ -59,5 +59,11 @@ START GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node
     </para>
   </refsect1>
 
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-stopgtm"></member>
+    </simplelist>
+  </refsect1>
 </refentry>

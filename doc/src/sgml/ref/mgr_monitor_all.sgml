@@ -59,5 +59,12 @@ reject connection means is server is alive but rejecting connections(e.g., recov
     </para>
   </refsect1>
 
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-startall"></member>
+      <member><xref linkend="mgr-stopall"></member>
+    </simplelist>
+  </refsect1>
 </refentry>

@@ -73,6 +73,13 @@ reject connection means is server is alive but rejecting connections(e.g., recov
       </programlisting>
     </para>
   </refsect1>
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-startcoordinator"></member>
+      <member><xref linkend="mgr-stopcoordinator"></member>
+    </simplelist>
+  </refsect1>
 
 </refentry>

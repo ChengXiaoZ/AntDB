@@ -49,5 +49,13 @@ START ALL ;
       </programlisting>
     </para>
   </refsect1>
+  
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-stopall"></member>
+    </simplelist>
+  </refsect1>
 
 </refentry>

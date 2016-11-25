@@ -64,6 +64,13 @@ STOP AGENT [ ALL | <replaceable class="parameter">hostname</replaceable>[,...] ]
       </programlisting>
     </para>
   </refsect1>
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-startagent"></member>
+      <member><xref linkend="mgr-monitoragent"></member>
+    </simplelist>
+  </refsect1>
 
 </refentry>

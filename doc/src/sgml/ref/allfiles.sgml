@@ -192,42 +192,42 @@ Complete list of usable sgml source files in this directory.
 
 <!-- ADB manage command -->
 
-<!ENTITY mgrAddGtm          SYSTEM "mgr_add_gtm.sgml">
 <!ENTITY mgrAddCoordinator  SYSTEM "mgr_add_coordinator.sgml">
 <!ENTITY mgrAddDatanode     SYSTEM "mgr_add_datanode.sgml">
+<!ENTITY mgrAddGtm          SYSTEM "mgr_add_gtm.sgml">
 <!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
+<!ENTITY mgrAlterCoordinator SYSTEM "mgr_alter_coordinator.sgml">
+<!ENTITY mgrAlterDatanode   SYSTEM "mgr_alter_datanode.sgml">
+<!ENTITY mgrAlterGtm        SYSTEM "mgr_alter_gtm.sgml">
 <!ENTITY mgrAlterHost       SYSTEM "mgr_alter_host.sgml">
-<!ENTITY mgrAlterCoordinator    SYSTEM "mgr_alter_coordinator.sgml">
-<!ENTITY mgrAlterDatanode            SYSTEM "mgr_alter_datanode.sgml">
-<!ENTITY mgrAlterGtm            SYSTEM "mgr_alter_gtm.sgml">
-<!ENTITY mgrAppendCoordinator   SYSTEM "mgr_append_coordinator.sgml">
-<!ENTITY mgrAppendDatanode      SYSTEM "mgr_append_datanode.sgml">
-<!ENTITY mgrAppendGtm           SYSTEM "mgr_append_gtm.sgml">
+<!ENTITY mgrAppendCoordinator SYSTEM "mgr_append_coordinator.sgml">
+<!ENTITY mgrAppendDatanode  SYSTEM "mgr_append_datanode.sgml">
+<!ENTITY mgrAppendGtm       SYSTEM "mgr_append_gtm.sgml">
 <!ENTITY mgrDeploy          SYSTEM "mgr_deploy.sgml">
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
-<!ENTITY mgrResetGtm           SYSTEM "mgr_reset_gtm.sgml">
-<!ENTITY mgrResetDatanode      SYSTEM "mgr_reset_datanode.sgml">
-<!ENTITY mgrResetCoordinator   SYSTEM "mgr_reset_coordinator.sgml">
-<!ENTITY mgrSetCoordinator   SYSTEM "mgr_set_coordinator.sgml">
-<!ENTITY mgrSetDatanode      SYSTEM "mgr_set_datanode.sgml">
-<!ENTITY mgrSetGtm           SYSTEM "mgr_set_gtm.sgml">
-<!ENTITY mgrShow            SYSTEM "mgr_show.sgml">
-<!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
-<!ENTITY mgrStartAll        SYSTEM "mgr_start_all.sgml">
-<!ENTITY mgrStartDatanode   SYSTEM "mgr_start_datanode.sgml">
-<!ENTITY mgrStartCoordinator SYSTEM "mgr_start_coordinator.sgml">
-<!ENTITY mgrStartGtm        SYSTEM "mgr_start_gtm.sgml">
-<!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
-<!ENTITY mgrStopAll         SYSTEM "mgr_stop_all.sgml">
-<!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
-<!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
-<!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
 <!ENTITY mgrMonitorAgent    SYSTEM "mgr_monitor_agent.sgml">
 <!ENTITY mgrMonitorAll      SYSTEM "mgr_monitor_all.sgml">
 <!ENTITY mgrMonitorCoordinator SYSTEM "mgr_monitor_coordinator.sgml">
 <!ENTITY mgrMonitorDatanode SYSTEM "mgr_monitor_datanode.sgml">
 <!ENTITY mgrMonitorGtm      SYSTEM "mgr_monitor_gtm.sgml">
+<!ENTITY mgrResetCoordinator SYSTEM "mgr_reset_coordinator.sgml">
+<!ENTITY mgrResetDatanode   SYSTEM "mgr_reset_datanode.sgml">
+<!ENTITY mgrResetGtm        SYSTEM "mgr_reset_gtm.sgml">
+<!ENTITY mgrSetCoordinator  SYSTEM "mgr_set_coordinator.sgml">
+<!ENTITY mgrSetDatanode     SYSTEM "mgr_set_datanode.sgml">
+<!ENTITY mgrSetGtm          SYSTEM "mgr_set_gtm.sgml">
+<!ENTITY mgrShow            SYSTEM "mgr_show.sgml">
+<!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
+<!ENTITY mgrStartAll        SYSTEM "mgr_start_all.sgml">
+<!ENTITY mgrStartCoordinator SYSTEM "mgr_start_coordinator.sgml">
+<!ENTITY mgrStartDatanode   SYSTEM "mgr_start_datanode.sgml">
+<!ENTITY mgrStartGtm        SYSTEM "mgr_start_gtm.sgml">
+<!ENTITY mgrStopAgent       SYSTEM "mgr_stop_agent.sgml">
+<!ENTITY mgrStopAll         SYSTEM "mgr_stop_all.sgml">
+<!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
+<!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
+<!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
 
 
 

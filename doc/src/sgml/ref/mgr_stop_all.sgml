@@ -55,6 +55,12 @@ STOP ALL [ <replaceable class="parameter">stop_mode</replaceable> ];
     </para>
 
   </refsect1>
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-startall"></member>
+    </simplelist>
+  </refsect1>
 
 </refentry>

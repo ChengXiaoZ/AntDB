@@ -269,49 +269,43 @@
    </para>
   </partintro>
 
-   &mgrAddGtm;
+
    &mgrAddCoordinator;
    &mgrAddDatanode;
+   &mgrAddGtm;
    &mgrAddHost;
-   &mgrAlterHost;
+   &mgrAlterCoordinator;
+   &mgrAlterDatanode;
+   &mgrAlterGtm;
+   &mgrAlterHost; 
+   &mgrAppendCoordinator;
+   &mgrAppendDatanode;
+   &mgrAppendGtm;
    &mgrDeploy;
    &mgrDropHost;
    &mgrInitAll;
-   &mgrReset;
-   &mgrSet;
-   &mgrShow;
-   &mgrStopAgent;
-   &mgrStopAll;
-   &mgrStopCoordinator;
-   &mgrStopDatanode;
-   &mgrStopGtm;
-   &mgrStartAgent;
-   &mgrStartAll;
-   &mgrStartGtm;
-   &mgrStartCoordinator;
-   &mgrStartDatanode;
-
    &mgrMonitorAgent;
    &mgrMonitorAll;
    &mgrMonitorCoordinator;
    &mgrMonitorDatanode;
    &mgrMonitorGtm;
-   &mgrAlterHost; 
-   &mgrDeploy;
-   &mgrInitAll;   
-   &mgrShow;   
-   &mgrAppendGtm;
-   &mgrAppendDatanode;
-   &mgrAppendCoordinator;
-   &mgrSetGtm;
-   &mgrSetDatanode;
-   &mgrSetCoordinator;
-   &mgrResetGtm;
-   &mgrResetDatanode;
    &mgrResetCoordinator;
-   &mgrAlterGtm;
-   &mgrAlterDatanode;
-   &mgrAlterCoordinator;
+   &mgrResetDatanode;
+   &mgrResetGtm;
+   &mgrSetCoordinator;
+   &mgrSetDatanode;
+   &mgrSetGtm;
+   &mgrShow;
+   &mgrStartAgent;
+   &mgrStartAll;
+   &mgrStartCoordinator;
+   &mgrStartDatanode;
+   &mgrStartGtm;
+   &mgrStopAgent;
+   &mgrStopAll;
+   &mgrStopCoordinator;
+   &mgrStopDatanode;
+   &mgrStopGtm;
 
 </reference>
 

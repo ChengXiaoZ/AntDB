@@ -58,6 +58,12 @@ START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter"
       </programlisting>
     </para>
   </refsect1>
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-stopdatanode"></member>
+    </simplelist>
+  </refsect1>
 
 </refentry>

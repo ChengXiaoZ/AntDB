@@ -58,6 +58,12 @@ START COORDINATOR { ALL | <replaceable class="parameter">nodename</replaceable> 
       </programlisting>
     </para>
   </refsect1>
+      <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-stopcoordinator"></member>
+    </simplelist>
+  </refsect1>
 
 </refentry>
