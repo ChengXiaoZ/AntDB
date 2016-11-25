@@ -466,10 +466,10 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
 	if(msg->len > infoparastr.maxlen)
-		enlargeStringInfo(&infoparastr, msg->len - infoparastr.maxlen);
+		enlargeStringInfo(&infoparastr, msg->maxlen);
 	memcpy(infoparastr.data, &msg->data[msg->cursor], msg->len - msg->cursor);
-	infoparastr.cursor = 0;
 	infoparastr.len = msg->len - msg->cursor;
+	infoparastr.cursor = 0;
 	/*get datapath*/
 	strcpy(datapath, rec_msg_string);
 	/*check file exists*/
