@@ -790,7 +790,7 @@ initdb_node(PGXCNodeTypeNum node)
 	if (node == PGXC_GTM)
 	{
 		snprintf(buf, sizeof(buf),
-				 SYSTEMQUOTE "\"%s/initagtm\" -D \"%s/%s\" -L \"%s\" --noclean%s%s > \"%s/log/initagtm.log\" 2>&1" SYSTEMQUOTE,
+				 SYSTEMQUOTE "\"%s/initagtm\" -U postgres -D \"%s/%s\" -L \"%s\" --noclean%s%s > \"%s/log/initagtm.log\" 2>&1" SYSTEMQUOTE,
 				 bindir, temp_install, data_folder, datadir,
 				 debug ? " --debug" : "",
 				 nolocale ? " --no-locale" : "",
