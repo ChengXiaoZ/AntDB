@@ -11,7 +11,7 @@ ADB documentation
   </refmeta>
 
   <refnamediv>
-    <refname>APPEND</refname>
+    <refname>APPEND COORDINATOR</refname>
     <refpurpose>append a new coordinator to the cluster which is running</refpurpose>
   </refnamediv>
 
