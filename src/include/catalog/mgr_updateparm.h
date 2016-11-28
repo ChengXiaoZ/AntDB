@@ -13,7 +13,6 @@
 
 CATALOG(mgr_updateparm,3846) BKI_WITHOUT_OIDS
 {
-	char		updateparmparmtype;			/* updateparm type:c/d/g*/
 	NameData	updateparmnodename;			/* updateparm nodename */
 	char		updateparmnodetype;
 	NameData	updateparmkey;
@@ -32,12 +31,11 @@ typedef FormData_mgr_updateparm *Form_mgr_updateparm;
  *		compiler constants for mgr_updateparm
  * ----------------
  */
-#define Natts_mgr_updateparm				5
-#define Anum_mgr_updateparm_parmtype		1
-#define Anum_mgr_updateparm_nodename		2
-#define Anum_mgr_updateparm_nodetype		3
-#define Anum_mgr_updateparm_key				4
-#define Anum_mgr_updateparm_value			5
+#define Natts_mgr_updateparm				4
+#define Anum_mgr_updateparm_nodename		1
+#define Anum_mgr_updateparm_nodetype		2
+#define Anum_mgr_updateparm_key				3
+#define Anum_mgr_updateparm_value			4
 
 #define MACRO_STAND_FOR_ALL_NODENAME "*"
 

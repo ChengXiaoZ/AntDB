@@ -34,7 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if (Natts_mgr_updateparm != 5)
+#if (Natts_mgr_updateparm != 4)
 #error "need change code"
 #endif
 
@@ -254,7 +254,6 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 			mgr_reload_parm(rel_node, nodename->data, nodetype, key.data, value.data, effectparmstatus, false);
 			continue;
 		}
-		datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
 		datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(nodename);
 		datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
 		datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
@@ -1109,7 +1108,6 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 						if (strcmp(NameStr(nodename), NameStr(mgr_node->nodename)) != 0)
 							continue;
 					}
-					datum[Anum_mgr_updateparm_parmtype-1] = CharGetDatum(parmtype);
 					datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&(mgr_node->nodename));
 					datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
 					datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
