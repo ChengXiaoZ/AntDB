@@ -253,11 +253,9 @@ static void cmd_node_refresh_pghba_paras(StringInfo msg)
 	rec_msg_string = agt_getmsgstring(msg);		 
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
-	if(msg->len > infoparastr.maxlen)
-		enlargeStringInfo(&infoparastr, msg->len - infoparastr.maxlen);
-	memcpy(infoparastr.data, &msg->data[msg->cursor], msg->len - msg->cursor);
-	infoparastr.cursor = 0;
-	infoparastr.len = msg->len - msg->cursor;
+
+	appendBinaryStringInfo(&infoparastr, &msg->data[msg->cursor], msg->len - msg->cursor);
+
 	/*get datapath*/
 	strcpy(datapath, rec_msg_string);
 	/*check file exists*/
@@ -465,11 +463,9 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	rec_msg_string = agt_getmsgstring(msg);		 
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
-	if(msg->len > infoparastr.maxlen)
-		enlargeStringInfo(&infoparastr, msg->maxlen);
-	memcpy(infoparastr.data, &msg->data[msg->cursor], msg->len - msg->cursor);
-	infoparastr.len = msg->len - msg->cursor;
-	infoparastr.cursor = 0;
+
+	appendBinaryStringInfo(&infoparastr, &msg->data[msg->cursor], msg->len - msg->cursor);
+
 	/*get datapath*/
 	strcpy(datapath, rec_msg_string);
 	/*check file exists*/
