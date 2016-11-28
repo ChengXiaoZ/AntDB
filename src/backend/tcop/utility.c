@@ -973,10 +973,10 @@ standard_ProcessUtility(Node *parsetree,
 				 * send this query to backend nodes, it is just bypassed by the backend.
 				 * And we can't send "grammar".
 				 */
-				if (stmt->name !=NULL && strcmp(stmt->name, "grammar") == 0)
+				if (stmt->name != NULL && strcmp(stmt->name, "grammar") == 0)
 				{
 					/* nothing to do */
-				}else if (stmt->is_local)
+				} else if (stmt->is_local)
 				{
 					if (IsTransactionBlock())
 					{
@@ -1114,8 +1114,7 @@ standard_ProcessUtility(Node *parsetree,
 			 */
 			if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && IsTransactionBlock())
 			{
-				if (PoolManagerSetCommand(POOL_CMD_LOCAL_SET, queryString) < 0)
-					elog(ERROR, "Postgres-XC: ERROR SET query");
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote,false, EXEC_ON_ALL_NODES, false);
 			}
 #endif
 			break;
