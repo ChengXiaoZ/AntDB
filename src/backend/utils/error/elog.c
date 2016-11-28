@@ -1331,6 +1331,20 @@ geterrmsg(StringInfo buf)
 }
 #endif
 
+#ifdef ADB
+int errnode(const char *node)
+{
+	ErrorData  *edata = &errordata[errordata_stack_depth];
+
+	/* we don't bother incrementing recursion_depth */
+	CHECK_STACK_DEPTH();
+
+	edata->node_name = MemoryContextStrdup(ErrorContext, node);
+
+	return 0;					/* return value does not matter */
+}
+#endif /* ADB */
+
 /*
  * getinternalerrposition --- same for internal error position
  *
@@ -1591,7 +1605,10 @@ CopyErrorData(void)
 		newedata->constraint_name = pstrdup(newedata->constraint_name);
 	if (newedata->internalquery)
 		newedata->internalquery = pstrdup(newedata->internalquery);
-
+#ifdef ADB
+	if(newedata->node_name)
+		newedata->node_name = pstrdup(newedata->node_name);
+#endif /* ADB */
 	return newedata;
 }
 
@@ -1626,6 +1643,10 @@ FreeErrorData(ErrorData *edata)
 		pfree(edata->constraint_name);
 	if (edata->internalquery)
 		pfree(edata->internalquery);
+#ifdef ADB
+	if(edata->node_name)
+		pfree(edata->node_name);
+#endif /* ADB */
 	pfree(edata);
 }
 
@@ -1708,6 +1729,10 @@ ReThrowError(ErrorData *edata)
 		newedata->constraint_name = pstrdup(newedata->constraint_name);
 	if (newedata->internalquery)
 		newedata->internalquery = pstrdup(newedata->internalquery);
+#ifdef ADB
+	if(newedata->node_name)
+		newedata->node_name = pstrdup(newedata->node_name);
+#endif /* ADB */
 
 	recursion_depth--;
 	PG_RE_THROW();
@@ -2636,6 +2661,13 @@ send_message_to_server_log(ErrorData *edata)
 				appendStringInfo(&buf, _("LOCATION:  %s:%d\n"),
 								 edata->filename, edata->lineno);
 			}
+#ifdef ADB
+			if(edata->node_name)
+			{
+				log_line_prefix(&buf, edata);
+				appendStringInfo(&buf, _("NODE:  %s\n"), edata->node_name);
+			}
+#endif /* ADB */
 		}
 	}
 
@@ -2961,6 +2993,14 @@ send_message_to_frontend(ErrorData *edata)
 			pq_sendbyte(&msgbuf, PG_DIAG_SOURCE_FUNCTION);
 			err_sendstring(&msgbuf, edata->funcname);
 		}
+
+#ifdef ADB
+		if (edata->node_name)
+		{
+			pq_sendbyte(&msgbuf, PG_DIAG_NODE_NAME);
+			err_sendstring(&msgbuf, edata->node_name);
+		}
+#endif /* ADB */
 
 		pq_sendbyte(&msgbuf, '\0');		/* terminator */
 	}

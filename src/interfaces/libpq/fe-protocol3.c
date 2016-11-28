@@ -1051,6 +1051,11 @@ pqGetErrorNotice3(PGconn *conn, bool isError)
 								  valf, vall);
 			appendPQExpBufferChar(&workBuf, '\n');
 		}
+#ifdef ADB
+		val = PQresultErrorField(res, PG_DIAG_NODE_NAME);
+		if(val)
+			appendPQExpBuffer(&workBuf, libpq_gettext("NODE:  %s\n"), val);
+#endif /* ADB */
 	}
 
 	/*

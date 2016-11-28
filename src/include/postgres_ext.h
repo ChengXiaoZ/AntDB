@@ -65,5 +65,8 @@ typedef PG_INT64_TYPE pg_int64;
 #define PG_DIAG_SOURCE_FILE		'F'
 #define PG_DIAG_SOURCE_LINE		'L'
 #define PG_DIAG_SOURCE_FUNCTION 'R'
+#ifdef ADB
+#define PG_DIAG_NODE_NAME		'N'
+#endif /* ADB */
 
 #endif   /* POSTGRES_EXT_H */

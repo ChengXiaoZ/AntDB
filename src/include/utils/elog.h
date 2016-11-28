@@ -237,6 +237,12 @@ extern int	getinternalerrposition(void);
 #if defined(ADB) || defined(ADBMGRD) || defined(AGTM)
 extern void geterrmsg(StringInfo buf);
 #endif
+#ifdef ADB
+extern int errnode(const char *node);
+#define errnode_gtm()		errnode("agtm")
+#define errnode_poolmgr()	errnode("poolmgr")
+#define errnode_rxact()		errnode("rxact")
+#endif /* ADB */
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -456,6 +462,9 @@ typedef struct ErrorData
 	int			cursorpos;		/* cursor index into query string */
 	int			internalpos;	/* cursor index into internalquery */
 	char	   *internalquery;	/* text of internally-generated query */
+#ifdef ADB
+	char	   *node_name;		/* error from node name */
+#endif /* ADB */
 	int			saved_errno;	/* errno at entry */
 } ErrorData;
 
