@@ -101,6 +101,9 @@ typedef struct RemoteQueryState
 	char		errorCode[5];			/* error code to send back to client */
 	StringInfoData errorMessage;			/* error message to send back to client */
 	char	   *errorDetail;			/* error detail to send back to client */
+#ifdef ADB
+	char	   *errorNodeName;			/* error node name to send back to client */
+#endif /* ADB */
 	bool		query_Done;				/* query has been sent down to Datanodes */
 	RemoteDataRowData currentRow;		/* next data ro to be wrapped into a tuple */
 	/* TODO use a tuplestore as a rowbuffer */

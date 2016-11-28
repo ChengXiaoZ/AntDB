@@ -259,6 +259,9 @@ CreateResponseCombiner(int node_count, CombineType combine_type)
 	combiner->copy_out_count = 0;
 	initStringInfo(&(combiner->errorMessage));
 	combiner->errorDetail = NULL;
+#ifdef ADB
+	combiner->errorNodeName = NULL;
+#endif /* ADB */
 	combiner->query_Done = false;
 	combiner->currentRow.msg = NULL;
 	combiner->currentRow.msglen = 0;
@@ -792,7 +795,7 @@ HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t
 	 */
 	if (combiner->errorMessage.len == 0)
 	{
-		appendStringInfo(&(combiner->errorMessage), "[From node '%s']%s", from, message);
+		appendStringInfo(&(combiner->errorMessage), "%s", message);
 		/* Error Code is exactly 5 significant bytes */
 		if (code)
 			memcpy(combiner->errorCode, code, 5);
@@ -803,6 +806,10 @@ HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t
 		combiner->errorDetail = pstrdup(detail);
 	}
 
+#ifdef ADB
+	if(combiner->errorNodeName == NULL && from != NULL)
+		combiner->errorNodeName = pstrdup(from);
+#endif /* ADB */
 	/*
 	 * If Datanode have sent ErrorResponse it will never send CommandComplete.
 	 * Increment the counter to prevent endless waiting for it.
@@ -974,6 +981,10 @@ CloseCombiner(RemoteQueryState *combiner)
 		pfree(combiner->errorMessage.data);
 		if (combiner->errorDetail)
 			pfree(combiner->errorDetail);
+#ifdef ADB
+		if(combiner->errorNodeName)
+			pfree(combiner->errorNodeName);
+#endif /* ADB */
 		if (combiner->cursor_connections)
 			pfree(combiner->cursor_connections);
 		if (combiner->tapenodes)
@@ -1362,19 +1373,18 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 				default:
 					/* Inconsistent responses */
 					{
-						const char *nodeName = NameStr(to_receive[i]->name);
 						const char *requestType = RequestTypeAsString(combiner->request_type);
 						const char *resultStr = ResponseResultAsString(result);
 
 						add_error_message(to_receive[i],
-							"[From node '%s']Unexpected response: result = %s, request type %s",
-							nodeName, resultStr, requestType);
+							"Unexpected response: result = %s, request type %s",
+							resultStr, requestType);
 
 						if (combiner->errorMessage.len == 0)
 						{
 							appendStringInfo(&(combiner->errorMessage),
-								"[From node '%s']Unexpected response: result = %s, request type %s",
-								nodeName, resultStr, requestType);
+								"Unexpected response: result = %s, request type %s",
+								resultStr, requestType);
 						}
 
 						/* Stop tracking and move last connection in place */
@@ -1511,8 +1521,7 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 				{
 					char *errmsg;
 					errmsg = HandleError(NameStr(conn->name), combiner, msg, msg_len);
-					add_error_message(conn, 
-						"[From node '%s']%s", NameStr(conn->name), errmsg);
+					add_error_message(conn, "%s", errmsg);
 					/*
 					 * Do not return with an error, we still need to consume Z,
 					 * ready-for-query
@@ -1720,7 +1729,7 @@ pgxc_node_begin(int conn_count,
 				ereport(WARNING,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("Fail to send BEGIN TRANSACTION command to the node %s",
-						 	NameStr(connections[i]->name)),
+						 	NameStr(connections[i]->name)), errnode(NameStr(connections[i]->name)),
 						 errhint("Error: %s", connections[i]->error)));
 
 				return EOF;
@@ -1843,6 +1852,9 @@ pgxc_node_remote_prepare(const char *gid)
 			remoteXactState.status = RXACT_PREPARE_FAILED;
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
+#ifdef ADB
+					 errnode(NameStr(connections[i]->name)),
+#endif /* ADB */
 					 errmsg("Fail to send PREPARE TRANSACTION '%s' to "
 							"the node %s", gid, NameStr(connections[i]->name)),
 					 errhint("Error: %s", connections[i]->error)));
@@ -1896,6 +1908,9 @@ pgxc_node_remote_prepare(const char *gid)
 
 					ereport(WARNING,
 							(errcode(ERRCODE_INTERNAL_ERROR),
+#ifdef ADB
+							 errnode(NameStr(connections[i]->name)),
+#endif /* ADB */
 							 errmsg("Fail to PREPARE the transaction '%s' on the node %u",
 							 	gid, connections[i]->nodeoid),
 							 errhint("Error: %s",
@@ -2011,6 +2026,9 @@ pgxc_node_remote_commit(const char *gid, bool missing_ok)
 			pfree(command.data);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
+#ifdef ADB
+					 errnode(NameStr(connections[i]->name)),
+#endif /* ADB */
 					 errmsg("Fail to send COMMIT transaction command to the node: %u",
 					 	connections[i]->nodeoid),
 					 errhint("Error: %s", connections[i]->error)));
@@ -2075,7 +2093,10 @@ pgxc_node_remote_commit(const char *gid, bool missing_ok)
 
 				ereport(WARNING,
 						(errcode(ERRCODE_INTERNAL_ERROR),
-						 errmsg("%s", connections[i]->error ? 
+#ifdef ADB
+						 errnode(NameStr(connections[i]->name)),
+#endif /* ADB */
+						 errmsg("%s", connections[i]->error ?
 						 			  connections[i]->error :
 						 			  "Receive ROLLBACK response")));
 			} else
@@ -2156,6 +2177,9 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 			pfree(command.data);
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
+#ifdef ADB
+					 errnode(NameStr(connections[i]->name)),
+#endif /* ADB */
 					 errmsg("Fail to send ROLLBACK transaction command to the node: %u",
 					 	connections[i]->nodeoid),
 					 errhint("Error: %s", connections[i]->error)));
@@ -2193,6 +2217,9 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 
 				ereport(WARNING,
 						(errcode(ERRCODE_INTERNAL_ERROR),
+#ifdef ADB
+						 errnode(NameStr(connections[i]->name)),
+#endif /* ADB */
 						 errmsg("%s", connections[i]->error)));
 			}
 			else
@@ -5165,6 +5192,13 @@ pgxc_node_report_error(RemoteQueryState *combiner)
 			pgxc_node_flush_read(combiner->connections[i]);
 #endif
 
+#ifdef ADB
+		ereport(ERROR,
+				(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
+				errmsg("%s", combiner->errorMessage.data),
+				combiner->errorDetail ? errdetail("%s", combiner->errorDetail) : 0,
+				combiner->errorNodeName ? errnode(combiner->errorNodeName) : 0));
+#else /* ADB */
 		if (combiner->errorDetail != NULL)
 			ereport(ERROR,
 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
@@ -5173,6 +5207,7 @@ pgxc_node_report_error(RemoteQueryState *combiner)
 			ereport(ERROR,
 					(errcode(MAKE_SQLSTATE(code[0], code[1], code[2], code[3], code[4])),
 					errmsg("%s", combiner->errorMessage.data)));
+#endif /* ADB */
 	}
 }
 

@@ -237,6 +237,9 @@ CheckBarrierCommandStatus(PGXCNodeAllHandles *conn_handles, const char *id,
 		if (handle_response(handle, NULL) != RESPONSE_BARRIER_OK)
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
+#ifdef ADB
+					 errnode(NameStr(handle->name)),
+#endif /* ADB */
 					 errmsg("CREATE BARRIER PREPARE command failed "
 						 	"with error %s", handle->error)));
 	}

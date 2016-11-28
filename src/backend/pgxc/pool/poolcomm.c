@@ -829,7 +829,9 @@ static void pool_report_error(pgsocket sock, uint32 msg_len)
 		}
 		err_msg[msg_len] = '\0';
 	}
-	ereport(ERROR, (errmsg("error message from poolmgr:%s", msg_len>0 ? err_msg:"missing error text")));
+	ereport(ERROR,
+		(errmsg("error message from poolmgr:%s", msg_len>0 ? err_msg:"missing error text"),
+		errnode_poolmgr()));
 }
 
 /*
