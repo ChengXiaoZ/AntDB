@@ -101,6 +101,8 @@ static void get_nodestatus(char nodetype, char *nodename, bool *is_exist, bool *
 static void mgr_set_master_sync(void);
 static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync);
 static Datum get_failover_node_type(char *node_name, char slave_type, char extra_type, bool force);
+static void mgr_get_cmd_head_word(char cmdtype, char *str);
+
 #if (Natts_mgr_node != 10)
 #error "need change code"
 #endif
@@ -1316,6 +1318,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	char *masterhostaddress;
 	char *mastername;
 	char *nodetypestr;
+	char cmdheadstr[64];
 	char nodetype;
 	int32 cndnport;
 	int masterport;
@@ -1534,8 +1537,9 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 
 	/*send cmd*/
+	mgr_get_cmd_head_word(cmdtype, cmdheadstr);
 	ereport(LOG,
-		(errmsg("%s, cmdtype=%d, %s", hostaddress, cmdtype, infosendmsg.data)));
+		(errmsg("%s, %s%s", hostaddress, cmdheadstr, infosendmsg.data)));
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
 	ma_sendbyte(&buf, cmdtype);
 	ma_sendstring(&buf,infosendmsg.data);
@@ -6665,16 +6669,15 @@ static void mgr_set_master_sync(void)
 								&getAgentCmdRst);
 
 		value = &infosendmsg.data[strlen("synchronous_standby_names")+1];
-		ereport(LOG, (errmsg("set hostoid %d path %s synchronous_standby_names=%s.", mgr_node->nodehost, path
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		ereport(LOG, (errmsg("%s, set %s synchronous_standby_names=%s.", address, path
 								,value)));
 		if (!getAgentCmdRst.ret)
-		{	
-			address = get_hostaddress_from_hostoid(mgr_node->nodehost);
-			ereport(WARNING, (errmsg("set address %s path %s synchronous_standby_names=%s failed.", address, path
-										,value)));
-			pfree(address);
+		{			
+			ereport(WARNING, (errmsg("%s, set %s synchronous_standby_names=%s failed.", address, path
+					,value)));
 		}
-
+		pfree(address);
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&(getAgentCmdRst.description));
 	}
@@ -6943,4 +6946,77 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 	/*close relation */
 	heap_close(rel_node, RowExclusiveLock);
 	return CharGetDatum(node_type);
+}
+
+/*
+* get the command head word
+*/
+static void mgr_get_cmd_head_word(char cmdtype, char *str)
+{
+	Assert(str != NULL);
+
+	switch(cmdtype)
+	{
+		case AGT_CMD_GTM_INIT:
+		case AGT_CMD_GTM_SLAVE_INIT:
+	  case AGT_CMD_GTM_START_MASTER:
+			strcpy(str, "initagtm");
+			break;
+		case AGT_CMD_GTM_START_SLAVE:
+		case AGT_CMD_GTM_STOP_MASTER:
+		case AGT_CMD_GTM_STOP_SLAVE:
+		case AGT_CMD_GTM_SLAVE_FAILOVER:
+		case AGT_CMD_AGTM_RESTART:
+			strcpy(str, "agtm_ctl");
+			break;
+		case AGT_CMD_CN_RESTART:
+		case AGT_CMD_CN_START:
+		case AGT_CMD_CN_STOP:
+		case AGT_CMD_DN_START:
+		case AGT_CMD_DN_RESTART:
+		case AGT_CMD_DN_STOP:
+		case AGT_CMD_DN_FAILOVER:
+		case AGT_CMD_NODE_RELOAD:
+			strcpy(str, "pg_ctl");
+			break;
+		case AGT_CMD_GTM_CLEAN:
+		case AGT_CMD_RM:
+		case AGT_CMD_CLEAN_NODE:
+			strcpy(str, "rm -rf");
+			break;
+		case AGT_CMD_CNDN_CNDN_INIT:
+			strcpy(str, "initdb");
+			break;
+		case AGT_CMD_CNDN_SLAVE_INIT:
+			strcpy(str, "pg_basebackup");
+			break;
+		case AGT_CMD_PSQL_CMD:
+			strcpy(str, "psql");
+			break;
+		case AGT_CMD_CNDN_REFRESH_PGSQLCONF:
+		case AGT_CMD_CNDN_REFRESH_RECOVERCONF:
+		case AGT_CMD_CNDN_REFRESH_PGHBACONF:
+		case AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD:
+		case AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE:
+		case AGT_CMD_CNDN_RENAME_RECOVERCONF:
+			strcpy(str, "update");
+			break;
+		case AGT_CMD_MONITOR_GETS_HOST_INFO:
+			strcpy(str, "monitor");
+			break;
+		case AGT_CMD_PGDUMPALL:
+			strcpy(str, "pg_dumpall");
+			break;
+		case AGT_CMD_STOP_AGENT:
+			strcpy(str, "stop agent");
+			break;
+		case AGT_CMD_SHOW_AGTM_PARAM:
+		case AGT_CMD_SHOW_CNDN_PARAM:
+			strcpy(str, "show parameter");
+			break;
+		default:
+			strcpy(str, "unknown cmd");
+			break;
+		str[strlen(str)-1]='\0';
+	}
 }
