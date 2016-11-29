@@ -69,7 +69,7 @@ static ResTarget* make_star_target(int location);
 static Node* make_column_in(const char *col_name, List *values);
 static Node* makeNode_RangeFunction(const char *func_name, List *func_args);
 static Node* make_func_call(const char *func_name, List *func_args);
-static List* make_start_agent_args(List *options);
+/* static List* make_start_agent_args(List *options); */
 extern char *defGetString(DefElem *def);
 static Node* make_ColumnRef(const char *col_name);
 static Node* make_whereClause_for_datanode(char * node_type_str, List* node_name_list);
@@ -2218,7 +2218,7 @@ static Node* make_func_call(const char *func_name, List *func_args)
 	n->location = -1;
 	return (Node *)n;
 }
-
+#if 0
 static List* make_start_agent_args(List *options)
 {
 	List *result;
@@ -2248,6 +2248,7 @@ static List* make_start_agent_args(List *options)
 
 	return result;
 }
+#endif
 
 static Node* make_ColumnRef(const char *col_name)
 {
