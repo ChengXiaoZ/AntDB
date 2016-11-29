@@ -1504,6 +1504,7 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 	char *nodetypestr;
 	/*max port is 65535,so the length of portstr is 6*/
 	char portstr[6]="00000";
+	bool bget = false;
 	
 	AssertArg(node && dest && node->nodename && node->param);
 	/*get node name and parameter name*/
@@ -1564,6 +1565,7 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 			ExecStoreTuple(out, slot, InvalidBuffer, false);
 			MemoryContextSwitchTo(oldcontext);
 			(*dest->receiveSlot)(slot, dest);
+			bget = true;
 		}
 		heap_endscan(rel_scan);
 		heap_close(rel, AccessShareLock);
@@ -1575,6 +1577,9 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 		PG_RE_THROW();
 	}PG_END_TRY();
 	(*dest->rShutdown)(dest);
+	if (!bget)
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			,errmsg("node \"%s\" does not exist", nodename.data))); 
 }
 
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst)
