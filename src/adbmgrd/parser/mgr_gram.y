@@ -12,6 +12,25 @@
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/mgr_parm.h"
 #include "catalog/mgr_updateparm.h"
+#include "utils/builtins.h"
+#include "utils/memutils.h"
+#include "utils/rel.h"
+#include "utils/syscache.h"
+#include "utils/tqual.h"
+#include "utils/fmgroids.h"    /* For F_NAMEEQ	*/
+#include "access/htup_details.h"
+#include "catalog/indexing.h"
+#include "catalog/mgr_host.h"
+#include "catalog/pg_type.h"
+#include "commands/defrem.h"
+#include "funcapi.h"
+#include "libpq/ip.h"
+#include "mgr/mgr_agent.h"
+#include "mgr/mgr_cmds.h"
+#include "mgr/mgr_msg_type.h"
+#include "miscadmin.h"
+#include "nodes/parsenodes.h"
+#include "parser/mgr_node.h"
 /*
  * The YY_EXTRA data that a flex scanner allows us to pass around.  Private
  * state needed for raw parsing/lexing goes here.
@@ -75,6 +94,7 @@ static Node* make_ColumnRef(const char *col_name);
 static Node* make_whereClause_for_datanode(char * node_type_str, List* node_name_list);
 static Node* make_whereClause_for_coord(char * node_type_str, List* node_name_list);
 static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list);
+static void check_node_name_isvaild(char node_type, List* node_name_list);
 %}
 
 %pure-parser
@@ -1026,6 +1046,8 @@ ListParmStmt:
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
+
+			check_node_name_isvaild($3, $4);
 
 			switch ($3)
 			{
@@ -2307,4 +2329,50 @@ static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list
 							-1),
 							 -1);
 	return  (Node *)whereClause;
+}
+
+static void check_node_name_isvaild(char node_type, List* node_name_list)
+{
+	ListCell *lc = NULL;
+	A_Const *node_name  = NULL;
+	NameData name;
+	Relation rel_node;
+	HeapScanDesc scan;
+	ScanKeyData key[2];
+	HeapTuple tuple;
+
+	foreach(lc, node_name_list)
+	{
+		node_name = (A_Const *) lfirst(lc);
+		Assert(node_name && IsA(&(node_name->val), String));
+
+		namestrcpy(&name, strVal(&(node_name->val)));
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodename
+			,BTEqualStrategyNumber, F_NAMEEQ
+			,NameGetDatum(&name));
+
+		ScanKeyInit(&key[1]
+			,Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(node_type));
+
+		rel_node = heap_open(NodeRelationId, AccessShareLock);
+		scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+
+		if ((tuple = heap_getnext(scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(scan);
+			heap_close(rel_node, AccessShareLock);
+
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					,errmsg("Node name \"%s\" does not exist.", NameStr(name))));
+		}
+
+		heap_endscan(scan);
+		heap_close(rel_node, AccessShareLock);
+	}
+
+	return;
 }
