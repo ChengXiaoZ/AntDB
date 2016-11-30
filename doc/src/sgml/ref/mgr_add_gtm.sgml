@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD GTM</refname>
-    <refpurpose>add one line gtm node type infomation in node table</refpurpose>
+    <refpurpose>add one line gtm node type information in node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-addgtm">
@@ -21,13 +21,13 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">nodename</replaceable> ( <replaceable class="parameter">option</replaceable> );
+    ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
 
-<phrase>where <replaceable class="parameter">option</replaceable> must be list below:</phrase>
-    HOST = <replaceable class="parameter">IP_address</replaceable>,
-    PORT = <replaceable class="parameter">port_number</replaceable>,
-    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
-    PATH = <replaceable class="parameter">pg_data</replaceable>
+    <phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
+        HOST = <replaceable class="parameter">IP_address</replaceable>,
+        PORT = <replaceable class="parameter">port_number</replaceable>,
+        SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+        PATH = <replaceable class="parameter">pg_data</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -35,7 +35,7 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
     <title>Description</title>
 
     <para>
-      Add one line gtm node type infomation in node table.
+      Add one line gtm node type information in node table.
     </para>
   </refsect1>
 
@@ -45,11 +45,11 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -60,18 +60,18 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
         </term>
         <listitem>
           <para>
-            Your host name for install ADB cluster.
+    Your host name for install ADB cluster.
           </para>
         </listitem>
       </varlistentry>
-	  
+
       <varlistentry>
         <term>
           <replaceable class="parameter">PORT</replaceable>
         </term>
         <listitem>
           <para>
-            Your port in your host..
+    Your port in your host.
           </para>
         </listitem>
       </varlistentry> 
@@ -81,7 +81,7 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
         </term>
         <listitem>
           <para>
-            Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
+    Synchronous mode, the value of SYNC equal on, t or true is synchronous, the value of SYNC equal off, f or false is asynchronous.
           </para>
         </listitem>
       </varlistentry> 
@@ -91,7 +91,7 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
         </term>
         <listitem>
           <para>
-            your data directory.
+    Your data directory.
           </para>
         </listitem>
       </varlistentry>  
@@ -102,11 +102,17 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
   <refsect1>
     <title>Examples</title>
     <para>
-     add gtm master ( name is "gtmname") for node table:
+Add gtm master (name is "gtmname") for node table:
       <programlisting>
-        add gtm master gtmname(host=localhost2, port=15533, path='/opt/ADB/gmt');
+    ADD GTM MASTER gtmname(HOST=localhost2, PORT=15533, PATH='/opt/ADB/gmt');
       </programlisting>
     </para>
   </refsect1>
+  <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-dropgtm"></member>
+    </simplelist>
+  </refsect1>
 </refentry>

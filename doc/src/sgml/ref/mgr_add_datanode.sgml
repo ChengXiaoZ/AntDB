@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD DATANODE</refname>
-    <refpurpose>add one line datanode node type infomation in node table</refpurpose>
+    <refpurpose>add one line datanode node type information in node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-adddatanode">
@@ -21,13 +21,13 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">nodename</replaceable> ( <replaceable class="parameter">option</replaceable> );
+    ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
 
-<phrase>where <replaceable class="parameter">option</replaceable> must be list below:</phrase>
-    HOST = <replaceable class="parameter">IP_address</replaceable>,
-    PORT = <replaceable class="parameter">port_number</replaceable>,
-    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
-    PATH = <replaceable class="parameter">pg_data</replaceable>
+    <phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
+        HOST = <replaceable class="parameter">IP_address</replaceable>,
+        PORT = <replaceable class="parameter">port_number</replaceable>,
+        SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+        PATH = <replaceable class="parameter">pg_data</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -35,7 +35,7 @@ ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="pa
     <title>Description</title>
 
     <para>
-      Add one line datanode node type infomation in node table.
+Add one line datanode node type information in node table.
     </para>
   </refsect1>
 
@@ -45,11 +45,11 @@ ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="pa
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -60,18 +60,18 @@ ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="pa
         </term>
         <listitem>
           <para>
-            Your host name for install ADB cluster.
+    Your host name for install ADB cluster.
           </para>
         </listitem>
       </varlistentry>
-	  
+
       <varlistentry>
         <term>
           <replaceable class="parameter">PORT</replaceable>
         </term>
         <listitem>
           <para>
-            Your port in your host..
+    Your port in your host.
           </para>
         </listitem>
       </varlistentry> 
@@ -81,7 +81,7 @@ ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="pa
         </term>
         <listitem>
           <para>
-            Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
+    Synchronous mode, the value of SYNC equal on, t or true is synchronous, the value of SYNC equal off, f or false is asynchronous.
           </para>
         </listitem>
       </varlistentry> 
@@ -91,7 +91,7 @@ ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="pa
         </term>
         <listitem>
           <para>
-            your data directory.
+    Your data directory.
           </para>
         </listitem>
       </varlistentry>  
@@ -102,9 +102,9 @@ ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="pa
   <refsect1>
     <title>Examples</title>
     <para>
-     add datandoe master ( name is "db1") for node table:
+     Add datandoe master (name is "db1") for node table:
       <programlisting>
-        add datanode master db1(host=localhost2, port=15535, path='/opt/ADB/db2');
+    ADD DATANODE MASTER db1(HOST=localhost2, PORT=15535, PATH='/opt/ADB/db2');
       </programlisting>
     </para>
   </refsect1>
