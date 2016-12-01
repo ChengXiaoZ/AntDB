@@ -892,7 +892,6 @@ do_start(void)
 #endif
 
 	pm_pid = start_postmaster();
-
 	if (do_wait)
 	{
 		print_msg(_("waiting for server to start..."));
@@ -2537,7 +2536,7 @@ main(int argc, char **argv)
 		{
 			case RESTART_COMMAND:
 			case START_COMMAND:
-				do_wait = false;
+				do_wait = true;
 				break;
 			case STOP_COMMAND:
 				do_wait = true;
