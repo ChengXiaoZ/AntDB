@@ -1437,7 +1437,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	} /*init gtm*/
 	else if (AGT_CMD_GTM_INIT == cmdtype)
 	{
-		appendStringInfo(&infosendmsg, "-U \"" AGTM_USER "\" -D %s -E UTF8 --locale=C", cndnPath);
+		appendStringInfo(&infosendmsg, " -U \"" AGTM_USER "\" -D %s -E UTF8 --locale=C", cndnPath);
 	} /*init gtm slave*/
 	else if (AGT_CMD_GTM_SLAVE_INIT == cmdtype)
 	{
@@ -5866,7 +5866,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 			,errmsg("no such gtm type: %s", typestr)));
 	}
 	if(CNDN_TYPE_NONE_TYPE == nodetype)
-		ereport(ERROR, (errmsg("gtm slave or extra does not exist incluster")));
+		ereport(ERROR, (errmsg("gtm slave or extra does not exist in cluster")));
 	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
 }
 

@@ -47,6 +47,8 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 */
 #define PARM_IN_GTM_CN_DN '*'
 #define PARM_IN_CN_DN '#'
+/*the string used to stand for value which be reset by force and the param table has '*' for this parameter*/
+#define DEFAULT_VALUE "default_value"
 
 typedef enum CheckInsertParmStatus
 {
@@ -658,13 +660,16 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 {
 	Relation rel_updateparm;
 	Form_mgr_updateparm mgr_updateparm;
+	Form_mgr_updateparm mgr_updateparm_check;
 	ScanKeyData key[2];
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
+	HeapTuple checktuple;
 	char *parmkey;
 	char *parmvalue;
 	char allnodetype;
 	NameData nodenamedata;
+	NameData nodenamedatacheck;
 	
 	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
 		allnodetype = CNDN_TYPE_GTM;
@@ -674,6 +679,7 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		allnodetype = CNDN_TYPE_COORDINATOR_MASTER;
 	/*first: add the parameter which the nodename is '*' with allnodetype*/
 	namestrcpy(&nodenamedata, MACRO_STAND_FOR_ALL_NODENAME);
+	namestrcpy(&nodenamedatacheck, nodename);
 	ScanKeyInit(&key[0],
 		Anum_mgr_updateparm_nodetype
 		,BTEqualStrategyNumber
@@ -691,6 +697,18 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 		Assert(mgr_updateparm);
 		/*get key, value*/
+		checktuple = SearchSysCache3(MGRUPDATAPARMNODENAMENODETYPEKEY, NameGetDatum(&nodenamedatacheck), CharGetDatum(nodetype), NameGetDatum(&(mgr_updateparm->updateparmkey)));
+		if(HeapTupleIsValid(checktuple))
+		{
+			mgr_updateparm_check = (Form_mgr_updateparm)GETSTRUCT(checktuple);
+			Assert(mgr_updateparm_check);
+			if (strcmp(NameStr(mgr_updateparm_check->updateparmvalue), DEFAULT_VALUE) == 0)
+			{
+				ReleaseSysCache(checktuple);
+				continue;
+			}
+			ReleaseSysCache(checktuple);
+		}
 		parmkey = NameStr(mgr_updateparm->updateparmkey);
 		parmvalue = NameStr(mgr_updateparm->updateparmvalue);
 		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
@@ -713,6 +731,10 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	{
 		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 		Assert(mgr_updateparm);
+		if (strcmp(NameStr(mgr_updateparm->updateparmvalue), DEFAULT_VALUE) == 0)
+		{
+			continue;
+		}
 		/*get key, value*/
 		parmkey = NameStr(mgr_updateparm->updateparmkey);
 		parmvalue = NameStr(mgr_updateparm->updateparmvalue);
@@ -968,6 +990,11 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 		{
 			resetStringInfo(&enumvalue);
 			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue, bneednotice);
+		}
+		else
+		{
+			/*use "none" to label the row is no use, just to show the node does not set this parameter in its postgresql.conf*/
+			namestrcpy(&defaultvalue, DEFAULT_VALUE);
 		}
 		/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited
 		* reset gtm all (key=value,...)
@@ -1579,7 +1606,7 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 	(*dest->rShutdown)(dest);
 	if (!bget)
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			,errmsg("node \"%s\" does not exist", nodename.data))); 
+			,errmsg("node \"%s\" does not exist in cluster", nodename.data))); 
 }
 
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst)
