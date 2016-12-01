@@ -1081,17 +1081,58 @@ ListParmStmt:
 				case GTM_TYPE:
 					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~", 
 									make_ColumnRef("nodetype"), 
-									makeStringConst(pstrdup("gtm"), -1), -1);
+									makeStringConst(pstrdup("gtm"), -1),
+									-1);
 					break;
 				case COORDINATOR_TYPE:
 					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 									make_ColumnRef("nodetype"),
-									makeStringConst(pstrdup("coordinator"), -1), -1);
+									makeStringConst(pstrdup("coordinator"), -1),
+									-1);
 					break;
 				case DATANODE_TYPE:
 					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 									make_ColumnRef("nodetype"),
-									makeStringConst(pstrdup("datanode"), -1), -1);
+									makeStringConst(pstrdup("datanode"), -1),
+									-1);
+					break;
+				case CNDN_TYPE_DATANODE_MASTER:
+					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+									make_ColumnRef("nodetype"),
+									makeStringConst(pstrdup("datanode master"), -1),
+									-1);
+					break;
+				case CNDN_TYPE_DATANODE_SLAVE:
+					stmt->whereClause =
+					(Node *)makeA_Expr(AEXPR_OR, NIL,
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+									make_ColumnRef("nodetype"),
+									makeStringConst(pstrdup("datanode slave"), -1),-1),
+						(Node *) makeA_Expr(AEXPR_AND, NIL,
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+										make_ColumnRef("nodename"),
+										makeStringConst(pstrdup("*"), -1), -1),
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+										make_ColumnRef("nodetype"),
+										makeStringConst(pstrdup("datanode master"), -1), -1),
+										-1),
+								-1);
+					break;
+				case CNDN_TYPE_DATANODE_EXTRA:
+					stmt->whereClause =
+					(Node *)makeA_Expr(AEXPR_OR, NIL,
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+										make_ColumnRef("nodetype"),
+										makeStringConst(pstrdup("datanode extra"), -1),-1),
+							(Node *) makeA_Expr(AEXPR_AND, NIL,
+								(Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+											make_ColumnRef("nodename"),
+											makeStringConst(pstrdup("*"), -1), -1),
+								(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+											make_ColumnRef("nodetype"),
+											makeStringConst(pstrdup("datanode master"), -1), -1),
+											-1),
+									-1);
 					break;
 				default:
 					break;
@@ -1925,9 +1966,12 @@ opt_dn_inner_type:
 	;
 
 cluster_type:
-	GTM             {$$ = GTM_TYPE;}
-	| COORDINATOR   {$$ = COORDINATOR_TYPE;}
-	| DATANODE      {$$ = DATANODE_TYPE;}
+	GTM               {$$ = GTM_TYPE;}
+	| COORDINATOR     {$$ = COORDINATOR_TYPE;}
+	| DATANODE        {$$ = DATANODE_TYPE;}
+	| DATANODE MASTER {$$ = CNDN_TYPE_DATANODE_MASTER;}
+	| DATANODE SLAVE  {$$ = CNDN_TYPE_DATANODE_SLAVE;}
+	| DATANODE EXTRA  {$$ = CNDN_TYPE_DATANODE_EXTRA;}
 	;
 
 ListMonitor:
