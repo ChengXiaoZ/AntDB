@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP DATANODE</refname>
-    <refpurpose>drop one line datanode node type infomation in node table</refpurpose>
+    <refpurpose>drop one row datanode information in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-dropdatanode">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable>;
+DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable> [, ...]
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,37 +29,43 @@ DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="param
     <title>Description</title>
 
     <para>
-      Drop one line datanode node type infomation in node table.
+   <command>DROP DATANODE</command> drop one row datanode information in the node table.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Parameters</title>
 
-    <variablelist>
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">nodename</replaceable>
-        </term>
-        <listitem>
-          <para>
-            Node name, corresponds to the name column in the node table.
-          </para>
-        </listitem>
-      </varlistentry>
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">nodename</replaceable></term>
+    <listitem>
+     <para>
+      Node name, corresponds to the name column in the node table.
+     </para>
+    </listitem>
+   </varlistentry>
 
-    </variablelist>
+  </variablelist>
   </refsect1>
 
 
   <refsect1>
     <title>Examples</title>
-    <para>
-     drop datanode slave ( name is "datanode1") for node table:
-      <programlisting>
-        drop datanode slave datanode1;
-      </programlisting>
-    </para>
+  <para>
+   Drop datanode slave ( nodename is "datanode1") in the node table:
+<programlisting>
+DROP DATANODE SLAVE datanode1;
+</programlisting>
+  </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-adddatanode"></member>
+    </simplelist>
   </refsect1>
 
 </refentry>

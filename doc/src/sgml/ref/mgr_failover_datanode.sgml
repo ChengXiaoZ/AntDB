@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>FAILOVER DATANODE</refname>
-    <refpurpose>pormote datanode slave or extra to datanode master</refpurpose>
+    <refpurpose>promote datanode slave or extra to datanode master</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-failoverdatanode">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-FAILOVER DATANODE  [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</replaceable> [ FORCE ];
+FAILOVER DATANODE [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</replaceable> [ FORCE ]
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ FAILOVER DATANODE  [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</re
     <title>Description</title>
 
     <para>
-      pormote datanode slave to datanode master, which is synchronized;
+   <command>FAILOVER DATANODE</command> pormote datanode slave to datanode master, which is synchronized;
      If the datanode slave is not synchronized, and want to pormote it to datanode master ,use "force" at command end;
      For the command "failover datanode nodename", it checks the type of datanode slave first, if it is not synchronized then checks the type of datanode extra.
     </para>
@@ -37,41 +37,39 @@ FAILOVER DATANODE  [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</re
   <refsect1>
     <title>Parameters</title>
 
-    <variablelist>
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">nodename</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The datanode slave or datanode extra name
-          </para>
-        </listitem>
-      </varlistentry>
-			
-    </variablelist>
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">nodename</replaceable></term>
+    <listitem>
+      <para>
+      The datanode slave or extra name.
+      </para>
+    </listitem>
+   </varlistentry>
+    
+  </variablelist>
   </refsect1>
   <refsect1>
     <title>Examples</title>
 
-    <para>
-      promote datanode1 slave or extra to master, which must be synchronized:
-      <programlisting>
-        failover datanode datanode1;
-      </programlisting>
-    </para>
-    <para>
-      promote datanode1 slave or extra to master, no matter it is synchronized or not:
-      <programlisting>
-        failover datanode datanode1 force;
-      </programlisting>
-    </para>
-    <para>
-      promote datanode1 slave or extra to master, which type is datanode slave:
-      <programlisting>
-        failover datanode slave datanode1;
-      </programlisting>
-    </para>
+  <para>
+   Promote datanode1 slave or extra to master, which must be synchronized:
+<programlisting>
+FAILOVER DATANODE datanode1;
+</programlisting>
+  </para>
+  <para>
+   Promote datanode1 slave or extra to master, no matter it is synchronized or not:
+<programlisting>
+FAILOVER DATANODE datanode1 force;
+</programlisting>
+  </para>
+  <para>
+   Promote datanode1 slave or extra to master, which type is datanode slave:
+<programlisting>
+FAILOVER DATANODE SLAVE datanode1;
+</programlisting>
+  </para>
   </refsect1>
       <refsect1>
     <title>See Also</title>

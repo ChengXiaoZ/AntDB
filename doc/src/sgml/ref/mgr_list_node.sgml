@@ -21,18 +21,18 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-LIST NODE  [<replaceable class="parameter">option</replaceable>] [<replaceable class="parameter">nodename</replaceable>[, ...] ];
+LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> ] [, ...]
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
-    <replaceable class="parameter">NAME</replaceable>
-    <replaceable class="parameter">HOST</replaceable>
-    <replaceable class="parameter">TYPE</replaceable>
-    <replaceable class="parameter">MASTERNAME</replaceable>
-    <replaceable class="parameter">PORT</replaceable>
-    <replaceable class="parameter">SYNC</replaceable>
-    <replaceable class="parameter">PATH</replaceable>
-    <replaceable class="parameter">PRIMARY</replaceable>
-    <replaceable class="parameter">INITIALIZED</replaceable>
-    <replaceable class="parameter">INCLUSTER</replaceable>
+  <replaceable class="parameter">NAME</replaceable>
+  <replaceable class="parameter">HOST</replaceable>
+  <replaceable class="parameter">TYPE</replaceable>
+  <replaceable class="parameter">MASTERNAME</replaceable>
+  <replaceable class="parameter">PORT</replaceable>
+  <replaceable class="parameter">SYNC</replaceable>
+  <replaceable class="parameter">PATH</replaceable>
+  <replaceable class="parameter">PRIMARY</replaceable>
+  <replaceable class="parameter">INITIALIZED</replaceable>
+  <replaceable class="parameter">INCLUSTER</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -40,153 +40,127 @@ LIST NODE  [<replaceable class="parameter">option</replaceable>] [<replaceable c
     <title>Description</title>
 
     <para>
-      show the content of node table.
+   <command>LIST NODE</command> show the content of the node table.
     </para>
   </refsect1>
   <refsect1>
     <title>Parameters</title>
 
-    <variablelist>
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">NAME</replaceable>
-        </term>
-        <listitem>
-          <para>
-            Node name.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">HOST</replaceable>
-        </term>
-        <listitem>
-          <para>
-            Your host name for install ADB cluster.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">TYPE</replaceable>
-        </term>
-        <listitem>
-          <para>
-            Node type.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">MASTERNAME</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The name of master node, if the node is not slave or extra, master_name is null.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">PORT</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The node listen port.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">SYNC</replaceable>
-        </term>
-        <listitem>
-          <para>
-            Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">PATH</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The data directory of node.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">PRIMARY</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The symbol of node for pgxc_node system table.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">INITIALIZED</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The symbol of node to show the node is initialized or not.
-          </para>
-        </listitem>
-      </varlistentry>
-
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">INCLUSTER</replaceable>
-        </term>
-        <listitem>
-          <para>
-            The symbol of node to show the node is in cluster or not.
-          </para>
-        </listitem>
-      </varlistentry>
-			
+  <variablelist>
+  <varlistentry>
+    <term><replaceable class="parameter">NAME</replaceable></term>
+    <listitem>
+     <para>
+      Node name.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">HOST</replaceable></term>
+    <listitem>
+     <para>
+    	Your host name for install ADB cluster.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">TYPE</replaceable></term>
+    <listitem>
+     <para>
+      Node type.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">MASTERNAME</replaceable></term>
+    <listitem>
+     <para>
+      The name of master node, if the node is not slave or extra, master_name is null.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">PORT</replaceable></term>
+    <listitem>
+     <para>
+      The node listen port.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">SYNC</replaceable></term>
+    <listitem>
+     <para>
+      Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">PATH</replaceable>
+    </term>
+    <listitem>
+     <para>
+      The data directory of node.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">PRIMARY</replaceable>
+    </term>
+    <listitem>
+     <para>
+      The symbol of node for pgxc_node system table.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">INITIALIZED</replaceable>
+    </term>
+    <listitem>
+     <para>
+      The symbol of node to show the node is initialized or not.
+      </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">INCLUSTER</replaceable>
+    </term>
+    <listitem>
+     <para>
+      The symbol of node to show the node is in cluster or not.
+      </para>
+    </listitem>
+  </varlistentry>	
     </variablelist>
   </refsect1>
+
   <refsect1>
     <title>Examples</title>
-
-    <para>
-      list the all content of node table:
-      <programlisting>
-        list node;
-      </programlisting>
-    </para>
-    <para>
-      list  the content of node,which name is "datanode1":
-      <programlisting>
-        list node datanode1;
-      </programlisting>
-    </para>
+  <para>
+   List all content of the node table:
+<programlisting>
+LIST NODE;
+</programlisting>
+	</para>
+	<para>
+	 List  the content of node,which name is "datanode1":
+<programlisting>
+LIST NODE datanode1;
+</programlisting>
+  </para>
   </refsect1>
       <refsect1>
     <title>See Also</title>
 
     <simplelist type="inline">
       <member><xref linkend="mgr-addgtm"></member>
-			<member><xref linkend="mgr-addcoordinator"></member>
+      <member><xref linkend="mgr-addcoordinator"></member>
       <member><xref linkend="mgr-adddatanode"></member>
       <member><xref linkend="mgr-altergtm"></member>
-			<member><xref linkend="mgr-altercoordinator"></member>
+      <member><xref linkend="mgr-altercoordinator"></member>
       <member><xref linkend="mgr-alterdatanode"></member>
       <member><xref linkend="mgr-dropgtm"></member>
-			<member><xref linkend="mgr-dropcoordinator"></member>
+      <member><xref linkend="mgr-dropcoordinator"></member>
       <member><xref linkend="mgr-dropdatanode"></member>
     </simplelist>
   </refsect1>

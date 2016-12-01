@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP HOST</refname>
-    <refpurpose>drop a host from ADB cluster</refpurpose>
+    <refpurpose>drop one row host information in the host table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-drophost">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-DROP HOST [IF EXISTS] [ ( <replaceable class="parameter">name</replaceable> [, ...] ) ]
+DROP HOST [ IF EXISTS ] <replaceable class="parameter">hostname</replaceable> [, ...] 
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ DROP HOST [IF EXISTS] [ ( <replaceable class="parameter">name</replaceable> [, .
     <title>Description</title>
 
     <para>
-      Drop a host from ADB cluster
+   <command>DROP HOST</command> drop one row host information in the host table.
     </para>
   </refsect1>
 
@@ -37,10 +37,10 @@ DROP HOST [IF EXISTS] [ ( <replaceable class="parameter">name</replaceable> [, .
     <title>Examples</title>
 
     <para>
-      Drop local from cluster:
-      <programlisting>
-        DROP HOST local;
-      </programlisting>
+      Drop "host1" in the host table:
+<programlisting>
+DROP HOST host1;
+</programlisting>
     </para>
   </refsect1>
 

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP COORDINATOR</refname>
-    <refpurpose>drop one line coordinator node infomation in node table</refpurpose>
+    <refpurpose>drop one row coordinator information in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-dropcoordinator">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable>;
+DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable> [, ...]
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,37 +29,43 @@ DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">nodename</replacea
     <title>Description</title>
 
     <para>
-      Drop one line coordinator infomation in node table.
+	 <command>DROP COORDINATOR</command> drop one row coordinator information in the node table.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Parameters</title>
 
-    <variablelist>
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">nodename</replaceable>
-        </term>
-        <listitem>
-          <para>
-            Node name, corresponds to the name column in the node table.
-          </para>
-        </listitem>
-      </varlistentry>
+  <variablelist>
+   <varlistentry>
+    <term> <replaceable class="parameter">nodename</replaceable></term>
+    <listitem>
+     <para>
+      Node name, corresponds to the name column in the node table.
+     </para>
+    </listitem>
+   </varlistentry>
 
-    </variablelist>
+  </variablelist>
   </refsect1>
 
 
   <refsect1>
-    <title>Examples</title>
-    <para>
-     drop coordinator ( name is "coord1") for node table:
-      <programlisting>
-        drop coordinator coord1;
-      </programlisting>
-    </para>
+  <title>Examples</title>
+  <para>
+   drop coordinator ( nodename is "coord1") in the node table:
+<programlisting>
+DROP COORDINATOR coord1;
+</programlisting>
+  </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-addcoordinator"></member>
+    </simplelist>
   </refsect1>
 
 </refentry>

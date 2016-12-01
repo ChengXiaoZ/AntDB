@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>CLEAN ALL</refname>
-    <refpurpose>clean the cluster ,delete the data of cluster</refpurpose>
+    <refpurpose>clean all the data of the cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-dropgtm">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-CLEAN ALL;
+CLEAN ALL
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,34 +29,18 @@ CLEAN ALL;
     <title>Description</title>
 
     <para>
-      Clean the cluster ,delete the data of cluster.
+    <command>CLEAN ALL</command> clean all the data of the cluster. If the cluster is running, it needs to be stopped first.
     </para>
   </refsect1>
 
   <refsect1>
-    <title>Parameters</title>
-
-    <variablelist>
-      <varlistentry>
-        <term>
-        </term>
-        <listitem>
-          <para>
-          </para>
-        </listitem>
-			</varlistentry>
-    </variablelist>
-  </refsect1>
-
-
-  <refsect1>
-    <title>Examples</title>
-    <para>
-     clean all the data of cluster:
-      <programlisting>
-        clean all;
-      </programlisting>
-    </para>
+  <title>Examples</title>
+  <para>
+   Clean all the data of cluster:
+<programlisting>
+CLEAN ALL;
+</programlisting>
+  </para>
   </refsect1>
 
 </refentry>
