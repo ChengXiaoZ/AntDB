@@ -48,7 +48,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 #define PARM_IN_GTM_CN_DN '*'
 #define PARM_IN_CN_DN '#'
 /*the string used to stand for value which be reset by force and the param table has '*' for this parameter*/
-#define DEFAULT_VALUE "default_value"
+#define DEFAULT_VALUE "--"
 
 typedef enum CheckInsertParmStatus
 {
@@ -285,48 +285,49 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	Datum datumenumvalues;
 	bool isNull = false;
 	
-	/*check the name of key exist in mgr_parm system table, if the key in gtm or cn or dn, the parmtype in 
-	* mgr_parm is '*'; if the key only in cn or dn, the parmtype in mgr_parm is '#', if the key only in 
-	* gtm/coordinator/datanode, the parmtype in mgr_parm is PARM_TYPE_GTM/PARM_TYPE_COORDINATOR/PARM_TYPE_DATANODE
-	* first: check the parmtype '*'; second: check the parmtype '#'; third check the parmtype the input parameter given
+	/*check the name of key exist in mgr_parm system table, if the key only in gtm/coordinator/datanode, the parmtype in 
+	* mgr_parm is PARM_TYPE_GTM/PARM_TYPE_COORDINATOR/PARM_TYPE_DATANODE; if the key only in cn or dn, the parmtype in 
+	* mgr_parm is '#'; if the key in gtm or cn or dn, the parmtype in mgr_parm is '*'; 
+	* first: check the parmtype the input parameter given; second: check the parmtype '#'; third check the parmtype '*'
 	*/
-	/*check the parm in mgr_parm, type is '*'*/
-	tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_GTM_CN_DN), NameGetDatum(key));
+	/*check the parm in mgr_parm, type is parmtype*/
+	tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(parmtype), NameGetDatum(key));
 	if(!HeapTupleIsValid(tuple))
 	{
-		/*check the parm in mgr_parm, type is '#'*/
 		if (PARM_TYPE_COORDINATOR == parmtype || PARM_TYPE_DATANODE ==parmtype)
 		{
+			/*check the parm in mgr_parm, type is '#'*/
 			tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_CN_DN), NameGetDatum(key));
 			if(!HeapTupleIsValid(tuple))
-			{		
-					tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(parmtype), NameGetDatum(key));
-					if(!HeapTupleIsValid(tuple))
-						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-							, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
-					mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+			{
+				/*check the parm in mgr_parm, type is '*'*/
+				tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_GTM_CN_DN), NameGetDatum(key));
+				if(!HeapTupleIsValid(tuple))
+					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+						, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
+				mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);		
 			}
-			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+			else
+				mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 		}
 		else if (PARM_TYPE_GTM == parmtype)
 		{
-			tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(parmtype), NameGetDatum(key));
+			/*check the parm in mgr_parm, type is '*'*/
+			tuple = SearchSysCache2(PARMTYPENAME, CharGetDatum(PARM_IN_GTM_CN_DN), NameGetDatum(key));
 			if(!HeapTupleIsValid(tuple))
-			{
-					ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-						, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
-			}
-			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					, errmsg("unrecognized configuration parameter \"%s\"", key->data)));
+			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);		
 		}
 		else
 		{
-				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					, errmsg("the parm type \"%c\" does not exist", parmtype)));
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("the parm type \"%c\" does not exist", parmtype)));
 		}
 	}
 	else
 	{
-			mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
+		mgr_parm = (Form_mgr_parm)GETSTRUCT(tuple);
 	}
 
 	Assert(mgr_parm);
