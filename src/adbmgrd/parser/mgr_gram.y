@@ -1033,14 +1033,6 @@ ListParmStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 			$$ = (Node*)stmt;
 		}
-	| LIST PARAM AConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
-			stmt->whereClause = make_column_in("nodename", $3);
-			$$ = (Node*)stmt;
-		}
 	| LIST PARAM node_type AConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
