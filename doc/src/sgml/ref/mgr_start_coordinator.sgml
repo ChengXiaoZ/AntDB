@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>START COORDINATOR</refname>
-    <refpurpose>start the coordinator node type on the ADB host</refpurpose>
+    <refpurpose>start the coordinator node type on the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-startcoordinator">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-START COORDINATOR { ALL | <replaceable class="parameter">nodename</replaceable> [, ...] };
+    START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ START COORDINATOR { ALL | <replaceable class="parameter">nodename</replaceable> 
     <title>Description</title>
 
     <para>
-      start the coordinator node type on the ADB host
+Start the coordinator node type on the ADB cluster
     </para>
   </refsect1>
   <refsect1>
@@ -38,11 +38,11 @@ START COORDINATOR { ALL | <replaceable class="parameter">nodename</replaceable> 
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -52,10 +52,8 @@ START COORDINATOR { ALL | <replaceable class="parameter">nodename</replaceable> 
     <title>Examples</title>
 
     <para>
-      Start all coordinator:
-      <programlisting>
-        start coordinator all;
-      </programlisting>
+Start all coordinator:
+      <programlisting>    START COORDINATOR ALL;</programlisting>
     </para>
   </refsect1>
       <refsect1>

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>START GTM</refname>
-    <refpurpose>start the gtm node type on the ADB host</refpurpose>
+    <refpurpose>start the gtm node type on the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-startgtm">
@@ -21,15 +21,16 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-START GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">nodename</replaceable> };
-    </synopsis>
+    START GTM [ ALL ]
+    START GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      start the gtm node type on the ADB cluster.
+Start the gtm node type on the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -38,11 +39,11 @@ START GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -52,10 +53,8 @@ START GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node
     <title>Examples</title>
 
     <para>
-      Start gtm master name is "gtmname":
-      <programlisting>
-        start gtm master gtmname;
-      </programlisting>
+Start gtm master name is "gtmname":
+      <programlisting>    START GTM MASTER gtmname;</programlisting>
     </para>
   </refsect1>
 

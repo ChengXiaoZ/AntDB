@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>START DATANODE</refname>
-    <refpurpose>start the datanode node type on the ADB host</refpurpose>
+    <refpurpose>start the datanode node type on the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-startdatanode">
@@ -21,15 +21,16 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">nodename</replaceable> [,...]};
-    </synopsis>
+    START DATANODE ALL
+    START DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> [, ...]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      Start the datanode node type on the ADB host.
+Start the datanode node type on the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -38,11 +39,11 @@ START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter"
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -52,10 +53,8 @@ START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter"
     <title>Examples</title>
 
     <para>
-      Start all datanode master:
-      <programlisting>
-        start datanode master all;
-      </programlisting>
+Start all datanode master:
+      <programlisting>    START DATANODE MASTER ALL;</programlisting>
     </para>
   </refsect1>
       <refsect1>

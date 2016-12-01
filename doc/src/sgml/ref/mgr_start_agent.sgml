@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>START AGENT</refname>
-    <refpurpose>start the agent process on the ADB host</refpurpose>
+    <refpurpose>start the agent process on the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-startagent">
@@ -21,16 +21,16 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-START AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [,...] ];
-    </synopsis>
+    START AGENT { ALL | <replaceable class="parameter">host_name</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">password_str</replaceable> ]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      Start the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
-    </para>
+      Start the agent process on the ADB cluster, ADB MANAGER through the agent process to manage the ADB cluster.
+</para>
   </refsect1>
   <refsect1>
     <title>Parameters</title>
@@ -38,12 +38,22 @@ START AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [,...]
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">hostname</replaceable>
+          <replaceable class="parameter">host_name</replaceable>
         </term>
         <listitem>
           <para>
-            Host name, not support IP address.
-          </para>
+    Host name, not support IP address.
+</para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">password_str</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Your host password.
+</para>
         </listitem>
       </varlistentry>
     </variablelist>
@@ -51,17 +61,11 @@ START AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [,...]
   <refsect1>
     <title>Examples</title>
 
-    <para>
-      Start all agent process:
-      <programlisting>
-        START AGENT ALL;
-      </programlisting>
+    <para>Start all agent process:
+      <programlisting>    START AGENT ALL;</programlisting>
     </para>
-    <para>
-      Start agent process to hostname1,hostname2:
-      <programlisting>
-        START AGENT hostname1,hostname2;
-      </programlisting>
+    <para>Start agent process to hostname1, hostname2:
+      <programlisting>    START AGENT hostname1, hostname2;</programlisting>
     </para>
   </refsect1>
       <refsect1>
