@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>MONITOR COORDINATOR</refname>
-    <refpurpose>monitor the current state of coordinator in the ADB cluster node</refpurpose>
+    <refpurpose>monitor the current state for coordinator node</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-monitorcoordinator">
@@ -21,30 +21,30 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-MONITOR COORDINATOR [ ALL | <replaceable class="parameter">nodename</replaceable> [, ...] ];
-    </synopsis>
+    MONITOR COORDINATOR [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-monitor the current state of coordinator in the ADB cluster node.
+Monitor the current state for coordinator node.
     </para>
     <para>
-node has three operating conditions:running, not running and reject connection.
-    </para>
-
-    <para>
-running means is server is accepting connections;
+Node has three operating conditions:running, not running and reject connection.
     </para>
 
     <para>
-not running means is could not establish connection;
+    Running means is server is accepting connections.
     </para>
 
     <para>
-reject connection means is server is alive but rejecting connections(e.g., recovery model or startup model).
+    Not running means is could not establish connection.
+    </para>
+
+    <para>
+    Reject connection means is server is alive but rejecting connections(e.g., recovery model or startup model).
     </para>
   </refsect1>
   <refsect1>
@@ -53,11 +53,11 @@ reject connection means is server is alive but rejecting connections(e.g., recov
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -67,10 +67,10 @@ reject connection means is server is alive but rejecting connections(e.g., recov
     <title>Examples</title>
 
     <para>
-      monitor the state for all coordinator:
+monitor the state for all coordinator:
       <programlisting>
-        monitor coordinator all;
-      </programlisting>
+    MONITOR COORDINATOR ALL;
+</programlisting>
     </para>
   </refsect1>
       <refsect1>

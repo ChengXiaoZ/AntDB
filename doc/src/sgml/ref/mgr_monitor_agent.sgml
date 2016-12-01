@@ -21,15 +21,15 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-MONITOR AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [, ...] ];
-    </synopsis>
+    MONITOR AGENT [ ALL | <replaceable class="parameter">host_name</replaceable> [, ...] ]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      monitor the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
+Monitor the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -38,11 +38,11 @@ MONITOR AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [, .
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">hostname</replaceable>
+          <replaceable class="parameter">host_name</replaceable>
         </term>
         <listitem>
           <para>
-            Host name, not support IP address.
+    Host name, not support IP address.
           </para>
         </listitem>
       </varlistentry>
@@ -52,16 +52,16 @@ MONITOR AGENT [ ALL | <replaceable class="parameter">hostname</replaceable> [, .
     <title>Examples</title>
 
     <para>
-      monitor all agent process:
+Monitor all agent process:
       <programlisting>
         MONITOR AGENT ALL;
-      </programlisting>
+</programlisting>
     </para>
     <para>
-      monitor agent process to hostname1,hostname2:
+Monitor agent process to hostname1,hostname2:
       <programlisting>
         MONITOR AGENT hostname1, hostname2;
-      </programlisting>
+</programlisting>
     </para>
   </refsect1>
       <refsect1>

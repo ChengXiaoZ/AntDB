@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>MONITOR DATANODE</refname>
-    <refpurpose>monitor the current state of datanode in the ADB cluster</refpurpose>
+    <refpurpose>monitor the current state for datanode in the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-monitordatanode">
@@ -21,30 +21,31 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-MONITOR DATANODE [ MASTER | SLAVE | EXTRA ] [ ALL | <replaceable class="parameter">nodename</replaceable> [, ...] ];
-    </synopsis>
+    MONITOR DATANODE ALL
+    MONITOR DATANODE { MASTER | SLAVE | EXTRA } [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-monitor the current state of datanode in the ADB cluster.
+Monitor the current state for datanode in the ADB cluster.
     </para>
     <para>
-node has three operating conditions:running, not running and reject connection.
-    </para>
-
-    <para>
-running means is server is accepting connections;
+Node has three operating conditions:running, not running and reject connection.
     </para>
 
     <para>
-not running means is could not establish connection;
+    Running means is server is accepting connections.
     </para>
 
     <para>
-reject connection means is server is alive but rejecting connections(e.g., recovery model or startup model).
+    Not running means is could not establish connection.
+    </para>
+
+    <para>
+    Reject connection means is server is alive but rejecting connections(e.g., recovery model or startup model).
     </para>
   </refsect1>
   <refsect1>
@@ -53,11 +54,11 @@ reject connection means is server is alive but rejecting connections(e.g., recov
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -67,10 +68,10 @@ reject connection means is server is alive but rejecting connections(e.g., recov
     <title>Examples</title>
 
     <para>
-      monitor the state for all datanode master:
+Monitor the state for all datanode master:
       <programlisting>
-        monitor datanode master all;
-      </programlisting>
+    MONITOR DATANODE MASTER ALL;
+</programlisting>
     </para>
   </refsect1>
       <refsect1>
