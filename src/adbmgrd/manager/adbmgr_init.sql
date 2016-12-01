@@ -106,32 +106,32 @@ CREATE VIEW adbmgr.initall AS
 
 --start gtm all
 CREATE VIEW adbmgr.start_gtm_all AS
-	SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm_master('gtm')
+	SELECT 'start gtm master' AS "operation type", * FROM mgr_start_gtm_master(NULL)
 	UNION all
-	SELECT 'start gtm slave' AS "operation type", * FROM mgr_start_gtm_slave('gtm')
+	SELECT 'start gtm slave' AS "operation type", * FROM mgr_start_gtm_slave(NULL)
 	UNION all
-	SELECT 'start gtm extra' AS "operation type", * FROM mgr_start_gtm_extra('gtm');
+	SELECT 'start gtm extra' AS "operation type", * FROM mgr_start_gtm_extra(NULL);
 --stop gtm all
 CREATE VIEW adbmgr.stop_gtm_all AS
-	SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra('gtm')
+	SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra(NULL)
 	UNION all
-	SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave('gtm')
+	SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave(NULL)
 	UNION all
-	SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master('gtm');
+	SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master(NULL);
 --stop gtm all -m f
 CREATE VIEW adbmgr.stop_gtm_all_f AS
-	SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_f('gtm')
+	SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_f(NULL)
 	UNION all
-	SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_f('gtm')
+	SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_f(NULL)
 	UNION all
-	SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_f('gtm');
+	SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_f(NULL);
 --stop gtm all -m i
 CREATE VIEW adbmgr.stop_gtm_all_i AS
-	SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_i('gtm')
+	SELECT 'stop gtm extra' AS "operation type", * FROM mgr_stop_gtm_extra_i(NULL)
 	UNION all
-	SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_i('gtm')
+	SELECT 'stop gtm slave' AS "operation type", * FROM mgr_stop_gtm_slave_i(NULL)
 	UNION all
-	SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_i('gtm');
+	SELECT 'stop gtm master' AS "operation type", * FROM mgr_stop_gtm_master_i(NULL);
 --init datanode all
 CREATE VIEW adbmgr.initdatanodeall AS
     SELECT 'init datanode master' AS "operation type",* FROM mgr_init_dn_master(NULL)
