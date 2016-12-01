@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>STOP AGENT</refname>
-    <refpurpose>stop the agent process on the ADB host</refpurpose>
+    <refpurpose>stop the agent process on the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-stopagent">
@@ -21,15 +21,15 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-STOP AGENT [ ALL | <replaceable class="parameter">hostname</replaceable>[,...] ];
-    </synopsis>
+    STOP AGENT [ ALL | <replaceable class="parameter">host_name</replaceable> [, ...] ]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      Stop the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
+Stop the agent process on the ADB cluster, ADB MANAGER through the agent process to manage the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -38,11 +38,11 @@ STOP AGENT [ ALL | <replaceable class="parameter">hostname</replaceable>[,...] ]
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">hostname</replaceable>
+          <replaceable class="parameter">host_name</replaceable>
         </term>
         <listitem>
           <para>
-            Host name, not support IP address.
+    Host name, not support IP address.
           </para>
         </listitem>
       </varlistentry>
@@ -52,16 +52,16 @@ STOP AGENT [ ALL | <replaceable class="parameter">hostname</replaceable>[,...] ]
     <title>Examples</title>
 
     <para>
-      Stop all agent process:
+Stop all agent process:
       <programlisting>
-        STOP AGENT ALL;
-      </programlisting>
+    STOP AGENT ALL;
+</programlisting>
     </para>
     <para>
-      Stop agent process to hostname1,hostname2:
+Stop agent process to hostname1, hostname2:
       <programlisting>
-        STOP AGENT hostname1,hostname2;
-      </programlisting>
+    STOP AGENT hostname1, hostname2;
+</programlisting>
     </para>
   </refsect1>
       <refsect1>

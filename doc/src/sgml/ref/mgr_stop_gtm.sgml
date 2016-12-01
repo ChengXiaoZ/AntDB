@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>STOP GTM</refname>
-    <refpurpose>stop the gtm type on the ADB host</refpurpose>
+    <refpurpose>stop the gtm node on the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-stopgtm">
@@ -21,20 +21,21 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-STOP GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">nodename</replaceable> } [ <replaceable class="parameter">stop_mode</replaceable> ];
+    STOP GTM ALL
+    STOP GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> [ <replaceable class="parameter">stop_mode</replaceable> ]
 
-<phrase>where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
-    MODE SMART     | MODE S
-    MODE FAST      | MODE F
-    MODE IMMEDIATE | MODE I
-    </synopsis>
+<phrase>    where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
+        MODE SMART     | MODE S
+        MODE FAST      | MODE F
+        MODE IMMEDIATE | MODE I
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      Stop the gtm type on the ADB host.
+Stop the gtm node on the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -43,11 +44,11 @@ STOP GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">noden
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">nodename</replaceable>
+          <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-            Node name, corresponds to the name column in the node table.
+    Node name, corresponds to the name column in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -57,10 +58,10 @@ STOP GTM { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">noden
     <title>Examples</title>
 
     <para>
-      Stop gtm master "gtmname" using immediate mode:
+Stop gtm master "gtmname" using immediate mode:
       <programlisting>
-        stop gtm master gtmname mode i;
-      </programlisting>
+    STOP GTM MASTER gtmname MODE I;
+</programlisting>
     </para>
 
   </refsect1>
