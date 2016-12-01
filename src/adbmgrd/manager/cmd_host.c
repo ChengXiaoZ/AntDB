@@ -87,6 +87,8 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 	{
 		if(node->if_not_exists)
 		{
+			ereport(NOTICE,  (errcode(ERRCODE_DUPLICATE_OBJECT),
+				errmsg("host \"%s\" already exists, skipping", NameStr(name))));
 			heap_close(rel, RowExclusiveLock);
 			return;
 		}
@@ -274,7 +276,11 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 		if(!HeapTupleIsValid(tuple))
 		{
 			if(node->if_exists)
+			{
+				ereport(NOTICE,  (errcode(ERRCODE_UNDEFINED_OBJECT),
+					errmsg("host \"%s\" dose not exist, skipping", NameStr(name))));
 				continue;
+			}
 			else
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 					,errmsg("host \"%s\" dose not exist", NameStr(name))));

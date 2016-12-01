@@ -161,6 +161,8 @@ void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 		if(node->if_not_exists)
 		{
 			heap_close(rel, RowExclusiveLock);
+			ereport(NOTICE, (errcode(ERRCODE_DUPLICATE_OBJECT),
+				errmsg("%s \"%s\" already exists, skipping", nodestring, NameStr(name))));
 			return;
 		}
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
@@ -516,7 +518,11 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 		if(!HeapTupleIsValid(tuple))
 		{
 			if(node->if_exists)
+			{
+				ereport(NOTICE,  (errcode(ERRCODE_UNDEFINED_OBJECT),
+					errmsg("%s \"%s\" does not exist, skipping", nodestring, NameStr(name))));
 				continue;
+			}
 			else
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 					,errmsg("%s \"%s\" does not exist", nodestring, NameStr(name))));
