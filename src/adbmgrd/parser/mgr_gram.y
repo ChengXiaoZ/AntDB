@@ -2472,8 +2472,30 @@ static void check_node_name_isvaild(char node_type, List* node_name_list)
 			heap_endscan(scan);
 			heap_close(rel_node, AccessShareLock);
 
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					,errmsg("Node name \"%s\" does not exist.", NameStr(name))));
+			switch (node_type)
+			{
+				case CNDN_TYPE_COORDINATOR_MASTER:
+					ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", NameStr(name))));
+					break;
+				case CNDN_TYPE_DATANODE_MASTER:
+					ereport(ERROR, (errmsg("datanode master \"%s\" does not exist", NameStr(name))));
+					break;
+				case CNDN_TYPE_DATANODE_SLAVE:
+					ereport(ERROR, (errmsg("datanode slave \"%s\" does not exist", NameStr(name))));
+					break;
+				case CNDN_TYPE_DATANODE_EXTRA:
+					ereport(ERROR, (errmsg("datanode extra \"%s\" does not exist", NameStr(name))));
+					break;
+				case GTM_TYPE_GTM_SLAVE:
+					ereport(ERROR, (errmsg("gtm slave \"%s\" does not exist", NameStr(name))));
+					break;
+				case GTM_TYPE_GTM_EXTRA:
+					ereport(ERROR, (errmsg("gtm extra \"%s\" does not exist", NameStr(name))));
+					break;
+				default:
+					ereport(ERROR, (errmsg("node type \"%c\" does not exist", node_type)));
+					break;
+			}
 		}
 
 		heap_endscan(scan);

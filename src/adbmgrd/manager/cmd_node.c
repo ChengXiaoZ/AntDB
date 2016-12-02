@@ -2251,7 +2251,32 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	*lcp = lnext(*lcp);
 	tup = mgr_get_tuple_node_from_name_type(info->rel_node, nodename, nodetype);
 	if (!HeapTupleIsValid(tup))
-		ereport(ERROR, (errmsg("node name is invalid: %s", nodename)));
+	{
+		switch (nodetype)
+		{
+			case CNDN_TYPE_COORDINATOR_MASTER:
+				ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", nodename)));
+				break;
+			case CNDN_TYPE_DATANODE_MASTER:
+				ereport(ERROR, (errmsg("datanode master \"%s\" does not exist", nodename)));
+				break;
+			case CNDN_TYPE_DATANODE_SLAVE:
+				ereport(ERROR, (errmsg("datanode slave \"%s\" does not exist", nodename)));
+				break;
+			case CNDN_TYPE_DATANODE_EXTRA:
+				ereport(ERROR, (errmsg("datanode extra \"%s\" does not exist", nodename)));
+				break;
+			case GTM_TYPE_GTM_SLAVE:
+				ereport(ERROR, (errmsg("gtm slave \"%s\" does not exist", nodename)));
+				break;
+			case GTM_TYPE_GTM_EXTRA:
+				ereport(ERROR, (errmsg("gtm extra \"%s\" does not exist", nodename)));
+				break;
+			default:
+				ereport(ERROR, (errmsg("node type \"%c\" does not exist", nodetype)));
+				break;
+		}
+	}
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(tup);
 	Assert(mgr_node);
@@ -2484,10 +2509,10 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{ ereport(ERROR, (errmsg("agtm master is not running.")));}
+			{ ereport(ERROR, (errmsg("gtm master is not running")));}
 		}
 		else
-		{ ereport(ERROR, (errmsg("agtm master is not initialized.")));}
+		{ ereport(ERROR, (errmsg("gtm master is not initialized")));}
 		
 		if (agtm_s_is_exist)
 		{
@@ -2497,7 +2522,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{ ereport(ERROR, (errmsg("agtm slave is not running.")));}
+			{ ereport(ERROR, (errmsg("gtm slave is not running")));}
 		}
 
 		if (agtm_e_is_exist)
@@ -2508,7 +2533,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{ ereport(ERROR, (errmsg("agtm extra is not running.")));}
+			{ ereport(ERROR, (errmsg("gtm extra is not running")));}
 		}
 
 		/* step 1: init workdir */
@@ -2647,7 +2672,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		/* step 1: make sure datanode master, agtm master or agtm slave is running. */
 		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
 		if (!dnmaster_is_running)
-			ereport(ERROR, (errmsg("datanode master \"%s\" is not running.", parentnodeinfo.nodename)));
+			ereport(ERROR, (errmsg("datanode master \"%s\" is not running", parentnodeinfo.nodename)));
 
 		if (agtm_m_is_exist)
 		{
@@ -2657,10 +2682,10 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-				{	ereport(ERROR, (errmsg("agtm master is not running.")));}
+				{	ereport(ERROR, (errmsg("gtm master is not running")));}
 		}
 		else
-		{	ereport(ERROR, (errmsg("agtm master is not initialized.")));}
+		{	ereport(ERROR, (errmsg("gtm master is not initialized")));}
 		
 		if (agtm_s_is_exist)
 		{
@@ -2670,7 +2695,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm slave is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm slave is not running")));}
 		}
 
 		if (agtm_e_is_exist)
@@ -2681,7 +2706,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm extra is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm extra is not running")));}
 		}
 
 
@@ -2832,7 +2857,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		/* step 1: make sure datanode master, agtm master or agtm slave is running. */
 		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
 		if (!dnmaster_is_running)
-			ereport(ERROR, (errmsg("datanode master \"%s\" is not running.", parentnodeinfo.nodename)));
+			ereport(ERROR, (errmsg("datanode master \"%s\" is not running", parentnodeinfo.nodename)));
 
 		if (agtm_m_is_exist)
 		{
@@ -2842,10 +2867,10 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm master is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm master is not running")));}
 		}
 		else
-		{	ereport(ERROR, (errmsg("agtm master is not initialized.")));}
+		{	ereport(ERROR, (errmsg("gtm master is not initialized")));}
 
 		if (agtm_s_is_exist)
 		{
@@ -2855,7 +2880,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm slave is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm slave is not running")));}
 		}
 
 		if (agtm_e_is_exist)
@@ -2866,7 +2891,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm extra is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm extra is not running")));}
 		}
 
 		/* step 2: update datanode master's postgresql.conf. */
@@ -3028,10 +3053,10 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_MASTER, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-				{	ereport(ERROR, (errmsg("agtm master is not running.")));}
+				{	ereport(ERROR, (errmsg("gtm master is not running")));}
 		}
 		else
-		{	ereport(ERROR, (errmsg("agtm master is not initialized.")));}
+		{	ereport(ERROR, (errmsg("gtm master is not initialized")));}
 
 		if (agtm_s_is_exist)
 		{
@@ -3041,7 +3066,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm slave is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm slave is not running")));}
 		}
 
 		if (agtm_e_is_exist)
@@ -3052,7 +3077,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
 			}
 			else
-			{	ereport(ERROR, (errmsg("agtm extra is not running.")));}
+			{	ereport(ERROR, (errmsg("gtm extra is not running")));}
 		}
 
 		/* step 1: init workdir */
@@ -3184,10 +3209,10 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		
 		if (!agtm_m_is_exist)
-			ereport(ERROR, (errmsg("agtm master is not initialized.")));
+			ereport(ERROR, (errmsg("gtm master is not initialized")));
 
 		if (!agtm_m_is_running)
-			ereport(ERROR, (errmsg("agtm master is not running.")));
+			ereport(ERROR, (errmsg("gtm master is not running")));
 
 		/* step 1: update agtm master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3321,10 +3346,10 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		//get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 
 		if (!agtm_m_is_exist)
-			ereport(ERROR, (errmsg("agtm master is not initialized.")));
+			ereport(ERROR, (errmsg("gtm master is not initialized")));
 		
 		if (!agtm_m_is_running)
-			ereport(ERROR, (errmsg("agtm master is not running.")));
+			ereport(ERROR, (errmsg("gtm master is not running")));
 
 		/* step 1: update agtm master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3629,9 +3654,9 @@ static void mgr_make_sure_all_running(char node_type)
 			pfree(info);
 			pfree(hostaddr);
 			if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
-				ereport(ERROR, (errmsg("coordinator \"%s\" is not running.", NameStr(mgr_node->nodename))));
+				ereport(ERROR, (errmsg("coordinator \"%s\" is not running", NameStr(mgr_node->nodename))));
 			else if (node_type == CNDN_TYPE_DATANODE_MASTER)
-				ereport(ERROR, (errmsg("datanode master \"%s\" is not running.", NameStr(mgr_node->nodename))));
+				ereport(ERROR, (errmsg("datanode master \"%s\" is not running", NameStr(mgr_node->nodename))));
 		}
 	}
 
@@ -3679,7 +3704,7 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 		heap_close(noderelation, AccessShareLock);
 
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			,errmsg("could not find datanode master."))); 
+			,errmsg("could not find datanode master"))); 
 	}
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
@@ -4240,7 +4265,7 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 			appendStringInfo(&start_cmd, " start -D %s -o -i -w -c -l %s/logfile", nodepath, nodepath);
 			break;
 		default:
-			ereport(ERROR, (errmsg("node type \"%c\" not exist.", nodetype)));
+			ereport(ERROR, (errmsg("node type \"%c\" does not exist", nodetype)));
 			break;
 	}
 
@@ -4635,7 +4660,7 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 		pfree(info);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-			, errmsg("node type is not exist agtm master in node table.")));
+			, errmsg("gtm master does not exist")));
 	}
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -4714,25 +4739,25 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 		switch (node_type)
 		{
 		case CNDN_TYPE_COORDINATOR_MASTER:
-			ereport(ERROR, (errmsg("can not find the coordinator %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
+			ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", appendnodeinfo->nodename)));
 			break;
 		case CNDN_TYPE_DATANODE_MASTER:
-			ereport(ERROR, (errmsg("can not find the datanode master %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
+			ereport(ERROR, (errmsg("datanode master \"%s\" does not exist", appendnodeinfo->nodename)));
 			break;
 		case CNDN_TYPE_DATANODE_SLAVE:
-			ereport(ERROR, (errmsg("can not find the datanode slave %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
+			ereport(ERROR, (errmsg("datanode slave \"%s\" does not exist", appendnodeinfo->nodename)));
 			break;
 		case CNDN_TYPE_DATANODE_EXTRA:
-			ereport(ERROR, (errmsg("can not find the datanode extra %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
+			ereport(ERROR, (errmsg("datanode extra \"%s\" does not exist", appendnodeinfo->nodename)));
 			break;
 		case GTM_TYPE_GTM_SLAVE:
-			ereport(ERROR, (errmsg("can not find the gtm slave %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
+			ereport(ERROR, (errmsg("gtm slave \"%s\" does not exist", appendnodeinfo->nodename)));
 			break;
 		case GTM_TYPE_GTM_EXTRA:
-			ereport(ERROR, (errmsg("can not find the gtm extra %s (initialized =false and incluster = false) in node table", appendnodeinfo->nodename)));
+			ereport(ERROR, (errmsg("gtm extra \"%s\" does not exist", appendnodeinfo->nodename)));
 			break;
 		default:
-			ereport(ERROR, (errmsg("node type \"%c\" not exist.", node_type)));
+			ereport(ERROR, (errmsg("node type \"%c\" does not exist", node_type)));
 			break;
 		}
 	}
