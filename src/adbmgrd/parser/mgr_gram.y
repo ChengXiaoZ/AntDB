@@ -1328,96 +1328,98 @@ ListNodeStmt:
 		}
 	;
 InitNodeStmt:
-	  INIT GTM MASTER 
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_master", args));
-			$$ = (Node*)stmt;
-		}
-	| INIT GTM SLAVE 
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_slave", args));
-			$$ = (Node*)stmt;
-		}
-	| INIT GTM EXTRA 
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extra", args));
-			$$ = (Node*)stmt;
-		}
-	| INIT COORDINATOR NodeConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_cn_master", $3));
-			$$ = (Node*)stmt;
-		}
-	| INIT COORDINATOR  ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_cn_master", args));
-			$$ = (Node*)stmt;
-		}
-	|	INIT DATANODE MASTER NodeConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", $4));
-			$$ = (Node*)stmt;
-		}
-	|	INIT DATANODE MASTER ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", args));
-			$$ = (Node*)stmt;
-		}
-	| INIT DATANODE SLAVE AConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave", $4));
-			$$ = (Node*)stmt;
-		}
-	| INIT DATANODE EXTRA AConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra", $4));
-			$$ = (Node*)stmt;
-		}
-	|	INIT DATANODE SLAVE ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave_all", NULL));
-			$$ = (Node*)stmt;
-		}
-	|	INIT DATANODE EXTRA ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra_all", NULL));
-			$$ = (Node*)stmt;
-		}
-	| INIT DATANODE ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("initdatanodeall"), -1));
-			$$ = (Node*)stmt;
-		}
-	| INIT ALL
+/*	INIT GTM MASTER 
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			List *args = list_make1(makeStringConst("gtm", -1));
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_master", args));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT GTM SLAVE 
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			List *args = list_make1(makeStringConst("gtm", -1));
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_slave", args));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT GTM EXTRA 
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			List *args = list_make1(makeStringConst("gtm", -1));
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extra", args));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT COORDINATOR NodeConstList
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_cn_master", $3));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT COORDINATOR  ALL
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*		 	List *args = list_make1(makeNullAConst(-1));
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_cn_master", args));
+*			$$ = (Node*)stmt;
+*		}
+*	|	INIT DATANODE MASTER NodeConstList
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", $4));
+*			$$ = (Node*)stmt;
+*		}
+*	|	INIT DATANODE MASTER ALL
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*		 	List *args = list_make1(makeNullAConst(-1));
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", args));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT DATANODE SLAVE AConstList
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave", $4));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT DATANODE EXTRA AConstList
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra", $4));
+*			$$ = (Node*)stmt;
+*		}
+*	|	INIT DATANODE SLAVE ALL
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave_all", NULL));
+*			$$ = (Node*)stmt;
+*		}
+*	|	INIT DATANODE EXTRA ALL
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra_all", NULL));
+*			$$ = (Node*)stmt;
+*		}
+*	| INIT DATANODE ALL
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("initdatanodeall"), -1));
+*			$$ = (Node*)stmt;
+*		}
+*	| 
+*/
+INIT ALL
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
