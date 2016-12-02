@@ -21,11 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ALTER GTM <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );   
-<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
-    <replaceable class="parameter">MASTER</replaceable>
-    <replaceable class="parameter">SLAVE</replaceable>
-    <replaceable class="parameter">EXTRA</replaceable>
+ALTER GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] );
 <phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
     <replaceable class="parameter">HOST</replaceable>
     <replaceable class="parameter">PORT</replaceable>

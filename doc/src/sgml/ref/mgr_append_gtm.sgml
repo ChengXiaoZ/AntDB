@@ -21,10 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND GTM <replaceable class="parameter">nodetype</replaceable> <replaceable class="parameter">nodename</replaceable>;
-<phrase>where <replaceable class="parameter">nodetype</replaceable> can be one of:</phrase>
-    <replaceable class="parameter">SLAVE</replaceable>
-    <replaceable class="parameter">EXTRA</replaceable>
+APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceable>;
     </synopsis>
   </refsynopsisdiv>
 

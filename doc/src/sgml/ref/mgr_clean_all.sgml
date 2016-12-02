@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-CLEAN ALL
+CLEAN ALL;
     </synopsis>
   </refsynopsisdiv>
 

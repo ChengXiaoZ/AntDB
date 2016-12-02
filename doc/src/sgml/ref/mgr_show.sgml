@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 SHOW <replaceable class="parameter">nodename</replaceable> <replaceable class="parameter">option</replaceable>;
-where option can be one of any parameter in the postgres.conf
+where option can be any of parameter in the postgres.conf
     </synopsis>
   </refsynopsisdiv>
 
