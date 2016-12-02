@@ -91,9 +91,9 @@ static Node* make_func_call(const char *func_name, List *func_args);
 /* static List* make_start_agent_args(List *options); */
 extern char *defGetString(DefElem *def);
 static Node* make_ColumnRef(const char *col_name);
-static Node* make_whereClause_for_datanode(char * node_type_str, List* node_name_list);
-static Node* make_whereClause_for_coord(char * node_type_str, List* node_name_list);
-static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list);
+static Node* make_whereClause_for_datanode(char* node_type_str, List* node_name_list, char* like_expr);
+static Node* make_whereClause_for_coord(char * node_type_str, List* node_name_list, char* like_expr);
+static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list, char* like_expr);
 static void check_node_name_isvaild(char node_type, List* node_name_list);
 %}
 
@@ -159,6 +159,7 @@ static void check_node_name_isvaild(char node_type, List* node_name_list);
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
 				opt_general_all opt_general_force var_dotparam var_showparam
+				sub_like_expr
 
 %type <chr>		node_type cluster_type
 
@@ -1033,36 +1034,44 @@ ListParmStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 			$$ = (Node*)stmt;
 		}
-	| LIST PARAM node_type AConstList
+	| LIST PARAM node_type Ident sub_like_expr
 		{
+			StringInfoData like_expr;
+			List* node_name;
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 
-			check_node_name_isvaild($3, $4);
+			node_name = (List*)list_make1(makeStringConst($4, -1));
+			check_node_name_isvaild($3, node_name);
 
+			initStringInfo(&like_expr);
+			if (strcmp($5, "NULL") == 0)
+				appendStringInfo(&like_expr, "%%%%");
+			else
+				appendStringInfo(&like_expr, "%%%s%%", $5);
 			switch ($3)
 			{
 				case CNDN_TYPE_DATANODE_MASTER:
-						stmt->whereClause = make_whereClause_for_datanode("datanode master", $4);
+						stmt->whereClause = make_whereClause_for_datanode("datanode master", node_name, like_expr.data);
 						break;
 				case CNDN_TYPE_DATANODE_SLAVE:
-						stmt->whereClause = make_whereClause_for_datanode("datanode slave", $4);
+						stmt->whereClause = make_whereClause_for_datanode("datanode slave", node_name, like_expr.data);
 						break;
 				case CNDN_TYPE_DATANODE_EXTRA:
-						stmt->whereClause = make_whereClause_for_datanode("datanode extra", $4);
+						stmt->whereClause = make_whereClause_for_datanode("datanode extra", node_name, like_expr.data);
 						break;
 				case CNDN_TYPE_COORDINATOR_MASTER:
-						stmt->whereClause = make_whereClause_for_coord("coordinator", $4);
+						stmt->whereClause = make_whereClause_for_coord("coordinator", node_name, like_expr.data);
 						break;
 				case GTM_TYPE_GTM_MASTER:
-						stmt->whereClause = make_whereClause_for_gtm("gtm master", $4);
+						stmt->whereClause = make_whereClause_for_gtm("gtm master", node_name, like_expr.data);
 						break;
 				case GTM_TYPE_GTM_SLAVE:
-						stmt->whereClause = make_whereClause_for_gtm("gtm slave", $4);
+						stmt->whereClause = make_whereClause_for_gtm("gtm slave", node_name, like_expr.data);
 						break;
 				case GTM_TYPE_GTM_EXTRA:
-						stmt->whereClause = make_whereClause_for_gtm("gtm extra", $4);
+						stmt->whereClause = make_whereClause_for_gtm("gtm extra", node_name, like_expr.data);
 						break;
 				default:
 						break;
@@ -1070,56 +1079,89 @@ ListParmStmt:
 
 			$$ = (Node*)stmt;
 		}
-	| LIST PARAM cluster_type ALL
+	| LIST PARAM cluster_type ALL sub_like_expr
 	{
+			StringInfoData like_expr;
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("updateparm"), -1));
 
+			initStringInfo(&like_expr);
+
+			if (strcmp($5, "NULL") == 0)
+				appendStringInfo(&like_expr, "%%%%");
+			else
+				appendStringInfo(&like_expr, "%%%s%%", $5);
+
 			switch ($3)
 			{
 				case GTM_TYPE:
-					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~", 
+					stmt->whereClause =
+						(Node *)(Node *)makeA_Expr(AEXPR_AND, NIL,
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 									make_ColumnRef("nodetype"), 
-									makeStringConst(pstrdup("gtm"), -1),
+									makeStringConst(pstrdup("gtm"), -1), -1),
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~~",
+									make_ColumnRef("key"),
+									makeStringConst(pstrdup(like_expr.data), -1), -1),
 									-1);
 					break;
 				case COORDINATOR_TYPE:
-					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+					stmt->whereClause =
+						(Node *)(Node *)makeA_Expr(AEXPR_AND, NIL,
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 									make_ColumnRef("nodetype"),
-									makeStringConst(pstrdup("coordinator"), -1),
+									makeStringConst(pstrdup("coordinator"), -1), -1),
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~~",
+									make_ColumnRef("key"),
+									makeStringConst(pstrdup(like_expr.data), -1), -1),
 									-1);
 					break;
 				case DATANODE_TYPE:
-					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+					stmt->whereClause =
+						(Node *)(Node *)makeA_Expr(AEXPR_AND, NIL,
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 									make_ColumnRef("nodetype"),
-									makeStringConst(pstrdup("datanode"), -1),
+									makeStringConst(pstrdup("datanode"), -1), -1),
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~~",
+									make_ColumnRef("key"),
+									makeStringConst(pstrdup(like_expr.data), -1), -1),
 									-1);
 					break;
 				case CNDN_TYPE_DATANODE_MASTER:
-					stmt->whereClause = (Node *) makeSimpleA_Expr(AEXPR_OP, "~",
-									make_ColumnRef("nodetype"),
-									makeStringConst(pstrdup("datanode master"), -1),
-									-1);
+					stmt->whereClause =
+					(Node *)makeA_Expr(AEXPR_AND, NIL,
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+								make_ColumnRef("nodetype"),
+								makeStringConst(pstrdup("datanode master"), -1),-1),
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "~~",
+										make_ColumnRef("key"),
+										makeStringConst(pstrdup(like_expr.data), -1), -1),
+										-1);
 					break;
 				case CNDN_TYPE_DATANODE_SLAVE:
 					stmt->whereClause =
-					(Node *)makeA_Expr(AEXPR_OR, NIL,
-						(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
-									make_ColumnRef("nodetype"),
-									makeStringConst(pstrdup("datanode slave"), -1),-1),
-						(Node *) makeA_Expr(AEXPR_AND, NIL,
-							(Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-										make_ColumnRef("nodename"),
-										makeStringConst(pstrdup("*"), -1), -1),
+					(Node *)makeA_Expr(AEXPR_AND, NIL,
+						(Node *)makeA_Expr(AEXPR_OR, NIL,
 							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 										make_ColumnRef("nodetype"),
-										makeStringConst(pstrdup("datanode master"), -1), -1),
-										-1),
+										makeStringConst(pstrdup("datanode slave"), -1),-1),
+							(Node *) makeA_Expr(AEXPR_AND, NIL,
+								(Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+											make_ColumnRef("nodename"),
+											makeStringConst(pstrdup("*"), -1), -1),
+								(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+											make_ColumnRef("nodetype"),
+											makeStringConst(pstrdup("datanode master"), -1), -1),
+											-1),-1),
+						(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
+								make_ColumnRef("key"),
+								makeStringConst(pstrdup(like_expr.data), -1), -1),
 								-1);
 					break;
 				case CNDN_TYPE_DATANODE_EXTRA:
 					stmt->whereClause =
+					(Node *)makeA_Expr(AEXPR_AND, NIL,
 					(Node *)makeA_Expr(AEXPR_OR, NIL,
 							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 										make_ColumnRef("nodetype"),
@@ -1131,8 +1173,11 @@ ListParmStmt:
 								(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
 											make_ColumnRef("nodetype"),
 											makeStringConst(pstrdup("datanode master"), -1), -1),
-											-1),
-									-1);
+											-1),-1),
+					(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
+								make_ColumnRef("key"),
+								makeStringConst(pstrdup(like_expr.data), -1), -1),
+								-1);
 					break;
 				default:
 					break;
@@ -1976,6 +2021,11 @@ cluster_type:
 	| DATANODE EXTRA  {$$ = CNDN_TYPE_DATANODE_EXTRA;}
 	;
 
+sub_like_expr:
+	Ident             { $$ = $1;}
+	| /* empty */     { $$ = pstrdup("NULL");}
+	;
+
 ListMonitor:
 	GET_CLUSTER_HEADPAGE_LINE
 	{
@@ -2318,54 +2368,72 @@ static Node* make_ColumnRef(const char *col_name)
 	return (Node*)col;
 }
 
-static Node* make_whereClause_for_datanode(char* node_type_str, List* node_name_list)
+static Node* make_whereClause_for_datanode(char* node_type_str, List* node_name_list, char* like_expr)
 {
-	Node * whereClause = NULL;
+	Node* whereClause = NULL;
 
-	whereClause = (Node *) makeA_Expr(AEXPR_OR, NIL,
+	whereClause =
 		(Node *) makeA_Expr(AEXPR_AND, NIL,
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "~", make_ColumnRef("nodetype"), makeStringConst(pstrdup("^datanode master"), -1), -1),
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodename"), makeStringConst(pstrdup("*"), -1), -1),
-							-1),
-		(Node *) makeA_Expr(AEXPR_AND, NIL,
-			(Node *) makeSimpleA_Expr(AEXPR_IN, "=", make_ColumnRef("nodename"), (Node*)node_name_list, -1),
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodetype"), makeStringConst(pstrdup(node_type_str), -1), -1),
-							-1),
-							 -1);
+			(Node *) makeA_Expr(AEXPR_OR, NIL,
+				(Node *) makeA_Expr(AEXPR_AND, NIL,
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "~", make_ColumnRef("nodetype"), makeStringConst(pstrdup("^datanode master"), -1), -1),
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodename"), makeStringConst(pstrdup("*"), -1), -1),
+									-1),
+				(Node *) makeA_Expr(AEXPR_AND, NIL,
+					(Node *) makeSimpleA_Expr(AEXPR_IN, "=", make_ColumnRef("nodename"), (Node*)node_name_list, -1),
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodetype"), makeStringConst(pstrdup(node_type_str), -1), -1),
+									-1),
+									-1),
+			(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
+								make_ColumnRef("key"),
+								makeStringConst(pstrdup(like_expr), -1), -1),
+								-1);
 	return  (Node *)whereClause;
 }
 
-static Node* make_whereClause_for_coord(char * node_type_str, List* node_name_list)
+static Node* make_whereClause_for_coord(char* node_type_str, List* node_name_list, char* like_expr)
 {
-	Node * whereClause = NULL;
+	Node* whereClause = NULL;
 
-	whereClause = (Node *) makeA_Expr(AEXPR_OR, NIL,
+	whereClause =
 		(Node *) makeA_Expr(AEXPR_AND, NIL,
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "~", make_ColumnRef("nodetype"), makeStringConst(pstrdup("^coordinator"), -1), -1),
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodename"), makeStringConst(pstrdup("*"), -1), -1),
-							-1),
-		(Node *) makeA_Expr(AEXPR_AND, NIL,
-			(Node *) makeSimpleA_Expr(AEXPR_IN, "=", make_ColumnRef("nodename"), (Node*)node_name_list, -1),
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodetype"), makeStringConst(pstrdup(node_type_str), -1), -1),
-							-1),
-							 -1);
+			(Node *) makeA_Expr(AEXPR_OR, NIL,
+				(Node *) makeA_Expr(AEXPR_AND, NIL,
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "~", make_ColumnRef("nodetype"), makeStringConst(pstrdup("^coordinator"), -1), -1),
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodename"), makeStringConst(pstrdup("*"), -1), -1),
+									-1),
+				(Node *) makeA_Expr(AEXPR_AND, NIL,
+					(Node *) makeSimpleA_Expr(AEXPR_IN, "=", make_ColumnRef("nodename"), (Node*)node_name_list, -1),
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodetype"), makeStringConst(pstrdup(node_type_str), -1), -1),
+									-1),
+									-1),
+			(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
+								make_ColumnRef("key"),
+								makeStringConst(pstrdup(like_expr), -1), -1),
+								-1);
 	return  (Node *)whereClause;
 }
 
-static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list)
+static Node* make_whereClause_for_gtm(char* node_type_str, List* node_name_list, char* like_expr)
 {
 	Node * whereClause = NULL;
 
-	whereClause = (Node *) makeA_Expr(AEXPR_OR, NIL,
+	whereClause =
 		(Node *) makeA_Expr(AEXPR_AND, NIL,
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "~", make_ColumnRef("nodetype"), makeStringConst(pstrdup("^gtm"), -1), -1),
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodename"), makeStringConst(pstrdup("*"), -1), -1),
-							-1),
-		(Node *) makeA_Expr(AEXPR_AND, NIL,
-			(Node *) makeSimpleA_Expr(AEXPR_IN, "=", make_ColumnRef("nodename"), (Node*)node_name_list, -1),
-			(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodetype"), makeStringConst(pstrdup(node_type_str), -1), -1),
-							-1),
-							 -1);
+			(Node *) makeA_Expr(AEXPR_OR, NIL,
+				(Node *) makeA_Expr(AEXPR_AND, NIL,
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "~", make_ColumnRef("nodetype"), makeStringConst(pstrdup("^gtm"), -1), -1),
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodename"), makeStringConst(pstrdup("*"), -1), -1),
+									-1),
+				(Node *) makeA_Expr(AEXPR_AND, NIL,
+					(Node *) makeSimpleA_Expr(AEXPR_IN, "=", make_ColumnRef("nodename"), (Node*)node_name_list, -1),
+					(Node *) makeSimpleA_Expr(AEXPR_OP, "=", make_ColumnRef("nodetype"), makeStringConst(pstrdup(node_type_str), -1), -1),
+									-1),
+									-1),
+			(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
+								make_ColumnRef("key"),
+								makeStringConst(pstrdup(like_expr), -1), -1),
+								-1);
 	return  (Node *)whereClause;
 }
 
