@@ -89,6 +89,7 @@ static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoi
 static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, bool isprimary, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static bool is_node_running(char *hostaddr, int32 hostport);
+static void mgr_make_sure_all_running(char node_type);
 static char *get_temp_file_name(void);
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
 static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
@@ -2473,6 +2474,8 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &agtm_e_nodeinfo);
 
+		mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
+
 		if (agtm_m_is_exist)
 		{
 			if (agtm_m_is_running)
@@ -2484,7 +2487,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 			{ ereport(ERROR, (errmsg("agtm master is not running.")));}
 		}
 		else
-		{ ereport(ERROR, (errmsg("agtm master is not exist.")));}
+		{ ereport(ERROR, (errmsg("agtm master is not initialized.")));}
 		
 		if (agtm_s_is_exist)
 		{
@@ -2657,7 +2660,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 				{	ereport(ERROR, (errmsg("agtm master is not running.")));}
 		}
 		else
-		{	ereport(ERROR, (errmsg("agtm master is not exist.")));}
+		{	ereport(ERROR, (errmsg("agtm master is not initialized.")));}
 		
 		if (agtm_s_is_exist)
 		{
@@ -2842,7 +2845,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 			{	ereport(ERROR, (errmsg("agtm master is not running.")));}
 		}
 		else
-		{	ereport(ERROR, (errmsg("agtm master is not exist.")));}
+		{	ereport(ERROR, (errmsg("agtm master is not initialized.")));}
 
 		if (agtm_s_is_exist)
 		{
@@ -3015,6 +3018,8 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &agtm_e_nodeinfo);
 
+		mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
+
 		if (agtm_m_is_exist)
 		{
 			if (agtm_m_is_running)
@@ -3026,7 +3031,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 				{	ereport(ERROR, (errmsg("agtm master is not running.")));}
 		}
 		else
-		{	ereport(ERROR, (errmsg("agtm master is not exist.")));}
+		{	ereport(ERROR, (errmsg("agtm master is not initialized.")));}
 
 		if (agtm_s_is_exist)
 		{
@@ -3179,7 +3184,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		
 		if (!agtm_m_is_exist)
-			ereport(ERROR, (errmsg("agtm master is not exist.")));
+			ereport(ERROR, (errmsg("agtm master is not initialized.")));
 
 		if (!agtm_m_is_running)
 			ereport(ERROR, (errmsg("agtm master is not running.")));
@@ -3316,7 +3321,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		//get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 
 		if (!agtm_m_is_exist)
-			ereport(ERROR, (errmsg("agtm master is not exist.")));
+			ereport(ERROR, (errmsg("agtm master is not initialized.")));
 		
 		if (!agtm_m_is_running)
 			ereport(ERROR, (errmsg("agtm master is not running.")));
@@ -3578,6 +3583,63 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 	if (!getAgentCmdRst.ret)
 		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
+}
+static void mgr_make_sure_all_running(char node_type)
+{
+	InitNodeInfo *info;
+	ScanKeyData key[3];
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	char * hostaddr = NULL;
+
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(node_type));
+
+	info = palloc(sizeof(*info));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 3, key);
+	info->lcp = NULL;
+
+	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+
+		hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+
+		if (!is_node_running(hostaddr, mgr_node->nodeport))
+		{
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+			pfree(hostaddr);
+			if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
+				ereport(ERROR, (errmsg("coordinator \"%s\" is not running.", NameStr(mgr_node->nodename))));
+			else if (node_type == CNDN_TYPE_DATANODE_MASTER)
+				ereport(ERROR, (errmsg("datanode master \"%s\" is not running.", NameStr(mgr_node->nodename))));
+		}
+	}
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+	pfree(hostaddr);
+	return;
 }
 
 static bool is_node_running(char *hostaddr, int32 hostport)
