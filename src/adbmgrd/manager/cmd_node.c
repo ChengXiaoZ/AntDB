@@ -3663,7 +3663,10 @@ static void mgr_make_sure_all_running(char node_type)
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-	pfree(hostaddr);
+
+	if (hostaddr != NULL)
+		pfree(hostaddr);
+
 	return;
 }
 
@@ -3716,6 +3719,9 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	parentnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	parentnodeinfo->nodeport = mgr_node->nodeport;
 	parentnodeinfo->nodehost = mgr_node->nodehost;
+
+	if (mgr_node->nodeinited == false)
+		ereport(ERROR, (errmsg("datanode master \"%s\" does not initialized", NameStr(mgr_node->nodename))));
 
 	/*get nodepath from tuple*/
 	datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(noderelation), &isNull);
