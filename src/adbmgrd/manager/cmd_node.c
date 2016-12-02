@@ -6710,6 +6710,7 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 	char *address;
 	char *value;
 	char *master_node_path;
+	Oid hostoid;
 
 	if(CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 	{
@@ -6721,10 +6722,12 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 	checktuple = mgr_get_tuple_node_from_name_type(rel, nodename, nodetype);
 	if (!HeapTupleIsValid(checktuple))
 	{
-		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				, errmsg("%s \"%s\" dose not exists", node_type_str, nodename)));
 	}
-	
+	heap_freetuple(checktuple);
+	pfree(node_type_str);
+
 	switch(nodetype)
 	{
 		case GTM_TYPE_GTM_SLAVE: 
@@ -6760,6 +6763,8 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 				 ,errmsg("%s \"%s\" does not exist",node_type_str, nodename))); 
 		}
 		mgr_master_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_master_node);
+		hostoid = mgr_master_node->nodehost;
 		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
 		if(isNull)
 		{
@@ -6768,9 +6773,12 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 				, errmsg("column cndnpath is null")));
 		}		
 		master_node_path = TextDatumGetCString(datumpath);
+		heap_freetuple(tuple);
+		pfree(node_type_str);
+		
 	}else if((CNDN_TYPE_DATANODE_SLAVE == nodetype)||(CNDN_TYPE_DATANODE_EXTRA == nodetype))
 	{
-		node_type_str = mgr_nodetype_str(GTM_TYPE_GTM_MASTER);
+		node_type_str = mgr_nodetype_str(CNDN_TYPE_DATANODE_MASTER);
 		tuple= mgr_get_tuple_node_from_name_type(rel, nodename, CNDN_TYPE_DATANODE_MASTER);
 		if(!(HeapTupleIsValid(tuple)))
 		{
@@ -6778,7 +6786,8 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 				 ,errmsg("%s \"%s\" does not exist",node_type_str, nodename))); 
 		}
 		mgr_master_node = (Form_mgr_node)GETSTRUCT(tuple);
-
+		Assert(mgr_master_node);
+		hostoid = mgr_master_node->nodehost;
 		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
 		if(isNull)
 		{
@@ -6787,6 +6796,8 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 				, errmsg("column cndnpath is null")));
 		}		
 		master_node_path = TextDatumGetCString(datumpath);
+		heap_freetuple(tuple);
+		pfree(node_type_str);
 	}
 	else
 	{
@@ -6806,20 +6817,20 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync)
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "extra", &infosendmsg);
 	else
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
-	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, 
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF,
 							master_node_path,
-							&infosendmsg, 
-							mgr_master_node->nodehost, 
+							&infosendmsg,
+							hostoid,
 							&getAgentCmdRst);
 
 	/* step 2: reload datanode master's postgresql.conf. */
-	mgr_reload_conf(mgr_master_node->nodehost, master_node_path);
+	mgr_reload_conf(hostoid, master_node_path);
 	value = &infosendmsg.data[strlen("synchronous_standby_names")+1];
 	ereport(LOG, (errmsg("set hostoid %d path %s synchronous_standby_names=%s.", 
-										mgr_master_node->nodehost, master_node_path,value)));
+										hostoid, master_node_path,value)));
 	if (!getAgentCmdRst.ret)
 	{	
-		address = get_hostaddress_from_hostoid(mgr_master_node->nodehost);
+		address = get_hostaddress_from_hostoid(hostoid);
 		ereport(WARNING, (errmsg("set address %s path %s synchronous_standby_names=%s failed.",
 										address, master_node_path,value)));
 		pfree(address);
@@ -6875,6 +6886,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		bslave_exist = true;
 		pfree(port.data);
 		pfree(host_addr);
+		heap_freetuple(aimtuple);
 	}		
 	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, node_name, extra_type);
 	if (HeapTupleIsValid(aimtuple))
@@ -6897,6 +6909,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		bextra_exist = true;
 		pfree(port.data);
 		pfree(host_addr);
+		heap_freetuple(aimtuple);
 	}
 	
 	if(bslave_exist == false && bextra_exist == false)
@@ -6926,22 +6939,16 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 	{		
 		if(node_type == slave_type && bslave_sync == false)
 		{
-			if(bextra_sync == true && bextra_incluster == true)
-			{
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("the extra node %s is sync mode,but it's not running.", node_name)
-				, errhint("you can add \'force\' at the end,and enforcing execute failover.")));
-			}				
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			, errmsg("the slave node %s is async mode.", node_name)
+			, errhint("you can add \'force\' at the end, and enforcing execute failover.")));	
 		}
 		else if(node_type == extra_type && bextra_sync == false)
 		{
-			if(bslave_sync == true && bslave_incluster == true)
-			{
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("the slave node %s is sync mode,but it's not running.", node_name)
-				, errhint("you can add \'force\' at the end,and enforcing execute failover.")));			
-			}	
-		}		
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			, errmsg("the extra node %s is async mode.", node_name)
+			, errhint("you can add \'force\' at the end, and enforcing execute failover.")));
+		}
 	}
 	/*close relation */
 	heap_close(rel_node, RowExclusiveLock);
