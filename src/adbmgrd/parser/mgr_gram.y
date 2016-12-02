@@ -1897,55 +1897,55 @@ StopNodeMasterStmt:
 		}
 	;
 FailoverStmt:
-		FAILOVER DATANODE SLAVE Ident
+		FAILOVER DATANODE SLAVE Ident opt_general_force
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("slave", -1));
 			args = lappend(args,makeStringConst($4, -1));
+			if($5 != NULL)
+				args = lappend(args,makeStringConst($5, @5));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
 	}
-	|	FAILOVER DATANODE EXTRA Ident
+	|	FAILOVER DATANODE EXTRA Ident opt_general_force
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("extra", -1));
 			args = lappend(args,makeStringConst($4, -1));
+			if($5 != NULL)
+				args = lappend(args,makeStringConst($5, @5));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
 		}
-	| FAILOVER DATANODE Ident
+	| FAILOVER DATANODE Ident opt_general_force
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("either", -1));
 			args = lappend(args,makeStringConst($3, -1));
+			if($4 != NULL)
+				args = lappend(args,makeStringConst($4, @4));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
 		}
-	| FAILOVER DATANODE Ident FORCE
-	{
-		SelectStmt *stmt = makeNode(SelectStmt);
-		List *args = list_make1(makeStringConst("either", -1));
-		args = lappend(args,makeStringConst($3, -1));
-		args = lappend(args,makeStringConst("force", -1));
-		stmt->targetList = list_make1(make_star_target(-1));
-		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
-		$$ = (Node*)stmt;
-	}
-	| FAILOVER GTM SLAVE
+	| FAILOVER GTM SLAVE opt_general_force
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("slave", -1));
+			if($4 != NULL)
+				args = lappend(args,makeStringConst($4, @4));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
 		}
-	| FAILOVER GTM EXTRA 
+	| FAILOVER GTM EXTRA opt_general_force
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("extra", -1));
+			if($4 != NULL)
+				args = lappend(args,makeStringConst($4, @4));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;

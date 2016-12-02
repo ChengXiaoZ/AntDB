@@ -93,7 +93,7 @@ static void mgr_make_sure_all_running(char node_type);
 static char *get_temp_file_name(void);
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
 static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
-static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange);
+static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange, bool bforce);
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
 static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
 static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupeoid);
@@ -4833,8 +4833,11 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	char cmdtype = AGT_CMD_DN_FAILOVER;
 	char nodetype;
 	bool force = false;
+	bool nodetypechange = false;
 	Datum datum;
-	
+
+	if(strcmp(force_str, "force") ==0)
+		force = true;
 	if (strcmp(typestr, "slave") == 0)
 	{
 		nodetype = CNDN_TYPE_DATANODE_SLAVE;
@@ -4845,8 +4848,7 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	}
 	else if (strcmp(typestr, "either") == 0)
 	{
-		if(strcmp(force_str, "force") ==0)
-			force = true;
+		nodetypechange = true;
 		datum = get_failover_node_type(nodename, CNDN_TYPE_DATANODE_SLAVE, CNDN_TYPE_DATANODE_EXTRA, force);
 		nodetype = DatumGetChar(datum);
 	}
@@ -4857,146 +4859,62 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	}
 	if(CNDN_TYPE_NONE_TYPE == nodetype)
 		ereport(ERROR, (errmsg("datanode slave or extra \"%s\" is not exist incluster", nodename)));
-	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
+	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, nodetypechange, force);
 }
 
 /*
 * inner function, userd for node failover
 */
-static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange)
+static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange, bool bforce)
 {
 	Relation rel_node;
 	HeapTuple aimtuple;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
-	char nodetypesecond = CNDN_TYPE_NONE_TYPE;
-	ScanKeyData key[1];
-	HeapScanDesc scan;
+	char *nodestring;
+	char *host_addr;
 	Form_mgr_node mgr_node;
+	StringInfoData port;
+	int ret;
 
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	/*failover datanode [slave|extra] dnname*/
-	if (AGT_CMD_DN_FAILOVER == cmdtype)
+	nodestring = mgr_nodetype_str(nodetype);
+	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetype);
+	if (!HeapTupleIsValid(aimtuple))
 	{
-		aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetype);
-		if (!HeapTupleIsValid(aimtuple))
-		{
-			/*cannot find datanode slave, so find datanode extra*/
-			if (nodetypechange)
-			{
-				switch(nodetype)
-				{
-					case CNDN_TYPE_DATANODE_SLAVE:
-						nodetypesecond = CNDN_TYPE_DATANODE_EXTRA;
-						break;
-					case CNDN_TYPE_DATANODE_EXTRA:
-						nodetypesecond = CNDN_TYPE_DATANODE_SLAVE;
-						break;
-					default:
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-							,errmsg("no such node type: %c", nodetype)));
-				}
-				aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetypesecond);
-			}
-			if (!HeapTupleIsValid(aimtuple))
-			{
-				heap_close(rel_node, RowExclusiveLock);
-				if (nodetype == CNDN_TYPE_DATANODE_SLAVE && !nodetypechange)
-					ereport(ERROR, (errmsg("datanode slave \"%s\" does not exist", nodename)));
-				else if (nodetype == CNDN_TYPE_DATANODE_EXTRA && !nodetypechange)
-					ereport(ERROR, (errmsg("datanode extra \"%s\" does not exist", nodename)));
-				else
-					ereport(ERROR, (errmsg("datanode slave or extra \"%s\" does not exist", nodename)));
-			}
-		}
+		heap_close(rel_node, RowExclusiveLock);
+		ereport(ERROR, (errmsg("%s \"%s\" does not exist", nodestring, nodename)));
 	}
-	/*failover gtm [slave|extra]*/
-	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
-	{
-		ScanKeyInit(&key[0]
-			,Anum_mgr_node_nodetype
-			,BTEqualStrategyNumber
-			,F_CHAREQ
-			,CharGetDatum(nodetype));
-		scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-		while ((aimtuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		{
-			break;
-		}
-		if (!HeapTupleIsValid(aimtuple))
-		{
-			/*cannot find gtm slave, so find gtm extra*/
-			if (nodetypechange)
-			{
-				switch(nodetype)
-				{
-					case GTM_TYPE_GTM_SLAVE:
-						nodetypesecond = GTM_TYPE_GTM_EXTRA;
-						break;
-					case GTM_TYPE_GTM_EXTRA:
-						nodetypesecond = GTM_TYPE_GTM_SLAVE;
-						break;
-					default:
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-							,errmsg("no such node type: %c", nodetype)));
-				}
-
-				ScanKeyInit(&key[0]
-					,Anum_mgr_node_nodetype
-					,BTEqualStrategyNumber
-					,F_CHAREQ
-					,CharGetDatum(nodetypesecond));
-				heap_endscan(scan);
-				scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-				while ((aimtuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-				{
-					break;
-				}
-			}
-			if (!HeapTupleIsValid(aimtuple))
-			{
-				heap_close(rel_node, RowExclusiveLock);
-				if (nodetype == GTM_TYPE_GTM_SLAVE && !nodetypechange)
-					ereport(ERROR, (errmsg("gtm slave does not exist")));
-				else if (nodetype == GTM_TYPE_GTM_EXTRA && !nodetypechange)
-					ereport(ERROR, (errmsg("gtm extra does not exist")));
-				else
-					ereport(ERROR, (errmsg("gtm slave or extra does not exist")));				
-			}
-		}
-	}
-	/* not support the comamnd type*/
-	else
-	{
-		ereport(ERROR, (errmsg("not support this command: %c", cmdtype)));
-	}
-	
-	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
-	/*get nodename of the return result*/
-	if (AGT_CMD_DN_FAILOVER == cmdtype)
-	{
-		namestrcpy(&(getAgentCmdRst.nodename), nodename);
-	}
-	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
+	/*check node is running normal and sync*/
+	if (!nodetypechange)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 		Assert(mgr_node);
-		namestrcpy(&(getAgentCmdRst.nodename),NameStr(mgr_node->nodename));
+		if ((!bforce) && mgr_node->nodesync != 't')
+		{
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+				,errmsg("%s \"%s\" is async mode", nodestring, nodename)
+				,errhint("you can add \'force\' at the end, and enforcing execute failover")));	
+		}
+		/*check running normal*/
+		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		initStringInfo(&port);
+		appendStringInfo(&port, "%d", mgr_node->nodeport);
+		ret = pingNode(host_addr, port.data);
+		pfree(port.data);
+		pfree(host_addr);
+		if(ret != 0)
+			ereport(ERROR, (errmsg("%s \"%s\" is not running normal", nodestring, nodename)));	
 	}
-	
+	pfree(nodestring);
+	initStringInfo(&(getAgentCmdRst.description));
+	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
+	heap_freetuple(aimtuple);
+	namestrcpy(&(getAgentCmdRst.nodename),nodename);
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
 		, getAgentCmdRst.description.data);
-	if (AGT_CMD_DN_FAILOVER == cmdtype)
-	{
-		heap_freetuple(aimtuple);
-	}
-	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
-	{
-		heap_endscan(scan);
-	}
 	pfree(getAgentCmdRst.description.data);
 	heap_close(rel_node, RowExclusiveLock);
 	return HeapTupleGetDatum(tup_result);
@@ -5889,6 +5807,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	char nodetype = GTM_TYPE_GTM_SLAVE;
 	char *nodename = NULL; /*just use for input parameter*/
 	bool force = false;
+	bool nodetypechange = false;
 	NameData nodenamedata;
 	ScanKeyData key[1];
 	HeapTuple tuple;
@@ -5896,6 +5815,9 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	HeapScanDesc scan;
 	Form_mgr_node mgr_node;
 	Datum datum;
+
+	if(strcmp(force_str, "force") ==0)
+		force = true;
 	/*get GTM master name*/
 	ScanKeyInit(&key[0]
 		,Anum_mgr_node_nodetype
@@ -5907,8 +5829,9 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
 		Assert(mgr_node);
+		namestrcpy(&nodenamedata, NameStr(mgr_node->nodename));
+		break;
 	}
 	heap_endscan(scan);
 	heap_close(rel_node, RowExclusiveLock);
@@ -5923,8 +5846,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	}
 	else if (strcmp(typestr, "either") == 0)
 	{	
-		if(strcmp(force_str, "force") ==0)
-			force = true;
+		nodetypechange = true;
 		datum = get_failover_node_type(nodename, GTM_TYPE_GTM_SLAVE, GTM_TYPE_GTM_EXTRA, force);
 		nodetype = DatumGetChar(datum);
 	}
@@ -5935,7 +5857,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	}
 	if(CNDN_TYPE_NONE_TYPE == nodetype)
 		ereport(ERROR, (errmsg("gtm slave or extra does not exist in cluster")));
-	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, false);
+	return mgr_failover_one_dn_inner_func(nodename, cmdtype, nodetype, nodetypechange, force);
 }
 
 /*
@@ -7002,14 +6924,14 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		if(node_type == slave_type && bslave_sync == false)
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("the slave node %s is async mode.", node_name)
-			, errhint("you can add \'force\' at the end, and enforcing execute failover.")));	
+			, errmsg("the slave node %s is async mode", node_name)
+			, errhint("you can add \'force\' at the end, and enforcing execute failover")));	
 		}
 		else if(node_type == extra_type && bextra_sync == false)
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("the extra node %s is async mode.", node_name)
-			, errhint("you can add \'force\' at the end, and enforcing execute failover.")));
+			, errmsg("the extra node %s is async mode", node_name)
+			, errhint("you can add \'force\' at the end, and enforcing execute failover")));
 		}
 	}
 	/*close relation */
