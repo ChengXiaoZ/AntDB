@@ -60,7 +60,11 @@ typedef struct AppendNodeInfo
 	Oid   nodemasteroid;
 	char *nodeusername;
 }AppendNodeInfo;
-
+struct tuple_cndn
+{
+	List *coordiantor_list;
+	List *datanode_list;
+};
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc get_common_command_tuple_desc_for_monitor(void);
 static HeapTuple build_common_command_tuple_for_monitor(const Name name
@@ -103,7 +107,7 @@ static void mgr_set_master_sync(void);
 static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync);
 static Datum get_failover_node_type(char *node_name, char slave_type, char extra_type, bool force);
 static void mgr_get_cmd_head_word(char cmdtype, char *str);
-
+static struct tuple_cndn *get_new_pgxc_node(void);
 #if (Natts_mgr_node != 10)
 #error "need change code"
 #endif
@@ -5117,19 +5121,25 @@ bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress
 Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
-	InitNodeInfo *info_out, *info_in, *info_dn;
-	HeapTuple tuple_out, tuple_in, tuple_dn, tup_result;
-	ScanKeyData key_out[1], key_in[1], key_dn[1];
-	Form_mgr_node mgr_node_out, mgr_node_in, mgr_node_dn;
+	InitNodeInfo *info_out, *info_in;
+	HeapTuple tuple_out, tuple_in, tup_result;
+	ScanKeyData key_out[1], key_in[1];
+	Form_mgr_node mgr_node_out, mgr_node_in;
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData cmdstring;
 	StringInfoData buf;
 	ManagerAgent *ma;
 	bool execok = false;
 	char *address = NULL;
-	char *addressout = NULL;
 
-
+	bool is_preferred = false;
+	bool is_primary = false;
+	bool find_preferred = false;
+	struct tuple_cndn *prefer_cndn;
+	ListCell *cn_lc, *dn_lc;
+	HeapTuple tuple_primary, tuple_preferred;
+	int coordinator_num = 0, datanode_num = 0;
+	
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
@@ -5221,67 +5231,85 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	heap_close(info_in->rel_node, AccessShareLock);
 	pfree(info_in);
 
-	info_dn = palloc(sizeof(*info_dn));
-	info_dn->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	ScanKeyInit(&key_dn[0]
-				,Anum_mgr_node_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(CNDN_TYPE_DATANODE_MASTER));
-	info_dn->rel_scan = heap_beginscan(info_dn->rel_node, SnapshotNow, 1, key_dn);
-	info_dn->lcp =NULL;
-	
-	addressout = get_hostaddress_from_hostoid(mgr_node_out->nodehost);
-	while ((tuple_dn = heap_getnext(info_dn->rel_scan, ForwardScanDirection)) != NULL)
+	prefer_cndn = get_new_pgxc_node();
+	/*	if(!PointerIsValid(prefer_cndn))
 	{
-		mgr_node_dn = (Form_mgr_node)GETSTRUCT(tuple_dn);
-		Assert(mgr_node_dn);
-
-		address = get_hostaddress_from_hostoid(mgr_node_dn->nodehost);
-		if (mgr_node_dn->nodeprimary)
+		tup_result = build_common_command_tuple( "cluster",true,"success");
+		return HeapTupleGetDatum(tup_result);
+	}
+*/	
+	coordinator_num = prefer_cndn->coordiantor_list->length;
+	datanode_num = prefer_cndn->datanode_list->length;
+	/*get the datanode of primary in the pgxc_node*/
+	if(coordinator_num < datanode_num)
+	{
+		dn_lc = list_tail(prefer_cndn->datanode_list);
+		tuple_primary = (HeapTuple)lfirst(dn_lc);
+	}
+	else if(datanode_num >0)
+	{
+		dn_lc = list_head(prefer_cndn->datanode_list);
+		tuple_primary = (HeapTuple)lfirst(dn_lc);
+	}
+	/*get the datanode of preferred in the pgxc_node*/
+	forboth(cn_lc, prefer_cndn->coordiantor_list, dn_lc, prefer_cndn->datanode_list)
+	{
+		tuple_in = (HeapTuple)lfirst(cn_lc);
+		if(HeapTupleGetOid(tuple_out) == HeapTupleGetOid(tuple_in))
 		{
-			if (strcmp(address, addressout) == 0)
-			{
-				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY, PREFERRED);"
-								,NameStr(mgr_node_dn->nodename)
-								,address
-								,mgr_node_dn->nodeport);
-			}
+			tuple_preferred = (HeapTuple)lfirst(dn_lc);
+			find_preferred = true;
+			break;
+		}
+	}
+	/*send msg to the coordinator and set pgxc_node*/
+	
+	foreach(dn_lc, prefer_cndn->datanode_list)
+	{
+		tuple_in = (HeapTuple)lfirst(dn_lc);
+		mgr_node_in = (Form_mgr_node)GETSTRUCT(tuple_in);
+		Assert(mgr_node_in);
+		address = get_hostaddress_from_hostoid(mgr_node_in->nodehost);
+		if(true == find_preferred)
+		{
+			if(HeapTupleGetOid(tuple_preferred) == HeapTupleGetOid(tuple_in))
+				is_preferred = true;
 			else
-			{
-				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d, PRIMARY);"
-								,NameStr(mgr_node_dn->nodename)
-								,address
-								,mgr_node_dn->nodeport);
-			}
+				is_preferred = false;
 		}
 		else
 		{
-			if (strcmp(address, addressout) == 0)
-			{
-				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d,PREFERRED);"
-								,NameStr(mgr_node_dn->nodename)
-								,address
-								,mgr_node_dn->nodeport);
-			}
-			else
-			{
-				appendStringInfo(&cmdstring, " CREATE NODE \\\"%s\\\" WITH (TYPE='datanode', HOST='%s', PORT=%d);"
-								,NameStr(mgr_node_dn->nodename)
-								,address
-								,mgr_node_dn->nodeport);
-			}
+			is_preferred = false;
 		}
+		if(HeapTupleGetOid(tuple_primary) == HeapTupleGetOid(tuple_in))
+		{
+			is_primary = true;
+		}
+		else
+		{
+			is_primary = false;
+		}
+		appendStringInfo(&cmdstring, "create node \\\"%s\\\" with(type='datanode', host='%s', port=%d, primary = %s, preferred = %s);"
+								,NameStr(mgr_node_in->nodename)
+								,address
+								,mgr_node_in->nodeport
+								,true == is_primary ? "true":"false"
+								,true == is_preferred ? "true":"false");	
 		pfree(address);
 	}
-
-	pfree(addressout);
-	heap_endscan(info_dn->rel_scan);
-	heap_close(info_dn->rel_node, AccessShareLock);
-	pfree(info_dn);
-
-	appendStringInfo(&cmdstring, " \"");
-
+	appendStringInfoString(&cmdstring, "select pgxc_pool_reload();\"");
+	
+	foreach(cn_lc, prefer_cndn->coordiantor_list)
+	{
+		heap_freetuple((HeapTuple)lfirst(cn_lc));
+	}
+	foreach(dn_lc, prefer_cndn->datanode_list)
+	{
+		heap_freetuple((HeapTuple)lfirst(dn_lc));
+	}
+	list_free(prefer_cndn->coordiantor_list);
+	list_free(prefer_cndn->datanode_list);
+	pfree(prefer_cndn);
 	/* connection agent */
 	ma = ma_connect_hostoid(mgr_node_out->nodehost);
 	if(!ma_isconnected(ma))
@@ -5315,6 +5343,7 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	ma_close(ma);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));	
 }
+
 
 
 /*
@@ -7041,4 +7070,136 @@ static void mgr_get_cmd_head_word(char cmdtype, char *str)
 			break;
 		str[strlen(str)-1]='\0';
 	}
+}
+
+static struct tuple_cndn *get_new_pgxc_node(void)
+{
+	struct host
+	{
+		char *address;
+		List *coordiantor_list;
+		List *datanode_list;
+	};
+	StringInfoData file_name_str;
+	Form_mgr_node mgr_dn_node, mgr_cn_node;
+	
+	Relation rel;
+	HeapScanDesc scan;
+	HeapTuple tup, temp_tuple;
+	Form_mgr_node mgr_node;
+	ListCell *lc_out, *lc_in, *cn_lc, *dn_lc;
+	Datum host_addr;
+	char *host_address;
+	struct host *host_info;
+	List *host_list = NIL;/*store cn and dn base on host*/
+	struct tuple_cndn *leave_cndn;/*store the left cn and dn which */
+	struct tuple_cndn *prefer_cndn;/*store the prefer datanode to the coordiantor one by one */
+	bool isNull = false;
+	
+	leave_cndn = palloc(sizeof(struct tuple_cndn));
+	memset(leave_cndn,0,sizeof(struct tuple_cndn));
+	prefer_cndn = palloc(sizeof(struct tuple_cndn));
+	memset(prefer_cndn,0,sizeof(struct tuple_cndn));
+	
+	/*get dn and cn from mgr_host and mgr_node*/
+	rel = heap_open(HostRelationId, AccessShareLock);
+	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		host_addr = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(rel), &isNull);
+		if(isNull)
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errmsg("column hostaddr is null")));
+		host_address = pstrdup(TextDatumGetCString(host_addr));
+		host_info = palloc(sizeof(struct host));
+		memset(host_info,0,sizeof(struct host));
+		host_info->address = host_address;
+		host_list = lappend(host_list, host_info);
+	}
+	heap_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	
+	rel= heap_open(NodeRelationId, AccessShareLock);
+	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tup);
+		Assert(mgr_node);
+		host_address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		temp_tuple = heap_copytuple(tup);
+		foreach(lc_out, host_list)
+		{
+			host_info = (struct host *)lfirst(lc_out);
+			if(strcmp(host_info->address, host_address) == 0)
+			{
+				if(CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype)
+				{
+					host_info->datanode_list = lappend(host_info->datanode_list, temp_tuple);
+				}				
+				else if(CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
+				{
+					host_info->coordiantor_list = lappend(host_info->coordiantor_list, temp_tuple);
+				}
+			}
+		}
+	}
+	heap_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	/*calculate the prefer of pgxc_node */
+	foreach(lc_out, host_list)
+	{
+		host_info = (struct host *)lfirst(lc_out);
+		forboth(cn_lc, host_info->coordiantor_list, dn_lc, host_info->datanode_list)	
+		{	
+			temp_tuple = (HeapTuple)lfirst(cn_lc);
+			prefer_cndn->coordiantor_list = lappend(prefer_cndn->coordiantor_list, temp_tuple);
+			temp_tuple = (HeapTuple)lfirst(dn_lc);
+			prefer_cndn->datanode_list = lappend(prefer_cndn->datanode_list, temp_tuple);
+		}
+		if(NULL == cn_lc )
+		{
+			for_each_cell(lc_in, dn_lc)
+			{
+				leave_cndn->datanode_list = lappend(leave_cndn->datanode_list, lfirst(lc_in));
+			}			
+		}
+		else
+		{
+			for_each_cell(lc_in, cn_lc)
+			{
+				leave_cndn->coordiantor_list = lappend(leave_cndn->coordiantor_list, lfirst(lc_in));
+			}						
+		}	
+		list_free(host_info->datanode_list);
+		list_free(host_info->coordiantor_list);
+	}
+	list_free(host_list);
+	foreach(cn_lc, leave_cndn->coordiantor_list)
+	{	
+		prefer_cndn->coordiantor_list = lappend(prefer_cndn->coordiantor_list, lfirst(cn_lc));
+	}
+	foreach(dn_lc, leave_cndn->datanode_list)	
+	{
+		prefer_cndn->datanode_list = lappend(prefer_cndn->datanode_list, lfirst(dn_lc));
+	}
+	list_free(leave_cndn->coordiantor_list);
+	list_free(leave_cndn->datanode_list);
+	pfree(leave_cndn);
+	/*now the cn and prefer dn have store in list prefer_cndn
+	but may be list leave_cndn still have member
+	*/
+	initStringInfo(&file_name_str);
+	forboth(cn_lc, prefer_cndn->coordiantor_list, dn_lc, prefer_cndn->datanode_list)
+	{
+		temp_tuple =(HeapTuple)lfirst(cn_lc);
+		mgr_cn_node = (Form_mgr_node)GETSTRUCT(temp_tuple);
+		Assert(mgr_cn_node);
+		temp_tuple =(HeapTuple)lfirst(dn_lc);
+		mgr_dn_node = (Form_mgr_node)GETSTRUCT(temp_tuple);
+		Assert(mgr_dn_node);
+		appendStringInfo(&file_name_str, "%s\t%s",NameStr(mgr_cn_node->nodename),NameStr(mgr_dn_node->nodename));
+	}
+	
+	return prefer_cndn;
 }
