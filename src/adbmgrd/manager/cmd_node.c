@@ -108,6 +108,7 @@ static void mgr_alter_master_sync(char nodetype, char *nodename, bool new_sync);
 static Datum get_failover_node_type(char *node_name, char slave_type, char extra_type, bool force);
 static void mgr_get_cmd_head_word(char cmdtype, char *str);
 static struct tuple_cndn *get_new_pgxc_node(void);
+static void mgr_check_appendnodeinfo(char node_type, char *append_node_name);
 #if (Natts_mgr_node != 10)
 #error "need change code"
 #endif
@@ -2498,6 +2499,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* get node info for append datanode master */
+		mgr_check_appendnodeinfo(CNDN_TYPE_DATANODE_MASTER, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_MASTER, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
@@ -2667,6 +2669,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* get node info both slave and master node. */
+		mgr_check_appendnodeinfo(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_SLAVE, &appendnodeinfo);
 		mgr_get_parent_appendnodeinfo(appendnodeinfo.nodemasteroid, &parentnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
@@ -2852,6 +2855,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* get node info both slave and master node. */
+		mgr_check_appendnodeinfo(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(CNDN_TYPE_DATANODE_EXTRA, &appendnodeinfo);
 		mgr_get_parent_appendnodeinfo(appendnodeinfo.nodemasteroid, &parentnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
@@ -3042,6 +3046,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* get node info for append coordinator master */
+		mgr_check_appendnodeinfo(CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(CNDN_TYPE_COORDINATOR_MASTER, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
@@ -3209,6 +3214,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* get agtm slave and agtm master node info. */
+		mgr_check_appendnodeinfo(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(GTM_TYPE_GTM_SLAVE, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		
@@ -3345,6 +3351,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	PG_TRY();
 	{
 		/* get agtm extra, agtm master and agtm slave node info. */
+		mgr_check_appendnodeinfo(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(GTM_TYPE_GTM_EXTRA, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		//get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
@@ -7202,4 +7209,76 @@ static struct tuple_cndn *get_new_pgxc_node(void)
 	}
 	
 	return prefer_cndn;
+}
+
+static void mgr_check_appendnodeinfo(char node_type, char *append_node_name)
+{
+	InitNodeInfo *info;
+	ScanKeyData key[4];
+	HeapTuple tuple;
+
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,NameGetDatum(append_node_name));
+
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	ScanKeyInit(&key[3]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(node_type));
+
+	info = palloc(sizeof(*info));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
+	info->lcp =NULL;
+
+	if ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+
+		switch (node_type)
+		{
+			case CNDN_TYPE_COORDINATOR_MASTER:
+				ereport(ERROR, (errmsg("coordinator \"%s\" already exists in cluster", append_node_name)));
+				break;
+			case CNDN_TYPE_DATANODE_MASTER:
+				ereport(ERROR, (errmsg("datanode master \"%s\" already exists in cluster", append_node_name)));
+				break;
+			case CNDN_TYPE_DATANODE_SLAVE:
+				ereport(ERROR, (errmsg("datanode slave \"%s\" already exists in cluster", append_node_name)));
+				break;
+			case CNDN_TYPE_DATANODE_EXTRA:
+				ereport(ERROR, (errmsg("datanode extra \"%s\" already exists in cluster", append_node_name)));
+				break;
+			case GTM_TYPE_GTM_SLAVE:
+				ereport(ERROR, (errmsg("gtm slave \"%s\" already exists in cluster", append_node_name)));
+				break;
+			case GTM_TYPE_GTM_EXTRA:
+				ereport(ERROR, (errmsg("gtm extra \"%s\" already exists in cluster", append_node_name)));
+				break;
+			default:
+				ereport(ERROR, (errmsg("node type \"%c\" already exists in cluster", node_type)));
+				break;
+		}
+	}
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
 }
