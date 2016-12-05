@@ -95,6 +95,8 @@ static Node* make_whereClause_for_datanode(char* node_type_str, List* node_name_
 static Node* make_whereClause_for_coord(char * node_type_str, List* node_name_list, char* like_expr);
 static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list, char* like_expr);
 static void check_node_name_isvaild(char node_type, List* node_name_list);
+static void check__name_isvaild(List *node_name_list);
+static void check_host_name_isvaild(List *node_name_list);
 %}
 
 %pure-parser
@@ -716,6 +718,8 @@ ListHostStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("host"), -1));
 			stmt->whereClause = make_column_in("name", $3);
 			$$ = (Node*)stmt;
+
+			check_host_name_isvaild($3);
 		}
 	| LIST HOST '(' targetList ')' AConstList
 		{
@@ -724,6 +728,8 @@ ListHostStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("host"), -1));
 			stmt->whereClause = make_column_in("name", $6);
 			$$ = (Node*)stmt;
+
+			check_host_name_isvaild($6);
 		}
 	;
 
@@ -1362,6 +1368,8 @@ ListNodeStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
 			stmt->whereClause = make_column_in("name", $3);
 			$$ = (Node*)stmt;
+
+			check__name_isvaild($3);
 		}
 	| LIST NODE '(' targetList ')' AConstList
 		{
@@ -1370,6 +1378,8 @@ ListNodeStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
 			stmt->whereClause = make_column_in("name", $6);
 			$$ = (Node*)stmt;
+
+			check__name_isvaild($6);
 		}
 	;
 InitNodeStmt:
@@ -2496,6 +2506,84 @@ static void check_node_name_isvaild(char node_type, List* node_name_list)
 					ereport(ERROR, (errmsg("node type \"%c\" does not exist", node_type)));
 					break;
 			}
+		}
+
+		heap_endscan(scan);
+		heap_close(rel_node, AccessShareLock);
+	}
+
+	return;
+}
+
+static void check_host_name_isvaild(List *node_name_list)
+{
+	ListCell *lc = NULL;
+	A_Const *host_name  = NULL;
+	NameData name;
+	Relation rel_node;
+	HeapScanDesc scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+
+	foreach(lc, node_name_list)
+	{
+		host_name = (A_Const *) lfirst(lc);
+		Assert(host_name && IsA(&(host_name->val), String));
+		namestrcpy(&name, strVal(&(host_name->val)));
+
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodename
+			,BTEqualStrategyNumber, F_NAMEEQ
+			,NameGetDatum(&name));
+
+		rel_node = heap_open(HostRelationId, AccessShareLock);
+		scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+
+		if ((tuple = heap_getnext(scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(scan);
+			heap_close(rel_node, AccessShareLock);
+
+			ereport(ERROR, (errmsg("host name \"%s\" does not exist", NameStr(name))));
+		}
+
+		heap_endscan(scan);
+		heap_close(rel_node, AccessShareLock);
+	}
+
+	return;
+}
+
+static void check__name_isvaild(List *node_name_list)
+{
+	ListCell *lc = NULL;
+	A_Const *host_name  = NULL;
+	NameData name;
+	Relation rel_node;
+	HeapScanDesc scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+
+	foreach(lc, node_name_list)
+	{
+		host_name = (A_Const *) lfirst(lc);
+		Assert(host_name && IsA(&(host_name->val), String));
+		namestrcpy(&name, strVal(&(host_name->val)));
+
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodename
+			,BTEqualStrategyNumber, F_NAMEEQ
+			,NameGetDatum(&name));
+
+		rel_node = heap_open(NodeRelationId, AccessShareLock);
+		scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+
+		if ((tuple = heap_getnext(scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(scan);
+			heap_close(rel_node, AccessShareLock);
+
+			ereport(ERROR, (errmsg("node name \"%s\" does not exist", NameStr(name))));
 		}
 
 		heap_endscan(scan);

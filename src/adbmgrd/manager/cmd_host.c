@@ -57,6 +57,7 @@ static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo 
 static void get_pghome(char *pghome);
 static void mgr_stop_agent_all(DestReceiver *dest);
 static void mgr_stop_agent_objlist(List *hosts, DestReceiver *dest);
+static void check_host_name_isvaild(List *host_name_list);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -510,6 +511,9 @@ void mgr_deplory(MGRDeplory *node, ParamListInfo params, DestReceiver *dest)
 			Value *value;
 			TupleDesc host_desc;
 			NameData name;
+
+			check_host_name_isvaild(node->hosts);
+
 			rel = heap_open(HostRelationId, AccessShareLock);
 			host_desc = CreateTupleDescCopy(RelationGetDescr(rel));
 			heap_close(rel, AccessShareLock);
@@ -526,11 +530,8 @@ void mgr_deplory(MGRDeplory *node, ParamListInfo params, DestReceiver *dest)
 						tar = make_tar_package();
 					success = deploy_to_host((FILE*)tar, host_desc, tuple, &buf, node->password);
 					ReleaseSysCache(tuple);
-				}else
-				{
-					success = false;
-					appendStringInfoString(&buf, "host does not exist");
 				}
+
 				MemoryContextSwitchTo(context);
 				MemoryContextResetAndDeleteChildren(context);
 				out = build_common_command_tuple(&name, success, buf.data);
@@ -1405,6 +1406,8 @@ void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceive
 		NameData name;
 		TupleDesc host_desc;
 
+		check_host_name_isvaild(node->hosts);
+
 		info = palloc(sizeof(*info));
 		info->rel_host = heap_open(HostRelationId, AccessShareLock);
 		host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
@@ -1437,11 +1440,6 @@ void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceive
 					ma_close(ma);
 				}
 			}
-			else
-			{
-				success = false;
-				appendStringInfoString(&buf, "host does not exist");
-			}
 
 			MemoryContextSwitchTo(context);
 			MemoryContextResetAndDeleteChildren(context);
@@ -1456,4 +1454,37 @@ void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceive
 		FreeTupleDesc(host_desc);
 		pfree(info);
 	}
+}
+
+static void check_host_name_isvaild(List *host_name_list)
+{
+	ListCell *lc = NULL;
+	InitNodeInfo *info;
+	Value *value;
+	NameData name;
+	HeapTuple tup;
+	TupleDesc host_desc;
+
+	info = palloc(sizeof(*info));
+	info->rel_host = heap_open(HostRelationId, AccessShareLock);
+	host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
+	heap_close(info->rel_host, AccessShareLock);
+
+	foreach(lc, host_name_list)
+	{
+		value = lfirst(lc);
+		Assert(value && IsA(value, String));
+		namestrcpy(&name, strVal(value));
+		tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+
+		if (!HeapTupleIsValid(tup))
+		{
+			ereport(ERROR, (errmsg("host name \"%s\" does not exist", NameStr(name))));
+		}
+
+		ReleaseSysCache(tup);
+	}
+
+	FreeTupleDesc(host_desc);
+	return;
 }

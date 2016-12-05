@@ -1607,7 +1607,7 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 	(*dest->rShutdown)(dest);
 	if (!bget)
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			,errmsg("node \"%s\" does not exist in cluster", nodename.data))); 
+			,errmsg("node name \"%s\" does not exist", nodename.data)));
 }
 
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst)
