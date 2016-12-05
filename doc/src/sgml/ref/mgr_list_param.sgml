@@ -22,11 +22,28 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 LIST PARAM  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> ] [, ...]
+LIST PARAM node_type nodename [ sub_like_string ]
+LIST PARAM cluster_type all [ sub_like_string ]
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
     <replaceable class="parameter">NODENAME</replaceable>
     <replaceable class="parameter">NODETYPE</replaceable>
     <replaceable class="parameter">KEY</replaceable>
     <replaceable class="parameter">VALUE</replaceable>
+<phrase>where <replaceable class="parameter">node_type</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">GTM MASTER</replaceable>
+    <replaceable class="parameter">GTM SLAVE</replaceable>
+    <replaceable class="parameter">GTM EXTRA</replaceable>
+    <replaceable class="parameter">COORDINATOR</replaceable>
+    <replaceable class="parameter">DATANODE MASTER</replaceable>
+    <replaceable class="parameter">DATANODE SLAVE</replaceable>
+    <replaceable class="parameter">DATANODE EXTRA</replaceable>
+<phrase>where <replaceable class="parameter">cluster_type</replaceable> can be one of:</phrase>
+    <replaceable class="parameter">GTM</replaceable>
+    <replaceable class="parameter">COORDINATOR</replaceable>
+    <replaceable class="parameter">DATANODE</replaceable>
+    <replaceable class="parameter">DATANODE MASTER</replaceable>
+    <replaceable class="parameter">DATANODE SLAVE</replaceable>
+    <replaceable class="parameter">DATANODE EXTRA</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -75,6 +92,15 @@ LIST PARAM  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <repla
       The value of parameter.
      </para>
     </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">SUB_LIKE_STRING</replaceable>
+    </term>
+    <listitem>
+     <para>
+      The name of parameter or substring for fuzzy query.
+     </para>
+    </listitem>
   </varlistentry>	
     </variablelist>
   </refsect1>
@@ -87,10 +113,10 @@ LIST PARAM  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <repla
 LIST PARAM;
 </programlisting>
   </para>
-	<para>
-	 List the content of param,which name is "dn"::
+  <para>
+   List the content of param,which is datanode master "dn1"::
 <programlisting>
-LIST PARAM dn1;
+LIST PARAM datanode master dn1;
 </programlisting>
   </para>
   </refsect1>
