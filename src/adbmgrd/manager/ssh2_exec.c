@@ -3,6 +3,10 @@
 
 #include <unistd.h>
 #include <libssh2.h>
+#include <sys/time.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
 
 #include "lib/stringinfo.h"
 #include "libpq/ip.h"
@@ -60,20 +64,59 @@ static pgsocket connect_host(const char *hostname, unsigned short port, StringIn
 		appendStringInfo(message, "could not resolve \"%s\":%s", hostname, gai_strerror(ret));
 		return PGINVALID_SOCKET;
 	}
+
 	for(addr = addrs; addr != NULL; addr = addr->ai_next)
 	{
- 		sock = socket(addr->ai_family, SOCK_STREAM, 0);
- 		if(sock == PGINVALID_SOCKET)
+		int error = -1;
+		int len;
+		struct timeval tm;
+		fd_set set;
+		unsigned long ul = 1;
+
+		sock = socket(addr->ai_family, SOCK_STREAM, 0);
+		if(sock == PGINVALID_SOCKET)
 		{
 			if(addr->ai_next != NULL)
 				continue;
 			appendStringInfo(message, "could not create socket:%m");
 			break;
 		}
+
+		ioctl(sock, FIONBIO, &ul);
 		if(connect(sock, addr->ai_addr, addr->ai_addrlen) != 0)
 		{
+			tm.tv_sec = 3; // time out time = 3s
+			tm.tv_usec = 0;
+			len = sizeof(int);
+			FD_ZERO(&set);
+			FD_SET(sock, &set);
+
+			if(select(sock + 1, NULL, &set, NULL, &tm) > 0)
+			{
+				getsockopt(sock, SOL_SOCKET, SO_ERROR, &error, (socklen_t *)&len);
+				if(error != 0)
+				{
+					ul = 0;
+					ioctl(sock, FIONBIO, &ul);
+					sock = PGINVALID_SOCKET;
+					break;
+				}
+				else
+				{
+					ul = 0;
+					ioctl(sock, FIONBIO, &ul);
+					break;
+				}
+			}
+			else
+			{
+				sock = PGINVALID_SOCKET;
+			}
+
+			ul = 0;
+			ioctl(sock, FIONBIO, &ul);
+
 			closesocket(sock);
-			sock = PGINVALID_SOCKET;
 			if(addr->ai_next == NULL)
 			{
 				appendStringInfo(message, "could not connect to \"%s:%s\"", hostname, str_port);
@@ -83,8 +126,12 @@ static pgsocket connect_host(const char *hostname, unsigned short port, StringIn
 				continue;
 			}
 		}
+
+		ul = 0;
+		ioctl(sock, FIONBIO, &ul);
 		break;
 	}
+
 	pg_freeaddrinfo_all(AF_UNSPEC, addrs);
 	return sock;
 }
