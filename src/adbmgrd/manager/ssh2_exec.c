@@ -98,6 +98,7 @@ static pgsocket connect_host(const char *hostname, unsigned short port, StringIn
 				{
 					ul = 0;
 					ioctl(sock, FIONBIO, &ul);
+					appendStringInfo(message, "could not connect to \"%s:%s\"", hostname, str_port);
 					sock = PGINVALID_SOCKET;
 					break;
 				}
