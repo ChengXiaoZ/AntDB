@@ -143,16 +143,25 @@ void do_agent_command(StringInfo buf)
 
 static void cmd_rm_temp_file(StringInfo msg)
 {
-    int res;
+	const char *rec_msg_string = NULL;
+	StringInfoData output;
+	int res;
 
-    fflush(stdout);
-	fflush(stderr);
-    
-    res = system(msg->data);
-    if (res != 0)
-    {
-        ereport(ERROR, (errmsg("could not run %s", msg->data)));
-    }
+	initStringInfo(&output);
+	rec_msg_string = agt_getmsgstring(msg);
+
+	res = system(rec_msg_string);
+	if (res != 0)
+	{
+		appendStringInfo(&output, "do command fail: %s", rec_msg_string);
+		ereport(LOG, (errmsg("do command fail: %s", rec_msg_string)));
+	}
+	else
+		appendStringInfoString(&output, "success");
+
+	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	agt_flush();
+	pfree(output.data);
 }
 
 static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VERSION)
