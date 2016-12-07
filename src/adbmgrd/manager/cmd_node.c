@@ -2056,7 +2056,7 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,ret == 0 ? "running":"not running"
+				,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
 				);
 	pfree(port.data);
 	pfree(host_addr);
@@ -2117,7 +2117,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 						&(mgr_node->nodename)
 						,mgr_node->nodetype
 						,ret == 0 ? true:false
-						,ret == 0 ? "running":"not running"
+						,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
 						);
 			pfree(port.data);
 			pfree(host_addr);
@@ -2187,7 +2187,7 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 						&(mgr_node->nodename)
 						,mgr_node->nodetype
 						,ret == 0 ? true:false
-						,ret == 0 ? "running":"not running"
+						,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
 						);
 			pfree(port.data);
 			pfree(host_addr);
@@ -2306,7 +2306,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,ret == 0 ? "running":"not running"
+				,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
 				);
 	pfree(port.data);
 	pfree(host_addr);
@@ -2383,7 +2383,7 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,ret == 0 ? "running":"not running"
+				,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
 				);
 	pfree(port.data);
 	pfree(host_addr);
