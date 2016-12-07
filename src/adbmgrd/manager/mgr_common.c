@@ -272,7 +272,9 @@ int pingNode(char *host, char *port)
 		for (retry = RETRY; retry; retry--)
 		{
 			status = PQping(conninfo);
-			if (status == PQPING_OK)
+			if (status == PQPING_REJECT)
+				return -2;
+			else if (status == PQPING_OK)
 				return 0;
 			else
 			{
