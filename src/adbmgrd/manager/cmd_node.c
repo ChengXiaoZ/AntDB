@@ -5193,9 +5193,6 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	Assert(info_out);
 
 	tuple_out = heap_getnext(info_out->rel_scan, ForwardScanDirection);
-	prefer_cndn = get_new_pgxc_node(CONFIG, NULL, 0);
-	if(NULL == prefer_cndn)
-		tuple_out = NULL;
 	if(tuple_out == NULL)
 	{
 		/* end of row */
@@ -5254,13 +5251,17 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		}
 		pfree(address);
 	}
-
 	heap_endscan(info_in->rel_scan);
 	heap_close(info_in->rel_node, AccessShareLock);
 	pfree(info_in);
-	
-	coordinator_num = prefer_cndn->coordiantor_list->length;
-	datanode_num = prefer_cndn->datanode_list->length;
+		
+	prefer_cndn = get_new_pgxc_node(CONFIG, NULL, 0);
+
+	if(PointerIsValid(prefer_cndn->coordiantor_list))
+		coordinator_num = prefer_cndn->coordiantor_list->length;
+	if(PointerIsValid(prefer_cndn->datanode_list))
+		datanode_num = prefer_cndn->datanode_list->length;
+
 	/*get the datanode of primary in the pgxc_node*/
 	if(coordinator_num < datanode_num)
 	{
@@ -5328,8 +5329,10 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 	{
 		heap_freetuple((HeapTuple)lfirst(dn_lc));
 	}
-	list_free(prefer_cndn->coordiantor_list);
-	list_free(prefer_cndn->datanode_list);
+	if(PointerIsValid(prefer_cndn->coordiantor_list))
+		list_free(prefer_cndn->coordiantor_list);
+	if(PointerIsValid(prefer_cndn->datanode_list))
+		list_free(prefer_cndn->datanode_list);
 	pfree(prefer_cndn);
 	/* connection agent */
 	ma = ma_connect_hostoid(mgr_node_out->nodehost);
@@ -6164,10 +6167,12 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	}
 	/*2.refresh pgxc_node systable */
 	resetStringInfo(&(getAgentCmdRst->description));
-
+	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
+	Assert(mgr_node);
+/*	
 	getrefresh = mgr_refresh_pgxc_node_tbl(cndnname->data, cndnport, hostaddress, isprimary, nodemasternameoid, getAgentCmdRst);
-
-
+*/
+	getrefresh = mgr_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst);
 	if(!getrefresh)
 	{
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -7111,36 +7116,39 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 	HeapScanDesc scan;
 	HeapTuple tup, temp_tuple;
 	Form_mgr_node mgr_node;
+	Form_mgr_host mgr_host;
 	ListCell *lc_out, *lc_in, *cn_lc, *dn_lc;
 	Datum host_addr;
 	char *host_address;
-	struct host *host_info;
+	struct host *host_info = NULL;
 	List *host_list = NIL;/*store cn and dn base on host*/
-	struct tuple_cndn *leave_cndn;/*store the left cn and dn which */
-	struct tuple_cndn *prefer_cndn;/*store the prefer datanode to the coordiantor one by one */
+	struct tuple_cndn *leave_cndn = NULL;/*store the left cn and dn which */
+	struct tuple_cndn *prefer_cndn = NULL;/*store the prefer datanode to the coordiantor one by one */
 	bool isNull = false;
+	StringInfoData str_port;
+	char cn_dn_type;
 	leave_cndn = palloc(sizeof(struct tuple_cndn));
 	memset(leave_cndn,0,sizeof(struct tuple_cndn));
 	prefer_cndn = palloc(sizeof(struct tuple_cndn));
 	memset(prefer_cndn,0,sizeof(struct tuple_cndn));
-	
+	initStringInfo(&str_port);
 	/*get dn and cn from mgr_host and mgr_node*/
 	rel = heap_open(HostRelationId, AccessShareLock);
-	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
-	
-	
+	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);	
 	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
+	{	
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
 		host_addr = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(rel), &isNull);
+		host_address = pstrdup(TextDatumGetCString(host_addr));
 		if(isNull)
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 				, errmsg("column hostaddr is null")));
-		host_address = pstrdup(TextDatumGetCString(host_addr));
 		host_info = palloc(sizeof(struct host));
 		memset(host_info,0,sizeof(struct host));
 		host_info->address = host_address;
-		host_list = lappend(host_list, host_info);
+		host_list = lappend(host_list, host_info);	
 	}
 	heap_endscan(scan);
 	heap_close(rel, AccessShareLock);
@@ -7150,66 +7158,79 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tup);
-		Assert(mgr_node);		
-		if((CNDN_TYPE_DATANODE_MASTER != mgr_node->nodetype)&&(CNDN_TYPE_COORDINATOR_MASTER != mgr_node->nodetype))
+		Assert(mgr_node);	
+		cn_dn_type = mgr_node->nodetype;
+		if((CNDN_TYPE_DATANODE_MASTER != cn_dn_type)&&(CNDN_TYPE_COORDINATOR_MASTER != cn_dn_type))
 			continue;
 		host_address = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		
+		if(true == mgr_node->nodeinited)
+		{
+			if(FAILOVER != cmd)
+				temp_tuple = heap_copytuple(tup);
+			else
+			{
+				if(strcmp( node_name, NameStr(mgr_node->nodename)) == 0)
+				{				
+					temp_tuple = mgr_get_tuple_node_from_name_type(rel, node_name, node_type);
+					pfree(host_address);
+					mgr_node = (Form_mgr_node)GETSTRUCT(temp_tuple);
+					host_address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+				}
+				else
+					temp_tuple = heap_copytuple(tup);
+			}
+		}	
+		else
+		{
+			if(CONFIG == cmd)
+			{
+				resetStringInfo(&str_port);
+				appendStringInfo(&str_port, "%d", mgr_node->nodeport);
+				/*iust init ,but haven't alter the mgr_node table*/
+				if(PQPING_OK == pingNode(host_address, str_port.data))
+					temp_tuple = heap_copytuple(tup);
+				else 
+				{
+					pfree(host_address);
+					continue;
+				}
+			}
+			else if(APPEND == cmd)
+			{
+				if(strcmp(node_name, NameStr(mgr_node->nodename)) == 0)
+					temp_tuple = heap_copytuple(tup);
+				else 
+				{
+					pfree(host_address);
+					continue;
+				}
+			}/*may be operator FAILOVER ,and node table has member not init*/
+			else 
+			{
+				pfree(host_address);
+				continue;
+			}		
+		}				
 		foreach(lc_out, host_list)
 		{
 			host_info = (struct host *)lfirst(lc_out);
-			if(strcmp(host_info->address, host_address) == 0)
-			{				
+			if(strcmp(host_info->address, host_address) == 0)				
 				break;
-			}
 		}
+		/*not find host is correspind to node*/
 		if(NULL == lc_out)
 			continue;
-		/*execute in the mgr_configure_nodes_all*/
-		if(CONFIG == cmd)
-		{
-			temp_tuple = heap_copytuple(tup);
-		}
-		else if(APPEND == cmd)/*execute in the mgr_append_coordmaster or mgr_append_dnmaster*/
-		{
-			/*ensure the node is vaild except the append node which you want*/
-			if((true != mgr_node->nodeinited)||(true != mgr_node->nodeincluster))
-			{
-				if(strcmp(node_name, NameStr(mgr_node->nodename)) != 0)
-					continue;
-			}
-		/*	
-			initStringInfo(&port);
-			appendStringInfo(&port, "%d", mgr_node->nodeport);
-			if(PQPING_OK != pingNode(host_address, port.data))
-			{
-				pfree(port.data);
-				continue;
-			}*/
-			temp_tuple = heap_copytuple(tup);			
-		}
-		else if(FAILOVER == cmd)
-		{
-			if(strcmp( node_name, NameStr(mgr_node->nodename)) == 0)
-			{
-				temp_tuple = mgr_get_tuple_node_from_name_type(rel, node_name, node_type);	
-			}
-			else
-			{
-				temp_tuple = heap_copytuple(tup);
-			}
-		}	
-		if(CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype)
+		if(CNDN_TYPE_DATANODE_MASTER == cn_dn_type)
 		{			
 			host_info->datanode_list = lappend(host_info->datanode_list, temp_tuple);
 		}				
-		else if(CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
+		else if(CNDN_TYPE_COORDINATOR_MASTER == cn_dn_type)
 		{
 			host_info->coordiantor_list = lappend(host_info->coordiantor_list, temp_tuple);
 		}
-
 		pfree(host_address);
 	}
+	pfree(str_port.data);
 	heap_endscan(scan);
 	heap_close(rel, AccessShareLock);
 	/*calculate the prefer of pgxc_node */
@@ -7358,12 +7379,12 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 	bool result = true;
 	
 	prefer_cndn = get_new_pgxc_node(cmd, dnname, nodetype);
-	if(!PointerIsValid(prefer_cndn))
-	{
-		appendStringInfoString(&(getAgentCmdRst->description), "not exit coordinator and datanode master in the cluster");
-		return true;
+	if(!PointerIsValid(prefer_cndn->coordiantor_list))
+	{	
+		appendStringInfoString(&(getAgentCmdRst->description),"not exist coordinator in the cluster");
+		return false;
 	}
-	
+		
 	initStringInfo(&cmdstring);
 	coordinator_num = 0;
 	foreach(lc_out, prefer_cndn->coordiantor_list)
@@ -7436,7 +7457,6 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 			break;
 		}
 	}
-	
 	pfree(cmdstring.data);
 	foreach(cn_lc, prefer_cndn->coordiantor_list)
 	{
@@ -7446,19 +7466,22 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 	{
 		heap_freetuple((HeapTuple)lfirst(dn_lc));
 	}
-	list_free(prefer_cndn->coordiantor_list);
-	list_free(prefer_cndn->datanode_list);
-	pfree(prefer_cndn);
-	
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, getAgentCmdRst);
-	Assert(execok == getAgentCmdRst->ret);
-	if(execok != true)
+	if(PointerIsValid(prefer_cndn->coordiantor_list))
 	{
-		result = false;
+		execok = mgr_recv_msg(ma, getAgentCmdRst);
+		Assert(execok == getAgentCmdRst->ret);
+		if(execok != true)
+		{
+			result = false;
+		}
+		ma_close(ma);
 	}
-	ma_close(ma);
-	
+	if(PointerIsValid(prefer_cndn->coordiantor_list))
+		list_free(prefer_cndn->coordiantor_list);
+	if(PointerIsValid(prefer_cndn->datanode_list))
+		list_free(prefer_cndn->datanode_list);
+	pfree(prefer_cndn);
 	return result;
 }
 
