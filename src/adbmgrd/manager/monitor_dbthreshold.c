@@ -79,47 +79,17 @@ Datum get_dbthreshold(PG_FUNCTION_ARGS)
 }
 
 /*get timestamptz from given node */
-char *monitor_get_timestamptz_onenode(char *user, char *address, int port)
+char *monitor_get_timestamptz_onenode(int agentport, char *user, char *address, int port)
 {
-	StringInfoData constr;
-	PGconn* conn;
-	PGresult *res;
-	char *oneNodeValueStr;
+	char *oneNodeValueStr = NULL;
 	char *sqlstr = "select now();";
-	
-	initStringInfo(&constr);
-	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, DEFAULT_DB);
-	appendStringInfoCharMacro(&constr, '\0');
-	ereport(DEBUG1,
-		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
-	conn = PQconnectdb(constr.data);
-	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
-	{
-		ereport(LOG,
-		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
-		PQfinish(conn);
-		pfree(constr.data);
-		return NULL;
-	}
-	res = PQexec(conn, sqlstr);
-	if(PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		ereport(LOG,
-		(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
-		PQclear(res);
-		PQfinish(conn);
-		pfree(constr.data);
-		return NULL;
-	}
-	/*check row number*/
-	Assert(1 == PQntuples(res));
-	/*check column number*/
-	Assert(1 == PQnfields(res));
-	oneNodeValueStr = pstrdup(PQgetvalue(res, 0, 0 ));
-	PQclear(res);
-	PQfinish(conn);
-	pfree(constr.data);
+	StringInfoData resultstrdata;
+
+	initStringInfo(&resultstrdata);
+	monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentport, sqlstr, user, address, port, "postgres", &resultstrdata);
+	if (resultstrdata.len != 0)
+		oneNodeValueStr = pstrdup(resultstrdata.data);
+	pfree(resultstrdata.data);
 	return oneNodeValueStr;
 }
 
@@ -153,6 +123,7 @@ static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 	/*len include: heap_blks_hit, heap_blks_read, unusedindex*/
 	int len = 3;
 	int iarray[3]={0,0,0};
+	int agentport = 0;
 	NameData ndatauser;
 	List *dbnamelist = NIL;
 	ListCell *cell;
@@ -180,6 +151,7 @@ static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 		}
 		address = TextDatumGetCString(datumaddress);
 		namestrcpy(&ndatauser, NameStr(mgr_host->hostuser));
+		agentport = mgr_host->hostagentport;
 		hostoid = HeapTupleGetOid(hosttuple);
 		/*find datanode master in node systbl, which hosttuple's nodehost is hostoid*/
 		ScanKeyInit(&key[0]
@@ -204,7 +176,7 @@ static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 			{
 				dbname = (char *)(lfirst(cell));
 				iarray[0]=iarray[1]=iarray[2]=0;
-				monitor_get_sqlvalues_one_node(sqlstr, ndatauser.data, address, port, dbname, iarray, len);
+				monitor_get_sqlvalues_one_node(agentport, sqlstr, ndatauser.data, address, port, dbname, iarray, len);
 				phynodeheaphit = phynodeheaphit + iarray[0];
 				phynodeheapread = phynodeheapread + iarray[1];
 				phynodeunusedindex = phynodeunusedindex + iarray[2];
@@ -222,7 +194,7 @@ static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 	
 		if (getnode)
 		{
-			nodetime = monitor_get_timestamptz_onenode(ndatauser.data, address, port);
+			nodetime = monitor_get_timestamptz_onenode(agentport, ndatauser.data, address, port);
 			if(nodetime == NULL)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
@@ -284,6 +256,7 @@ static void  mthreshold_sqlvaluesfrom_coord(void)
 	int port = 0;
 	int len = 6;
 	int iarray[6] = {0,0,0,0,0,0};
+	int agentport = 0;
 	NameData ndatauser;
 	char *address;
 	char *sqlstr = "select sum(xact_commit)  from pg_stat_database union all select sum(xact_rollback) from pg_stat_database union all select count(1) from pg_locks where database is not null union all select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > 200 union all select count(*) from pg_stat_activity where state='idle' union all select sum(numbackends) from pg_stat_database;";
@@ -309,6 +282,7 @@ static void  mthreshold_sqlvaluesfrom_coord(void)
 		address = TextDatumGetCString(datumaddress);
 		namestrcpy(&ndatauser, NameStr(mgr_host->hostuser));
 		hostoid = HeapTupleGetOid(hosttuple);
+		agentport = mgr_host->hostagentport;
 		/*find datanode master in node systbl, which hosttuple's nodehost is hostoid*/
 		ScanKeyInit(&key[0]
 			,Anum_mgr_node_nodehost
@@ -331,7 +305,7 @@ static void  mthreshold_sqlvaluesfrom_coord(void)
 			/*get port*/
 			port = mgr_node->nodeport;
 			iarray[0]=iarray[1]=iarray[2]=iarray[3]=iarray[4]=iarray[5]=0;
-			monitor_get_sqlvalues_one_node(sqlstr, ndatauser.data, address, port, DEFAULT_DB, iarray, len);
+			monitor_get_sqlvalues_one_node(agentport, sqlstr, ndatauser.data, address, port, DEFAULT_DB, iarray, len);
 			phynodecommit = phynodecommit + iarray[0];
 			phynoderollback = phynoderollback + iarray[1];
 			phynodelocks = phynodelocks + iarray[2];
@@ -351,7 +325,7 @@ static void  mthreshold_sqlvaluesfrom_coord(void)
 			phynodecommitrate = phynodecommit*100/(phynodecommit+phynoderollback);
 		if (getnode)
 		{
-			nodetime = monitor_get_timestamptz_onenode(ndatauser.data, address, port);
+			nodetime = monitor_get_timestamptz_onenode(agentport, ndatauser.data, address, port);
 			if(nodetime == NULL)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
@@ -395,6 +369,7 @@ static void  mthreshold_standbydelay(void)
 	Form_mgr_node mgr_node;
 	HeapTuple hosttuple;
 	HeapTuple nodetuple;
+	HeapTuple tup;
 	bool isNull = false;
 	Datum datumaddress;
 	Oid hostoid;
@@ -402,6 +377,7 @@ static void  mthreshold_standbydelay(void)
 	int phynodestandbydelay = 0;
 	int clusterstandbydelay = 0;
 	int port = 0;
+	int agentport = 0;
 	NameData ndatauser;
 	char *address;
 	char *sqlstandbydelay = "select CASE WHEN pg_last_xlog_receive_location() = pg_last_xlog_replay_location() THEN 0  ELSE abs(round(EXTRACT (EPOCH FROM now() - pg_last_xact_replay_timestamp()))) end;";
@@ -444,14 +420,26 @@ static void  mthreshold_standbydelay(void)
 			getnode = true;
 			/*get port*/
 			port = mgr_node->nodeport;
-			phynodestandbydelay = phynodestandbydelay + monitor_get_onesqlvalue_one_node(sqlstandbydelay, ndatauser.data, address, port, DEFAULT_DB);
+			/*get agent port*/
+			tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node->nodehost));
+			if(!(HeapTupleIsValid(tup)))
+			{
+				ereport(ERROR, (errmsg("host oid \"%u\" not exist", mgr_node->nodehost)
+					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+					, errcode(ERRCODE_INTERNAL_ERROR)));
+			}
+			mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+			Assert(mgr_host);
+			agentport = mgr_host->hostagentport;
+			ReleaseSysCache(tup);
+			phynodestandbydelay = phynodestandbydelay + monitor_get_onesqlvalue_one_node(agentport, sqlstandbydelay, ndatauser.data, address, port, DEFAULT_DB);
 			clusterstandbydelay = clusterstandbydelay + phynodestandbydelay;
 		}
 		heap_endscan(noderel_scan);
 		/*check phyical node */
 		if (getnode)
 		{
-			nodetime = monitor_get_timestamptz_onenode(ndatauser.data, address, port);
+			nodetime = monitor_get_timestamptz_onenode(agentport, ndatauser.data, address, port);
 			if(nodetime == NULL)
 			{
 				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)

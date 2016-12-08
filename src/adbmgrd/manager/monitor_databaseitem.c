@@ -12,6 +12,7 @@
 #include "access/htup_details.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/mgr_host.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/monitor_databaseitem.h"
 #include "catalog/monitor_databasetps.h"
@@ -38,6 +39,7 @@
 #include "utils/date.h"
 
 static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len);
+static void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata);
 
 #define DEFAULT_DB "postgres"
 
@@ -59,49 +61,20 @@ typedef enum ThresholdItem
 /*
 * get one value from the given sql
 */
-int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname)
+int monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname)
 {
-	StringInfoData constr;
-	PGconn* conn;
-	PGresult *res;
-	char *oneCoordValueStr;
-	int oneCoordTpsInt = -1;
-	
-	initStringInfo(&constr);
-	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
-	appendStringInfoCharMacro(&constr, '\0');
-	ereport(DEBUG1,
-		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
-	conn = PQconnectdb(constr.data);
-	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
+	int result = -1;
+	StringInfoData resultstrdata;
+
+	initStringInfo(&resultstrdata);
+	monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentport, sqlstr, user, address, nodeport, dbname, &resultstrdata);
+	if (resultstrdata.len != 0)
 	{
-		ereport(LOG,
-		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
-		PQfinish(conn);
-		pfree(constr.data);
-		return -1;
+		result = atoi(resultstrdata.data);
 	}
-	res = PQexec(conn, sqlstr);
-	if(PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		ereport(LOG,
-		(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
-		PQclear(res);
-		PQfinish(conn);
-		pfree(constr.data);
-		return -1;
-	}
-	/*check row number*/
-	Assert(1 == PQntuples(res));
-	/*check column number*/
-	Assert(1 == PQnfields(res));
-	oneCoordValueStr = PQgetvalue(res, 0, 0 );
-	oneCoordTpsInt = atoi(oneCoordValueStr);
-	PQclear(res);
-	PQfinish(conn);
-	pfree(constr.data);
-	return oneCoordTpsInt;
+	pfree(resultstrdata.data);
+
+	return result;
 }
 
 /*
@@ -110,14 +83,15 @@ int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, in
 int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype)
 {
 	int coordport;
+	int agentport;
 	int ret;
 	char *hostaddress = NULL;
 	char *user = NULL;
 	
-	monitor_get_one_node_user_address_port(rel_node, &user, &hostaddress, &coordport, nodetype);
+	monitor_get_one_node_user_address_port(rel_node, &agentport, &user, &hostaddress, &coordport, nodetype);
 	Assert(hostaddress != NULL);
 	Assert(user != NULL);
-	ret = monitor_get_onesqlvalue_one_node(sqlstr, user, hostaddress, coordport, dbname);
+	ret = monitor_get_onesqlvalue_one_node(agentport, sqlstr, user, hostaddress, coordport, dbname);
 	pfree(user);
 	pfree(hostaddress);
 	
@@ -130,12 +104,15 @@ int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, c
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	HeapTuple tuple;
+	HeapTuple tup;
 	Form_mgr_node mgr_node;
+	Form_mgr_host mgr_host;
 	char *user;
 	char *address;
 	int port;
 	int result = 0;
 	int resulttmp = 0;
+	int agentport;
 	bool bfirst = true;
 	
 	ScanKeyInit(&key[0],
@@ -151,7 +128,19 @@ int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, c
 		port = mgr_node->nodeport;
 		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		user = get_hostuser_from_hostoid(mgr_node->nodehost);
-		resulttmp = monitor_get_onesqlvalue_one_node(sqlstr, user, address, port, dbname);
+		/*get agent port*/
+		tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node->nodehost));
+		if(!(HeapTupleIsValid(tup)))
+		{
+			ereport(ERROR, (errmsg("host oid \"%u\" not exist", mgr_node->nodehost)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errcode(ERRCODE_INTERNAL_ERROR)));
+		}
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
+		agentport = mgr_host->hostagentport;
+		ReleaseSysCache(tup);
+		resulttmp = monitor_get_onesqlvalue_one_node(agentport, sqlstr, user, address, port, dbname);
 		if(bfirst && gettype==GET_MIN) result = resulttmp;
 		bfirst = false;
 		switch(gettype)
@@ -205,6 +194,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	int iloop = 0;
 	int iarray_heaphit_read_indexsize[3] = {0,0,0};
 	int iarray_commit_connect_longidle_prepare[6] = {0, 0, 0, 0, 0, 0};
+	int agentport;
 	float heaphitrate = 0;
 	float commitrate = 0;
 	List *dbnamelist = NIL;
@@ -224,7 +214,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	rel = heap_open(MdatabaseitemRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	/*get database list*/
-	monitor_get_one_node_user_address_port(rel_node, &user, &hostaddress, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
+	monitor_get_one_node_user_address_port(rel_node, &agentport, &user, &hostaddress, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
 	Assert(user != NULL);
 	Assert(hostaddress != NULL);
 	dbnamelist = monitor_get_dbname_list(user, hostaddress, coordport);
@@ -317,7 +307,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 			/*these vars just need get one time, from coordinator*/
 			char *sqlstr_vacuum_archive_dbage = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'autovacuum\' union all select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'archive_mode\' union all select max(age(datfrozenxid)) from pg_database";
 			int iarray_vacuum_archive_dbage[3] = {0,0,0};
-			monitor_get_sqlvalues_one_node(sqlstr_vacuum_archive_dbage, user, hostaddress, coordport,DEFAULT_DB, iarray_vacuum_archive_dbage, 3);
+			monitor_get_sqlvalues_one_node(agentport, sqlstr_vacuum_archive_dbage, user, hostaddress, coordport,DEFAULT_DB, iarray_vacuum_archive_dbage, 3);
 			
 			bautovacuum = (iarray_vacuum_archive_dbage[0] == 0 ? false:true);
 			barchive = (iarray_vacuum_archive_dbage[1] == 0 ? false:true);
@@ -433,6 +423,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	int iloop = 0;
 	int idex = 0;
 	int sleepTime = 3;
+	int agentport = 0;
 	const int ncol = 2;
 	char *user = NULL;
 	char *hostaddress = NULL;
@@ -445,7 +436,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	rel = heap_open(MdatabasetpsRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	/*get user, address, port of coordinator*/
-	monitor_get_one_node_user_address_port(rel_node, &user, &hostaddress, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
+	monitor_get_one_node_user_address_port(rel_node, &agentport, &user, &hostaddress, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
 	Assert(user != NULL);
 	Assert(hostaddress != NULL);
 	/*get database namelist*/
@@ -576,10 +567,13 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	HeapTuple tuple;
+	HeapTuple tup;
 	Form_mgr_node mgr_node;
+	Form_mgr_host mgr_host;
 	char *user = NULL;
 	char *address = NULL;
 	int port;
+	int agentport = 0;
 	int *iarraytmp;
 	int iloop = 0;
 	bool bfirst = true;
@@ -603,7 +597,19 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 		}
 		bfirst = false;
 		memset(iarraytmp, 0, len*sizeof(int));
-		monitor_get_sqlvalues_one_node(sqlstr, user, address, port,dbname, iarraytmp, len);
+		/*get agent port*/
+		tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node->nodehost));
+		if(!(HeapTupleIsValid(tup)))
+		{
+			ereport(ERROR, (errmsg("host oid \"%u\" not exist", mgr_node->nodehost)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errcode(ERRCODE_INTERNAL_ERROR)));
+		}
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
+		agentport = mgr_host->hostagentport;
+		ReleaseSysCache(tup);
+		monitor_get_sqlvalues_one_node(agentport, sqlstr, user, address, port,dbname, iarraytmp, len);
 		for(iloop=0; iloop<len; iloop++)
 		{
 			iarray[iloop] += iarraytmp[iloop];
@@ -616,4 +622,100 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 	}
 	heap_endscan(rel_scan);
 	pfree(iarraytmp);
+}
+
+void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname, StringInfo resultstrdata)
+{
+	ManagerAgent *ma;
+	StringInfoData sendstrmsg;
+	StringInfoData buf;
+	char *nodeportstr;
+	
+	resetStringInfo(resultstrdata);
+	initStringInfo(&sendstrmsg);
+	nodeportstr = (char *) palloc(7);
+	pg_itoa(nodeport, nodeportstr);
+	/*sequence:user port dbname sqlstr, delimiter by '\0'*/
+	/*user*/
+	appendStringInfoString(&sendstrmsg, user);
+	appendStringInfoCharMacro(&sendstrmsg, '\0');
+	/*port*/
+	appendStringInfoString(&sendstrmsg, nodeportstr);
+	appendStringInfoCharMacro(&sendstrmsg, '\0');
+	pfree(nodeportstr);
+	/*dbname*/
+	appendStringInfoString(&sendstrmsg, dbname);
+	appendStringInfoCharMacro(&sendstrmsg, '\0');
+	/*sqlstring*/
+	appendStringInfoString(&sendstrmsg, sqlstr);
+	appendStringInfoCharMacro(&sendstrmsg, '\0');
+	ma = ma_connect(address, (unsigned short)agentport);
+	if(!ma_isconnected(ma))
+	{
+		/*report error message */
+		ereport(WARNING, (errcode(ERRCODE_CONNECTION_EXCEPTION)
+			,errmsg("%s", ma_last_error_msg(ma))));
+		ma_close(ma);
+		return;
+	}
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, cmdtype);
+	mgr_append_infostr_infostr(&buf, &sendstrmsg);
+	pfree(sendstrmsg.data);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
+	{
+		ereport(WARNING, (errcode(ERRCODE_CONNECTION_EXCEPTION)
+			,errmsg("%s", ma_last_error_msg(ma))));
+		ma_close(ma);
+		return;
+	}
+	/*check the receive msg*/
+	mgr_recv_sql_stringvalues_msg(ma, resultstrdata);
+	ma_close(ma);
+	if (resultstrdata->data == NULL)
+	{
+		ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
+			,errmsg("get sqlstr:%s \n\tresult fail", sqlstr)));
+		return;
+	}
+}
+
+/*
+* get msg from agent
+*/
+static void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
+{
+	char			msg_type;
+	StringInfoData recvbuf;
+	initStringInfo(&recvbuf);
+	for(;;)
+	{
+		msg_type = ma_get_message(ma, &recvbuf);
+		if(msg_type == AGT_MSG_IDLE)
+		{
+			/* message end */
+			break;
+		}else if(msg_type == '\0')
+		{
+			/* has an error */
+			break;
+		}else if(msg_type == AGT_MSG_ERROR)
+		{
+			/* error message */
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			break;
+		}else if(msg_type == AGT_MSG_NOTICE)
+		{
+			/* ignore notice message */
+			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+		}
+		else if(msg_type == AGT_MSG_RESULT)
+		{
+			appendBinaryStringInfo(resultstrdata, recvbuf.data, recvbuf.len);
+			ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
+			break;
+		}
+	}
+	pfree(recvbuf.data);
 }

@@ -9,6 +9,7 @@
 #include "access/htup_details.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/mgr_host.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/monitor_slowlog.h"
 #include "catalog/pg_type.h"
@@ -48,58 +49,15 @@ typedef enum ThresholdItem
 }ThresholdItem;
 
 
-/*given one sqlstr, return the result*/
-char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname)
+/*given one explain sqlstr , return the result*/
+char *monitor_get_onestrvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname)
 {
-	StringInfoData constr;
-	PGconn* conn;
-	PGresult *res;
-	char *oneCoordValueStr = NULL;
-	int nrow = 0;
-	int iloop = 0;
-	
-	initStringInfo(&constr);
-	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
-	appendStringInfoCharMacro(&constr, '\0');
-	ereport(LOG,
-		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
-	conn = PQconnectdb(constr.data);
-	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
-	{
-		ereport(LOG,
-		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
-		PQfinish(conn);
-		pfree(constr.data);
-		return NULL;
-	}
-	res = PQexec(conn, sqlstr);
-	if(PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		ereport(LOG,
-		(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
-		PQclear(res);
-		PQfinish(conn);
-		pfree(constr.data);
-		return NULL;
-	}
-	/*check column number*/
-	Assert(1 == PQnfields(res));
-	/*get row num*/
-	nrow = PQntuples(res);
-	oneCoordValueStr = (char *)palloc(nrow*1024);
-	for (iloop=0; iloop<nrow; iloop++)
-	{
-		strcat(oneCoordValueStr, PQgetvalue(res, iloop, 0 ));
-		if(iloop != nrow-1)
-			strcat(oneCoordValueStr, "\n");
-		else
-			strcat(oneCoordValueStr, "\0");
-	}
-	PQclear(res);
-	PQfinish(conn);
-	pfree(constr.data);
-	return oneCoordValueStr;
+	StringInfoData resultstrdata;
+
+	initStringInfo(&resultstrdata);
+	monitor_get_stringvalues(AGT_CMD_GET_EXPLAIN_STRINGVALUES, agentport, sqlstr, user, address, port, dbname, &resultstrdata);	
+
+	return resultstrdata.data;
 }
 
 
@@ -115,7 +73,7 @@ char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, 
 *
 */
 
-void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname)
+void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, char *address, int port, char *dbname)
 {
 	StringInfoData constr;
 	StringInfoData sqlslowlogStrData;
@@ -195,7 +153,7 @@ void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, 
 		if (false  == gettoday && false == getyesdt)
 		{
 			/*insert record*/
-			monitor_insert_record(rel, time, dbname, dbuser, singletime, calls, querystr, user, address, port);
+			monitor_insert_record(rel, agentport, time, dbname, dbuser, singletime, calls, querystr, user, address, port);
 		}
 		else if (true  == gettoday && false == getyesdt)
 		{
@@ -228,7 +186,7 @@ void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, 
 			if (calls != callsyestd)
 			{
 				/*insert the record*/
-				monitor_insert_record(rel, time, dbname, dbuser, singletime, callstmp, querystr, user, address, port);
+				monitor_insert_record(rel, agentport, time, dbname, dbuser, singletime, callstmp, querystr, user, address, port);
 			}
 		}
 		else /*true  == gettoday && true == getyesdt*/
@@ -278,6 +236,7 @@ Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 {
 	int coordport;
 	int dbnum = 0;
+	int agentport = 0;
 	char *address = NULL;
 	char *user = NULL;
 	char *dbname = NULL;
@@ -289,7 +248,9 @@ Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	Form_mgr_node mgr_node;
+	Form_mgr_host mgr_host;
 	HeapTuple tuple;
+	HeapTuple tup;
 	
 	rel_slowlog = heap_open(MslowlogRelationId, RowExclusiveLock);
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
@@ -308,6 +269,18 @@ Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 		/*get user, address, coordport*/
 		coordport = mgr_node->nodeport;
 		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		/*get agent port*/
+		tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node->nodehost));
+		if(!(HeapTupleIsValid(tup)))
+		{
+			ereport(ERROR, (errmsg("host oid \"%u\" not exist", mgr_node->nodehost)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errcode(ERRCODE_INTERNAL_ERROR)));
+		}
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
+		agentport = mgr_host->hostagentport;
+		ReleaseSysCache(tup);
 		if(!haveget)
 		{
 			user = get_hostuser_from_hostoid(mgr_node->nodehost);
@@ -327,7 +300,7 @@ Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 		foreach(cell, dbnamelist)
 		{
 			dbname = (char *)(lfirst(cell));
-			monitor_get_onedb_slowdata_insert(rel_slowlog, user, address, coordport, dbname);
+			monitor_get_onedb_slowdata_insert(rel_slowlog, agentport, user, address, coordport, dbname);
 		}
 		pfree(address);
 	}
@@ -449,7 +422,7 @@ HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsy
 	return tupleret;
 }
 
-void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port)
+void monitor_insert_record(Relation rel, int agentport, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port)
 {
 	int queryplanlen = 0;
 	char *getplanerror = "check the query, cannot get the queryplan.";
@@ -462,7 +435,7 @@ void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *d
 	strcpy(queryplanstr, "explain ");
 	strcpy(queryplanstr + strlen("explain "), querystr);
 	queryplanstr[queryplanlen-1] = '\0';
-	queryplanres = monitor_get_onestrvalue_one_node(queryplanstr, user, address, port, dbname);
+	queryplanres = monitor_get_onestrvalue_one_node(agentport, queryplanstr, user, address, port, dbname);
 	if (NULL == queryplanres)
 	{
 		tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, singletime, calls, querystr, getplanerror);

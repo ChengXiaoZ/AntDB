@@ -175,7 +175,7 @@ char *get_hostuser_from_hostoid(Oid hostOid);
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
 bool mgr_recv_msg_for_monitor(ManagerAgent	*ma, bool *ret, StringInfo agentRstStr);
 extern List *monitor_get_dbname_list(char *user, char *address, int port);
-extern void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype);
+extern void monitor_get_one_node_user_address_port(Relation rel_node, int *agentport, char **user, char **address, int *coordport, char nodetype);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
@@ -184,7 +184,7 @@ extern void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
 extern void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
 
 /*monitor_databaseitem.c*/
-extern int monitor_get_onesqlvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
+extern int monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname);
 extern int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype);
 extern int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
@@ -192,20 +192,21 @@ extern HeapTuple monitor_build_database_item_tuple(Relation rel, const Timestamp
 			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum
 			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum, int indexsize);
 extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
-extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);	
+extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);
+extern void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname, StringInfo resultstrdata);
 
 /*monitor_slowlog.c*/
-extern char *monitor_get_onestrvalue_one_node(char *sqlstr, char *user, char *address, int port, char * dbname);
-extern void monitor_get_onedb_slowdata_insert(Relation rel, char *user, char *address, int port, char *dbname);
+extern char *monitor_get_onestrvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname);
+extern void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, char *address, int port, char *dbname);
 extern HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, char *dbname, char *username, float singletime, int totalnum, char *query, char *queryplan);
 extern Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsyestd, bool *gettoday, bool *getyesdt, char *query, char *user, char *dbname, pg_time_t ptimenow);
-extern void monitor_insert_record(Relation rel, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port);
+extern void monitor_insert_record(Relation rel, int agentport, TimestampTz time, char *dbname, char *dbuser, float singletime, int calls, char *querystr, char *user, char *address, int port);
 
 /*monitor_dbthreshold.c*/
 extern Datum get_dbthreshold(PG_FUNCTION_ARGS);
-extern char *monitor_get_timestamptz_onenode(char *user, char *address, int port);
-extern bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len);
+extern char *monitor_get_timestamptz_onenode(int agentport, char *user, char *address, int port);
+extern bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len);
 
 /*mgr_updateparm*/
 extern void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest);

@@ -382,13 +382,15 @@ List *monitor_get_dbname_list(char *user, char *address, int port)
 /*
 * get user, hostaddress from coordinator
 */
-void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char **address, int *coordport, char nodetype)
+void monitor_get_one_node_user_address_port(Relation rel_node, int *agentport, char **user, char **address, int *coordport, char nodetype)
 {
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	HeapTuple tuple;
+	HeapTuple tup;
 	Form_mgr_node mgr_node;
-	
+	Form_mgr_host mgr_host;
+
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
 		,BTEqualStrategyNumber
@@ -402,6 +404,17 @@ void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char
 		*coordport = mgr_node->nodeport;
 		*address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		*user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node->nodehost));
+		if(!(HeapTupleIsValid(tup)))
+		{
+			ereport(ERROR, (errmsg("host oid \"%u\" not exist", mgr_node->nodehost)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errcode(ERRCODE_INTERNAL_ERROR)));
+		}
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
+		*agentport = mgr_host->hostagentport;
+		ReleaseSysCache(tup);
 		break;
 	}
 	heap_endscan(rel_scan);
@@ -410,49 +423,28 @@ void monitor_get_one_node_user_address_port(Relation rel_node, char **user, char
 /*
 * get len values to iarray, the values get from the given sqlstr's result
 */
-bool monitor_get_sqlvalues_one_node(char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len)
+bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len)
 {
-	StringInfoData constr;
-	PGconn* conn;
-	PGresult *res;
-	char *pvalue;
 	int iloop = 0;
-	
-	initStringInfo(&constr);
-	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
-	appendStringInfoCharMacro(&constr, '\0');
-	conn = PQconnectdb(constr.data);
-	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
+	char *pstr;
+	char strtmp[64];
+	StringInfoData resultstrdata;
+
+	initStringInfo(&resultstrdata);
+	monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentport, sqlstr, user, address, port, dbname, &resultstrdata);
+	if (resultstrdata.len == 0)
 	{
-		ereport(LOG,
-		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
-		PQfinish(conn);
-		pfree(constr.data);
 		return false;
 	}
-	res = PQexec(conn, sqlstr);
-	if(PQresultStatus(res) != PGRES_TUPLES_OK)
+	pstr = resultstrdata.data;
+	while(pstr != NULL && iloop < len)
 	{
-		ereport(LOG,
-		(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
-		PQclear(res);
-		PQfinish(conn);
-		pfree(constr.data);
-		return false;
+		strcpy(strtmp, pstr);
+		iarray[iloop] = atoi(strtmp);
+		pstr = pstr + strlen(strtmp) + 1;
+		iloop++;
 	}
-	/*check row number*/
-	Assert(len == PQntuples(res));
-	/*check column number*/
-	Assert(1 == PQnfields(res));
-	for (iloop=0; iloop<len; iloop++)
-	{
-		pvalue = PQgetvalue(res, iloop, 0);
-		iarray[iloop] = atoi(pvalue);
-	}
-	PQclear(res);
-	PQfinish(conn);
-	pfree(constr.data);
+	pfree(resultstrdata.data);
 	return true;
 }
 

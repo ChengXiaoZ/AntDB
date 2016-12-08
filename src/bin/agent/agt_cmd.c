@@ -52,6 +52,8 @@ static void cmd_clean_node_folder(StringInfo buf);
 static void cmd_stop_agent(void);
 static void cmd_get_showparam_values(char cmdtype, StringInfo buf);
 static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port, char * dbname);
+static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf);
+static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output);
 
 void do_agent_command(StringInfo buf)
 {
@@ -96,11 +98,11 @@ void do_agent_command(StringInfo buf)
 		break;
 	/*modify gtm|coordinator|datanode postgresql.conf*/
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF:
-		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF, buf);
+		cmd_node_refresh_pgsql_paras(cmd_type, buf);
 		break;
 	/*modify gtm|coordinator|datanode recovery.conf*/
 	case AGT_CMD_CNDN_REFRESH_RECOVERCONF:
-		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_RECOVERCONF, buf);
+		cmd_node_refresh_pgsql_paras(cmd_type, buf);
 		break;
 	/*modify gtm|coordinator|datanode pg_hba.conf*/
 	case AGT_CMD_CNDN_REFRESH_PGHBACONF:
@@ -108,11 +110,11 @@ void do_agent_command(StringInfo buf)
 		break;
 	/*modify gtm|coordinator|datanode postgresql.conf and reload it*/
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD:
-		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, buf);
+		cmd_node_refresh_pgsql_paras(cmd_type, buf);
 		break;
 	/*modify gtm|coordinator|datanode postgresql.conf, delete the given parameter*/
 	case AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE:
-		cmd_node_refresh_pgsql_paras(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, buf);
+		cmd_node_refresh_pgsql_paras(cmd_type, buf);
 		break;
 	case AGT_CMD_CNDN_RENAME_RECOVERCONF:
 		cmd_rename_recovery(buf);
@@ -130,10 +132,14 @@ void do_agent_command(StringInfo buf)
 		cmd_stop_agent();
 		break;
 	case AGT_CMD_SHOW_AGTM_PARAM:
-		cmd_get_showparam_values(AGT_CMD_SHOW_AGTM_PARAM, buf);
+		cmd_get_showparam_values(cmd_type, buf);
 		break;
 	case AGT_CMD_SHOW_CNDN_PARAM:
-		cmd_get_showparam_values(AGT_CMD_SHOW_CNDN_PARAM, buf);
+		cmd_get_showparam_values(cmd_type, buf);
+		break;
+	case AGT_CMD_GET_SQL_STRINGVALUES:
+	case AGT_CMD_GET_EXPLAIN_STRINGVALUES:
+		cmd_get_sqlstring_stringvalues(cmd_type, buf);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
@@ -1033,3 +1039,134 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 	pfree(constr.data);
 	return oneCoordValueStr;
 }
+
+/*given the sql_string, and return the column value string, which delimiter by '\0'*/
+static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf)
+{
+	StringInfoData output;
+	StringInfoData sqlstr;
+	const char *rec_msg_string;
+	char user[64];
+	char port[64];
+	char dbname[64];
+	char *address = "127.0.0.1";
+	char *valuestr;
+	int i = 0;
+	
+	initStringInfo(&output);
+	initStringInfo(&sqlstr);
+	rec_msg_string = agt_getmsgstring(buf);
+	/*sequence:user port dbname sqlstring, delimiter by '\0'*/
+	while(i < 4)
+	{
+		if (!rec_msg_string)
+		{
+			ereport(ERROR, (errmsg("agent receive the cmd string not match \"user port dbname sqlstring\", which delimiter by \'\\0\'")));
+		}
+		switch(i++)
+		{
+			case 0:
+				strcpy(user, rec_msg_string);
+				user[strlen(user)] = 0;
+				rec_msg_string = rec_msg_string + strlen(user) + 1;
+				break;
+			case 1:
+				strcpy(port, rec_msg_string);
+				port[strlen(port)] = 0;
+				rec_msg_string = rec_msg_string + strlen(port) + 1;
+				break;
+			case 2:
+				strcpy(dbname, rec_msg_string);
+				dbname[strlen(dbname)] = 0;
+				rec_msg_string = rec_msg_string + strlen(dbname) + 1;
+				break;
+			case 3:
+				appendStringInfoString(&sqlstr, rec_msg_string);
+				sqlstr.data[sqlstr.len] = 0;
+				break;
+			default:
+				/*never come here*/
+				ereport(WARNING, (errmsg("get the sqlstring values fail, this is %d string, 0 start", i)));
+				break;
+		}
+	}
+	/*get the sqlstring values*/
+	if (AGT_CMD_GET_EXPLAIN_STRINGVALUES == cmdtype)
+	{
+		valuestr = mgr_get_showparam(sqlstr.data, user, address, atoi(port), dbname);
+		if (valuestr)
+		{
+			appendStringInfo(&output, "%s", valuestr);
+			pfree(valuestr);
+		}
+	}
+	else
+		mgr_execute_sqlstring(user, atoi(port), address, dbname, sqlstr.data, &output);
+	pfree(sqlstr.data);
+	if (output.len == 0)
+	{
+		appendStringInfo(&output, "connect to %s to get the result failed", AGTM_DBNAME);
+		agt_put_msg(AGT_MSG_ERROR, output.data, output.len);
+	}
+	else
+	{
+		agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	}
+	agt_flush();
+	pfree(output.data);
+}
+
+/*given one sqlstr, return the result*/
+static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output)
+{
+	StringInfoData constr;
+	PGconn* conn;
+	PGresult *res;
+	int nrow = 0;
+	int iloop = 0;
+	
+	initStringInfo(&constr);
+	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
+	appendStringInfoCharMacro(&constr, '\0');
+	ereport(LOG,
+		(errmsg("connect info: %s, sql: %s",constr.data, sqlstring)));
+	conn = PQconnectdb(constr.data);
+	/* Check to see that the backend connection was successfully made */
+	if (PQstatus(conn) != CONNECTION_OK) 
+	{
+		pfree(constr.data);
+		ereport(ERROR,
+		(errmsg("%s", PQerrorMessage(conn))));
+		/*PQfinish(conn);*/
+	}
+	res = PQexec(conn, sqlstring);
+	if(PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		PQfinish(conn);
+		pfree(constr.data);
+		ereport(ERROR,
+		(errmsg("%s" , PQresultErrorMessage(res))));
+		/*PQclear(res);*/
+		/*return NULL;*/
+	}
+
+	/*get row num*/
+	nrow = PQntuples(res);
+	/*get null*/
+	if (!nrow)
+	{
+		ereport(ERROR,
+		(errmsg("get null, check the sql string: %s" , sqlstring)));
+	}
+	for (iloop=0; iloop<nrow; iloop++)
+	{
+		appendStringInfo(output, "%s", PQgetvalue(res, iloop, 0 ));
+		appendStringInfoCharMacro(output, '\0');
+	}
+	appendStringInfoCharMacro(output, '\0');
+	PQclear(res);
+	PQfinish(conn);
+	pfree(constr.data);
+}
+
+
