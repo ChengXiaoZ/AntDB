@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD GTM</refname>
-    <refpurpose>add one line gtm node type information in node table</refpurpose>
+    <refpurpose>add one row gtm information in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-addgtm">
@@ -21,21 +21,22 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
 
-    <phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
-        HOST = <replaceable class="parameter">IP_address</replaceable>,
-        PORT = <replaceable class="parameter">port_number</replaceable>,
-        SYNC = <replaceable class="parameter">sync_mode</replaceable>,
-        PATH = <replaceable class="parameter">pg_data</replaceable>
-    </synopsis>
+<phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
+
+    HOST = <replaceable class="parameter">IP_address</replaceable>,
+    PORT = <replaceable class="parameter">port_number</replaceable>,
+    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+    PATH = <replaceable class="parameter">pg_data</replaceable>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-      Add one line gtm node type information in node table.
+<command>ADD GTM</command> add one row gtm information in the node table.
     </para>
   </refsect1>
 
@@ -71,7 +72,7 @@ ADB documentation
         </term>
         <listitem>
           <para>
-    Your port in your host.
+    Listen port of your host.
           </para>
         </listitem>
       </varlistentry> 
@@ -102,10 +103,10 @@ ADB documentation
   <refsect1>
     <title>Examples</title>
     <para>
-Add gtm master (name is "gtmname") for node table:
+Add gtm master (name is "gtm_name1") in the node table:
       <programlisting>
-    ADD GTM MASTER gtmname(HOST=localhost2, PORT=15533, PATH='/opt/ADB/gmt');
-      </programlisting>
+ADD GTM MASTER gtm_name1(HOST=localhost2, PORT=15533, PATH='/opt/ADB/gtm');
+</programlisting>
     </para>
   </refsect1>
   <refsect1>

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD DATANODE</refname>
-    <refpurpose>add one line datanode node type information in node table</refpurpose>
+    <refpurpose>add one row datanode information in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-adddatanode">
@@ -21,21 +21,22 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+ADD DATANODE { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
 
-    <phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
-        HOST = <replaceable class="parameter">IP_address</replaceable>,
-        PORT = <replaceable class="parameter">port_number</replaceable>,
-        SYNC = <replaceable class="parameter">sync_mode</replaceable>,
-        PATH = <replaceable class="parameter">pg_data</replaceable>
-    </synopsis>
+<phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
+
+    HOST = <replaceable class="parameter">IP_address</replaceable>,
+    PORT = <replaceable class="parameter">port_number</replaceable>,
+    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+    PATH = <replaceable class="parameter">pg_data</replaceable>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-Add one line datanode node type information in node table.
+<command>ADD DATANODE</command> add one row datanode information in the node table.
     </para>
   </refsect1>
 
@@ -71,7 +72,7 @@ Add one line datanode node type information in node table.
         </term>
         <listitem>
           <para>
-    Your port in your host.
+    Listen port of your host.
           </para>
         </listitem>
       </varlistentry> 
@@ -102,11 +103,17 @@ Add one line datanode node type information in node table.
   <refsect1>
     <title>Examples</title>
     <para>
-     Add datandoe master (name is "db1") for node table:
+Add datandoe master (name is "datanode_name1") in the node table:
       <programlisting>
-    ADD DATANODE MASTER db1(HOST=localhost2, PORT=15535, PATH='/opt/ADB/db2');
-      </programlisting>
+ADD DATANODE MASTER datanode_name1(HOST=localhost2, PORT=15535, PATH='/opt/ADB/db1');
+</programlisting>
     </para>
   </refsect1>
+  <refsect1>
+    <title>See Also</title>
 
+    <simplelist type="inline">
+      <member><xref linkend="mgr-dropdatanode"></member>
+    </simplelist>
+  </refsect1>
 </refentry>
