@@ -95,8 +95,7 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
 static void mgr_reload_conf(Oid hostoid, char *nodepath);
 static bool mgr_start_one_gtm_master(void);
-/*static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport);*/
-static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, bool isprimary, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
+static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static bool is_node_running(char *hostaddr, int32 hostport);
 static void mgr_make_sure_all_running(char node_type);
@@ -118,7 +117,7 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst);
 
 
-#if (Natts_mgr_node != 10)
+#if (Natts_mgr_node != 9)
 #error "need change code"
 #endif
 
@@ -1344,7 +1343,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Oid nodemasternameoid;
 	Oid	tupleOid;
 	Oid	masterhostOid;
-	bool isprimary = false;
 	bool ismasterrunning = 0;
 	HeapTuple gtmmastertuple;
 	NameData cndnnamedata;
@@ -1360,7 +1358,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Assert(hostaddress);
 	/*get nodename*/
 	cndnname = NameStr(mgr_node->nodename);
-	isprimary = mgr_node->nodeprimary;
 	/*get the host address for return result*/
 	namestrcpy(&(getAgentCmdRst->nodename), cndnname);
 	/*get node type*/
@@ -1645,7 +1642,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	if(AGT_CMD_DN_FAILOVER == cmdtype && execok)
 	{
 		namestrcpy(&cndnnamedata, cndnname);
-		mgr_after_datanode_failover_handle(nodemasternameoid, &cndnnamedata, cndnport, isprimary, hostaddress, noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype);
+		mgr_after_datanode_failover_handle(nodemasternameoid, &cndnnamedata, cndnport, hostaddress, noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype);
 	}
 
 	/*gtm failover*/
@@ -2647,8 +2644,6 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}PG_END_TRY();
 
-/*	tup_result = build_common_command_tuple(&nodename, true, "success");
-*/
 	tup_result = build_common_command_tuple(&nodename, result, getAgentCmdRst.description.data);
 	pfree(getAgentCmdRst.description.data);
 	return HeapTupleGetDatum(tup_result);
@@ -3202,8 +3197,6 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}PG_END_TRY();
 
-	/*	tup_result = build_common_command_tuple(&nodename, true, "success");
-*/
 	tup_result = build_common_command_tuple(&nodename, result, getAgentCmdRst.description.data);
 	pfree(getAgentCmdRst.description.data);
 
@@ -5020,125 +5013,6 @@ check_dn_slave(char nodetype, List *nodenamelist, Relation rel_node, StringInfo 
 		heap_endscan(rel_scan);
 	}
 }
-
-/*
-* cndnname is datanode slave's name, cndnmasternameoid is the datanode slave's master's 
-*tuple oid. use the cndnname cndnport cndnaddress to add node in pgxc_node, use 
-*cndnmasternameoid to delete the slave's master node in pgxc_node
-*/
-bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress, bool isprimary, Oid cndnmasternameoid, GetAgentCmdRst *getAgentCmdRst)
-{
-	
-	int ret;
-	char *coordaddress;
-	HeapTuple mastertuple,
-			tuple;
-	StringInfoData infosendmsg,
-				strinfocoordport;
-	ManagerAgent *ma;
-	StringInfoData buf;
-	Form_mgr_node mgr_node;
-	ScanKeyData key[1];
-	Relation rel_node;
-	HeapScanDesc rel_scan;
-	bool execok;
-	int32 cnmasterport;
-	int normalcoordnum = 0;
-	
-	/*check the datanode master is exists in node table*/
-	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(cndnmasternameoid));
-	if(!HeapTupleIsValid(mastertuple))
-	{
-		ereport(ERROR, (errcode(ERRCODE_INVALID_NAME)
-			,errmsg("datanode master does not exist")));
-	}
-	ReleaseSysCache(mastertuple);
-	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	/*send "alter node masternode(host = nodeaddress, port = nodeport, primary = slave_primary)",
-	* select pgxc_pool_reload(); to agent
-	*/
-	initStringInfo(&infosendmsg);
-	initStringInfo(&strinfocoordport);
-	namestrcpy(&(getAgentCmdRst->nodename), cndnname);
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_node);
-		/*skip the coordinator not in the cluster*/
-		if(!mgr_node->nodeincluster)
-			continue;
-		/*check the coordinator is normal, otherwise skip it*/
-		coordaddress = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		resetStringInfo(&strinfocoordport);
-		appendStringInfo(&strinfocoordport, "%d", mgr_node->nodeport);
-		ret = pingNode(coordaddress, strinfocoordport.data);
-		pfree(coordaddress);
-		/*skip the coordinator which is not normal*/
-		if(ret != 0)
-		{
-			continue;
-		}
-		normalcoordnum++;
-		cnmasterport = mgr_node->nodeport;	
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&(getAgentCmdRst->description));
-		appendStringInfo(&infosendmsg, " -p %d -d postgres -c \"",  cnmasterport);
-		appendStringInfo(&infosendmsg, "alter node \\\"%s\\\" with(host='%s',port=%d, primary = %s);", cndnname, cndnaddress, cndnport, isprimary != 0 ? "true":"false");
-		appendStringInfoString(&infosendmsg, "select pgxc_pool_reload();\"");
-		/* connection agent */
-		ma = ma_connect_hostoid(mgr_node->nodehost);
-		if(!ma_isconnected(ma))
-		{
-			/* report error message */
-			getAgentCmdRst->ret = false;
-			appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
-			heap_endscan(rel_scan);
-			heap_close(rel_node, RowExclusiveLock);
-			ma_close(ma);
-			return false;
-		}
-		ma_beginmessage(&buf, AGT_MSG_COMMAND);
-		ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
-		ma_sendstring(&buf,infosendmsg.data);
-		ma_endmessage(&buf, ma);
-		if (! ma_flush(ma, true))
-		{
-			ret = false;
-			appendStringInfoString(&(getAgentCmdRst->description), ma_last_error_msg(ma));
-			ma_close(ma);
-			heap_endscan(rel_scan);
-			heap_close(rel_node, RowExclusiveLock);
-			return false;
-		}
-		/*check the receive msg*/
-		execok = mgr_recv_msg(ma, getAgentCmdRst);
-		Assert(execok == getAgentCmdRst->ret);
-		ma_close(ma);
-		if(execok != true)
-		{
-			pfree(infosendmsg.data);
-			heap_endscan(rel_scan);
-			heap_close(rel_node, RowExclusiveLock);	
-			return false;
-		}
-	}
-	pfree(infosendmsg.data);
-	pfree(strinfocoordport.data);
-	heap_endscan(rel_scan);
-	heap_close(rel_node, RowExclusiveLock);
-	/*check all coordinators are not normal*/
-	if(0 == normalcoordnum)
-		return false;
-	return true;
-}
-
-
 /*
  * last step for init all
  * we need cofigure all nodes information to pgxc_node table
@@ -6124,7 +5998,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 * 2. change the datanode  extra dn1's recovery.conf:host,port
 * 3. restart datanode extra dn1
 */
-static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, bool isprimary, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype)
+static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport,char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype)
 {
 	StringInfoData infosendmsg;
 	HeapScanDesc rel_scan;
@@ -6169,9 +6043,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 	Assert(mgr_node);
-/*	
-	getrefresh = mgr_refresh_pgxc_node_tbl(cndnname->data, cndnport, hostaddress, isprimary, nodemasternameoid, getAgentCmdRst);
-*/
+
 	getrefresh = mgr_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst);
 	if(!getrefresh)
 	{

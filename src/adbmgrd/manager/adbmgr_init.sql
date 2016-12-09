@@ -62,7 +62,6 @@ CREATE VIEW adbmgr.node AS
     mgrnode.nodeport    AS  port,
     mgrnode.nodesync    AS  sync,
     mgrnode.nodepath    AS  path,
-    mgrnode.nodeprimary AS primary,
     mgrnode.nodeinited  AS  initialized,
     mgrnode.nodeincluster AS incluster
   FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid LEFT JOIN pg_catalog.mgr_node AS node_alise
