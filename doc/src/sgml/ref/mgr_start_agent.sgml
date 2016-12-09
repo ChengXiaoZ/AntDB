@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    START AGENT { ALL | <replaceable class="parameter">host_name</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">password_str</replaceable> ]
+START AGENT { ALL | <replaceable class="parameter">host_name</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ ADB documentation
     <title>Description</title>
 
     <para>
-      Start the agent process on the ADB cluster, ADB MANAGER through the agent process to manage the ADB cluster.
+<command>START AGENT</command> start the agent process on the ADB cluster, ADB manager through the agent process to manage the ADB cluster.
 </para>
   </refsect1>
   <refsect1>
@@ -48,7 +48,7 @@ ADB documentation
       </varlistentry>
       <varlistentry>
         <term>
-          <replaceable class="parameter">password_str</replaceable>
+          <replaceable class="parameter">passwd</replaceable>
         </term>
         <listitem>
           <para>
@@ -62,10 +62,10 @@ ADB documentation
     <title>Examples</title>
 
     <para>Start all agent process:
-      <programlisting>    START AGENT ALL;</programlisting>
+      <programlisting>START AGENT ALL;</programlisting>
     </para>
-    <para>Start agent process to hostname1, hostname2:
-      <programlisting>    START AGENT hostname1, hostname2;</programlisting>
+    <para>Start agent process to host_name1, host_name2:
+      <programlisting>START AGENT host_name1, host_name2;</programlisting>
     </para>
   </refsect1>
       <refsect1>

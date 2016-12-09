@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    START GTM [ ALL ]
-    START GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+START GTM ALL
+START GTM { MASTER | SLAVE | EXTRA }
 </synopsis>
   </refsynopsisdiv>
 
@@ -30,31 +30,16 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Start the gtm node type on the ADB cluster.
+<command>START GTM</command> start the gtm node type on the ADB cluster.
     </para>
   </refsect1>
-  <refsect1>
-    <title>Parameters</title>
 
-    <variablelist>
-      <varlistentry>
-        <term>
-          <replaceable class="parameter">node_name</replaceable>
-        </term>
-        <listitem>
-          <para>
-    Node name, corresponds to the name column in the node table.
-          </para>
-        </listitem>
-      </varlistentry>
-    </variablelist>
-  </refsect1>
   <refsect1>
     <title>Examples</title>
 
     <para>
-Start gtm master name is "gtmname":
-      <programlisting>    START GTM MASTER gtmname;</programlisting>
+Start gtm master:
+      <programlisting>START GTM MASTER;</programlisting>
     </para>
   </refsect1>
 

@@ -21,14 +21,14 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    START ALL
+START ALL
 </synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
-      <para>start all the nodes on the ADB cluster.</para>
+      <para><command>START ALL</command> start all the nodes on the ADB cluster.</para>
       <para>Start order:</para>
       <para>    1, start gtm master</para>
       <para>    2, start gtm slave (If you configure it)</para>
@@ -44,7 +44,7 @@ ADB documentation
 
     <para>
 Start all node on the ADB cluster:
-      <programlisting>    START ALL;</programlisting>
+      <programlisting>START ALL;</programlisting>
     </para>
   </refsect1>
   

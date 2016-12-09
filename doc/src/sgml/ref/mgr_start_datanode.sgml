@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    START DATANODE ALL
-    START DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> [, ...]
+START DATANODE ALL
+START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
 </synopsis>
   </refsynopsisdiv>
 
@@ -30,8 +30,8 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Start the datanode node type on the ADB cluster.
-    </para>
+<command>START DATANODE</command> start the datanode node type on the ADB cluster.
+</para>
   </refsect1>
   <refsect1>
     <title>Parameters</title>
@@ -54,7 +54,7 @@ Start the datanode node type on the ADB cluster.
 
     <para>
 Start all datanode master:
-      <programlisting>    START DATANODE MASTER ALL;</programlisting>
+      <programlisting>START DATANODE MASTER ALL;</programlisting>
     </para>
   </refsect1>
       <refsect1>

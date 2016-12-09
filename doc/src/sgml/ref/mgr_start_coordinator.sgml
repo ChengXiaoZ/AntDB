@@ -21,15 +21,15 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
-    </synopsis>
+START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-Start the coordinator node type on the ADB cluster
+<command>START COORDINATOR</command> start the coordinator node on the ADB cluster
     </para>
   </refsect1>
   <refsect1>
@@ -53,7 +53,7 @@ Start the coordinator node type on the ADB cluster
 
     <para>
 Start all coordinator:
-      <programlisting>    START COORDINATOR ALL;</programlisting>
+      <programlisting>START COORDINATOR ALL;</programlisting>
     </para>
   </refsect1>
       <refsect1>
