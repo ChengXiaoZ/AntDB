@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ];   
+DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ]   
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [
     <title>Description</title>
 
     <para>
-     deploy ADB's binary files and other installation files to the specified host.
+DEPLOY deploy ADB's binary files and other installation files to the specified host.
     </para>
   </refsect1>
 
@@ -37,12 +37,14 @@ DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [
     <title>Examples</title>
 
     <para>
-      Alter datanode slave:
-      <programlisting>
-        deploy all password 123; 
-        deploy localhost1;
-        deploy all 123;
-      </programlisting>
+      Deploy files to all agent with password 123: 
+<programlisting>
+deploy all password 123; 
+</programlisting>
+Deploy files to the agent localhost1 without password: 
+<programlisting>
+deploy localhost1;
+</programlisting>
     </para>
   </refsect1>
 

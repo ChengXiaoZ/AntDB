@@ -21,8 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-INIT ALL;
-
+INIT ALL
     </synopsis>
   </refsynopsisdiv>
 
@@ -30,7 +29,7 @@ INIT ALL;
     <title>Description</title>
 
     <para>
-     Initialize the ADB cluster
+INIT Initialize the ADB cluster,but the cluster must have gtm, coordinator, datanode master.
     </para>
   </refsect1>
 
@@ -38,10 +37,9 @@ INIT ALL;
     <title>Examples</title>
 
     <para>
- 
-      <programlisting>
-		init all;
-      </programlisting>
+<programlisting>
+init all;
+</programlisting>
     </para>
   </refsect1>
 

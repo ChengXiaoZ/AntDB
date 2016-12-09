@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>RESET COORDINATOR</refname>
-    <refpurpose>reset specified settings to default values in postgres.conf of coordinator</refpurpose>
+    <refpurpose>reset specified parameters of pg_settings table to default</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-resetcoordinator">
@@ -21,11 +21,12 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-RESET COORDINATOR ALL ( parameter [, ...] ) [ FORCE ];
-RESET COORDINATOR <replaceable class="parameter">nodename</replaceable> ( parameter [, ...] ) [ FORCE ];
+RESET COORDINATOR ALL ( parameter [, ...] ) [ FORCE ]
+RESET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( parameter [, ...] ) [ FORCE ]
+
 <phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
-     reset the value of parameter to the default and the parameter which is own to the file of postgres.conf , the operator won't check the the value and 
-	 name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update PARA table.
+
+     the parameter which is own to the file of postgres.conf and alse belong to the table of pg_settings
     </synopsis>
   </refsynopsisdiv>
 
@@ -33,7 +34,7 @@ RESET COORDINATOR <replaceable class="parameter">nodename</replaceable> ( parame
     <title>Description</title>
 
     <para>
-       reset the value of parameter to the default and the parameter which is own to the file of postgres.conf , the operator won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update PARA table.
+RESET COORDINATOR reset the value of parameter to the default and the parameter which is own to the file of postgres.conf,it's also belong to the table of pg_settings;the operator won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update param table.
     </para>
   </refsect1>
 
@@ -47,7 +48,7 @@ RESET COORDINATOR <replaceable class="parameter">nodename</replaceable> ( parame
         </term>
         <listitem>
           <para>
-            the parameter that in the file of postgres.conf
+            the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
           </para>
         </listitem>
       </varlistentry>
@@ -59,10 +60,10 @@ RESET COORDINATOR <replaceable class="parameter">nodename</replaceable> ( parame
     <title>Examples</title>
 
     <para>
-      reset the value of 'synchronous_commit' and 'max_wal_senders' to the default which is own to the file of postgres.conf:
-      <programlisting>
-        reset coordinator coord1(synchronous_commit, max_wal_senders);
-      </programlisting>
+      reset the value of 'synchronous_commit' and 'max_wal_senders' to the default:
+<programlisting>
+reset coordinator coord_name1(synchronous_commit, max_wal_senders);
+</programlisting>
     </para>
   </refsect1>
 

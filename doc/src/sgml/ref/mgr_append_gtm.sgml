@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>APPEND GTM</refname>
-    <refpurpose>append a new gtm to the cluster which is running</refpurpose>
+    <refpurpose>append a new gtm to the cluster and make it run</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-appendgtm">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceable>;
+APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,14 +29,14 @@ APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceabl
     <title>Description</title>
 
     <para>
-      append a new gtm to the cluster which is running.
+APPEND GTM append a new gtm to the cluster and make it run,it's equal to init and start
     </para>
   </refsect1>
 
   <refsect1>
     <title>Parameters</title>
      <para>
-      nodename :the name of gtm which you want to append to the cluster,corresponds to the name column in the NODE table.
+      The name of gtm which you want to append to the cluster,corresponds to the name column in the node table.
      </para>
   </refsect1>
   
@@ -44,11 +44,14 @@ APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceabl
     <title>Examples</title>
 
     <para>
-      Alter datanode slave:
-      <programlisting>
-       append gtm slave gtm1;
-       append gtm extra gtm1;
-      </programlisting>
+      Append gtm slave gtm_name:
+<programlisting>
+append gtm slave gtm_name;
+</programlisting>
+	  Append gtm extra gtm_name:
+<programlisting>
+append gtm extra gtm_name;
+</programlisting>
     </para>
   </refsect1>
   

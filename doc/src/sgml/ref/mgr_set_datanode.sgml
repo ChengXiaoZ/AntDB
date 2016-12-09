@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>SET DATANODE</refname>
-    <refpurpose>change the the value of parameter in the file of postgres.conf which is own to datanode</refpurpose>
+    <refpurpose>change the value of parameter which is belong to the table of pg_settings</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-setdatanode">
@@ -21,11 +21,12 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SET DATANODE ALL { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ];
-SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceable> { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ];
+SET DATANODE ALL { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+
 <phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
-    if you add "force" at the tail of the command, it won't check the the value and name of parameter, and it alse won't check the parameter whether exist
-	in the file of postgres.conf.
+
+   the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
     </synopsis>
   </refsynopsisdiv>
 
@@ -33,7 +34,7 @@ SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">nodename<
     <title>Description</title>
 
     <para>
-      change the the value of parameter in the file of postgres.conf and update PARA table, it won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update PARA table.
+SET DATANODE change the the value of parameter which is belong to the table of pg_settings and update param table, it won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update param table.
     </para>
   </refsect1>
 
@@ -47,7 +48,7 @@ SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">nodename<
         </term>
         <listitem>
           <para>
-            the parameter that in the file of postgres.conf
+            the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
           </para>
         </listitem>
       </varlistentry>
@@ -59,10 +60,10 @@ SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">nodename<
     <title>Examples</title>
 
     <para>
-      change the the value of 'synchronous_commit' and 'max_wal_senders' in the file of postgres.conf:
-      <programlisting>
-        set datanode all (synchronous_commit = off, max_wal_senders = 10);
-      </programlisting>
+      Change the the value of 'synchronous_commit' and 'max_wal_senders':
+<programlisting>
+set datanode all (synchronous_commit = off, max_wal_senders = 10);
+</programlisting>
     </para>
   </refsect1>
 

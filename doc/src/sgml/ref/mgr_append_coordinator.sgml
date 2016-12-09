@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>APPEND COORDINATOR</refname>
-    <refpurpose>append a new coordinator to the cluster which is running</refpurpose>
+    <refpurpose>append a new coordinator to the cluster and make it run</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-appendcoordinator">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND COORDINATOR <replaceable class="parameter">nodename</replaceable>;
+APPEND COORDINATOR <replaceable class="parameter">node_name</replaceable>
     </synopsis>
   </refsynopsisdiv>
 
@@ -29,14 +29,14 @@ APPEND COORDINATOR <replaceable class="parameter">nodename</replaceable>;
     <title>Description</title>
 
     <para>
-    append a new coordinator to the cluster which is running.
+APPEND COORDINATOR append a new coordinator to the cluster and make it run,it's equal to init and start.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Parameters</title>
 	 <para>
-      nodename :the name of coordinator which you want to append to the cluster,corresponds to the name column in the NODE table.
+      the name of coordinator which you want to append to the cluster,corresponds to the name column in the node table.
 	 </para>
   </refsect1>
   
@@ -44,10 +44,10 @@ APPEND COORDINATOR <replaceable class="parameter">nodename</replaceable>;
     <title>Examples</title>
 
     <para>
-      Alter datanode slave:
-      <programlisting>
-      append coordinator coord1;
-      </programlisting>
+      Append a new coordinator:
+<programlisting>
+append coordinator coord_name1;
+</programlisting>
     </para>
   </refsect1>
   
