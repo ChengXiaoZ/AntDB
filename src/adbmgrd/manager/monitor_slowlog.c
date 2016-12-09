@@ -75,15 +75,13 @@ char *monitor_get_onestrvalue_one_node(int agentport, char *sqlstr, char *user, 
 
 void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, char *address, int port, char *dbname)
 {
-	StringInfoData constr;
 	StringInfoData sqlslowlogStrData;
-	PGconn* conn;
-	PGresult *res;
+	StringInfoData resultstrdata;
+	StringInfoData querystr;
+	char strtmp[64];
 	char *connectdbname = "postgres";
-	char *dbuser = NULL;
-	char *querystr = NULL;
-	int nrow = 0;
-	int rowloop = 0;
+	char dbuser[64];
+	char *pstr = NULL;
 	int calls = 0;
 	TimestampTz time;
 	float totaltime = 0;
@@ -94,26 +92,15 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 	int callstmp = 0;
 	int slowlogmintime = 2;
 	int slowlognumoncetime = 5;
+	int iloop = 0;
 	bool gettoday = false;
-	bool getyesdt = false;	
+	bool getyesdt = false;
+
 	Form_monitor_slowlog monitor_slowlog;	
 	pg_time_t ptimenow;
 	Monitor_Threshold monitor_threshold;
 	
-	initStringInfo(&constr);
 	initStringInfo(&sqlslowlogStrData);
-	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, connectdbname);
-	appendStringInfoCharMacro(&constr, '\0');
-	conn = PQconnectdb(constr.data);
-	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
-	{
-		PQfinish(conn);
-		pfree(constr.data);
-		pfree(sqlslowlogStrData.data);
-		ereport(ERROR,
-		(errmsg("Connection to database failed: %s\n", PQerrorMessage(conn))));
-	}
 	/*get slowlog min time threshold in MonitorHostThresholdRelationId*/
 	get_threshold(SLOWQUERY_MINTIME, &monitor_threshold);
 	if (monitor_threshold.threshold_warning != 0)
@@ -122,41 +109,56 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 	if (monitor_threshold.threshold_warning != 0)
 		slowlognumoncetime = monitor_threshold.threshold_warning;
 	appendStringInfo(&sqlslowlogStrData, "select usename, calls, total_time/1000 as totaltime, query  from pg_stat_statements, pg_user, pg_database where ( total_time/calls/1000) > %d and userid=usesysid and pg_database.oid = dbid and datname=\'%s\' limit %d;", slowlogmintime, dbname, slowlognumoncetime);
-	res = PQexec(conn, sqlslowlogStrData.data);
-	if(PQresultStatus(res) != PGRES_TUPLES_OK)
-	{
-		PQclear(res);
-		PQfinish(conn);
-		pfree(constr.data);
-		pfree(sqlslowlogStrData.data);
-		ereport(ERROR,
-			(errmsg("Select failed: %s\n" , PQresultErrorMessage(res))));
-	}
-	/*get row number*/
-	nrow = PQntuples(res);
 	time = GetCurrentTimestamp();
 	ptimenow = timestamptz_to_time_t(time);
 
-	for(rowloop=0; rowloop<nrow; rowloop++)
+	initStringInfo(&resultstrdata);
+	monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentport, sqlslowlogStrData.data, user, address, port, connectdbname, &resultstrdata);
+	if (resultstrdata.len == 0)
 	{
+		pfree(resultstrdata.data);
+		return;
+	}
+	initStringInfo(&querystr);
+	pstr = resultstrdata.data;
+	while(*pstr != '\0' && iloop < slowlognumoncetime)
+	{
+		iloop++;
 		/*get username*/
-		dbuser = PQgetvalue(res, rowloop, 0 );
+		strncpy(dbuser, pstr, 63);
+		dbuser[strlen(dbuser)] = 0;
+		pstr = pstr + strlen(dbuser) + 1;
 		/*get run time*/
-		calls = atoi(PQgetvalue(res, rowloop, 1 ));
+		if (!pstr)
+			ereport(ERROR, (errmsg("get calls from slow log fail")));
+		strcpy(strtmp, pstr);
+		calls = atoi(strtmp);
+		pstr = pstr + strlen(strtmp) + 1;
 		/*get total used time*/
-		totaltime = atof(PQgetvalue(res, rowloop, 2 ));
+		if (!pstr)
+			ereport(ERROR, (errmsg("get totaltime from slow log fail")));
+		strcpy(strtmp, pstr);
+		totaltime = atof(strtmp);
 		singletime = totaltime/calls;
+		pstr = pstr + strlen(strtmp) + 1;
 		/*get query string*/
-		querystr = PQgetvalue(res, rowloop, 3 );
+		if (!pstr)
+			ereport(ERROR, (errmsg("get querystr from slow log fail")));
+		resetStringInfo(&querystr);
+		appendStringInfo(&querystr, "%s", pstr);
+		querystr.data[querystr.len] = 0;
+		pstr = pstr + querystr.len + 1;
 		/*get queryplan*/
-		tupleret = check_record_yestoday_today(rel, &callstoday, &callsyestd, &gettoday, &getyesdt, querystr, dbuser, dbname, ptimenow);
+		tupleret = check_record_yestoday_today(rel, &callstoday, &callsyestd, &gettoday, &getyesdt, querystr.data, dbuser, dbname, ptimenow);
 		if (false  == gettoday && false == getyesdt)
 		{
 			/*insert record*/
-			monitor_insert_record(rel, agentport, time, dbname, dbuser, singletime, calls, querystr, user, address, port);
+			monitor_insert_record(rel, agentport, time, dbname, dbuser, singletime, calls, querystr.data, user, address, port);
 		}
 		else if (true  == gettoday && false == getyesdt)
 		{
+			if (NULL == tupleret)
+				continue;
 			monitor_slowlog = (Form_monitor_slowlog)GETSTRUCT(tupleret);
 			Assert(monitor_slowlog);
 			if (calls > callstoday)
@@ -186,7 +188,7 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 			if (calls != callsyestd)
 			{
 				/*insert the record*/
-				monitor_insert_record(rel, agentport, time, dbname, dbuser, singletime, callstmp, querystr, user, address, port);
+				monitor_insert_record(rel, agentport, time, dbname, dbuser, singletime, callstmp, querystr.data, user, address, port);
 			}
 		}
 		else /*true  == gettoday && true == getyesdt*/
@@ -224,9 +226,8 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 
 	}
 
-	PQclear(res);
-	PQfinish(conn);
-	pfree(constr.data);
+	pfree(resultstrdata.data);
+	pfree(querystr.data);
 }
 
 /*
@@ -436,7 +437,7 @@ void monitor_insert_record(Relation rel, int agentport, TimestampTz time, char *
 	strcpy(queryplanstr + strlen("explain "), querystr);
 	queryplanstr[queryplanlen-1] = '\0';
 	queryplanres = monitor_get_onestrvalue_one_node(agentport, queryplanstr, user, address, port, dbname);
-	if (NULL == queryplanres)
+	if (NULL == *queryplanres)
 	{
 		tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, singletime, calls, querystr, getplanerror);
 	}

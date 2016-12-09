@@ -1123,8 +1123,10 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 	PGconn* conn;
 	PGresult *res;
 	int nrow = 0;
+	int ncolumn = 0;
 	int iloop = 0;
-	
+	int jloop = 0;
+
 	initStringInfo(&constr);
 	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
 	appendStringInfoCharMacro(&constr, '\0');
@@ -1152,16 +1154,20 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 
 	/*get row num*/
 	nrow = PQntuples(res);
+	ncolumn = PQnfields(res);
 	/*get null*/
-	if (!nrow)
+	if (!nrow || !ncolumn)
 	{
-		ereport(ERROR,
+		ereport(WARNING,
 		(errmsg("get null, check the sql string: %s" , sqlstring)));
 	}
 	for (iloop=0; iloop<nrow; iloop++)
 	{
-		appendStringInfo(output, "%s", PQgetvalue(res, iloop, 0 ));
-		appendStringInfoCharMacro(output, '\0');
+		for (jloop=0; jloop<ncolumn; jloop++)
+		{
+			appendStringInfo(output, "%s", PQgetvalue(res, iloop, jloop ));
+			appendStringInfoCharMacro(output, '\0');
+		}
 	}
 	appendStringInfoCharMacro(output, '\0');
 	PQclear(res);
