@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP HOST</refname>
-    <refpurpose>drop one row host information in the host table</refpurpose>
+    <refpurpose>drop one the specifed host information in the host table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-drophost">
@@ -20,26 +20,44 @@ ADB documentation
   </indexterm>
 
   <refsynopsisdiv>
-    <synopsis>
-DROP HOST [ IF EXISTS ] <replaceable class="parameter">hostname</replaceable> [, ...] 
-    </synopsis>
+<synopsis>
+DROP HOST [ IF EXISTS ] <replaceable class="parameter">host_name</replaceable> [, ...] 
+</synopsis>
   </refsynopsisdiv>
+
+  <refsect1>
+    <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <replaceable class="parameter">host_name</replaceable>
+    </term>
+    <listitem>
+     <para>
+      Host name.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-   <command>DROP HOST</command> drop one row host information in the host table.
+   <command>DROP HOST</command> drop the specifed host information in the host table.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Examples</title>
 
-    <para>
-      Drop "host1" in the host table:
+<para>
+Drop host host_name in the host table:
 <programlisting>
-DROP HOST host1;
+DROP HOST host_name;
 </programlisting>
     </para>
   </refsect1>

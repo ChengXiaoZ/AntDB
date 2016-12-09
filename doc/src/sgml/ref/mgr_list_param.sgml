@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-LIST PARAM  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> ] [, ...]
+LIST PARAM  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> [, ...] ]
 LIST PARAM node_type nodename [ sub_like_string ]
 LIST PARAM cluster_type all [ sub_like_string ]
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
@@ -80,7 +80,7 @@ LIST PARAM cluster_type all [ sub_like_string ]
     </term>
     <listitem>
      <para>
-      The parameter that in the file of postgres.conf.
+      The parameter that can be in the file of postgres.conf.
      </para>
     </listitem>
   </varlistentry>
@@ -114,9 +114,9 @@ LIST PARAM;
 </programlisting>
   </para>
   <para>
-   List the content of param,which is datanode master "dn1"::
+   List the content of param,which is datanode master "datanode_name1"::
 <programlisting>
-LIST PARAM datanode master dn1;
+LIST PARAM datanode master datanode_name1;
 </programlisting>
   </para>
   </refsect1>
@@ -124,11 +124,7 @@ LIST PARAM datanode master dn1;
     <title>See Also</title>
 
     <simplelist type="inline">
-    <member><xref linkend="mgr-setgtm"></member>
-    <member><xref linkend="mgr-setcoordinator"></member>
     <member><xref linkend="mgr-setdatanode"></member>
-    <member><xref linkend="mgr-resetgtm"></member>
-    <member><xref linkend="mgr-resetcoordinator"></member>
     <member><xref linkend="mgr-resetdatanode"></member>
     </simplelist>
   </refsect1>

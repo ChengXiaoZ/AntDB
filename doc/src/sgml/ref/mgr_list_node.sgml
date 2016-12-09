@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> ] [, ...]
+LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> [, ...] ]
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
   <replaceable class="parameter">NAME</replaceable>
   <replaceable class="parameter">HOST</replaceable>
@@ -30,7 +30,6 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
   <replaceable class="parameter">PORT</replaceable>
   <replaceable class="parameter">SYNC</replaceable>
   <replaceable class="parameter">PATH</replaceable>
-  <replaceable class="parameter">PRIMARY</replaceable>
   <replaceable class="parameter">INITIALIZED</replaceable>
   <replaceable class="parameter">INCLUSTER</replaceable>
     </synopsis>
@@ -105,15 +104,6 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">PRIMARY</replaceable>
-    </term>
-    <listitem>
-     <para>
-      The symbol of node for pgxc_node system table.
-      </para>
-    </listitem>
-  </varlistentry>
-  <varlistentry>
     <term><replaceable class="parameter">INITIALIZED</replaceable>
     </term>
     <listitem>
@@ -143,9 +133,9 @@ LIST NODE;
 </programlisting>
 	</para>
 	<para>
-	 List  the content of node,which name is "datanode1":
+	 List  the content of datanode_name1:
 <programlisting>
-LIST NODE datanode1;
+LIST NODE datanode_name1;
 </programlisting>
   </para>
   </refsect1>
@@ -153,14 +143,8 @@ LIST NODE datanode1;
     <title>See Also</title>
 
     <simplelist type="inline">
-      <member><xref linkend="mgr-addgtm"></member>
-      <member><xref linkend="mgr-addcoordinator"></member>
       <member><xref linkend="mgr-adddatanode"></member>
-      <member><xref linkend="mgr-altergtm"></member>
-      <member><xref linkend="mgr-altercoordinator"></member>
       <member><xref linkend="mgr-alterdatanode"></member>
-      <member><xref linkend="mgr-dropgtm"></member>
-      <member><xref linkend="mgr-dropcoordinator"></member>
       <member><xref linkend="mgr-dropdatanode"></member>
     </simplelist>
   </refsect1>

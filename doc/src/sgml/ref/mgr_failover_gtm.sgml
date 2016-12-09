@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>FAILOVER GTM</refname>
-    <refpurpose>pormote gtm slave or extra to gtm master</refpurpose>
+    <refpurpose>promote gtm slave or extra to gtm master</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-failovergtm">
@@ -20,17 +20,16 @@ ADB documentation
   </indexterm>
 
   <refsynopsisdiv>
-    <synopsis>
-FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</replaceable> [ FORCE ]
-    </synopsis>
+<synopsis>
+FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replaceable> [ FORCE ]
+</synopsis>
   </refsynopsisdiv>
-
   <refsect1>
     <title>Description</title>
 
     <para>
-   <command>FAILOVER GTM</command> pormote gtm slave to gtm master, which is synchronized;
-     If the gtm slave is not synchronized, and want to pormote it to gtm master ,use "force" at command end;
+   <command>FAILOVER GTM</command> promote gtm slave to gtm master, which is synchronized;
+     If the gtm slave is not synchronized, and want to promote it to gtm master, use "force" at command end;
      For the command "failover gtm", it checks the type of gtm slave first, if it is not synchronized then checks the type of gtm extra.
     </para>
   </refsect1>
@@ -39,7 +38,7 @@ FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</replacea
 
   <variablelist>
    <varlistentry>
-    <term><replaceable class="parameter">nodename</replaceable></term>
+    <term><replaceable class="parameter">node_name</replaceable></term>
     <listitem>
      <para>
       The gtm slave or extra name.
@@ -52,20 +51,20 @@ FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">nodename</replacea
   <refsect1>
     <title>Examples</title>
 
-  <para>
-   Promote one gtm slave or extra to master, which must be synchronized:
+<para>
+Promote gtm slave or extra to master, which must be synchronized:
 <programlisting>
 FAILOVER GTM;
 </programlisting>
-  </para>
-  <para>
-   promote one gtm slave or extra to master, no matter it is synchronized or not:
+ </para>
+<para>
+promote gtm slave or extra to master, no matter it is synchronized or not:
 <programlisting>
 FAILOVER GTM FORCE;
 </programlisting>
   </para>
-  <para>
-   Promote one gtm slave to master, which type is gtm slave:
+<para>
+Promote gtm slave to master, which type is gtm slave:
 <programlisting>
 FAILOVER GTM SLAVE;
 </programlisting>

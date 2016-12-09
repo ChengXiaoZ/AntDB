@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP GTM</refname>
-    <refpurpose>drop one row gtm information in the node table</refpurpose>
+    <refpurpose>drop the specifed gtm in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-dropgtm">
@@ -20,16 +20,16 @@ ADB documentation
   </indexterm>
 
   <refsynopsisdiv>
-    <synopsis>
-DROP GTM { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable>;
-    </synopsis>
+<synopsis>
+DROP GTM { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">node_name</replaceable>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-   <command>DROP GTM</command> drop one row gtm information in the node table.
+   <command>DROP GTM</command> drop the specifed gtm in the node table.
     </para>
   </refsect1>
 
@@ -39,7 +39,7 @@ DROP GTM { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter"
   <variablelist>
    <varlistentry>
     <term>
-     <replaceable class="parameter">nodename</replaceable>
+     <replaceable class="parameter">node_name</replaceable>
     </term>
     <listitem>
      <para>
@@ -55,9 +55,9 @@ DROP GTM { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter"
   <refsect1>
     <title>Examples</title>
   <para>
-   Drop gtm slave ( nodename is "gtmname") in the node table:
+   Drop gtm slave gtm_name in the node table:
 <programlisting>
-DROP GTM SLAVE gtmname;
+DROP GTM SLAVE gtm_name;
 </programlisting>
   </para>
   </refsect1>

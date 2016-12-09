@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP COORDINATOR</refname>
-    <refpurpose>drop one row coordinator information in the node table</refpurpose>
+    <refpurpose>drop the specifed coordinator in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-dropcoordinator">
@@ -20,16 +20,16 @@ ADB documentation
   </indexterm>
 
   <refsynopsisdiv>
-    <synopsis>
-DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable> [, ...]
-    </synopsis>
+<synopsis>
+DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">node_name</replaceable> [, ...]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-	 <command>DROP COORDINATOR</command> drop one row coordinator information in the node table.
+	 <command>DROP COORDINATOR</command> drop the specifed coordinator in the node table.
     </para>
   </refsect1>
 
@@ -38,7 +38,7 @@ DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">nodename</replacea
 
   <variablelist>
    <varlistentry>
-    <term> <replaceable class="parameter">nodename</replaceable></term>
+    <term> <replaceable class="parameter">node_name</replaceable></term>
     <listitem>
      <para>
       Node name, corresponds to the name column in the node table.
@@ -52,10 +52,10 @@ DROP COORDINATOR [ IF EXISTS ] <replaceable class="parameter">nodename</replacea
 
   <refsect1>
   <title>Examples</title>
-  <para>
-   drop coordinator ( nodename is "coord1") in the node table:
+ <para>
+drop coordinator coordinator_name1 in the node table:
 <programlisting>
-DROP COORDINATOR coord1;
+DROP COORDINATOR coordinator_name1;
 </programlisting>
   </para>
   </refsect1>

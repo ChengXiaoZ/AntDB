@@ -20,14 +20,12 @@ ADB documentation
   </indexterm>
 
   <refsynopsisdiv>
-    <synopsis>
-CLEAN ALL;
-    </synopsis>
+<synopsis>
+CLEAN ALL
+</synopsis>
   </refsynopsisdiv>
-
   <refsect1>
     <title>Description</title>
-
     <para>
     <command>CLEAN ALL</command> clean all the data of the cluster. If the cluster is running, it needs to be stopped first.
     </para>
@@ -35,12 +33,12 @@ CLEAN ALL;
 
   <refsect1>
   <title>Examples</title>
-  <para>
-   Clean all the data of cluster:
+ <para>
+Clean all the data of cluster:
 <programlisting>
 CLEAN ALL;
 </programlisting>
-  </para>
+</para>
   </refsect1>
 
 </refentry>

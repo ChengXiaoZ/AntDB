@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP DATANODE</refname>
-    <refpurpose>drop one row datanode information in the node table</refpurpose>
+    <refpurpose>drop the specifed datanode in the node table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-dropdatanode">
@@ -20,16 +20,16 @@ ADB documentation
   </indexterm>
 
   <refsynopsisdiv>
-    <synopsis>
-DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">nodename</replaceable> [, ...]
-    </synopsis>
+<synopsis>
+DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">node_name</replaceable> [, ...]
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-   <command>DROP DATANODE</command> drop one row datanode information in the node table.
+   <command>DROP DATANODE</command> drop the specifed datanode in the node table.
     </para>
   </refsect1>
 
@@ -38,7 +38,7 @@ DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="param
 
   <variablelist>
    <varlistentry>
-    <term><replaceable class="parameter">nodename</replaceable></term>
+    <term><replaceable class="parameter">node_name</replaceable></term>
     <listitem>
      <para>
       Node name, corresponds to the name column in the node table.
@@ -52,10 +52,10 @@ DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="param
 
   <refsect1>
     <title>Examples</title>
-  <para>
-   Drop datanode slave ( nodename is "datanode1") in the node table:
+<para>
+Drop datanode slave datanode_name1 in the node table:
 <programlisting>
-DROP DATANODE SLAVE datanode1;
+DROP DATANODE SLAVE datanode_name1;
 </programlisting>
   </para>
   </refsect1>
