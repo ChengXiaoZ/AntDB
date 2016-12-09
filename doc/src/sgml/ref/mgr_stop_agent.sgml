@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    STOP AGENT [ ALL | <replaceable class="parameter">host_name</replaceable> [, ...] ]
+STOP AGENT { ALL | <replaceable class="parameter">host_name</replaceable> [, ...] }
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Stop the agent process on the ADB cluster, ADB MANAGER through the agent process to manage the ADB cluster.
+<command>STOP AGENT</command> stop the agent process on the ADB cluster, ADB manager through the agent process to manage the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -53,14 +53,14 @@ Stop the agent process on the ADB cluster, ADB MANAGER through the agent process
 
     <para>
 Stop all agent process:
-      <programlisting>
-    STOP AGENT ALL;
+<programlisting>
+STOP AGENT ALL;
 </programlisting>
     </para>
     <para>
-Stop agent process to hostname1, hostname2:
-      <programlisting>
-    STOP AGENT hostname1, hostname2;
+Stop agent process to host_name1, host_name2:
+<programlisting>
+STOP AGENT host_name1, host_name2;
 </programlisting>
     </para>
   </refsect1>

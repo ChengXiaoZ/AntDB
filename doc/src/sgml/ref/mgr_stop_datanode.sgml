@@ -21,12 +21,14 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    STOP DATANODE ALL [ <replaceable class="parameter">stop_mode</replaceable> ]
-    STOP DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] } [ <replaceable class="parameter">stop_mode</replaceable> ]
-<phrase>    where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
-        MODE SMART     | MODE S
-        MODE FAST      | MODE F
-        MODE IMMEDIATE | MODE I
+STOP DATANODE ALL [ <replaceable class="parameter">stop_mode</replaceable> ]
+STOP DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] } [ <replaceable class="parameter">stop_mode</replaceable> ]
+
+<phrase>where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
+
+   MODE SMART     | MODE S
+   MODE FAST      | MODE F
+   MODE IMMEDIATE | MODE I
 </synopsis>
   </refsynopsisdiv>
 
@@ -34,7 +36,7 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Stop the datanode node on the ADB cluster.
+<command>STOP DATANODE</command> stop the datanode node on the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -58,8 +60,8 @@ Stop the datanode node on the ADB cluster.
 
     <para>
 Stop all datanode master using immediate mode:
-      <programlisting>
-    STOP DATANODE MASTER ALL MODE I;
+<programlisting>
+STOP DATANODE MASTER ALL MODE I;
 </programlisting>
     </para>
 
