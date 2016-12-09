@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    MONITOR COORDINATOR [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
+MONITOR COORDINATOR [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,10 +29,10 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Monitor the current state for coordinator node.
+<command>MONITOR COORDINATOR</command> monitor the current state for coordinator node.
     </para>
     <para>
-Node has three operating conditions:running, not running and reject connection.
+Node has three operating conditions: running, not running and reject connection.
     </para>
 
     <para>
@@ -68,8 +68,8 @@ Node has three operating conditions:running, not running and reject connection.
 
     <para>
 monitor the state for all coordinator:
-      <programlisting>
-    MONITOR COORDINATOR ALL;
+<programlisting>
+MONITOR COORDINATOR ALL;
 </programlisting>
     </para>
   </refsect1>

@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    MONITOR AGENT [ ALL | <replaceable class="parameter">host_name</replaceable> [, ...] ]
+MONITOR AGENT [ ALL | <replaceable class="parameter">host_name</replaceable> [, ...] ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Monitor the agent process on the ADB host, ADB MANAGER through the agent process to manage the ADB cluster.
+<command>MONITOR AGENT</command> monitor the agent process on the ADB host, ADB manager through the agent process to manage the ADB cluster.
     </para>
   </refsect1>
   <refsect1>
@@ -54,13 +54,13 @@ Monitor the agent process on the ADB host, ADB MANAGER through the agent process
     <para>
 Monitor all agent process:
       <programlisting>
-        MONITOR AGENT ALL;
+MONITOR AGENT ALL;
 </programlisting>
     </para>
     <para>
-Monitor agent process to hostname1,hostname2:
+Monitor agent process to host_name1,host_name1:
       <programlisting>
-        MONITOR AGENT hostname1, hostname2;
+MONITOR AGENT host_name1, host_name1;
 </programlisting>
     </para>
   </refsect1>

@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    MONITOR GTM [ ALL ]
-    MONITOR GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+MONITOR GTM [ ALL ]
+MONITOR GTM { MASTER | SLAVE | EXTRA } [ ALL | <replaceable class="parameter">node_name</replaceable> ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -30,10 +30,10 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Monitor the current state for gtm in the ADB cluster node.
+<command>MONITOR GTM</command> monitor the current state for gtm in the ADB cluster node.
     </para>
     <para>
-Node has three operating conditions:running, not running and reject connection.
+Node has three operating conditions: running, not running and reject connection.
     </para>
 
     <para>
@@ -69,8 +69,8 @@ Node has three operating conditions:running, not running and reject connection.
 
     <para>
 Monitor all gtm:
-      <programlisting>
-        MONITOR GTM ALL;
+<programlisting>
+MONITOR GTM ALL;
 </programlisting>
     </para>
   </refsect1>

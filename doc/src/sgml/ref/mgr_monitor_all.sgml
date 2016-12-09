@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    MONITOR [ ALL ]
+MONITOR [ ALL ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,10 +29,10 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Monitor the current state for all cluster node.
+<command>MONITOR ALL</command> monitor the current state for all cluster node.
     </para>
     <para>
-Node has three operating conditions:running, not running and reject connection.
+Node has three operating conditions: running, not running and reject connection.
     </para>
 
     <para>
@@ -53,8 +53,8 @@ Node has three operating conditions:running, not running and reject connection.
 
     <para>
 Monitor the state for all node:
-      <programlisting>
-    MONITOR ALL;
+<programlisting>
+MONITOR ALL;
 </programlisting>
     </para>
   </refsect1>

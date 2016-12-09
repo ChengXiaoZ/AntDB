@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-    MONITOR DATANODE ALL
-    MONITOR DATANODE { MASTER | SLAVE | EXTRA } [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
+MONITOR DATANODE [ ALL ]
+MONITOR DATANODE { MASTER | SLAVE | EXTRA } [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -30,10 +30,10 @@ ADB documentation
     <title>Description</title>
 
     <para>
-Monitor the current state for datanode in the ADB cluster.
+<command>MONITOR DATANODE</command> monitor the current state for datanode in the ADB cluster.
     </para>
     <para>
-Node has three operating conditions:running, not running and reject connection.
+Node has three operating conditions: running, not running and reject connection.
     </para>
 
     <para>
@@ -69,8 +69,8 @@ Node has three operating conditions:running, not running and reject connection.
 
     <para>
 Monitor the state for all datanode master:
-      <programlisting>
-    MONITOR DATANODE MASTER ALL;
+<programlisting>
+MONITOR DATANODE MASTER ALL;
 </programlisting>
     </para>
   </refsect1>
