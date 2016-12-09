@@ -1299,10 +1299,23 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 			foreach(l, rnonvars)
 			{
 				Node	   *rexpr = (Node *) lfirst(l);
-
+#ifdef ADB
+				OraCoerceKind sv_coerce_kind = current_coerce_kind;
+				current_coerce_kind = ORA_COERCE_COMMON_FUNCTION;
+				PG_TRY();
+				{
+#endif
 				rexpr = coerce_to_common_type(pstate, rexpr,
 											  scalar_type,
 											  "IN");
+#ifdef ADB
+				} PG_CATCH();
+				{
+					current_coerce_kind = sv_coerce_kind;
+					PG_RE_THROW();
+				} PG_END_TRY();
+				current_coerce_kind = sv_coerce_kind;
+#endif
 				aexprs = lappend(aexprs, rexpr);
 			}
 			newa = makeNode(ArrayExpr);
@@ -1491,6 +1504,7 @@ transformDecodeExpr(ParseState *pstate, Node *warg, Node *expr, Oid stype)
 		current_coerce_kind = sv_coerce_kind;
 		PG_RE_THROW();
 	} PG_END_TRY();
+	current_coerce_kind = sv_coerce_kind;
 
 	return result;
 }
@@ -1596,6 +1610,7 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 			current_coerce_kind = sv_coerce_kind;
 			PG_RE_THROW();
 		} PG_END_TRY();
+		current_coerce_kind = sv_coerce_kind;
 	}
 #endif
 

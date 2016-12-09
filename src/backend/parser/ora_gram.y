@@ -2133,21 +2133,7 @@ a_expr:	c_expr
 		}
 	| a_expr IN_P '(' expr_list ')'
 		{
-			/*$$ = (Node*)makeSimpleA_Expr(AEXPR_IN, "=", $1, (Node*)$4, @2);*/
-			ListCell *lc = NULL;
-			Node *result = NULL;
-
-			result = (Node *)makeSimpleA_Expr(AEXPR_OP, "=", $1, (Node *)linitial($4), @2);
-			lc = lnext(list_head($4));
-			for_each_cell (lc, lc)
-			{
-				result = (Node*)makeA_Expr(AEXPR_OR,
-										   NIL,
-										   result,
-										   (Node *)makeSimpleA_Expr(AEXPR_OP, "=", $1, (Node *)lfirst(lc), @2),
-										   @2);
-			}
-			$$ = result;
+			$$ = (Node*)makeSimpleA_Expr(AEXPR_IN, "=", $1, (Node*)$4, @2);
 		}
 	| a_expr NOT IN_P select_with_parens
 		{
@@ -2161,21 +2147,7 @@ a_expr:	c_expr
 		}
 	| a_expr NOT IN_P '(' expr_list ')'
 		{
-			/*$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "<>", $1, (Node*)$5, @2);*/
-			ListCell *lc = NULL;
-			Node *result = NULL;
-
-			result = (Node *)makeSimpleA_Expr(AEXPR_OP, "<>", $1, (Node *)linitial($5), @2);
-			lc = lnext(list_head($5));
-			for_each_cell (lc, lc)
-			{
-				result = (Node*)makeA_Expr(AEXPR_AND,
-										   NIL,
-										   result,
-										   (Node *)makeSimpleA_Expr(AEXPR_OP, "<>", $1, (Node *)lfirst(lc), @2),
-										   @2);
-			}
-			$$ = result;
+			$$ = (Node *) makeSimpleA_Expr(AEXPR_IN, "<>", $1, (Node*)$5, @2);
 		}
 	| a_expr subquery_Op sub_type select_with_parens	%prec Op
 		{

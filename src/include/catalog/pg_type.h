@@ -70,9 +70,9 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71) BKI_SCHEMA_MACRO
 	 *
 	 * If typtype is 'c', typrelid is the OID of the class' entry in pg_class.
 	 */
-        char typtype;
+	char typtype;
 
-        /*
+    /*
 	 * typcategory and typispreferred help the parser distinguish preferred
 	 * and non-preferred coercions.  The category can be any single ASCII
 	 * character (but not \0).  The categories used for built-in types are
