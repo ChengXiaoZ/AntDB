@@ -183,6 +183,9 @@ typedef struct Const
 								 * contains a pointer to the information. */
 	int			location;		/* token location, or -1 if unknown */
 } Const;
+#ifdef ADB
+#define IsNullConst(node)	(node && IsA(node, Const) && ((Const *)(node))->constisnull)
+#endif
 
 /* ----------------
  * Param

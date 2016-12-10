@@ -1248,7 +1248,10 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 	foreach(l, (List *) a->rexpr)
 	{
 		Node	   *rexpr = transformExprRecurse(pstate, lfirst(l));
-
+#ifdef ADB
+		if (IsOracleParseGram(pstate) && IsNullConst(rexpr))
+			rexpr = (Node *) makeNullConst(UNKNOWNOID, -1, InvalidOid);
+#endif
 		rexprs = lappend(rexprs, rexpr);
 		if (contain_vars_of_level(rexpr, 0))
 			rvars = lappend(rvars, rexpr);
@@ -2292,11 +2295,8 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 
 		newe = transformExprRecurse(pstate, e);
 #ifdef ADB
-		if (IsOracleParseGram(pstate) &&
-			IsA(newe, Const) &&
-			((Const *)newe)->constisnull)
+		if (IsOracleParseGram(pstate) && IsNullConst(newe))
 			return (Node*)makeNullConst(UNKNOWNOID, -1, InvalidOid);
-			
 #endif
 		newargs = lappend(newargs, newe);
 	}
