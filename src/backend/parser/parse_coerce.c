@@ -1199,17 +1199,6 @@ select_common_type(ParseState *pstate, List *exprs, const char *context,
 	lc = lnext(list_head(exprs));
 	ptype = exprType(pexpr);
 
-#ifdef ADB
-	/*
-	 * Return the type of the first expression.
-	 *
-	 * See notes from document of oracle
-	 * the expressions in each expression_list must match in number and
-	 * data type the expressions to the left of the operator.
-	 */
-	if (IsOracleParseGram(pstate) && ptype != RECORDOID)
-		return ptype;
-#endif
 	/*
 	 * If all input types are valid and exactly the same, just pick that type.
 	 * This is the only way that we will resolve the result as being a domain

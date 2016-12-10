@@ -1274,6 +1274,19 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 		 * Note: use list_concat here not lcons, to avoid damaging rnonvars.
 		 */
 		allexprs = list_concat(list_make1(lexpr), rnonvars);
+#ifdef ADB
+		/*
+		 * Return the type of the first expression.
+		 *
+		 * See notes from document of oracle
+		 * the expressions in each expression_list must match in number and
+		 * data type the expressions to the left of the operator.
+		 */
+		scalar_type = InvalidOid;
+		if (IsOracleParseGram(pstate))
+				scalar_type = exprType(lexpr);
+		if (scalar_type == RECORDOID || scalar_type == InvalidOid)
+#endif
 		scalar_type = select_common_type(pstate, allexprs, NULL, NULL);
 
 		/*
