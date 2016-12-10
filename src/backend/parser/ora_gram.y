@@ -367,7 +367,7 @@ static Node* make_any_sublink(Node *testexpr, const char *operName, Node *subsel
 %right	HI_THEN_RETURN LO_THEN_LIMIT
 %right	LIMIT OFFSET
 %left	HI_THEN_LIMIT
-%left		UNION /*EXCEPT*/
+%left		UNION MINUS /*EXCEPT*/
 //%left		INTERSECT
 %nonassoc	CASE SOME
 %left		WHEN END_P
@@ -4849,6 +4849,10 @@ simple_select:
 		| select_clause UNION opt_all select_clause
 			{
 				$$ = makeSetOp(SETOP_UNION, $3, $1, $4);
+			}
+		| select_clause MINUS opt_all select_clause
+			{
+				$$ = makeSetOp(SETOP_EXCEPT, $3, $1, $4);
 			}
 		| values_clause { $$ = $1; }
 		;
