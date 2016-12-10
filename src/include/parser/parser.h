@@ -61,6 +61,7 @@ extern Node *makeAConst(Value *v, int location);
 extern Node *makeBoolAConst(bool state, int location);
 #ifdef ADB
 extern List *check_sequence_name(List *names, core_yyscan_t yyscanner, int location);
+extern Node *makeConnectSelect(List *target, RangeVar *range, Alias *as, Node *start, Node *connectby);
 #endif
 extern void check_qualified_name(List *names, core_yyscan_t yyscanner);
 extern List *check_func_name(List *names, core_yyscan_t yyscanner);

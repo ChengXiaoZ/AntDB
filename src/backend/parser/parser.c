@@ -391,6 +391,131 @@ check_sequence_name(List *names, core_yyscan_t yyscanner, int location)
 
 	return list_make1(makeStringConst(buf.data, location));
 }
+
+Node *makeConnectSelect(List *target, RangeVar *range, Alias *as, Node *start, Node *connectby)
+{
+	SelectStmt *n,*s1;
+	A_Expr *expr_connect;
+	RangeVar *r;
+	ColumnRef *c;
+	ListCell *lc;
+	ResTarget *res;
+	if(start == NULL || connectby == NULL)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("not have \"start by\" or \"connect by\"")));
+	}
+	if(!IsA(connectby, A_Expr))
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("syntax error")));
+	}
+	expr_connect = (A_Expr*)connectby;
+	if(!IsA(expr_connect->lexpr, ColumnRef) || !IsA(expr_connect->rexpr, ColumnRef))
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("syntax error")));
+	}
+
+	n = makeNode(SelectStmt);
+
+	/* make union all left */
+	s1 = makeNode(SelectStmt);
+	res = makeNode(ResTarget);
+	c = makeNode(ColumnRef);
+	c->fields = list_make1(makeNode(A_Star));
+	res->val = (Node*)c;
+	res->location = -1;
+	s1->targetList = list_make1(res);
+	range->alias = as;
+	s1->fromClause = list_make1(range);
+	s1->whereClause = start;
+
+	n->op = SETOP_UNION;
+	n->all = true;
+	n->larg = s1;
+
+	/* make union all right */
+	s1 = makeNode(SelectStmt);
+	res = makeNode(ResTarget);
+	c = makeNode(ColumnRef);
+	c->fields = list_make2(makeString("_c1"), makeNode(A_Star));
+	res->val = (Node*)c;
+	res->location = -1;
+	s1->targetList = list_make1(res);
+
+	/* make from join */
+	{
+		JoinExpr *join = makeNode(JoinExpr);
+		join->jointype = JOIN_INNER;
+
+		r = copyObject(range);
+		r->alias = makeAlias("_c1", NIL);
+		join->larg = (Node*)r;
+
+		r = makeRangeVar(NULL, pstrdup("t"), -1);
+		r->alias = makeAlias("_c2", NIL);
+		join->rarg = (Node*)r;
+
+		c = (ColumnRef*)(expr_connect->lexpr);
+		c->fields = list_make2(makeString(pstrdup("_c2")), llast(c->fields));
+		c = (ColumnRef*)(expr_connect->rexpr);
+		c->fields = list_make2(makeString(pstrdup("_c1")), llast(c->fields));
+		join->quals = (Node*)expr_connect;
+
+		s1->fromClause = list_make1(join);
+	}
+
+	n->rarg = s1;
+	/*
+	 * for now n is
+	 * select ... from "range" where "start"
+	 *   union all
+	 * select ... from "range","range" AS _c_ where "connect"
+	 *
+	 * next let n to with clause
+	 */
+	{
+		WithClause *with = makeNode(WithClause);
+		CommonTableExpr *comm = makeNode(CommonTableExpr);
+		comm->ctename = pstrdup("t");
+		comm->ctequery = (Node*)n;
+		comm->location = -1;
+		with->ctes = list_make1(comm);
+		with->recursive = true;
+		with->location = -1;
+		n = makeNode(SelectStmt);
+		n->withClause = with;
+	}
+
+	/* no n have whit clause (select ... union all select ...) */
+	res = makeNode(ResTarget);
+	c = makeNode(ColumnRef);
+	c->fields = list_make1(makeNode(A_Star));
+	res->val = (Node*)c;
+	res->location = -1;
+	foreach(lc, target)
+	{
+		res = lfirst(lc);
+		c = (ColumnRef*)(res->val);
+		if(!IsA(c, ColumnRef))
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR)
+				, errmsg("syntax error")));
+		}
+		c->fields = list_make2(makeString("t"), llast(c->fields));
+	}
+	n->targetList = target;
+
+	n->fromClause = list_make1(makeRangeVar(NULL, pstrdup("t"), -1));
+
+	return (Node*)n;
+}
+
 #endif
 
 /* check_qualified_name --- check the result of qualified_name production

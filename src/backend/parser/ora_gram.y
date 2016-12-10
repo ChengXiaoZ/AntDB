@@ -308,7 +308,7 @@ static Node* make_any_sublink(Node *testexpr, const char *operName, Node *subsel
 	BEGIN_P BETWEEN BFILE BIGINT BINARY_FLOAT BINARY_DOUBLE BLOB BOOLEAN_P BOTH BY BYTE_P
 	CASCADE CASE CAST CATALOG_P CHAR_P CHARACTERISTICS CHECK CLUSTER COLUMN COMMIT COMMENT 
 	COLLATION CONVERSION_P CONNECTION
-	COMMITTED COMPRESS COLLATE CONSTRAINT CYCLE NOCYCLE
+	COMMITTED COMPRESS COLLATE CONNECT CONSTRAINT CYCLE NOCYCLE
 	CONSTRAINTS CLOB COALESCE CONTENT_P CONTINUE_P CREATE CROSS CURRENT_DATE 
 	CURRENT_P CURRENT_TIMESTAMP CURRVAL CURSOR CONCURRENTLY CONFIGURATION
 	CACHE NOCACHE COMMENTS
@@ -4869,6 +4869,20 @@ simple_select:
 				$$ = makeSetOp(SETOP_EXCEPT, $3, $1, $4);
 			}
 		| values_clause { $$ = $1; }
+		/* simple connect by */
+		| SELECT opt_distinct target_list FROM relation_expr opt_alias_clause
+			START WITH columnref '=' AexprConst
+			CONNECT BY opt_prior columnref '=' columnref
+			{
+				if($2)
+					ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("syntax error"),
+							 parser_errposition(@1)));
+				$$ = makeConnectSelect($3, $5, $6
+						,(Node*)makeSimpleA_Expr(AEXPR_OP, "=", $9, $11, @10)
+						,(Node*)makeSimpleA_Expr(AEXPR_OP, "=", $15, $17, @16));
+			}
 		;
 
 sortby: a_expr opt_asc_desc
@@ -4892,6 +4906,11 @@ sort_clause: ORDER BY sortby_list		{ $$ = $3; }
 opt_sort_clause:
 	  sort_clause						{ $$ = $1; }
 	| /* empty */						{ $$ = NIL; }
+	;
+
+opt_prior:
+	  PRIOR
+	| /* empty */
 	;
 
 TableElement:
@@ -5694,6 +5713,7 @@ unreserved_keyword:
 	| COMMITTED
 	| CONTINUE_P
 	| COMMENTS
+	| CONNECT
 	| CONSTRAINTS
 	/*| CURRVAL*/
 	| CURSOR
