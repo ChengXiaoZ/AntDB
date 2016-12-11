@@ -1249,8 +1249,34 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 	{
 		Node	   *rexpr = transformExprRecurse(pstate, lfirst(l));
 #ifdef ADB
-		if (IsOracleParseGram(pstate) && IsNullConst(rexpr))
-			rexpr = (Node *) makeNullConst(UNKNOWNOID, -1, InvalidOid);
+		/*
+		 * Return the type of the first expression.
+		 *
+		 * See notes from document of oracle
+		 * the expressions in each expression_list must match in number and
+		 * data type the expressions to the left of the operator.
+		 */
+		if (IsOracleParseGram(pstate))
+		{
+			if (IsNullConst(rexpr))
+				rexpr = (Node *) makeNullConst(UNKNOWNOID, -1, InvalidOid);
+			else
+			{
+				OraCoerceKind sv_coerce_kind = current_coerce_kind;
+				current_coerce_kind = ORA_COERCE_COMMON_FUNCTION;
+				PG_TRY();
+				{
+					rexpr = coerce_to_common_type(pstate, rexpr,
+											  exprType(lexpr),
+											  "IN");
+				} PG_CATCH();
+				{
+					current_coerce_kind = sv_coerce_kind;
+					PG_RE_THROW();
+				} PG_END_TRY();
+				current_coerce_kind = sv_coerce_kind;
+			}
+		}
 #endif
 		rexprs = lappend(rexprs, rexpr);
 		if (contain_vars_of_level(rexpr, 0))
@@ -1315,23 +1341,10 @@ transformAExprIn(ParseState *pstate, A_Expr *a)
 			foreach(l, rnonvars)
 			{
 				Node	   *rexpr = (Node *) lfirst(l);
-#ifdef ADB
-				OraCoerceKind sv_coerce_kind = current_coerce_kind;
-				current_coerce_kind = ORA_COERCE_COMMON_FUNCTION;
-				PG_TRY();
-				{
-#endif
+
 				rexpr = coerce_to_common_type(pstate, rexpr,
 											  scalar_type,
 											  "IN");
-#ifdef ADB
-				} PG_CATCH();
-				{
-					current_coerce_kind = sv_coerce_kind;
-					PG_RE_THROW();
-				} PG_END_TRY();
-				current_coerce_kind = sv_coerce_kind;
-#endif
 				aexprs = lappend(aexprs, rexpr);
 			}
 			newa = makeNode(ArrayExpr);
