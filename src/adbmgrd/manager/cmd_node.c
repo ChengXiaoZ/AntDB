@@ -4889,6 +4889,8 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	bool nodetypechange = false;
 	Datum datum;
 
+	/*check all coordinators running normal*/
+	mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
 	if(strcmp(force_str, "force") ==0)
 		force = true;
 	if (strcmp(typestr, "slave") == 0)
