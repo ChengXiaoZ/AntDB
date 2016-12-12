@@ -21,19 +21,19 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">hostname</replaceable> [, ...] ]
+LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">host_name</replaceable> [, ...] ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
-    <replaceable class="parameter">NAME</replaceable>
-    <replaceable class="parameter">USER</replaceable>
-    <replaceable class="parameter">PORT</replaceable>
-    <replaceable class="parameter">PROTOCOL</replaceable>
-    <replaceable class="parameter">AGENTPORT</replaceable>
-    <replaceable class="parameter">ADDRESS</replaceable>
-    <replaceable class="parameter">PGHOME</replaceable>
-    </synopsis>
-  </refsynopsisdiv>
+    NAME
+    USER
+    PORT
+    PROTOCOL
+    AGENTPORT
+    ADDRESS
+    PGHOME
+</synopsis>
+</refsynopsisdiv>
   <refsect1>
     <title>Description</title>
     <para>
@@ -44,7 +44,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     <title>Parameters</title>
     <variablelist>
   <varlistentry>
-    <term><replaceable class="parameter">NAME</replaceable></term>
+    <term><literal>NAME</literal></term>
     <listitem>
     <para>
      Host name.
@@ -52,7 +52,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">USER</replaceable></term>
+    <term><literal>USER</literal></term>
     <listitem>
      <para>
       Select host's user name for run ADB.
@@ -60,15 +60,15 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">PORT</replaceable></term>
+    <term><literal>PORT</literal></term>
     <listitem>
      <para>
-      <replaceable class="parameter">protocol_type</replaceable> listen port number.
+      <literal>protocol</literal> listen port number.
      </para>
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">PROTOCOL</replaceable></term>
+    <term><literal>PROTOCOL</literal></term>
   <listitem>
      <para>
       Connect <replaceable class="parameter">host_address</replaceable> using protocol:<literal>ssh</literal>, <literal>telnet</literal>, only support ssh now.
@@ -77,18 +77,18 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
   </varlistentry>
   <varlistentry>
     <term>
-      <replaceable class="parameter">AGENTPORT</replaceable>
+      <literal>AGENTPORT</literal>
     </term>
     <listitem>
       <para>
-        agent listen TCP port.
+        Agent listen TCP port.
       </para>
     </listitem>
   </varlistentry>
 
   <varlistentry>
     <term>
-    <replaceable class="parameter">ADDRESS</replaceable></term>
+    <literal>ADDRESS</literal></term>
     <listitem>
      <para>
       Host address, only support IP address.
@@ -96,7 +96,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">PGHOME</replaceable></term>
+    <term><literal>PGHOME</literal></term>
     <listitem>
      <para>
       ADB programs install absolute path.
@@ -104,7 +104,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">hostname</replaceable></term>
+    <term><replaceable class="parameter">host_name</replaceable></term>
     <listitem>
      <para>
       Host name, not support IP address.
@@ -115,7 +115,6 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
   </refsect1>
   <refsect1>
     <title>Examples</title>
-
   <para>
    List all content of the host table:
 <programlisting>

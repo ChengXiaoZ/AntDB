@@ -22,29 +22,29 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 LIST PARAM
-LIST PARAM node_type nodename [ sub_like_string ]
-LIST PARAM cluster_type all [ sub_like_string ]
+LIST PARAM node_type node_name [ sub_like_string ]
+LIST PARAM cluster_type ALL [ sub_like_string ]
 
 <phrase>where <replaceable class="parameter">node_type</replaceable> can be one of:</phrase>
 
-    <replaceable class="parameter">GTM MASTER</replaceable>
-    <replaceable class="parameter">GTM SLAVE</replaceable>
-    <replaceable class="parameter">GTM EXTRA</replaceable>
-    <replaceable class="parameter">COORDINATOR</replaceable>
-    <replaceable class="parameter">DATANODE MASTER</replaceable>
-    <replaceable class="parameter">DATANODE SLAVE</replaceable>
-    <replaceable class="parameter">DATANODE EXTRA</replaceable>
+    GTM MASTER
+    GTM SLAVE
+    GTM EXTRA
+    COORDINATOR
+    DATANODE MASTER
+    DATANODE SLAVE
+    DATANODE EXTRA
 
 <phrase>where <replaceable class="parameter">cluster_type</replaceable> can be one of:</phrase>
 
-    <replaceable class="parameter">GTM</replaceable>
-    <replaceable class="parameter">COORDINATOR</replaceable>
-    <replaceable class="parameter">DATANODE</replaceable>
-    <replaceable class="parameter">DATANODE MASTER</replaceable>
-    <replaceable class="parameter">DATANODE SLAVE</replaceable>
-    <replaceable class="parameter">DATANODE EXTRA</replaceable>
-    </synopsis>
-  </refsynopsisdiv>
+    GTM
+    COORDINATOR
+    DATANODE
+    DATANODE MASTER
+    DATANODE SLAVE
+    DATANODE EXTRA
+</synopsis>
+</refsynopsisdiv>
   <refsect1>
     <title>Description</title>
     <para>
@@ -55,43 +55,16 @@ LIST PARAM cluster_type all [ sub_like_string ]
     <title>Parameters</title>
   <variablelist>
   <varlistentry>
-    <term><replaceable class="parameter">NODENAME</replaceable>
+    <term><replaceable class="parameter">node_name</replaceable>
     </term>
     <listitem>
      <para>
-      The gtm ,coordinator or datanode name.
+      The gtm, coordinator or datanode name.
      </para>
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">NODETYPE</replaceable>
-    </term>
-    <listitem>
-     <para>
-      The type of gtm ,coordinator or datanode.
-     </para>
-    </listitem>
-  </varlistentry>
-  <varlistentry>
-    <term><replaceable class="parameter">KEY</replaceable>
-    </term>
-    <listitem>
-     <para>
-      The parameter that can be in the file of postgres.conf.
-     </para>
-    </listitem>
-  </varlistentry>
-  <varlistentry>
-    <term><replaceable class="parameter">VALUE</replaceable>
-    </term>
-    <listitem>
-     <para>
-      The value of parameter.
-     </para>
-    </listitem>
-  </varlistentry>
-  <varlistentry>
-    <term><replaceable class="parameter">SUB_LIKE_STRING</replaceable>
+    <term><replaceable class="parameter">sub_like_string</replaceable>
     </term>
     <listitem>
      <para>
@@ -111,9 +84,9 @@ LIST PARAM;
 </programlisting>
   </para>
   <para>
-   List the content of param,which is datanode master "datanode_name1":
+   List parameters of datanode master datanode_name1:
 <programlisting>
-LIST PARAM datanode master datanode_name1;
+LIST PARAM DATANODE MASTER datanode_name1;
 </programlisting>
   </para>
   </refsect1>

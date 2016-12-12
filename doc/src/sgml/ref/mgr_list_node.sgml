@@ -21,21 +21,21 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> [, ...] ]
+LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">node_name</replaceable> [, ...] ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
-  <replaceable class="parameter">NAME</replaceable>
-  <replaceable class="parameter">HOST</replaceable>
-  <replaceable class="parameter">TYPE</replaceable>
-  <replaceable class="parameter">MASTERNAME</replaceable>
-  <replaceable class="parameter">PORT</replaceable>
-  <replaceable class="parameter">SYNC</replaceable>
-  <replaceable class="parameter">PATH</replaceable>
-  <replaceable class="parameter">INITIALIZED</replaceable>
-  <replaceable class="parameter">INCLUSTER</replaceable>
-    </synopsis>
-  </refsynopsisdiv>
+    NAME
+    HOST
+    TYPE
+    MASTERNAME
+    PORT
+    SYNC
+    PATH
+    INITIALIZED
+    INCLUSTER
+</synopsis>
+</refsynopsisdiv>
   <refsect1>
     <title>Description</title>
     <para>
@@ -46,7 +46,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     <title>Parameters</title>
   <variablelist>
   <varlistentry>
-    <term><replaceable class="parameter">NAME</replaceable></term>
+    <term><literal>NAME</literal></term>
     <listitem>
      <para>
       Node name.
@@ -54,7 +54,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">HOST</replaceable></term>
+    <term><literal>HOST</literal></term>
     <listitem>
      <para>
     	Your host name for install ADB cluster.
@@ -62,7 +62,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">TYPE</replaceable></term>
+    <term><literal>TYPE</literal></term>
     <listitem>
      <para>
       Node type.
@@ -70,7 +70,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">MASTERNAME</replaceable></term>
+    <term><literal>MASTERNAME</literal></term>
     <listitem>
      <para>
       The name of master node, if the node is not slave or extra, master_name is null.
@@ -78,7 +78,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">PORT</replaceable></term>
+    <term><literal>PORT</literal></term>
     <listitem>
      <para>
       The node listen port.
@@ -86,7 +86,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">SYNC</replaceable></term>
+    <term><literal>SYNC</literal></term>
     <listitem>
      <para>
       Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
@@ -94,7 +94,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">PATH</replaceable>
+    <term><literal>PATH</literal>
     </term>
     <listitem>
      <para>
@@ -103,7 +103,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">INITIALIZED</replaceable>
+    <term><literal>INITIALIZED</literal>
     </term>
     <listitem>
      <para>
@@ -112,17 +112,25 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><replaceable class="parameter">INCLUSTER</replaceable>
+    <term><literal>INCLUSTER</literal>
     </term>
     <listitem>
      <para>
       The symbol of node to show the node is in cluster or not.
       </para>
     </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><replaceable class="parameter">node_name</replaceable>
+    </term>
+    <listitem>
+     <para>
+      Node name, corresponds to the name column in the node table.
+      </para>
+    </listitem>
   </varlistentry>	
     </variablelist>
   </refsect1>
-
   <refsect1>
     <title>Examples</title>
   <para>

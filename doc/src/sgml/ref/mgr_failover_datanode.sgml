@@ -31,7 +31,7 @@ FAILOVER DATANODE [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</re
     <para>
    <command>FAILOVER DATANODE</command> promote datanode slave to datanode master, which is synchronized;
      If the datanode slave is not synchronized, and want to promote it to datanode master, use "force" at 
-		 command end; For the command "failover datanode nodename", it checks the type of datanode slave 
+		 command end; For the command "failover datanode node_name", it checks the type of datanode slave 
 		 first, if it is not synchronized then checks the type of datanode extra.
     </para>
   </refsect1>
@@ -62,7 +62,7 @@ FAILOVER DATANODE datanode_name1;
   <para>
    Promote datanode slave or extra datanode_name1 to master, no matter it is synchronized or not:
 <programlisting>
-FAILOVER DATANODE datanode_name1 force;
+FAILOVER DATANODE datanode_name1 FORCE;
 </programlisting>
   </para>
   <para>
