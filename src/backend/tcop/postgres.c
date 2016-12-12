@@ -1564,6 +1564,7 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	CachedPlanSource *psrc;
 #ifdef ADB
 	ParseGrammar grammar;
+	int			loglv = DEBUG2;
 #endif
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
@@ -1581,10 +1582,19 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (save_log_statement_stats)
 		ResetUsage();
 
+#ifdef ADB
+	if (IS_PGXC_COORDINATOR && log_parse_query)
+		loglv = LOG;
+	ereport(loglv,
+			(errmsg("[adb_parse] %s: %s",
+					*stmt_name ? stmt_name : "<unnamed>",
+					query_string)));
+#else
 	ereport(DEBUG2,
 			(errmsg("parse %s: %s",
 					*stmt_name ? stmt_name : "<unnamed>",
 					query_string)));
+#endif
 
 	/*
 	 * Start up a transaction command so we can run parse analysis etc. (Note

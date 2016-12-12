@@ -275,6 +275,10 @@ bool		restart_after_crash = true;
 
 char	   *output_config_variable = NULL;
 
+#ifdef ADB
+bool		log_parse_query = false;
+#endif
+
 /* PIDs of special child processes; 0 when not running */
 static pid_t StartupPID = 0,
 #ifdef PGXC /* PGXC_COORD */

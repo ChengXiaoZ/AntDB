@@ -1720,6 +1720,36 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+	{
+		{"debug_enable_satisfy_mvcc", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Turn on HeapTupleSatisfiesMVCC always return true."),
+		 	gettext_noop("Can set ON by SET command by superuser.")
+		},
+		&debug_enable_satisfy_mvcc,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_pushdown_art", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("push down query to one datanode if all table are replicated."),
+			NULL
+		},
+		&enable_pushdown_art,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"log_parse_query", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Logs query if execute a Parse protocol message."),
+			NULL
+		},
+		&log_parse_query,
+		false,
+		NULL, NULL, NULL
+	},
 #endif
 
 	/* End-of-list marker */
