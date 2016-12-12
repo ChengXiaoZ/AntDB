@@ -65,11 +65,11 @@ CREATE VIEW adbmgr.node AS
     mgrnode.nodeinited  AS  initialized,
     mgrnode.nodeincluster AS incluster
   FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid LEFT JOIN pg_catalog.mgr_node AS node_alise
-  ON node_alise.oid = mgrnode.nodemasternameoid order by 3;
+  ON node_alise.oid = mgrnode.nodemasternameoid order by 1,3;
 
 --monitor all
 CREATE VIEW adbmgr.monitor_all AS
-        select * from mgr_monitor_all() order by 2;
+        select * from mgr_monitor_all() order by 1,2;
 
 --init all
 CREATE VIEW adbmgr.initall AS
