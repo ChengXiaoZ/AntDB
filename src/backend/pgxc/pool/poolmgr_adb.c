@@ -2239,7 +2239,10 @@ static time_t close_timeout_idle_slots(time_t timeout)
 			{
 				slot = dlist_container(ADBNodePoolSlot, dnode, miter.cur);
 				Assert(slot->slot_state == SLOT_STATE_IDLE);
-				if(slot->released_time <= timeout)
+				if(slot->owner != NULL)
+				{
+					continue;
+				}else if(slot->released_time <= timeout)
 				{
 					dlist_delete(miter.cur);
 					destroy_slot(slot, false);
