@@ -437,7 +437,7 @@ void monitor_insert_record(Relation rel, int agentport, TimestampTz time, char *
 	strcpy(queryplanstr + strlen("explain "), querystr);
 	queryplanstr[queryplanlen-1] = '\0';
 	queryplanres = monitor_get_onestrvalue_one_node(agentport, queryplanstr, user, address, port, dbname);
-	if (NULL == *queryplanres)
+	if ('\0' == *queryplanres)
 	{
 		tup_result = monitor_build_slowlog_tuple(rel, time, dbname, dbuser, singletime, calls, querystr, getplanerror);
 	}

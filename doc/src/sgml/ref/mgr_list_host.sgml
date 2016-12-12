@@ -22,7 +22,9 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">hostname</replaceable> [, ...] ]
+
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
     <replaceable class="parameter">NAME</replaceable>
     <replaceable class="parameter">USER</replaceable>
     <replaceable class="parameter">PORT</replaceable>
@@ -32,17 +34,14 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     <replaceable class="parameter">PGHOME</replaceable>
     </synopsis>
   </refsynopsisdiv>
-
   <refsect1>
     <title>Description</title>
-
     <para>
    <command>LIST HOST</command> show the content of the host table.
     </para>
   </refsect1>
   <refsect1>
     <title>Parameters</title>
-
     <variablelist>
   <varlistentry>
     <term><replaceable class="parameter">NAME</replaceable></term>
@@ -56,7 +55,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     <term><replaceable class="parameter">USER</replaceable></term>
     <listitem>
      <para>
-      Select host's user name for run ADB
+      Select host's user name for run ADB.
      </para>
     </listitem>
   </varlistentry>

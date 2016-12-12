@@ -22,7 +22,9 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> [, ...] ]
+
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
   <replaceable class="parameter">NAME</replaceable>
   <replaceable class="parameter">HOST</replaceable>
   <replaceable class="parameter">TYPE</replaceable>
@@ -34,17 +36,14 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
   <replaceable class="parameter">INCLUSTER</replaceable>
     </synopsis>
   </refsynopsisdiv>
-
   <refsect1>
     <title>Description</title>
-
     <para>
    <command>LIST NODE</command> show the content of the node table.
     </para>
   </refsect1>
   <refsect1>
     <title>Parameters</title>
-
   <variablelist>
   <varlistentry>
     <term><replaceable class="parameter">NAME</replaceable></term>

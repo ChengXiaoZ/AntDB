@@ -21,15 +21,12 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-LIST PARAM  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">nodename</replaceable> [, ...] ]
+LIST PARAM
 LIST PARAM node_type nodename [ sub_like_string ]
 LIST PARAM cluster_type all [ sub_like_string ]
-<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
-    <replaceable class="parameter">NODENAME</replaceable>
-    <replaceable class="parameter">NODETYPE</replaceable>
-    <replaceable class="parameter">KEY</replaceable>
-    <replaceable class="parameter">VALUE</replaceable>
+
 <phrase>where <replaceable class="parameter">node_type</replaceable> can be one of:</phrase>
+
     <replaceable class="parameter">GTM MASTER</replaceable>
     <replaceable class="parameter">GTM SLAVE</replaceable>
     <replaceable class="parameter">GTM EXTRA</replaceable>
@@ -37,7 +34,9 @@ LIST PARAM cluster_type all [ sub_like_string ]
     <replaceable class="parameter">DATANODE MASTER</replaceable>
     <replaceable class="parameter">DATANODE SLAVE</replaceable>
     <replaceable class="parameter">DATANODE EXTRA</replaceable>
+
 <phrase>where <replaceable class="parameter">cluster_type</replaceable> can be one of:</phrase>
+
     <replaceable class="parameter">GTM</replaceable>
     <replaceable class="parameter">COORDINATOR</replaceable>
     <replaceable class="parameter">DATANODE</replaceable>
@@ -46,10 +45,8 @@ LIST PARAM cluster_type all [ sub_like_string ]
     <replaceable class="parameter">DATANODE EXTRA</replaceable>
     </synopsis>
   </refsynopsisdiv>
-
   <refsect1>
     <title>Description</title>
-
     <para>
    <command>LIST PARAM</command> show the content of parameter table.
     </para>
@@ -62,7 +59,7 @@ LIST PARAM cluster_type all [ sub_like_string ]
     </term>
     <listitem>
      <para>
-      The gtm ,coordinator or datanode name..
+      The gtm ,coordinator or datanode name.
      </para>
     </listitem>
   </varlistentry>
@@ -114,7 +111,7 @@ LIST PARAM;
 </programlisting>
   </para>
   <para>
-   List the content of param,which is datanode master "datanode_name1"::
+   List the content of param,which is datanode master "datanode_name1":
 <programlisting>
 LIST PARAM datanode master datanode_name1;
 </programlisting>

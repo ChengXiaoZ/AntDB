@@ -6049,6 +6049,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	getrefresh = mgr_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst);
 	if(!getrefresh)
 	{
+		ReleaseSysCache(mastertuple);
 		resetStringInfo(&(getAgentCmdRst->description));
 		appendStringInfoString(&(getAgentCmdRst->description),"ERROR: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
 		getAgentCmdRst->ret = getrefresh;
