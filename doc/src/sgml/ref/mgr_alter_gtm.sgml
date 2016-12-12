@@ -21,22 +21,22 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ALTER GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] )
+ALTER GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( option )
 
-<phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
-    <replaceable class="parameter">HOST</replaceable>
-    <replaceable class="parameter">PORT</replaceable>
-    <replaceable class="parameter">PATH</replaceable>
-    <replaceable class="parameter">SYNC</replaceable>
-    </synopsis>
+    HOST = <replaceable class="parameter">IP_address</replaceable>,
+    PORT = <replaceable class="parameter">port_number</replaceable>,
+    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+    PATH = <replaceable class="parameter">pg_data</replaceable>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-ALTER GTM alter the parameters of gtm's node table.
+<command>ALTER GTM</command> alter the parameters of gtm's node table.
     </para>
   </refsect1>
 
@@ -110,6 +110,5 @@ alter gtm slave gtm_name1(port = 5445);
 	  <member><xref linkend="mgr-altercoordinator"></member>
     </simplelist>
   </refsect1>
-
 
 </refentry>

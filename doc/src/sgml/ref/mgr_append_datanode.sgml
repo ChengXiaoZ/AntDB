@@ -21,15 +21,15 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">nodename</replaceable>
-    </synopsis>
+APPEND DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-APPEND DATANODE append a new datanode to the cluster and make it run,it's equal to init and start
+<command>APPEND DATANODE</command> append a new datanode to the cluster and make it run,it's equal to init and start.
     </para>
   </refsect1>
 

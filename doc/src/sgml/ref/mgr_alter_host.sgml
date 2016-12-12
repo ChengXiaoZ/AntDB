@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ALTER HOST <replaceable class="parameter">host_name</replaceable>( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] )
+ALTER HOST <replaceable class="parameter">host_name</replaceable>( option )
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
@@ -31,14 +31,14 @@ ALTER HOST <replaceable class="parameter">host_name</replaceable>( { parameter =
     PORT = <replaceable class="parameter">port_number</replaceable>,
     PROTOCOL = <replaceable class="parameter">protocol_type</replaceable>,
     USER = <replaceable class="parameter">user_name</replaceable>
-    </synopsis>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-ALTER HOST alter the parameters of host in the host table.
+<command>ALTER HOST</command> alter the parameters of host in the host table.
     </para>
   </refsect1>
 
@@ -96,7 +96,7 @@ ALTER HOST alter the parameters of host in the host table.
         </term>
         <listitem>
           <para>
-    <replaceable class="parameter">protocol_type</replaceable> listen port number.
+    Listen port number.
           </para>
         </listitem>
       </varlistentry>

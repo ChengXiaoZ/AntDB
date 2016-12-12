@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>SHOW</refname>
-    <refpurpose>show the valid parameter which is belong to the table of pg_settings</refpurpose>
+    <refpurpose>show the valid parameters which is belong to the view of pg_settings</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-show">
@@ -21,24 +21,23 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SHOW <replaceable class="parameter">nodename</replaceable> <replaceable class="parameter">option</replaceable>;
+<command>SHOW</command> <replaceable class="parameter">node_name</replaceable> <replaceable class="parameter">parameter</replaceable>
 
-where option can be any of parameter which is own to the table of pg_settings.
-
-    </synopsis>
+where parameter can be any one which is own to the view of pg_settings.
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>	
     <para>
-      show the value of the specifed parameter which is belong to the table of pg_settings.In addition it support fuzzy query.
+      Show the value of the specifed parameter which is belong to the view of pg_settings,in addition it support fuzzy query.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Examples</title>	
     <para>
-      Fuzzy query parameters with the sync.
+      Fuzzy query parameters with the sync:
 <programlisting>
 show datanode_name1 sync;
 </programlisting>

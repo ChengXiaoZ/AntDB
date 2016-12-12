@@ -22,21 +22,21 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 APPEND COORDINATOR <replaceable class="parameter">node_name</replaceable>
-    </synopsis>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-APPEND COORDINATOR append a new coordinator to the cluster and make it run,it's equal to init and start.
+<command>APPEND COORDINATOR</command> append a new coordinator to the cluster and make it run,it's equal to init and start.
     </para>
   </refsect1>
 
   <refsect1>
     <title>Parameters</title>
 	 <para>
-      the name of coordinator which you want to append to the cluster,corresponds to the name column in the node table.
+      The name of coordinator which you want to append to the cluster,corresponds to the name column in the node table.
 	 </para>
   </refsect1>
   

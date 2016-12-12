@@ -22,14 +22,14 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ]   
-    </synopsis>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-DEPLOY deploy ADB's binary files and other installation files to the specified host.
+<command>DEPLOY</command> deploy ADB's binary files and other installation files to the specified host.
     </para>
   </refsect1>
 
@@ -37,9 +37,9 @@ DEPLOY deploy ADB's binary files and other installation files to the specified h
     <title>Examples</title>
 
     <para>
-      Deploy files to all agent with password 123: 
+      Deploy files to all agent with user's password abc: 
 <programlisting>
-deploy all password 123; 
+deploy all password abc; 
 </programlisting>
 Deploy files to the agent localhost1 without password: 
 <programlisting>
@@ -47,7 +47,5 @@ deploy localhost1;
 </programlisting>
     </para>
   </refsect1>
-
-
 
 </refentry>

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>INIT ALL</refname>
-    <refpurpose>Initialize the ADB cluster</refpurpose>
+    <refpurpose>Initialize and start the ADB cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-initall">
@@ -22,21 +22,22 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 INIT ALL
-    </synopsis>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-INIT Initialize the ADB cluster,but the cluster must have gtm, coordinator, datanode master.
-    </para>
+<command>INIT ALL</command> initialize and start the ADB cluster,but the cluster must have node of gtm, coordinator, datanode master.
+    </para>	
   </refsect1>
 
   <refsect1>
     <title>Examples</title>
 
     <para>
+	  Initialize and start the ADB cluster:
 <programlisting>
 init all;
 </programlisting>

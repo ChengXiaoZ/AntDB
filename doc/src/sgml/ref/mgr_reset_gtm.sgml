@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>RESET GTM</refname>
-    <refpurpose>reset specified parameters of pg_settings table to default</refpurpose>
+    <refpurpose>reset specified parameters of pg_settings view to default</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-resetgtm">
@@ -26,15 +26,15 @@ RESET GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</r
 
 <phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
 
-     the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
-    </synopsis>
+     the parameter that in the file of postgres.conf and alse belong to the view of pg_settings.
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-RESET GTM reset the value of parameter to the default and the parameter which is own to the file of postgres.conf,it's also belong to the table of pg_settings;the operator won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update param table.
+<command>RESET GTM</command> reset the value of parameter to the default and the parameter which is own to the file of postgres.conf,it's also belong to the view of pg_settings;the operator won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update param table.
     </para>
   </refsect1>
 
@@ -48,19 +48,18 @@ RESET GTM reset the value of parameter to the default and the parameter which is
         </term>
         <listitem>
           <para>
-            the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
+            The parameter that in the file of postgres.conf and alse belong to the view of pg_settings.
           </para>
         </listitem>
       </varlistentry>
     </variablelist>
   </refsect1>
 
-
   <refsect1>
     <title>Examples</title>
 
     <para>
-      reset the value of 'synchronous_commit' and 'max_wal_senders' to the default:
+      Reset the value of 'synchronous_commit' and 'max_wal_senders' to the default:
 <programlisting>
 reset gtm master gtm_master(synchronous_commit, max_wal_senders);
 </programlisting>
@@ -74,6 +73,5 @@ reset gtm master gtm_master(synchronous_commit, max_wal_senders);
       <member><xref linkend="mgr-setgtm"></member>
     </simplelist>
   </refsect1>
-
 
 </refentry>

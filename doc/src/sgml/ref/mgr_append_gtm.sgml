@@ -22,14 +22,14 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
-    </synopsis>
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-APPEND GTM append a new gtm to the cluster and make it run,it's equal to init and start
+<command>APPEND GTM</command> append a new gtm to the cluster and make it run,it's equal to init and start.
     </para>
   </refsect1>
 
@@ -64,5 +64,4 @@ append gtm extra gtm_name;
   </simplelist>
  </refsect1>
  
-
 </refentry>

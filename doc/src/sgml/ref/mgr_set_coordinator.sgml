@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>SET COORDINATOR</refname>
-    <refpurpose>change the value of parameter which is belong to the table of pg_settings</refpurpose>
+    <refpurpose>change the value of parameter which is belong to the view of pg_settings</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-setcoordinator">
@@ -26,15 +26,15 @@ SET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( { param
 
 <phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
 
-    the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
-    </synopsis>
+    the parameter that in the file of postgres.conf and alse belong to the view of pg_settings.
+</synopsis>
   </refsynopsisdiv>
 
   <refsect1>
     <title>Description</title>
 
     <para>
-SET COORDINATOR change the the value of parameter which is belong to the table of pg_settings and update param table, it won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update param table.
+<command>SET COORDINATOR</command> change the the value of parameter which is belong to the view of pg_settings and update param table, it won't check the the value and name of parameter correctly if adding 'force' at the tail of command line,in addition,it will update param table.
     </para>
   </refsect1>
 
@@ -48,7 +48,7 @@ SET COORDINATOR change the the value of parameter which is belong to the table o
         </term>
         <listitem>
           <para>
-            the parameter that in the file of postgres.conf and alse belong to the table of pg_settings
+            The parameter that in the file of postgres.conf and alse belong to the view of pg_settings.
           </para>
         </listitem>
       </varlistentry>
@@ -73,6 +73,5 @@ set coordinator coord_name1(synchronous_commit = off, max_wal_senders = 10) forc
       <member><xref linkend="mgr-resetcoordinator"></member>
     </simplelist>
   </refsect1>
-
 
 </refentry>
