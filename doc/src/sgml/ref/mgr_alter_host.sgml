@@ -96,7 +96,7 @@ ALTER HOST <replaceable class="parameter">host_name</replaceable>( option )
         </term>
         <listitem>
           <para>
-    Listen port number.
+    Listen port number base on protocol_type.
           </para>
         </listitem>
       </varlistentry>

@@ -27,8 +27,8 @@ ALTER COORDINATOR <replaceable class="parameter">node_name</replaceable> ( optio
 
     HOST = <replaceable class="parameter">IP_address</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
-    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
-    PATH = <replaceable class="parameter">pg_data</replaceable>
+	PATH = <replaceable class="parameter">pg_data</replaceable>,
+    SYNC = <replaceable class="parameter">sync_mode</replaceable>   
 </synopsis>
   </refsynopsisdiv>
   
