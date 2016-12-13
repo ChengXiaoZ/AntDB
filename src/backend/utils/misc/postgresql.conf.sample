@@ -632,7 +632,6 @@
 #adb_ha_param_delimiter = '$&#$'		# Delimiter for recording execute sql
 #enable_stable_func_shipping = off     # Enable stable function shipping.
 #pool_time_out = 60                 # close connection from poolmgr to datanode idle process max time
-#client_gtm_timeout=20			#Sets the time to wait before gtm server returns
 #log_parse_query = off
 #------------------------------------------------------------------------------
 # CONFIG FILE INCLUDES
