@@ -74,8 +74,8 @@ const char *const GucContext_Parmnames[] =
 
 static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue, bool bneednotice);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
-static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *key, char *value, int effectparmstatus, bool bforce);
-static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce);
+static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, StringInfo paramstrdata, int effectparmstatus, bool bforce);
+static void mgr_updateparm_send_parm(GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, StringInfo paramstrdata, int effectparmstatus, bool bforce);
 static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax, StringInfo enumvalue);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
@@ -144,6 +144,8 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 {
 	HeapTuple newtuple;
 	Datum datum[Natts_mgr_updateparm];
+	List *param_keyvules_list = NIL;
+	ListCell *cell;
 	ListCell *lc;
 	DefElem *def;
 	NameData key;
@@ -154,19 +156,29 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 	NameData parmmax;
 	NameData valuetmp;
 	StringInfoData enumvalue;
+	StringInfoData paramstrdata;
 	bool isnull[Natts_mgr_updateparm];
+	bool bsighup = false;
 	char parmtype;			/*coordinator or datanode or gtm */
 	char *pvalue;
 	int insertparmstatus;
 	int effectparmstatus;
 	int vartype;  /*the parm value type: bool, string, enum, int*/
 	int ipoint = 0;
+	const int namemaxlen = 64;
+	struct keyvalue
+	{
+		char key[namemaxlen];
+		char value[namemaxlen];
+	};
+	struct keyvalue *key_value = NULL;
 	Assert(node && node->parmtype);
 	parmtype =  node->parmtype;
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	initStringInfo(&enumvalue);
 
+	/*check the key and value*/
 	foreach(lc,node->options)
 	{
 		def = lfirst(lc);
@@ -184,6 +196,9 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 			/*check the parameter is right for the type node of postgresql.conf*/
 			resetStringInfo(&enumvalue);
 			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue, bneednotice);
+			if(PGC_SIGHUP == effectparmstatus)
+				bsighup = true;
+
 			if (PGC_STRING == vartype || (PGC_ENUM == vartype && strstr(value.data, " ") != NULL))
 			{
 				/*if the value of key is string or the type is enum and value include space, it need use signle quota*/
@@ -192,42 +207,47 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 			/* allow whitespace between integer and unit */
 			if (PGC_INT == vartype)
 			{
-				pvalue = value.data;
-				ipoint = 0;
-				/*skip head space*/
-				while (isspace((unsigned char) *pvalue))
+				/*check the value not include empty space*/
+				pvalue=strchr(value.data, ' ');
+				if (pvalue != NULL)
 				{
-					pvalue++;
-				}
-				while(*pvalue != '\0' && *pvalue != ' ')
-				{
-					valuetmp.data[ipoint] = *pvalue;
-					ipoint++;
-					pvalue++;
-				}
-				/*skip the space between value and unit*/
-				while (isspace((unsigned char) *pvalue))
-				{
-					pvalue++;
-				}
-				if (*pvalue < '0' || *pvalue > '9')
-				{
-					/*get the unit*/
+					pvalue = value.data;
+					ipoint = 0;
+					/*skip head space*/
+					while (isspace((unsigned char) *pvalue))
+					{
+						pvalue++;
+					}
 					while(*pvalue != '\0' && *pvalue != ' ')
 					{
 						valuetmp.data[ipoint] = *pvalue;
 						ipoint++;
 						pvalue++;
 					}
-					/*skip the space after unit*/
+					/*skip the space between value and unit*/
 					while (isspace((unsigned char) *pvalue))
 					{
 						pvalue++;
 					}
-					if ('\0' == *pvalue)
+					if (*pvalue < '0' || *pvalue > '9')
 					{
-						valuetmp.data[ipoint]='\0';
-						namestrcpy(&value, valuetmp.data);
+						/*get the unit*/
+						while(*pvalue != '\0' && *pvalue != ' ')
+						{
+							valuetmp.data[ipoint] = *pvalue;
+							ipoint++;
+							pvalue++;
+						}
+						/*skip the space after unit*/
+						while (isspace((unsigned char) *pvalue))
+						{
+							pvalue++;
+						}
+						if ('\0' == *pvalue)
+						{
+							valuetmp.data[ipoint]='\0';
+							namestrcpy(&value, valuetmp.data);
+						}
 					}
 				}
 			}
@@ -240,20 +260,41 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 		}
 		else
 		{
-			/*check the value is not integer or real, add single quota for it if it not using single quota*/
-			if(strspn(value.data,"0123456789.") != strlen(value.data))
-			{
-				mgr_string_add_single_quota(&value);
-			}
+			/*add single quota for it if it not using single quota*/
+			mgr_string_add_single_quota(&value);
 		}
+		key_value = palloc(sizeof(struct keyvalue));
+		strncpy(key_value->key, key.data, namemaxlen-1);
+		/*get key*/
+		if (strlen(key.data) < namemaxlen)
+			key_value->key[strlen(key.data)] = '\0';
+		else
+			key_value->key[namemaxlen-1] = '\0';
+		/*get value*/
+		strncpy(key_value->value, value.data, namemaxlen-1);
+		if (strlen(value.data) < namemaxlen)
+			key_value->value[strlen(value.data)] = '\0';
+		else
+			key_value->value[namemaxlen-1] = '\0';
+		param_keyvules_list = lappend(param_keyvules_list,key_value); 
+	}
+	pfree(enumvalue.data);
+	
+	initStringInfo(&paramstrdata);
+	/*refresh the param table*/
+	foreach(cell, param_keyvules_list)
+	{
+		key_value = (struct keyvalue *)(lfirst(cell));
+		namestrcpy(&key, key_value->key);
+		namestrcpy(&value, key_value->value);
+		/*add key, value to send string*/
+		mgr_append_pgconf_paras_str_str(key.data, value.data, &paramstrdata);
 		/*check the parm exists already in mgr_updateparm systbl*/
 		insertparmstatus = mgr_check_parm_in_updatetbl(rel_updateparm, nodetype, nodename, &key, value.data);
 		if (PARM_NEED_NONE == insertparmstatus)
 			continue;
 		else if (PARM_NEED_UPDATE == insertparmstatus)
 		{
-			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			mgr_reload_parm(rel_node, nodename->data, nodetype, key.data, value.data, effectparmstatus, false);
 			continue;
 		}
 		datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(nodename);
@@ -265,10 +306,13 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 		simple_heap_insert(rel_updateparm, newtuple);
 		CatalogUpdateIndexes(rel_updateparm, newtuple);
 		heap_freetuple(newtuple);
-		/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-		mgr_reload_parm(rel_node, nodename->data, nodetype, key.data, value.data, effectparmstatus, false);
 	}
-	pfree(enumvalue.data);
+	list_free(param_keyvules_list);
+	/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
+	if (bsighup)
+		effectparmstatus = PGC_SIGHUP;
+	mgr_reload_parm(rel_node, nodename->data, nodetype, &paramstrdata, effectparmstatus, false);
+	pfree(paramstrdata.data);
 }
 
 /*
@@ -751,11 +795,10 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 * the type of the key does not need restart to make effective
 */
 
-static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce)
+static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, StringInfo paramstrdata, int effectparmstatus, bool bforce)
 {
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
-	StringInfoData infosendmsg;
 	GetAgentCmdRst getAgentCmdRst;
 	Datum datumpath;
 	HeapScanDesc rel_scan;
@@ -763,7 +806,6 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 	char *nodetypestr;
 	bool isNull;
 
-	initStringInfo(&infosendmsg);
 	initStringInfo(&(getAgentCmdRst.description));
 	/*nodename is MACRO_STAND_FOR_ALL_NODENAME*/
 	if (strcmp(nodename, MACRO_STAND_FOR_ALL_NODENAME) == 0)
@@ -802,8 +844,8 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 			}
 			nodepath = TextDatumGetCString(datumpath);
 			ereport(LOG,
-				(errmsg("send parameter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
-			mgr_updateparm_send_parm(&infosendmsg, &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus, bforce);
+				(errmsg("send parameter %s ... to %s", paramstrdata->data, nodepath)));
+			mgr_updateparm_send_parm(&getAgentCmdRst, mgr_node->nodehost, nodepath, paramstrdata, effectparmstatus, bforce);
 		}
 		heap_endscan(rel_scan);
 	}
@@ -820,7 +862,6 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 		Assert(mgr_node);
 		if(!mgr_node->nodeincluster)
 		{
-			pfree(infosendmsg.data);
 			pfree(getAgentCmdRst.description.data);
 			heap_freetuple(tuple);
 			return;
@@ -836,36 +877,33 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, cha
 		nodepath = TextDatumGetCString(datumpath);	
 		/*send the parameter to node path, then reload it*/
 		ereport(LOG,
-			(errmsg("send parameter %s=%s to %d %s", parmkey, parmvalue, mgr_node->nodehost, nodepath)));
-		mgr_updateparm_send_parm(&infosendmsg , &getAgentCmdRst, mgr_node->nodehost, nodepath, parmkey, parmvalue, effectparmstatus, bforce);
+			(errmsg("send parameter %s ... to %s", paramstrdata->data, nodepath)));
+		mgr_updateparm_send_parm(&getAgentCmdRst, mgr_node->nodehost, nodepath, paramstrdata, effectparmstatus, bforce);
 		heap_freetuple(tuple);
 	}
-	pfree(infosendmsg.data);
 	pfree(getAgentCmdRst.description.data);
 }
 
 /*
 * send parameter to node, refresh its postgresql.conf, if the guccontent of parameter is superuser/user/sighup, will reload the parameter
 */
-static void mgr_updateparm_send_parm(StringInfo infosendmsg, GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, char *parmkey, char *parmvalue, int effectparmstatus, bool bforce)
+static void mgr_updateparm_send_parm(GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, StringInfo paramstrdata, int effectparmstatus, bool bforce)
 {	
 	/*send the parameter to node path, then reload it*/
-	resetStringInfo(infosendmsg);
 	resetStringInfo(&(getAgentCmdRst->description));
-	mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendmsg);
 	if(effectparmstatus == PGC_SIGHUP)
 	{
 		if (!bforce)
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, paramstrdata, hostoid, getAgentCmdRst);
 		else
-			mgr_send_conf_parameters(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, nodepath, paramstrdata, hostoid, getAgentCmdRst);
 	}
 	else
 	{
 		if (!bforce)
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodepath, paramstrdata, hostoid, getAgentCmdRst);
 		else
-			mgr_send_conf_parameters(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, nodepath, infosendmsg, hostoid, getAgentCmdRst);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE, nodepath, paramstrdata, hostoid, getAgentCmdRst);
 	}
 
 	if (getAgentCmdRst->ret != true)
@@ -948,10 +986,12 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
 	StringInfoData enumvalue;
+	StringInfoData paramstrdata;
 	bool isnull[Natts_mgr_updateparm];
 	bool got[Natts_mgr_updateparm];
 	bool bneedinsert = false;
 	bool bneednotice = true;
+	bool bsighup = false;
 	char parmtype;			/*coordinator or datanode or gtm */
 	char nodetype;			/*master/slave/extra*/
 	char nodetypetmp;
@@ -976,6 +1016,8 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	memset(isnull, 0, sizeof(isnull));
 	memset(got, 0, sizeof(got));
 
+	initStringInfo(&paramstrdata);
+	/*check the key*/
 	foreach(lc,node->options)
 	{
 		def = lfirst(lc);
@@ -992,7 +1034,21 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 			resetStringInfo(&enumvalue);
 			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue, bneednotice);
 		}
+		if (PGC_SIGHUP == effectparmstatus)
+			bsighup = true;
+		/*get key, value to send string*/
+		if (!node->is_force)
+			mgr_append_pgconf_paras_str_str(key.data, defaultvalue.data, &paramstrdata);
 		else
+			mgr_append_pgconf_paras_str_str(key.data, "force", &paramstrdata);
+	}
+	/*refresh param table*/
+	foreach(lc,node->options)
+	{
+		def = lfirst(lc);
+		Assert(def && IsA(def, DefElem));
+		namestrcpy(&key, def->defname);
+		if (node->is_force)
 		{
 			/*use "none" to label the row is no use, just to show the node does not set this parameter in its postgresql.conf*/
 			namestrcpy(&defaultvalue, DEFAULT_VALUE);
@@ -1035,11 +1091,6 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				CatalogUpdateIndexes(rel_updateparm, looptuple);
 			}
 			heap_endscan(rel_scan);
-			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			if (!node->is_force)
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
-			else
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 		}
 		/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME or nodetype is datanode master/slave/extra, refresh the postgresql.conf 
 		* of the node, and delete the tuple in mgr_updateparm which nodetype and nodename is given;if MACRO_STAND_FOR_ALL_NODENAME 
@@ -1148,15 +1199,17 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				}
 				heap_endscan(rel_scan);
 			}
-			/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
-			if (!node->is_force)
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, defaultvalue.data, effectparmstatus, false);
-			else
-				mgr_reload_parm(rel_node, nodename.data, nodetype, key.data, "force", PGC_POSTMASTER, true);
 		}
 	}
-
+	/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
+	if (bsighup)
+		effectparmstatus = PGC_SIGHUP;
+	if (!node->is_force)
+		mgr_reload_parm(rel_node, nodename.data, nodetype, &paramstrdata, effectparmstatus, false);
+	else
+		mgr_reload_parm(rel_node, nodename.data, nodetype, &paramstrdata, PGC_POSTMASTER, true);
 	pfree(enumvalue.data);
+	pfree(paramstrdata.data);
 	/*close relation */
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel_parm, RowExclusiveLock);

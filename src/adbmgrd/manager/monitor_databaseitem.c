@@ -634,6 +634,7 @@ void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *u
 	resetStringInfo(resultstrdata);
 	initStringInfo(&sendstrmsg);
 	nodeportstr = (char *) palloc(7);
+	memset(nodeportstr, 0, 7*sizeof(char));
 	pg_itoa(nodeport, nodeportstr);
 	/*sequence:user port dbname sqlstr, delimiter by '\0'*/
 	/*user*/
