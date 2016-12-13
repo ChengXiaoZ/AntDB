@@ -318,7 +318,7 @@ bool	mgr_check_host_in_use(Oid hostoid)
 		/* check this tuple incluster or not, if it has incluster, cannot be dropped/alter. */
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		if((mgr_node->nodehost == hostoid) && (mgr_node->nodeincluster == true))
+		if(mgr_node->nodehost == hostoid)
 		{
 			heap_endscan(rel_scan);
 			heap_close(rel, RowExclusiveLock);
