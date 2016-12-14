@@ -115,7 +115,10 @@ static void mgr_get_cmd_head_word(char cmdtype, char *str);
 static void mgr_check_appendnodeinfo(char node_type, char *append_node_name);
 static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_name, char node_type);
 static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst);
-
+static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, char *nodename, char nodetype, int32 newport);
+static void mgr_modify_node_port_after_initd(Relation rel_node, HeapTuple nodetuple, char *param, int32 newport);
+static void mgr_modify_port_recoveryconf(char nodetype, int32 master_newport, Oid tupleoid, StringInfo infosendparamsg);
+static void mgr_modify_coord_pgxc_node(Relation rel_node, char *nodename, char *para, int32 newport);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -366,7 +369,10 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 	Datum datum[Natts_mgr_node];
 	bool isnull[Natts_mgr_node];
 	bool got[Natts_mgr_node];
+	bool old_sync;
 	bool new_sync;
+	int32 oldport;
+	int32 newport;
 	HeapTuple searchHostTuple;	
 	TupleDesc cndn_dsc;
 	NameData hostname;
@@ -387,9 +393,11 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 		 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				 ,errmsg("%s \"%s\" does not exist", nodestring, NameStr(name))));
 	}
-    mgr_node = (Form_mgr_node)GETSTRUCT(oldtuple);
+	mgr_node = (Form_mgr_node)GETSTRUCT(oldtuple);
 	Assert(mgr_node);
 	pfree(nodestring);
+	oldport = mgr_node->nodeport;
+	old_sync = ( 't' == mgr_node->nodesync ? true:false);
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	memset(got, 0, sizeof(got));
@@ -428,6 +436,7 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 					,errmsg("%d is outside the valid range for parameter \"%s\" (%d .. %d)", port, "port", 1, UINT16_MAX)));
 			datum[Anum_mgr_node_nodeport-1] = Int32GetDatum(port);
 			got[Anum_mgr_node_nodeport-1] = true;
+			newport = port;
 		}else if(strcmp(def->defname, "path") == 0)
 		{
 			if(got[Anum_mgr_node_nodepath-1])
@@ -472,15 +481,17 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 	/*check this tuple initd or not, if it has inited and in cluster, check whether it can be alter*/		
 	if(mgr_node->nodeincluster)
 	{
-		if((got[Anum_mgr_node_nodehost-1] == true)||(got[Anum_mgr_node_nodeport-1] == true)||(got[Anum_mgr_node_nodepath-1] == true))
+		if((got[Anum_mgr_node_nodehost-1] == true)||(got[Anum_mgr_node_nodepath-1] == true))
 		{
 			heap_freetuple(oldtuple);
 			heap_close(rel, RowExclusiveLock);
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be changed", nodestring, NameStr(name))));
 		}		
-		if(got[Anum_mgr_node_nodesync-1] == true) 
+		if(got[Anum_mgr_node_nodesync-1] == true && old_sync != new_sync) 
 			mgr_alter_master_sync(nodetype, NameStr(name), new_sync);	
+		if (got[Anum_mgr_node_nodeport-1] == true && oldport != newport)
+			mgr_modify_port_after_initd(rel, oldtuple, name.data, nodetype, newport);
 	}
 	
 	new_tuple = heap_modify_tuple(oldtuple, cndn_dsc, datum,isnull, got);
@@ -7358,5 +7369,302 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 		list_free(prefer_cndn->datanode_list);
 	pfree(prefer_cndn);
 	return result;
+}
+
+/*
+* modifty node port after initd cluster
+*/
+
+static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, char *nodename, char nodetype, int32 newport)
+{
+	Form_mgr_node mgr_node;
+	Datum datumpath;
+	StringInfoData infosendmsg;
+	char *nodepath;
+	char *address;
+	Oid hostoid;
+	Oid mastertupleoid;
+	GetAgentCmdRst getAgentCmdRst;
+	bool isNull = false;
+	ScanKeyData key[1];
+	HeapScanDesc rel_scan;
+	HeapTuple tuple =NULL;
+	
+
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	/*if nodetype is slave or extra, need modfify its postgresql.conf for port*/
+	if (GTM_TYPE_GTM_EXTRA == nodetype || GTM_TYPE_GTM_SLAVE == nodetype 
+			|| CNDN_TYPE_DATANODE_EXTRA == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype)
+	{
+		mgr_modify_node_port_after_initd(rel_node, nodetuple, "port", newport);
+	}
+	/*if nodetype is gtm master, need modify its postgresql.conf and all datanodes、coordinators postgresql.conf for  agtm_port, agtm_host*/
+	else if (GTM_TYPE_GTM_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype)
+	{
+		/*gtm master*/
+		mgr_modify_node_port_after_initd(rel_node, nodetuple, "port", newport);
+		/*modify its slave/extra recovery.conf and datanodes coordinators postgresql.conf*/
+		ScanKeyInit(&key[0]
+					,Anum_mgr_node_nodeincluster
+					,BTEqualStrategyNumber
+					,F_BOOLEQ
+					,BoolGetDatum(true));
+		rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			hostoid = mgr_node->nodehost;
+			mastertupleoid = mgr_node->nodemasternameoid;
+			/*get path*/
+			datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
+			if(isNull)
+			{
+				heap_endscan(rel_scan);
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+					, errmsg("column nodepath is null")));
+			}
+			nodepath = TextDatumGetCString(datumpath);
+			if (GTM_TYPE_GTM_MASTER == nodetype)
+			{
+				if (GTM_TYPE_GTM_EXTRA == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype)
+				{
+					resetStringInfo(&(getAgentCmdRst.description));
+					resetStringInfo(&infosendmsg);
+					mgr_modify_port_recoveryconf(mgr_node->nodetype, newport, mastertupleoid, &infosendmsg);
+					mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, nodepath, &infosendmsg, hostoid, &getAgentCmdRst);
+					if (!getAgentCmdRst.ret)
+					{
+						address = get_hostaddress_from_hostoid(hostoid);
+						ereport(WARNING, (errmsg("modify %s %s/recovery.conf fail: %s", address, nodepath, getAgentCmdRst.description.data)));
+						pfree(address);
+					}
+				}
+				else if (!(GTM_TYPE_GTM_MASTER == mgr_node->nodetype))
+				{
+					mgr_modify_node_port_after_initd(rel_node, tuple, "agtm_port", newport);
+				}
+				else
+				{
+					/*do nothing*/
+				}
+			}
+			else
+			{
+				if (CNDN_TYPE_DATANODE_EXTRA == mgr_node->nodetype || CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype)
+				{
+					resetStringInfo(&(getAgentCmdRst.description));
+					resetStringInfo(&infosendmsg);
+					mgr_modify_port_recoveryconf(mgr_node->nodetype, newport, mastertupleoid, &infosendmsg);
+					mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, nodepath, &infosendmsg, hostoid, &getAgentCmdRst);
+					if (!getAgentCmdRst.ret)
+					{
+						address = get_hostaddress_from_hostoid(hostoid);
+						ereport(WARNING, (errmsg("modify %s %s/recovery.conf fail: %s", address, nodepath, getAgentCmdRst.description.data)));
+						pfree(address);
+					}
+				}
+			}
+		}
+		heap_endscan(rel_scan);
+		if (CNDN_TYPE_DATANODE_MASTER == nodetype)
+			mgr_modify_coord_pgxc_node(rel_node, nodename, "port", newport);
+	}
+	else if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+	{
+		/*modify port*/
+		mgr_modify_node_port_after_initd(rel_node, nodetuple, "port", newport);
+		/*refresh all pgxc_node all coordinators*/
+		mgr_modify_coord_pgxc_node(rel_node, nodename, "port", newport);
+	}
+	else 
+	{
+		/*do nothing*/
+	}
+	
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+
+}
+
+/*
+* modify the given node port after it initd
+*/
+static void mgr_modify_node_port_after_initd(Relation rel_node, HeapTuple nodetuple, char *param, int32 newport)
+{
+	Form_mgr_node mgr_node;
+	Datum datumpath;
+	StringInfoData infosendmsg;
+	char *address;
+	char *nodepath;
+	bool isNull = false;
+	Oid hostoid;
+	GetAgentCmdRst getAgentCmdRst;
+	
+	Assert(param != NULL);
+	mgr_node = (Form_mgr_node)GETSTRUCT(nodetuple);
+	Assert(mgr_node);
+	/*get hostoid*/
+	hostoid = mgr_node->nodehost;
+	/*get path*/
+	datumpath = heap_getattr(nodetuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
+	if(isNull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+			, errmsg("column nodepath is null")));
+	}
+	nodepath = TextDatumGetCString(datumpath);
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+	mgr_append_pgconf_paras_str_int(param, newport, &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodepath, &infosendmsg, hostoid, &getAgentCmdRst);
+	pfree(infosendmsg.data);
+	if (!getAgentCmdRst.ret)
+	{
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		ereport(WARNING, (errmsg("modify %s %s/postgresql.conf %s=%d fail: %s", address, nodepath, param, newport, getAgentCmdRst.description.data)));
+		pfree(address);
+	}
+	pfree(getAgentCmdRst.description.data);
+}
+
+/*
+* modify gtm or datanode slave or extra port in recovery.conf
+*/
+static void mgr_modify_port_recoveryconf(char nodetype, int32 master_newport, Oid tupleoid, StringInfo infosendparamsg)
+{
+	Form_mgr_node mgr_node;
+	Form_mgr_host mgr_host;
+	HeapTuple mastertuple;
+	HeapTuple tup;
+	int32 masterport;
+	Oid masterhostOid;
+	char *masterhostaddress;
+	char *username;
+	StringInfoData primary_conninfo_value;
+	
+	/*get the master port, master host address*/
+	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(tupleoid));
+	if(!HeapTupleIsValid(mastertuple))
+	{
+		ereport(ERROR, (errmsg("node oid \"%u\" not exist", tupleoid)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+			, errcode(ERRCODE_INTERNAL_ERROR)));
+	}
+	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
+	Assert(mastertuple);
+	masterport = mgr_node->nodeport;
+	masterhostOid = mgr_node->nodehost;
+	masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
+	ReleaseSysCache(mastertuple);
+	
+	/*get host user from system: host*/
+	tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(masterhostOid));
+	if(!(HeapTupleIsValid(tup)))
+	{
+		pfree(masterhostaddress);
+		ereport(ERROR, (errmsg("host oid \"%u\" not exist", masterhostOid)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errcode(ERRCODE_UNDEFINED_OBJECT)));
+	}
+	mgr_host= (Form_mgr_host)GETSTRUCT(tup);
+	Assert(mgr_host);
+	if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+	{
+		username =AGTM_USER;
+	}
+	else
+	{
+		username = NameStr(mgr_host->hostuser);
+	}
+	ReleaseSysCache(tup);
+	
+	/*primary_conninfo*/
+	initStringInfo(&primary_conninfo_value);
+	if (GTM_TYPE_GTM_SLAVE == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype)
+		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s", masterhostaddress, master_newport, username, "slave");
+	else
+		appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s", masterhostaddress, master_newport, username, "extra");
+	mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, infosendparamsg);
+	pfree(primary_conninfo_value.data);
+	pfree(masterhostaddress);
+}
+
+/*
+* modify coordinators port of pgxc_node
+*/
+static void mgr_modify_coord_pgxc_node(Relation rel_node, char *nodename, char *para, int32 newport)
+{
+	StringInfoData infosendmsg;
+	StringInfoData buf;
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	ScanKeyData key[2];
+	char *host_address = "127.0.0.1";
+	char *user;
+	bool execok = false;
+	HeapScanDesc rel_scan;
+	ManagerAgent *ma;
+	GetAgentCmdRst getAgentCmdRst;
+	
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		resetStringInfo(&infosendmsg);
+		appendStringInfo(&infosendmsg, " -h %s -p %u -d %s -U %s -a -c \""
+			,host_address
+			,mgr_node->nodeport
+			,DEFAULT_DB
+			,user);
+		appendStringInfo(&infosendmsg, "ALTER NODE \\\"%s\\\" WITH (%s=%d);"
+								,nodename
+								,para
+								,newport);
+		appendStringInfo(&infosendmsg, " select pgxc_pool_reload();\"");
+		pfree(user);
+		/* connection agent */
+		ma = ma_connect_hostoid(mgr_node->nodehost);
+		if (!ma_isconnected(ma))
+		{
+			/* report error message */	
+			ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));
+			break;
+		}
+		ma_beginmessage(&buf, AGT_MSG_COMMAND);
+		ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
+		ma_sendstring(&buf,infosendmsg.data);
+		ma_endmessage(&buf, ma);
+		if (! ma_flush(ma, true))
+		{
+			ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));			
+			break;
+		}
+		resetStringInfo(&getAgentCmdRst.description);
+		execok = mgr_recv_msg(ma, &getAgentCmdRst);
+		if (!execok)
+			ereport(WARNING, (errmsg("%s", getAgentCmdRst.description.data)));
+	}
+	heap_endscan(rel_scan);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
 }
 
