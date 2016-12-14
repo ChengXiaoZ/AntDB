@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ALTER HOST <replaceable class="parameter">host_name</replaceable>( option )
+ALTER HOST <replaceable class="parameter">host_name</replaceable> ( option )
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 

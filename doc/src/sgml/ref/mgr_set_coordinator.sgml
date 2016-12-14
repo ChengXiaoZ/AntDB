@@ -23,10 +23,6 @@ ADB documentation
     <synopsis>
 SET COORDINATOR ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
 SET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
-
-<phrase>where <replaceable class="parameter">parameter</replaceable> can be one of:</phrase>
-
-    the parameter that in the file of postgres.conf and alse belong to the view of pg_settings.
 </synopsis>
   </refsynopsisdiv>
 

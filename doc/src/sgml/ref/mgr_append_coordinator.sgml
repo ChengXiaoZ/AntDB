@@ -29,7 +29,7 @@ APPEND COORDINATOR <replaceable class="parameter">node_name</replaceable>
     <title>Description</title>
 
     <para>
-<command>APPEND COORDINATOR</command> append a new coordinator to the cluster and make it run,it's equal to init and start.
+<command>APPEND COORDINATOR</command> append a new coordinator to the cluster and make it run,it's equal to init and start,but you must make sure the coordinator has been add to the node table before execute the command.
     </para>
   </refsect1>
 

@@ -29,7 +29,7 @@ APPEND DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_n
     <title>Description</title>
 
     <para>
-<command>APPEND DATANODE</command> append a new datanode to the cluster and make it run,it's equal to init and start.
+<command>APPEND DATANODE</command> append a new datanode to the cluster and make it run,it's equal to init and start,but you must make sure the datanode has been add to the node table before execute the command.
     </para>
   </refsect1>
 

@@ -22,8 +22,6 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 <command>SHOW</command> <replaceable class="parameter">node_name</replaceable> <replaceable class="parameter">parameter</replaceable>
-
-where parameter can be any one which is own to the view of pg_settings.
 </synopsis>
   </refsynopsisdiv>
 

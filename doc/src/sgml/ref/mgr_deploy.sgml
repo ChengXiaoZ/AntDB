@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-DEPLOY { ALL | <replaceable class="parameter">hostname</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ]   
+DEPLOY { ALL | <replaceable class="parameter">host_name</replaceable> [, ...] } [ PASSWORD <replaceable class="parameter">passwd</replaceable> ]   
 </synopsis>
   </refsynopsisdiv>
 

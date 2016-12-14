@@ -27,7 +27,7 @@ ALTER DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_na
 
     HOST = <replaceable class="parameter">IP_address</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
-	PATH = <replaceable class="parameter">pg_data</replaceable>,
+    PATH = <replaceable class="parameter">pg_data</replaceable>,
     SYNC = <replaceable class="parameter">sync_mode</replaceable>   
 </synopsis>
   </refsynopsisdiv>

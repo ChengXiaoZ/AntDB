@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>SET DATANODE</refname>
-    <refpurpose>change the value of parameter which is belong to the table of pg_settings</refpurpose>
+    <refpurpose>change the value of parameter which is belong to the view of pg_settings</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-setdatanode">
@@ -21,12 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SET DATANODE ALL { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
-SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
-
-<phrase>where <replaceable class="parameter">Parameter</replaceable> can be one of:</phrase>
-
-   the parameter that in the file of postgres.conf and alse belong to the view of pg_settings.
+SET DATANODE ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 

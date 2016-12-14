@@ -29,7 +29,7 @@ APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceab
     <title>Description</title>
 
     <para>
-<command>APPEND GTM</command> append a new gtm to the cluster and make it run,it's equal to init and start.
+<command>APPEND GTM</command> append a new gtm to the cluster and make it run,it's equal to init and start,but you must make sure the gtm has been add to the node table before execute the command.
     </para>
   </refsect1>
 
