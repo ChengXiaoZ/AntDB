@@ -47,6 +47,9 @@ extern bool get_disk_info(StringInfo hostinfostring);
 extern bool get_net_info(StringInfo hostinfostring);
 extern bool get_host_info(StringInfo hostinfostring);
 extern bool get_disk_iops_info(StringInfo hostinfostring);
+extern bool get_system_info(StringInfo hostinfostring);
+extern bool get_platform_type_info(StringInfo hostinfostring);
+
 static void cmd_rm_temp_file(StringInfo msg);
 static void cmd_clean_node_folder(StringInfo buf);
 static void cmd_stop_agent(void);
@@ -871,15 +874,17 @@ static void cmd_monitor_gets_hostinfo(void)
 {
 	StringInfoData hostinfostring;
 	initStringInfo(&hostinfostring);
-	
+
 	get_cpu_info(&hostinfostring);
 	get_mem_info(&hostinfostring);
 	get_disk_info(&hostinfostring);
 	get_net_info(&hostinfostring);
+	get_system_info(&hostinfostring);
+	get_platform_type_info(&hostinfostring);
 	get_host_info(&hostinfostring);
-    get_disk_iops_info(&hostinfostring);
+	get_disk_iops_info(&hostinfostring);
 	appendStringInfoCharMacro(&hostinfostring, '\0');
-	
+
 	agt_put_msg(AGT_MSG_RESULT, hostinfostring.data, hostinfostring.len);
 	agt_flush();
 	pfree(hostinfostring.data);

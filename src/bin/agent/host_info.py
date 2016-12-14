@@ -49,9 +49,8 @@ def get_net_info():
 	return (time_stamp, sent, recv)
 
 def get_host_info():
-	host_system = platform.system()
 	host_platform_type = platform.machine()
-	return (host_system, host_platform_type)
+	return (host_platform_type)
 
 if __name__ == "__main__":
 	get_cpu_info()

@@ -35,6 +35,8 @@ bool get_disk_info(StringInfo hostinfostring);
 bool get_net_info(StringInfo hostinfostring);
 bool get_host_info(StringInfo hostinfostring);
 bool get_disk_iops_info(StringInfo hostinfostring);
+bool get_system_info(StringInfo hostinfostring);
+bool get_platform_type_info(StringInfo hostinfostring);
 
 static void monitor_append_str(StringInfo hostinfostring, char *str);
 static void monitor_append_int64(StringInfo hostinfostring, int64 i);
@@ -305,53 +307,8 @@ bool get_net_info(StringInfo hostinfostring)
 
 bool get_host_info(StringInfo hostinfostring)
 {
-    PyObject *pModule,*pDict,*pFunc,*pRetValue,*sysPath,*path;
-    int result;
     time_t seconds_since_boot;
     int cpu_cores_total, cpu_cores_available;
-    char *platform_type = NULL;
-    char *system = NULL;
-    char my_exec_path[MAXPGPATH];
-    char pghome[MAXPGPATH];
-
-    memset(pghome, 0, MAXPGPATH);
-
-    if (find_my_exec(agent_argv0, my_exec_path) < 0)
-        ereport(ERROR, (errmsg("%s: could not locate my own executable path.", agent_argv0)));
-    get_share_path(my_exec_path, pghome);
-
-    Py_Initialize();
-    if (!Py_IsInitialized())
-        return false;
-
-    PyRun_SimpleString("import sys");
-    PyRun_SimpleString("import psutil");
-    PyRun_SimpleString("import platform");
-    PyRun_SimpleString("import time");
-    PyRun_SimpleString("ISOTIMEFORMAT = '%Y-%m-%d %H:%M:%S %Z'");
-
-    sysPath = PySys_GetObject("path");
-    path = PyString_FromString(pghome);
-    if ((result = PyList_Insert(sysPath, 0, path)) != 0)
-        ereport(ERROR, (errmsg("can't insert path %s to sysPath.", pghome)));
-
-    pModule = PyImport_ImportModule("host_info");
-    if (!pModule)
-        ereport(ERROR, (errmsg("can't find file host_info.py in path:%s.", pghome)));
-
-    pDict = PyModule_GetDict(pModule);
-    if (!pDict)
-        ereport(ERROR, (errmsg("can't get path for host_info.py")));
-
-    pFunc = PyDict_GetItemString(pDict, "get_host_info");
-    if (!pFunc || !PyCallable_Check(pFunc))
-        ereport(ERROR, (errmsg("can't find function get_host_info in file host_info.py.")));
-
-    pRetValue = PyObject_CallObject(pFunc, NULL);
-    PyArg_ParseTuple(pRetValue, "ss", &system, &platform_type);
-
-    monitor_append_str(hostinfostring, system);
-    monitor_append_str(hostinfostring, platform_type);
 
     cpu_cores_total = sysconf(_SC_NPROCESSORS_CONF);
     cpu_cores_available = sysconf(_SC_NPROCESSORS_ONLN);
@@ -361,13 +318,9 @@ bool get_host_info(StringInfo hostinfostring)
     seconds_since_boot = get_uptime();
     monitor_append_int64(hostinfostring, seconds_since_boot);
 
-    Py_DECREF(pModule);
-    Py_DECREF(pRetValue);
-    Py_DECREF(pFunc);
-    Py_Finalize();
-
     return true;
 }
+
 bool get_disk_iops_info(StringInfo hostinfostring)
 {
     FILE *fstream=NULL;
@@ -384,6 +337,60 @@ bool get_disk_iops_info(StringInfo hostinfostring)
     if(NULL != fgets(cmd_output, sizeof(cmd_output), fstream))
     {
         monitor_append_float(hostinfostring,(float)atof(cmd_output));
+    }
+    else
+    {
+        pclose(fstream);
+        return false;
+    }
+    pclose(fstream);
+    return true;
+}
+
+bool get_system_info(StringInfo hostinfostring)
+{
+    FILE *fstream=NULL;
+    char cmd[MAXPGPATH],
+         cmd_output[MAXPGPATH];
+
+    memset(cmd, 0, sizeof(cmd));
+    snprintf(cmd, sizeof(cmd), "lsb_release -d | awk 'BEGIN { FS=\":\"} { print $2}' | sed 's/^[ \t]*//g'");
+    if(NULL == (fstream=popen(cmd, "r")))
+    {
+        ereport(ERROR, (errmsg("execute command failed: %s", strerror(errno))));
+        return false;
+    }
+    if(NULL != fgets(cmd_output, sizeof(cmd_output), fstream))
+    {
+        cmd_output[strlen(cmd_output) - 1] = 0;
+        monitor_append_str(hostinfostring, cmd_output);
+    }
+    else
+    {
+        pclose(fstream);
+        return false;
+    }
+    pclose(fstream);
+    return true;
+}
+
+bool get_platform_type_info(StringInfo hostinfostring)
+{
+    FILE *fstream=NULL;
+    char cmd[MAXPGPATH],
+         cmd_output[MAXPGPATH];
+
+    memset(cmd, 0, sizeof(cmd));
+    snprintf(cmd, sizeof(cmd), "uname -m");
+    if(NULL == (fstream=popen(cmd, "r")))
+    {
+        ereport(ERROR, (errmsg("execute command failed: %s", strerror(errno))));
+        return false;
+    }
+    if(NULL != fgets(cmd_output, sizeof(cmd_output), fstream))
+    {
+        cmd_output[strlen(cmd_output) - 1] = 0;
+        monitor_append_str(hostinfostring, cmd_output);
     }
     else
     {
