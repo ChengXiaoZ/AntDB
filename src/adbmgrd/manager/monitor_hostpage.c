@@ -222,6 +222,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 
     ma_beginmessage(&buf, AGT_MSG_COMMAND);
     ma_sendbyte(&buf, AGT_CMD_MONITOR_GETS_HOST_INFO);
+    ma_sendstring(&buf, "get_hostinfo");
     ma_endmessage(&buf, ma);
     if (!ma_flush(ma, true))
     {
