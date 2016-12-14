@@ -65,6 +65,7 @@ typedef struct Monitor_Cpu
 {
     StringInfoData cpu_timestamp;
     float          cpu_usage;
+    StringInfoData cpu_freq;
 }Monitor_Cpu;
 
 /* for table: monitor_mem */
@@ -253,6 +254,10 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
         monitor_cpu.cpu_usage = atof(&agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + strlen(&agentRstStr.data[agentRstStr.cursor]) + 1;
 
+        /* cpu frequency */
+        appendStringInfoString(&monitor_cpu.cpu_freq, &agentRstStr.data[agentRstStr.cursor]);
+        agentRstStr.cursor = agentRstStr.cursor + monitor_cpu.cpu_freq.len + 1;
+
         /* memory timestamp with timezone */
         appendStringInfoString(&monitor_mem.mem_timestamp, &agentRstStr.data[agentRstStr.cursor]);
         agentRstStr.cursor = agentRstStr.cursor + monitor_mem.mem_timestamp.len + 1;
@@ -392,6 +397,7 @@ static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu)
     datum[Anum_monitor_cpu_mc_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
     datum[Anum_monitor_cpu_mc_usage - 1] = Float4GetDatum(monitor_cpu->cpu_usage);
+    datum[Anum_monitor_cpu_mc_freq - 1] =CStringGetTextDatum(monitor_cpu->cpu_freq.data);
 
     memset(isnull, 0, sizeof(isnull));
 
@@ -779,6 +785,7 @@ static void init_all_table(Monitor_Host *monitor_host,
 
     /* for table : monitor cpu */
     initStringInfo(&Monitor_cpu->cpu_timestamp);
+    initStringInfo(&Monitor_cpu->cpu_freq);
 
     /* for table : monitor mem */
     initStringInfo(&Monitor_mem->mem_timestamp);
@@ -809,6 +816,7 @@ static void pfree_all_table(Monitor_Host *monitor_host,
 
     /* for table : monitor cpu */
     pfree(Monitor_cpu->cpu_timestamp.data);
+    pfree(Monitor_cpu->cpu_freq.data);
 
     /* for table : monitor mem */
     pfree(Monitor_mem->mem_timestamp.data);

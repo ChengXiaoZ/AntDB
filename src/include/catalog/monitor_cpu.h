@@ -21,6 +21,10 @@ CATALOG(monitor_cpu,4922)
     Oid         host_oid;           /* host oid */
     timestamptz mc_timestamptz;     /* monitor cpu timestamptz */
     float4      mc_cpu_usage;       /* monitor cpu usage */
+
+#ifdef CATALOG_VARLEN
+    text        mc_cpu_freq;        /* monitor cpu frequency */
+#endif /* CATALOG_VARLEN */
 } FormData_monitor_cpu;
 
 #ifndef BUILD_BKI
@@ -38,9 +42,10 @@ typedef FormData_monitor_cpu *Form_monitor_cpu;
  *      compiler constants for monitor_cpu
  * ----------------
  */
-#define Natts_monitor_cpu                           3
+#define Natts_monitor_cpu                           4
 #define Anum_monitor_cpu_host_oid                   1
 #define Anum_monitor_cpu_mc_timestamptz             2
 #define Anum_monitor_cpu_mc_usage                   3
+#define Anum_monitor_cpu_mc_freq                    4
 
 #endif /* MONITOR_CPU_H */
