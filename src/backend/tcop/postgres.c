@@ -1586,9 +1586,10 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	if (IS_PGXC_COORDINATOR && log_parse_query)
 		loglv = LOG;
 	ereport(loglv,
-			(errmsg("[adb_parse] %s: %s",
+			(errmsg("<adb_parse> %s: %s",
 					*stmt_name ? stmt_name : "<unnamed>",
-					query_string)));
+					query_string),
+			errhidestmt(true)));
 #else
 	ereport(DEBUG2,
 			(errmsg("parse %s: %s",
