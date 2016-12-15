@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP HOST</refname>
-    <refpurpose>drop one the specifed host information in the host table</refpurpose>
+    <refpurpose>drop the specifed host information in the host table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-drophost">

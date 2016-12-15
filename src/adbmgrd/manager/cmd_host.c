@@ -14,6 +14,7 @@
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
+#include "catalog/mgr_cndnnode.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "funcapi.h"
@@ -320,8 +321,10 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest)
 {
 	Relation rel;
-	HeapTuple tuple,
-	          new_tuple;
+	Relation rel_node;
+	HeapTuple tuple;
+	HeapTuple new_tuple;
+	HeapTuple checktuple;
 	ListCell *lc;
 	DefElem *def;
 	char *str;
@@ -330,7 +333,7 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 	Datum datum[Natts_mgr_host];
 	bool isnull[Natts_mgr_host];
 	bool got[Natts_mgr_host];
-	
+	Form_mgr_node mgr_node;
 	TupleDesc host_dsc;
 	
 	Assert(node && node->name);
@@ -346,18 +349,11 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 			heap_close(rel, RowExclusiveLock);
 			return;
 		}
-                
+
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
 				, errmsg("host \"%s\" does not exist", NameStr(name))));
 	}
-	/*check the tuple has been used or not*/
-	if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
-	{
-		ReleaseSysCache(tuple);
-		heap_close(rel, RowExclusiveLock);
-		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				 ,errmsg("\"%s\" has been used, cannot be changed", NameStr(name))));
-	}
+
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	memset(got, 0, sizeof(got));
@@ -447,6 +443,30 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 				,errmsg("option \"%s\" not recognized", def->defname)
 				,errhint("option is user,port,protocol,agentport, address and pghome")));
 		}
+	}
+
+	/*check the tuple has been used or not*/
+	if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
+	{
+		if (got[Anum_mgr_host_hostpghome-1] || got[Anum_mgr_host_hostuser-1])
+		{
+			ReleaseSysCache(tuple);
+			heap_close(rel, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+					 ,errmsg("\"%s\" has been used, cannot be changed", NameStr(name))));
+		}
+		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+		checktuple = mgr_get_tuple_node_from_name_type(rel_node, "gtm", GTM_TYPE_GTM_MASTER);
+		if (HeapTupleIsValid(checktuple))
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(checktuple);
+			Assert(mgr_node);
+			if (mgr_node->nodeincluster && got[Anum_mgr_host_hostaddr-1])
+				ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
+					 ,errmsg("the cluster has been initialized, after command \"alter host\" to modify address, should execute \"flush host\" to make the cluster normal")));
+			heap_freetuple(checktuple);
+		}
+		heap_close(rel_node, RowExclusiveLock);
 	}
 
 	new_tuple = heap_modify_tuple(tuple, host_dsc, datum,isnull, got);

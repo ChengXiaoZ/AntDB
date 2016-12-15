@@ -145,7 +145,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
-				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt
+				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -173,7 +173,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword> PASSWORD CLEAN RESET
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
-%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW
+%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -242,6 +242,7 @@ stmt :
 	| ResetUpdataparmStmt
 	| CleanAllStmt
 	| ShowStmt
+	| FlushHost
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2164,7 +2165,15 @@ ShowStmt:
 		$$ = (Node*)node;
 	}
 	;
-
+FlushHost:
+	FLUSH HOST
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_flush_host", NULL));
+		$$ = (Node*)stmt;
+	}
+	;
 unreserved_keyword:
 	  ADD_P
 	| AGENT
@@ -2182,7 +2191,8 @@ unreserved_keyword:
 	| EXTRA
 	| F
 	| FAILOVER
-	| FAST	
+	| FAST
+	| FLUSH
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_ALARM_INFO_ASC
 	| GET_ALARM_INFO_COUNT
