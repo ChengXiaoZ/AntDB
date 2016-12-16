@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-RESET DATANODE ALL ( parameter [, ...] ) [ FORCE ] 
+RESET DATANODE [ MASTER | SLAVE | EXTRA ] ALL ( parameter [, ...] ) [ FORCE ] 
 RESET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( parameter [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
