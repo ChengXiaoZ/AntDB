@@ -1,0 +1,51 @@
+<!--
+doc/src/sgml/ref/mgr_flush_host.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-FLUSHHOST">
+  <refmeta>
+    <refentrytitle>FLUSH HOST</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>FLUSH HOST</refname>
+    <refpurpose>flush address information of all nodes in the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-dropgtm">
+    <primary>FLUSH HOST</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+FLUSH HOST
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>FLUSH HOST</command> flush address information of all nodes in the cluster. When the IP address of servers be changed, using "alter host" command to change the IP address, then using "flush host" to flush address information of all nodes in the cluster.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+IP address has been changed in host table, modify the address information in the cluster where it need to be updated:
+<programlisting>
+FLUSH HOST;
+</programlisting>
+</para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-alterhost"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

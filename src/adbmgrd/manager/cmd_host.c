@@ -448,7 +448,8 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 	/*check the tuple has been used or not*/
 	if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
 	{
-		if (got[Anum_mgr_host_hostpghome-1] || got[Anum_mgr_host_hostuser-1])
+		if (got[Anum_mgr_host_hostpghome-1] || got[Anum_mgr_host_hostuser-1]
+			|| got[Anum_mgr_host_hostport-1] || got[Anum_mgr_host_hostproto-1] || got[Anum_mgr_host_hostagentport-1])
 		{
 			ReleaseSysCache(tuple);
 			heap_close(rel, RowExclusiveLock);
@@ -463,7 +464,7 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 			Assert(mgr_node);
 			if (mgr_node->nodeincluster && got[Anum_mgr_host_hostaddr-1])
 				ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
-					 ,errmsg("the cluster has been initialized, after command \"alter host\" to modify address, should execute \"flush host\" to make the cluster normal")));
+					 ,errmsg("the cluster has been initialized, after command \"alter host\" to modify address, need using the command \"flush host\" to flush address information of all nodes")));
 			heap_freetuple(checktuple);
 		}
 		heap_close(rel_node, RowExclusiveLock);

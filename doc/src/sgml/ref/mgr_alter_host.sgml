@@ -134,5 +134,12 @@ alter host localhost1(agentport = 10001);
 </programlisting>
     </para>
   </refsect1>
- 
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-flushhost"></member>
+    </simplelist>
+  </refsect1>
+
 </refentry>

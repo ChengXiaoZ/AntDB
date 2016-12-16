@@ -7418,6 +7418,8 @@ static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, 
 	else if (GTM_TYPE_GTM_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype)
 	{
 		/*gtm master*/
+		if (CNDN_TYPE_DATANODE_MASTER == nodetype)
+			mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_int("port", newport, &infosendmsg);
 		mgr_modify_node_parameter_after_initd(rel_node, nodetuple, &infosendmsg, true);
@@ -7484,6 +7486,7 @@ static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, 
 	else if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
 	{
 		/*refresh all pgxc_node all coordinators*/
+		mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
 		resetStringInfo(&infosendmsg);
 		appendStringInfo(&infosendmsg, "ALTER NODE \\\"%s\\\" WITH (%s=%d);"
 							,nodename
