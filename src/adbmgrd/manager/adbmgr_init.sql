@@ -997,6 +997,11 @@ RETURNS NULL ON NULL INPUT;
 --update parm set setting='minimal' where name = 'wal_level';
 --update parm set setting='localhost' where name = 'agtm_host';
 --pg_dump -p xxxx -d postgres -t parm -f cn1.txt --inserts -a
+--add these
+--INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.max', '1000', 'postmaster', 'integer', '', '100', '2147483647', NULL);
+--INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.track', 'top', 'superuser', 'enum', NULL, NULL, NULL, '{none,top,all}');
+--INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.save', 'on', 'sighup', 'bool', NULL, NULL, NULL, NULL);
+--INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.track_utility', 'on', 'superuser', 'bool', NULL, NULL, NULL, NULL);
 
 --'*' stands for gtm/coordinator/datanode, '#' stands for coordinator/datanode
 
@@ -1170,6 +1175,7 @@ INSERT INTO adbmgr.parm VALUES ('*', 'server_version_num', '90313', 'internal', 
 INSERT INTO adbmgr.parm VALUES ('*', 'session_replication_role', 'origin', 'superuser', 'enum', NULL, NULL, NULL, '{origin,replica,local}');
 INSERT INTO adbmgr.parm VALUES ('*', 'shared_buffers', '16384', 'postmaster', 'integer', '8kB', '16', '1073741823', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'shared_preload_libraries', '', 'postmaster', 'string', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('C', 'shared_preload_libraries', 'pg_stat_statements', 'postmaster', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'sql_inheritance', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'ssl', 'off', 'postmaster', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'ssl_ca_file', '', 'postmaster', 'string', NULL, NULL, NULL, NULL);
@@ -1263,3 +1269,7 @@ INSERT INTO adbmgr.parm VALUES ('#', 'require_replicated_table_pkey', 'on', 'use
 INSERT INTO adbmgr.parm VALUES ('#', 'snapshot_level', 'mvcc', 'user', 'enum', NULL, NULL, NULL, '{mvcc,now,self,any,toast,dirty}');
 INSERT INTO adbmgr.parm VALUES ('#', 'xc_enable_node_tcp_log', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'xc_maintenance_mode', 'off', 'superuser', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.max', '1000', 'postmaster', 'integer', '', '100', '2147483647', NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.track', 'top', 'superuser', 'enum', NULL, NULL, NULL, '{none,top,all}');
+INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.save', 'on', 'sighup', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.track_utility', 'on', 'superuser', 'bool', NULL, NULL, NULL, NULL);

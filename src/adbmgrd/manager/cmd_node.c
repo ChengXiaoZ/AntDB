@@ -120,6 +120,7 @@ static bool mgr_modify_node_parameter_after_initd(Relation rel_node, HeapTuple n
 static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, int32 master_newport);
 static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata);
 static void mgr_check_all_agent(void);
+static void mgr_add_extension(char *sqlstr);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -4723,6 +4724,8 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg)
 {
+	if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
+		mgr_append_pgconf_paras_str_quotastr("shared_preload_libraries", "pg_stat_statements", infosendmsg);
 	mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendmsg);
 	mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendmsg);
@@ -5096,6 +5099,8 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		pfree(info_out);
 		/*set gtm or datanode master synchronous_standby_names*/
 		mgr_set_master_sync();
+		/*create extension*/
+		mgr_add_extension("CREATE EXTENSION IF NOT EXISTS pg_stat_statements;");
 		SRF_RETURN_DONE(funcctx);
 	}
 
@@ -5406,19 +5411,12 @@ void mgr_append_infostr_infostr(StringInfo infostr, StringInfo sourceinfostr)
 */
 void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, StringInfo infosendparamsg)
 {
-	char *slavename = NULL;
-	if(nodetype == CNDN_TYPE_DATANODE_MASTER || nodetype == GTM_TYPE_GTM_MASTER)
-		slavename = mgr_get_slavename(tupleOid, nodetype);
-	/*refresh postgresql.conf of this node*/
-	if (slavename != NULL)
-	{
-		pfree(slavename);
-	}
 	if(nodetype == CNDN_TYPE_DATANODE_SLAVE || nodetype == CNDN_TYPE_DATANODE_EXTRA || nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTRA)
 	{
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", infosendparamsg);
 	}
-
+	if (nodetype == CNDN_TYPE_COORDINATOR_MASTER)
+		mgr_append_pgconf_paras_str_quotastr("shared_preload_libraries", "pg_stat_statements", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendparamsg);
 	mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendparamsg);
@@ -7990,4 +7988,90 @@ static void mgr_check_all_agent(void)
 
 	heap_endscan(rel_scan);
 	heap_close(rel_host, AccessShareLock);
+}
+
+/*
+*create extension pg_stat_statements
+*/
+
+static void mgr_add_extension(char *sqlstr)
+{
+	ScanKeyData key[1];
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	ManagerAgent *ma;
+	char *user;
+	char *address;
+	bool execok = false;
+	StringInfoData infosendmsg;
+	StringInfoData buf;
+	GetAgentCmdRst getAgentCmdRst;
+	Relation rel_node;
+
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		break;
+	}
+	if (NULL == tuple)
+	{
+		heap_endscan(rel_scan);
+		heap_close(rel_node, RowExclusiveLock);
+		ereport(WARNING, (errmsg("%s fail", sqlstr)));
+		return;
+	}
+	user = get_hostuser_from_hostoid(mgr_node->nodehost);
+	initStringInfo(&infosendmsg);
+	appendStringInfo(&infosendmsg, " -h %s -p %u -d %s -U %s -a -c \""
+		,"127.0.0.1"
+		,mgr_node->nodeport
+		,DEFAULT_DB
+		,user);
+	appendStringInfo(&infosendmsg, " %s\"", sqlstr);
+	pfree(user);
+	/* connection agent */
+	ma = ma_connect_hostoid(mgr_node->nodehost);
+	if (!ma_isconnected(ma))
+	{
+		/* report error message */
+		heap_endscan(rel_scan);
+		heap_close(rel_node, RowExclusiveLock);
+		ereport(WARNING, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
+		return;
+	}
+	initStringInfo(&buf);
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
+	ma_sendstring(&buf,infosendmsg.data);
+	ma_endmessage(&buf, ma);
+	pfree(infosendmsg.data);
+	if (! ma_flush(ma, true))
+	{
+		heap_endscan(rel_scan);
+		heap_close(rel_node, RowExclusiveLock);
+		ereport(WARNING, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
+		return;
+	}
+	getAgentCmdRst.ret = false;
+	initStringInfo(&getAgentCmdRst.description);
+	execok = mgr_recv_msg(ma, &getAgentCmdRst);
+	if (!execok)
+	{
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		ereport(WARNING, (errmsg(" %s %s:  %s fail, %s", address, NameStr(mgr_node->nodename), sqlstr, getAgentCmdRst.description.data)));
+		pfree(address);
+	}
+	pfree(getAgentCmdRst.description.data);
+	heap_endscan(rel_scan);
+	heap_close(rel_node, RowExclusiveLock);
+
 }
