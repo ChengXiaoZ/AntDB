@@ -3695,8 +3695,7 @@ static void mgr_make_sure_all_running(char node_type)
 			pfree(hostaddr);
 			namestrcpy(&nodetypestr_data, nodetype_str);
 			pfree(nodetype_str);
-			if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
-				ereport(ERROR, (errmsg("%s \"%s\" is not running", nodetypestr_data.data,nodename.data)));
+			ereport(ERROR, (errmsg("%s \"%s\" is not running", nodetypestr_data.data,nodename.data)));
 		}
 	}
 
