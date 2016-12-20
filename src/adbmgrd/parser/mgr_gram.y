@@ -148,11 +148,11 @@ static void check_host_name_isvaild(List *node_name_list);
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt 
-				CreateUserStmt
+				CreateUserStmt DropUserStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
-				OptRoleList
+				OptRoleList name_list
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
 
@@ -167,7 +167,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
 				opt_general_all opt_general_force var_dotparam var_showparam
-				sub_like_expr RoleId
+				sub_like_expr RoleId name ColId
 
 %type <chr>		node_type cluster_type
 
@@ -220,6 +220,7 @@ stmtmulti:	stmtmulti ';' stmt
 stmt :
 	  AddHostStmt
 	| CreateUserStmt
+	| DropUserStmt
 	| DropHostStmt
 	| ListHostStmt
 	| AlterHostStmt
@@ -257,6 +258,27 @@ stmt :
 	| /* empty */
 		{ $$ = NULL; }
 	;
+
+DropUserStmt:
+			DROP USER name_list
+				{
+					DropRoleStmt *n = makeNode(DropRoleStmt);
+					n->missing_ok = FALSE;
+					n->roles = $3;
+					$$ = (Node *)n;
+				}
+			;
+
+name_list:
+		name { $$ = list_make1(makeString($1)); }
+		| name_list ',' name
+			{ $$ = lappend($1, makeString($3)); }
+		;
+
+name: ColId     { $$ = $1; };
+
+ColId: IDENT     { $$ = $1; };
+
 CreateUserStmt:
 			CREATE USER RoleId OptRoleList
 				{
