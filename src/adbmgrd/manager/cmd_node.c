@@ -123,7 +123,6 @@ static void mgr_add_extension(char *sqlstr);
 
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 
-
 #if (Natts_mgr_node != 9)
 #error "need change code"
 #endif
@@ -7386,7 +7385,6 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 	return result;
 }
 
-
 /*
 * modifty node port after initd cluster
 */
@@ -7789,8 +7787,8 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 	Datum datumpath;
 	char nodetype;
 	char *cndnpath;
-	char *address;
-	char *gtmmaster_address;
+	char *address = NULL;
+	char *gtmmaster_address = NULL;
 	bool isNull = false;
 	bool bgetwarning = false;
 	Oid hostoid;
@@ -7823,6 +7821,12 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
 		if(isNull)
 		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			pfree(infosendmsg.data);
+			pfree(getAgentCmdRst.description.data);
+			if (gtmmaster_address)
+				pfree(gtmmaster_address);
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
@@ -7870,6 +7874,12 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
 		if(isNull)
 		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			pfree(infosendmsg.data);
+			pfree(getAgentCmdRst.description.data);
+			if (gtmmaster_address)
+				pfree(gtmmaster_address);
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
@@ -7879,7 +7889,8 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 		if (!mgr_modify_node_parameter_after_initd(rel_node, tuple, &infosendmsg, false))
 			bgetwarning = true;
 	}
-	pfree(gtmmaster_address);
+	if (gtmmaster_address)
+		pfree(gtmmaster_address);
 	heap_endscan(rel_scan);
 	
 	/*refresh all pgxc_node of all coordinators*/
@@ -7905,6 +7916,10 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
 		if(isNull)
 		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			pfree(infosendmsg.data);
+			pfree(getAgentCmdRst.description.data);
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
@@ -8077,4 +8092,3 @@ static void mgr_add_extension(char *sqlstr)
 	heap_close(rel_node, RowExclusiveLock);
 
 }
-
