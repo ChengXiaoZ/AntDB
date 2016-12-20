@@ -71,6 +71,10 @@ CREATE VIEW adbmgr.node AS
 CREATE VIEW adbmgr.monitor_all AS
         select * from mgr_monitor_all() order by 1,2;
 
+--list hba
+CREATE VIEW adbmgr.hba AS
+		select * from mgr_hba order by nodename;
+
 --init all
 CREATE VIEW adbmgr.initall AS
 	SELECT 'init gtm master' AS "operation type",* FROM mgr_init_gtm_master(NULL)

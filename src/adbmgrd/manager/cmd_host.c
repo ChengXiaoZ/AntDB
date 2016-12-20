@@ -1509,3 +1509,4 @@ static void check_host_name_isvaild(List *host_name_list)
 	FreeTupleDesc(host_desc);
 	return;
 }
+

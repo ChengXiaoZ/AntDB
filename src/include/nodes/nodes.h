@@ -472,7 +472,7 @@ typedef enum NodeTag
 	,T_MGRDropGtm
 	,T_MGRListGtm
 	,T_MGRListParm
-	,T_MGRAddNode
+	,T_MGRAddNode	
 	,T_MGRAlterNode
 	,T_MGRDropNode
 	,T_MGRListNode
@@ -483,6 +483,7 @@ typedef enum NodeTag
 	,T_MGRMonitorAgent
 	,T_MGRStartAgent
 	,T_MGRStopAgent
+	,T_MGRAddHba
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor

@@ -7,7 +7,12 @@
 
 #include "nodes/nodes.h"
 #include "nodes/pg_list.h"
-
+typedef struct MGRAddHba
+{
+	NodeTag		type;
+	char		*name;		/* host name */
+	List		*options;	/* list of DefElem */
+}MGRAddHba;
 typedef struct MGRAddHost
 {
 	NodeTag		type;

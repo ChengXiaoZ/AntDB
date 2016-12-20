@@ -53,6 +53,9 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRStopAgent:
 		tag = "STOP AGENT";
 		break;
+	case T_MGRAddHba:
+		tag = "ADD HBA";
+		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
 		tag = "???";
@@ -69,6 +72,9 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 	AssertArg(parsetree);
 	switch(nodeTag(parsetree))
 	{
+	case T_MGRAddHba:
+		mgr_add_hba_one((MGRAddHba*)parsetree, params, dest);
+		break;
 	case T_MGRAddHost:
 		mgr_add_host((MGRAddHost*)parsetree, params, dest);
 		break;

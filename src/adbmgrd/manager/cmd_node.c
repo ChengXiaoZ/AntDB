@@ -93,7 +93,6 @@ static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkva
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
-static void mgr_reload_conf(Oid hostoid, char *nodepath);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
@@ -121,6 +120,9 @@ static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, 
 static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata);
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
+
+void mgr_reload_conf(Oid hostoid, char *nodepath);
+
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -4022,7 +4024,7 @@ static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 	mgr_reload_conf(hostoid, nodepath);
 }
 
-static void mgr_reload_conf(Oid hostoid, char *nodepath)
+void mgr_reload_conf(Oid hostoid, char *nodepath)
 {
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg, buf;
@@ -7384,6 +7386,7 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 	return result;
 }
 
+
 /*
 * modifty node port after initd cluster
 */
@@ -8074,3 +8077,4 @@ static void mgr_add_extension(char *sqlstr)
 	heap_close(rel_node, RowExclusiveLock);
 
 }
+

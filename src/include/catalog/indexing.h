@@ -357,6 +357,9 @@ DECLARE_UNIQUE_INDEX(mgr_parm_typename_index, 4951, on mgr_parm using btree(parm
 DECLARE_UNIQUE_INDEX(mgr_node_oid_index, 4949, on mgr_node using btree(oid oid_ops));
 #define NodeOidIndexId 4949
 
+DECLARE_UNIQUE_INDEX(mgr_hba_oid_index, 3231, on mgr_hba using btree(oid oid_ops));
+#define HbaOidIndexId 3231
+
 DECLARE_UNIQUE_INDEX(monitor_cpu_oid_index, 4956, on monitor_cpu using btree(oid oid_ops));
 #define MonitorCpuOidIndexId 4956
 

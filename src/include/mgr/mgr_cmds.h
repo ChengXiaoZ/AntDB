@@ -217,4 +217,9 @@ extern void mgr_update_parm_after_dn_failover(Name oldmastername, char oldmaster
 extern void mgr_parm_after_gtm_failover_handle(Name mastername, char mastertype, Name slavename, char slavetype);
 extern void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
+
+/*mgr_hba*/
+	
+extern void mgr_add_hba_one(MGRAddHba *node, ParamListInfo params, DestReceiver *dest);
+extern Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS);
 #endif /* MGR_CMDS_H */

@@ -146,6 +146,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
+				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt 
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -168,7 +169,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword>	ADD_P DEPLOY DROP ALTER LIST
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
-%token<keyword>	HOST MONITOR PARAM
+%token<keyword>	HOST MONITOR PARAM HBA
 %token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
 %token<keyword> PASSWORD CLEAN RESET
 %token<keyword> START AGENT STOP FAILOVER
@@ -243,6 +244,10 @@ stmt :
 	| CleanAllStmt
 	| ShowStmt
 	| FlushHost
+	| AddHbaStmt
+	| DropHbaStmt
+	| ListHbaStmt
+	| AlterHbaStmt 
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -659,8 +664,10 @@ general_option_item:
 	| ColLabel 							{ $$ = (Node*)makeDefElem($1, NULL); }
 	| var_dotparam						{ $$ = (Node*)makeDefElem($1, NULL); }
 	| var_dotparam '=' general_option_arg { $$ = (Node*)makeDefElem($1, $3); }
-	;
 
+	;
+/*conntype database role addr auth_method*/
+	
 general_option_arg:
 	  Ident								{ $$ = (Node*)makeString($1); }
 	| SConst							{ $$ = (Node*)makeString($1); }
@@ -1204,6 +1211,49 @@ CleanAllStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_all", NULL));
 			$$ = (Node*)stmt;
 	}
+/*hba start*/
+AddHbaStmt:
+	ADD_P HBA Ident '(' ObjList ')'
+		{
+			MGRAddHba *node = makeNode(MGRAddHba);
+			node->name = $3;
+			node->options = $5;
+			$$ = (Node*)node;
+		}
+
+DropHbaStmt:
+	DROP HBA
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("hba"), -1));
+		$$ = (Node*)stmt;
+	}
+AlterHbaStmt:
+	ALTER HBA
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("hba"), -1));
+		$$ = (Node*)stmt;
+	}
+
+ListHbaStmt:
+	LIST HBA 
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("hba"), -1));
+		$$ = (Node*)stmt;
+	}
+	| LIST HBA NodeConstList
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_list_hba_by_name", $3));
+		$$ = (Node*)stmt;
+	}
+/*hba end*/
 
 /* gtm/coordinator/datanode 
 */
@@ -2216,6 +2266,7 @@ unreserved_keyword:
 	| GET_THRESHOLD_TYPE
 	| GET_USER_INFO
 	| GTM
+	| HBA
 	| HOST
 	| I
 	| IF_P
