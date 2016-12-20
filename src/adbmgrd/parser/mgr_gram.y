@@ -116,6 +116,7 @@ static void check_host_name_isvaild(List *node_name_list);
 	const char			*keyword;
 
 	char				chr;
+	DefElem				*defelt;
 	bool				boolean;
 	List				*list;
 	Node				*node;
@@ -147,11 +148,15 @@ static void check_host_name_isvaild(List *node_name_list);
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt 
+				CreateUserStmt
 
 %type <list>	general_options opt_general_options general_option_list
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
+				OptRoleList
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
+
+%type <defelt>	CreateOptRoleElem AlterOptRoleElem
 
 %type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type
 %type <vsetstmt> set_rest set_rest_more
@@ -162,11 +167,11 @@ static void check_host_name_isvaild(List *node_name_list);
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
 				opt_general_all opt_general_force var_dotparam var_showparam
-				sub_like_expr
+				sub_like_expr RoleId
 
 %type <chr>		node_type cluster_type
 
-%token<keyword>	ADD_P DEPLOY DROP ALTER LIST
+%token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARAM HBA
@@ -182,7 +187,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER GET_SLOWLOG_COUNT
-				UPDATE_THRESHOLD_VALUE UPDATE_PASSWORD CHECK_USER
+				UPDATE_THRESHOLD_VALUE UPDATE_PASSWORD CHECK_USER USER
 				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD GET_DB_THRESHOLD_ALL_TYPE
 				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM GET_ALARM_INFO_COUNT
 %%
@@ -214,6 +219,7 @@ stmtmulti:	stmtmulti ';' stmt
 
 stmt :
 	  AddHostStmt
+	| CreateUserStmt
 	| DropHostStmt
 	| ListHostStmt
 	| AlterHostStmt
@@ -251,6 +257,43 @@ stmt :
 	| /* empty */
 		{ $$ = NULL; }
 	;
+CreateUserStmt:
+			CREATE USER RoleId OptRoleList
+				{
+					CreateRoleStmt *n = makeNode(CreateRoleStmt);
+					n->stmt_type = ROLESTMT_USER;
+					n->role = $3;
+					n->options = $4;
+					$$ = (Node *)n;
+				}
+			;
+
+OptRoleList:
+			OptRoleList CreateOptRoleElem	{ $$ = lappend($1, $2); }
+			| /* EMPTY */			{ $$ = NIL; }
+		;
+
+CreateOptRoleElem:
+			AlterOptRoleElem	{ $$ = $1; }
+
+AlterOptRoleElem:
+			PASSWORD SConst
+				{
+					$$ = makeDefElem("password",
+									 (Node *)makeString($2));
+				}
+			| IDENT
+				{
+					if (strcmp($1, "superuser") == 0)
+						$$ = makeDefElem("superuser", (Node *)makeInteger(TRUE));
+					else
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("unrecognized role option \"%s\"", $1),
+									parser_errposition(@1)));
+				}
+			;
+
 AppendNodeStmt:
 		APPEND DATANODE MASTER Ident
 		{
@@ -598,7 +641,9 @@ NonReservedWord_or_Sconst:
 			NonReservedWord							{ $$ = $1; }
 			| SConst								{ $$ = $1; }
 			;
-			
+
+RoleId:		NonReservedWord							{ $$ = $1; };
+
 NonReservedWord:	IDENT							{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
 			;			
@@ -2293,6 +2338,7 @@ unreserved_keyword:
 	| UPDATE_PASSWORD
 	| UPDATE_THRESHOLD_VALUE
 	| UPDATE_USER
+	| USER
 	;
 
 reserved_keyword:
@@ -2302,6 +2348,7 @@ reserved_keyword:
 	| NOT
 	| TRUE_P
 	| ON
+	| CREATE
 	;
 
 %%
