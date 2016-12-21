@@ -4008,18 +4008,7 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 			/* oracle date will ignore fractional second */
 			if (is_ora_date)
 				fsec = 0;
-			if (is_ora_date &&
-				tm->tm_hour == 0 &&
-				tm->tm_min == 0 &&
-				tm->tm_sec == 0)
-			{
-				sprintf(str, "%04d-%02d-%02d",
-						(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
-						tm->tm_mon, tm->tm_mday);
-			} else
-			{
 #endif
-
 			if (style == USE_ISO_DATES)
 				sprintf(str, "%04d-%02d-%02d %02d:%02d:",
 						(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
@@ -4030,9 +4019,6 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 						tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
-#ifdef ADB
-			}
-#endif
 
 			if (print_tz)
 				EncodeTimezone(str, tz, style);
@@ -4049,25 +4035,11 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 			else
 				sprintf(str, "%02d/%02d", tm->tm_mon, tm->tm_mday);
 
-#ifdef ADB
-			if (is_ora_date &&
-				tm->tm_hour == 0 &&
-				tm->tm_min == 0 &&
-				tm->tm_sec == 0)
-			{
-				sprintf(str + 5, "/%04d",
-					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));
-			} else
-			{
-#endif
 			sprintf(str + 5, "/%04d %02d:%02d:",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
-#ifdef ADB
-			}
-#endif
 
 			/*
 			 * Note: the uses of %.*s in this function would be risky if the
@@ -4092,25 +4064,11 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			sprintf(str, "%02d.%02d", tm->tm_mday, tm->tm_mon);
 
-#ifdef ADB
-			if (is_ora_date &&
-				tm->tm_hour == 0 &&
-				tm->tm_min == 0 &&
-				tm->tm_sec == 0)
-			{
-				sprintf(str + 5, ".%04d",
-					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));
-			} else
-			{
-#endif
 			sprintf(str + 5, ".%04d %02d:%02d:",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
-#ifdef ADB
-			}
-#endif
 
 			if (print_tz)
 			{
@@ -4138,22 +4096,10 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 				sprintf(str + 4, "%02d %3s", tm->tm_mday, months[tm->tm_mon - 1]);
 			else
 				sprintf(str + 4, "%3s %02d", months[tm->tm_mon - 1], tm->tm_mday);
-#ifdef ADB
-			if (is_ora_date &&
-				tm->tm_hour == 0 &&
-				tm->tm_min == 0 &&
-				tm->tm_sec == 0)
-			{
-				/* ignore time */
-			} else
-			{
-#endif
+
 			sprintf(str + 10, " %02d:%02d:", tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
-#ifdef ADB
-			}
-#endif
 
 			sprintf(str + strlen(str), " %04d",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));
