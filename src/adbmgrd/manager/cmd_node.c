@@ -31,6 +31,7 @@
 #include "funcapi.h"
 #include "fmgr.h"
 #include "utils/lsyscache.h"
+#include "executor/spi.h"
 #include "../../interfaces/libpq/libpq-fe.h"
 
 #define DEFAULT_DB "postgres"
@@ -48,6 +49,8 @@
 #define SYNC            't'
 #define ASYNC           'f'
 #define SPACE           ' '
+#define PRIV_GRANT      'G'
+#define PRIC_REVOKE     'R'
 
 typedef struct AppendNodeInfo
 {
@@ -120,7 +123,13 @@ static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, 
 static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata);
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
-
+static char *get_username_list_str(List *user_list);
+static void mgr_manage_init(char command_type, char *user_list_str);
+static void mgr_manage_append(char command_type, char *user_list_str);
+static void mgr_manage_failover(char command_type, char *user_list_str);
+static void mgr_manage_clean(char command_type, char *user_list_str);
+static void mgr_manage_list(char command_type, char *user_list_str);
+static List *DecodeTextArrayToValueList(Datum textarray);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 
 #if (Natts_mgr_node != 9)
@@ -8092,3 +8101,303 @@ static void mgr_add_extension(char *sqlstr)
 	heap_close(rel_node, RowExclusiveLock);
 
 }
+
+Datum mgr_priv_manage(PG_FUNCTION_ARGS)
+{
+	List *command_list = NIL;
+	List *username_list = NIL;
+	ListCell *lc = NULL;
+	Value *command = NULL;
+	char *username_list_str = NULL;
+	Datum datum_command_list;
+	Datum datum_username_list;
+
+	char command_type = PG_GETARG_CHAR(0);
+	Assert(command_type == PRIV_GRANT || command_type == PRIC_REVOKE);
+
+	datum_command_list = PG_GETARG_DATUM(1);
+	datum_username_list = PG_GETARG_DATUM(2);
+
+	/* get command list and username list  */
+	command_list = DecodeTextArrayToValueList(datum_command_list);
+	username_list = DecodeTextArrayToValueList(datum_username_list);
+
+	/* check command and user is valid */
+	//check_command_valid(command_list);
+	//check_user_valid(user_list);
+
+	username_list_str = get_username_list_str(username_list);
+
+	foreach(lc, command_list)
+	{
+		command = lfirst(lc);
+		Assert(command && IsA(command, String));
+
+		if (strcmp(strVal(command), "init") == 0)
+			mgr_manage_init(command_type, username_list_str);
+		else if (strcmp(strVal(command), "append") == 0)
+			mgr_manage_append(command_type, username_list_str);
+		else if (strcmp(strVal(command), "failover") == 0)
+			mgr_manage_failover(command_type, username_list_str);
+		else if (strcmp(strVal(command), "clean") == 0)
+			mgr_manage_clean(command_type, username_list_str);
+		else if (strcmp(strVal(command), "list") == 0)
+			mgr_manage_list(command_type, username_list_str);
+		else
+			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
+	}
+
+	if (command_type == PRIV_GRANT)
+		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
+	else
+		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_manage_list(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		// grant execute on function func_name [, ...] to user_name [, ...];
+		// grant select on schema.view [, ...] to user [, ...]
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_list_hba_by_name(\"any\") ");
+		appendStringInfoString(&commandsql, "TO ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "GRANT select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.host, ");
+		appendStringInfoString(&commandsql, "adbmgr.node, ");
+		appendStringInfoString(&commandsql, "adbmgr.updateparm, ");
+		appendStringInfoString(&commandsql, "adbmgr.hba, ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIC_REVOKE)
+	{
+		// revoke execute on function func_name [, ...] from user_name [, ...];
+		// revoke select on schema.view [, ...] from user [, ...]
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_list_hba_by_name(\"any\") ");
+		appendStringInfoString(&commandsql, "FROM ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "REVOKE select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.host, ");
+		appendStringInfoString(&commandsql, "adbmgr.node, ");
+		appendStringInfoString(&commandsql, "adbmgr.updateparm, ");
+		appendStringInfoString(&commandsql, "adbmgr.hba, ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
+}
+
+static void mgr_manage_clean(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant execute on function func_name [, ...] to user_name [, ...] */
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_clean_all(), ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIC_REVOKE)
+	{
+		/*revoke execute on function func_name [, ...] from user_name [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_clean_all(), ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
+}
+
+static void mgr_manage_failover(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant execute on function func_name [, ...] to user_name [, ...] */
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring), ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIC_REVOKE)
+	{
+		/*revoke execute on function func_name [, ...] from user_name [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring), ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
+}
+
+static void mgr_manage_append(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant execute on function func_name [, ...] to user_name [, ...] */
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_append_dnmaster(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_dnslave(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_dnextra(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_coordmaster(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_agtmslave(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_agtmextra(cstring) ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIC_REVOKE)
+	{
+		/*revoke execute on function func_name [, ...] from user_name [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_append_dnmaster(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_dnslave(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_dnextra(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_coordmaster(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_agtmslave(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_append_agtmextra(cstring) ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
+}
+
+static void mgr_manage_init(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant select on schema.view [, ...] to user [, ...] */
+		appendStringInfoString(&commandsql, "GRANT select ON adbmgr.initall TO ");
+	}else if (command_type == PRIC_REVOKE)
+	{
+		/*revoke select on schema.view [, ...] from user [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE select ON adbmgr.initall FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
+}
+
+static char *get_username_list_str(List *username_list)
+{
+	StringInfoData username_list_str;
+	ListCell *lc = NULL;
+	Value *username = NULL;
+
+	initStringInfo(&username_list_str);
+
+	foreach(lc, username_list)
+	{
+		username = lfirst(lc);
+		Assert(username && IsA(username, String));
+
+		appendStringInfoString(&username_list_str, strVal(username));
+		appendStringInfoChar(&username_list_str, ',');
+	}
+
+	return username_list_str.data;
+}
+
+static List * DecodeTextArrayToValueList(Datum textarray)
+{
+	ArrayType  *array = NULL;
+	Datum *elemdatums;
+	int num_elems;
+	List *value_list = NIL;
+	int i;
+
+	Assert( PointerIsValid(DatumGetPointer(textarray)));
+
+	array = DatumGetArrayTypeP(textarray);
+	Assert(ARR_ELEMTYPE(array) == TEXTOID);
+
+	deconstruct_array(array, TEXTOID, -1, false, 'i', &elemdatums, NULL, &num_elems);
+	for (i = 0; i < num_elems; ++i)
+	{
+		value_list = lappend(value_list, makeString(TextDatumGetCString(elemdatums[i])));
+	}
+
+	return value_list;
+}
+

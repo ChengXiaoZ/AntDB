@@ -148,11 +148,11 @@ static void check_host_name_isvaild(List *node_name_list);
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt 
-				CreateUserStmt DropUserStmt
+				CreateUserStmt DropUserStmt GrantStmt privilege username
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
-				OptRoleList name_list
+				OptRoleList name_list privilege_list username_list
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
 
@@ -180,6 +180,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
+%token<keyword> GRANT REVOKE FROM
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -244,6 +245,7 @@ stmt :
 	| Gettopologyparm /* for ADB monitor home page */
 	| Update_host_config_value
 	| Get_host_threshold
+	| GrantStmt
 	| Get_alarm_info
 	| AppendNodeStmt
 	| AddUpdataparmStmt
@@ -258,6 +260,52 @@ stmt :
 	| /* empty */
 		{ $$ = NULL; }
 	;
+
+GrantStmt:
+		GRANT privilege_list TO username_list
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *command_type = makeIntConst('G', -1);
+			Node *privs = makeAArrayExpr($2, @2);
+			Node *names = makeAArrayExpr($4, @4);
+			List *args = list_make3(command_type, privs, names);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_manage", args));
+			$$ = (Node*)stmt;
+		}
+		| REVOKE privilege_list FROM username_list
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *command_type = makeIntConst('R', -1);
+			Node *privs = makeAArrayExpr($2, @2);
+			Node *names = makeAArrayExpr($4, @4);
+			List *args = list_make3(command_type, privs, names);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_manage", args));
+			$$ = (Node*)stmt;
+		}
+		;
+
+privilege_list:
+			privilege
+				{ $$ = list_make1($1); }
+			| privilege_list ',' privilege
+				{ $$ = lappend($1, $3); }
+			;
+
+privilege : IDENT { $$ = makeStringConst(pstrdup($1), @1); };
+			| unreserved_keyword { $$ = makeStringConst(pstrdup($1), @1); }
+			| reserved_keyword	 { $$ = makeStringConst(pstrdup($1), @1); }
+			;
+
+username_list:
+			username
+				{ $$ = list_make1($1); }
+			| username_list ',' username
+				{ $$ = lappend($1, $3); }
+			;
+
+username : IDENT { $$ = makeStringConst(pstrdup($1), @1); };
 
 DropUserStmt:
 			DROP USER name_list
@@ -278,6 +326,7 @@ name_list:
 name: ColId     { $$ = $1; };
 
 ColId: IDENT     { $$ = $1; };
+
 
 CreateUserStmt:
 			CREATE USER RoleId OptRoleList
@@ -857,6 +906,7 @@ SignedIconst: Iconst								{ $$ = $1; }
 ColLabel:	IDENT									{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
 			| reserved_keyword						{ $$ = pstrdup($1); }
+		;
 
 AlterHostStmt:
         ALTER HOST Ident opt_general_options
@@ -2324,6 +2374,7 @@ unreserved_keyword:
 	| FAILOVER
 	| FAST
 	| FLUSH
+	| FROM
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_ALARM_INFO_ASC
 	| GET_ALARM_INFO_COUNT
@@ -2362,6 +2413,7 @@ unreserved_keyword:
 	| PARAM
 	| PASSWORD
 	| RESET
+	| REVOKE
 	| RESOLVE_ALARM
 	| S
 	| SET
@@ -2385,6 +2437,7 @@ reserved_keyword:
 	| TRUE_P
 	| ON
 	| CREATE
+	| GRANT
 	;
 
 %%

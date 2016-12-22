@@ -129,6 +129,8 @@ extern Datum mgr_append_coordmaster(PG_FUNCTION_ARGS);
 extern Datum mgr_append_agtmslave(PG_FUNCTION_ARGS);
 extern Datum mgr_append_agtmextra(PG_FUNCTION_ARGS);
 
+extern Datum mgr_priv_manage(PG_FUNCTION_ARGS);
+
 /* extern void mgr_configure_nodes_all(void); */
 extern Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);
 
