@@ -150,7 +150,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt 
 				CreateUserStmt DropUserStmt
 
-%type <list>	general_options opt_general_options general_option_list
+%type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
 				OptRoleList name_list
 %type <node>	general_option_item general_option_arg target_el
@@ -176,7 +176,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARAM HBA
 %token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
-%token<keyword> PASSWORD CLEAN RESET
+%token<keyword> PASSWORD CLEAN RESET WHERE ROW_ID
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
@@ -1279,6 +1279,7 @@ CleanAllStmt:
 			$$ = (Node*)stmt;
 	}
 /*hba start*/
+
 AddHbaStmt:
 	ADD_P HBA Ident '(' ObjList ')'
 		{
@@ -1289,19 +1290,22 @@ AddHbaStmt:
 		}
 
 DropHbaStmt:
-	DROP HBA
+	DROP HBA HbaParaList 
 	{
-		SelectStmt *stmt = makeNode(SelectStmt);
+		SelectStmt *stmt = makeNode(SelectStmt);		
 		stmt->targetList = list_make1(make_star_target(-1));
-		stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("hba"), -1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_drop_hba", $3));
 		$$ = (Node*)stmt;
 	}
 AlterHbaStmt:
-	ALTER HBA
+	ALTER HBA Ident '(' Ident ')' WHERE ROW_ID '=' Iconst
 	{
 		SelectStmt *stmt = makeNode(SelectStmt);
+		List *args = list_make1(makeStringConst($3, @3));
+		args = lappend(args, makeStringConst($5, @5));
+		args = lappend(args, makeIntConst($10, @10));
 		stmt->targetList = list_make1(make_star_target(-1));
-		stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("hba"), -1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_drop_hba", args));
 		$$ = (Node*)stmt;
 	}
 
@@ -1319,6 +1323,16 @@ ListHbaStmt:
 		stmt->targetList = list_make1(make_star_target(-1));
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_list_hba_by_name", $3));
 		$$ = (Node*)stmt;
+	}
+HbaParaList:
+	set_ident 	{$$ = list_make1(makeStringConst($1, @1));}
+	| Ident WHERE ROW_ID '=' Iconst
+	{
+		List *args = list_make1(makeStringConst($1, @1));
+		char *num = palloc0(15);
+		pg_ltoa($5, num);
+		args = lappend(args, makeStringConst(num, @5));
+		$$ = args;
 	}
 /*hba end*/
 

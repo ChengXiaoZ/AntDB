@@ -36,8 +36,6 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bf
 static void writefile(char *path, ConfInfo *info);
 static void writehbafile(char *path, HbaInfo *info);
 static bool copyFile(const char *targetFileWithPath, const char *sourceFileWithPath);
-static void cmd_refresh_pghba_confinfo(HbaInfo *checkinfo, HbaInfo *info);
-static void cmd_node_refresh_pghba_paras(StringInfo msg);
 static void pg_ltoa(int32 value, char *a);
 static bool cmd_rename_recovery(StringInfo msg);
 static void cmd_monitor_gets_hostinfo(void);
@@ -58,9 +56,18 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf);
 static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output);
 
+static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg);
+static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *checkinfo, HbaInfo *infohead, StringInfo err_msg);
+static void add_pghba_info_list(HbaInfo *infohead, HbaInfo *checkinfo);
+static HbaInfo *delete_pghba_info_from_list(HbaInfo *infohead, HbaInfo *checkinfo);
+static char *get_connect_type_str(HbaType connect_type);
+static bool check_pghba_exist_info(HbaInfo *checkinfo, HbaInfo *infohead);
+static char *pghba_info_parse(char *ptmp, HbaInfo *newinfo, StringInfo infoparastr);
+
+
 void do_agent_command(StringInfo buf)
 {
-	int cmd_type;
+	AgentCommand cmd_type;
 	AssertArg(buf);
 	cmd_type = agt_getmsgbyte(buf);
 	switch(cmd_type)
@@ -109,7 +116,14 @@ void do_agent_command(StringInfo buf)
 		break;
 	/*modify gtm|coordinator|datanode pg_hba.conf*/
 	case AGT_CMD_CNDN_REFRESH_PGHBACONF:
-		cmd_node_refresh_pghba_paras(buf);
+		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_ADD_PGHBACONF, buf);
+		break;
+	case AGT_CMD_CNDN_DELETE_PGHBACONF:
+		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_DELETE_PGHBACONF, buf);
+		break;
+	case AGT_CMD_CNDN_ALTER_PGHBACONF:		
+		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_DELETE_PGHBACONF, buf);
+		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_ADD_PGHBACONF, buf);
 		break;
 	/*modify gtm|coordinator|datanode postgresql.conf and reload it*/
 	case AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD:
@@ -247,7 +261,8 @@ static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VER
 	
 }
 
-static void cmd_node_refresh_pghba_paras(StringInfo msg)
+/*parse the msg form manager,and write the hba msg to pg_hba.conf */
+static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 {
 	const char *rec_msg_string;
 	StringInfoData output;
@@ -255,12 +270,11 @@ static void cmd_node_refresh_pghba_paras(StringInfo msg)
 	StringInfoData pgconffile;
 	char datapath[MAXPGPATH];
 	char *ptmp;
-	HbaInfo *info,
-			*newinfo,
-			*infohead;
+	HbaInfo *newinfo, *infohead;
 	MemoryContext pgconf_context;
 	MemoryContext oldcontext;
-
+	Assert(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type || AGT_CMD_CNDN_ADD_PGHBACONF == cmd_type);
+		
 	pgconf_context = AllocSetContextCreate(CurrentMemoryContext,
 										"pghbaconf",
 										ALLOCSET_DEFAULT_MINSIZE,
@@ -271,7 +285,8 @@ static void cmd_node_refresh_pghba_paras(StringInfo msg)
 	rec_msg_string = agt_getmsgstring(msg);		 
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
-
+	initStringInfo(&output);
+	
 	appendBinaryStringInfo(&infoparastr, &msg->data[msg->cursor], msg->len - msg->cursor);
 
 	/*get datapath*/
@@ -282,41 +297,19 @@ static void cmd_node_refresh_pghba_paras(StringInfo msg)
 	{
 		ereport(ERROR, (errmsg("could not find: %s", pgconffile.data)));
 	}
-	/*get the postgresql.conf content*/
-	info = parse_hba_file(pgconffile.data);
-	infohead = info;
+	/*get the pg_hba.conf content*/
+	infohead = parse_hba_file(pgconffile.data);
 	newinfo = (HbaInfo *)palloc(sizeof(HbaInfo));
 	while((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len))
-	{
-		/*type*/
-		newinfo->type = infoparastr.data[infoparastr.cursor];
-		infoparastr.cursor = infoparastr.cursor + sizeof(char) + 1;
-		/*database*/
-		Assert((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len));
-		newinfo->database = &(infoparastr.data[infoparastr.cursor]);
-		infoparastr.cursor = infoparastr.cursor + strlen(newinfo->database) + 1;
-		/*user*/
-		Assert((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len));
-		newinfo->user = &(infoparastr.data[infoparastr.cursor]);
-		infoparastr.cursor = infoparastr.cursor + strlen(newinfo->user) + 1;
-		/*ip*/
-		Assert((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len));
-		newinfo->addr = &(infoparastr.data[infoparastr.cursor]);
-		infoparastr.cursor = infoparastr.cursor + strlen(newinfo->addr) + 1;
-		/*mark*/
-		Assert((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len));
-		newinfo->addr_mark = atoi(&(infoparastr.data[infoparastr.cursor]));
-		infoparastr.cursor = infoparastr.cursor + strlen(&(infoparastr.data[infoparastr.cursor])) + 1;
-		/*method*/
-		Assert((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len));
-		newinfo->auth_method = &(infoparastr.data[infoparastr.cursor]);
-		infoparastr.cursor = infoparastr.cursor + strlen(newinfo->auth_method) + 1;
-		cmd_refresh_pghba_confinfo(newinfo, info);
+	{		
+		ptmp = pghba_info_parse(ptmp, newinfo, &infoparastr);
+		infohead = cmd_refresh_pghba_confinfo(cmd_type, newinfo, infohead, &output);
 	}
 	
-	/*use the new info list to refresh the postgresql.conf*/
-	writehbafile(pgconffile.data, infohead);
-	initStringInfo(&output);
+	/*use the new info list to refresh the pg_hba.conf*/
+	writehbafile(pgconffile.data, infohead);	
+	
+	/*send the result to the manager*/
 	appendStringInfoString(&output, "success");
 	appendStringInfoCharMacro(&output, '\0');
 	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
@@ -324,12 +317,47 @@ static void cmd_node_refresh_pghba_paras(StringInfo msg)
 	pfree(output.data);
 	MemoryContextSwitchTo(oldcontext);
 	MemoryContextDelete(pgconf_context);	
-
 }
 
-static void cmd_refresh_pghba_confinfo(HbaInfo *checkinfo, HbaInfo *info)
-{
-	bool getkey = false;
+static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *checkinfo, HbaInfo *infohead, StringInfo err_msg)
+{	
+	bool is_exist;
+	char *strtype;
+	Assert(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type || AGT_CMD_CNDN_ADD_PGHBACONF == cmd_type);
+	Assert(checkinfo);
+	Assert(infohead);
+	
+	is_exist = check_pghba_exist_info(checkinfo, infohead);
+	strtype = get_connect_type_str(checkinfo->type);
+	if(AGT_CMD_CNDN_ADD_PGHBACONF == cmd_type)
+	{
+		if(false == is_exist)
+		{
+			add_pghba_info_list(infohead, checkinfo);	
+		}	
+	}
+	else if(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type)
+	{
+		if(true == is_exist)
+		{			
+			infohead = delete_pghba_info_from_list(infohead, checkinfo);
+		}
+		else
+		{
+			appendStringInfo(err_msg,"\"%s %s %s %s %s\"does not exist in the pg_hba.conf.\n",strtype
+																						,checkinfo->database
+																						,checkinfo->user
+																						,checkinfo->addr
+																						,checkinfo->auth_method);
+		}		
+	}
+	pfree(strtype);
+	return infohead;
+}
+/*append the to the info list*/
+static void add_pghba_info_list(HbaInfo *infohead, HbaInfo *checkinfo)
+{	
+	HbaInfo *infotail = infohead;
 	char *strtype;
 	char *database;
 	char *user;
@@ -337,11 +365,136 @@ static void cmd_refresh_pghba_confinfo(HbaInfo *checkinfo, HbaInfo *info)
 	char mark[4];
 	char *auth_method;
 	char *line;
-	int intervallen = 4;
-	HbaInfo *infopre = info;
+	int intervallen = 4;	
+	HbaInfo *newinfo;		
+	Assert(infotail);
+	Assert(checkinfo);	
+	
+	newinfo = (HbaInfo *)palloc0(sizeof(HbaInfo)+1);	
+	newinfo->type = checkinfo->type;
+	/*database*/
+	database = (char *)palloc(strlen(checkinfo->database)+1);
+	memset(database, 0, strlen(checkinfo->database)+1);		
+	strncpy(database, checkinfo->database, strlen(checkinfo->database));
+	/*user*/
+	user = (char *)palloc(strlen(checkinfo->user)+1);
+	memset(user, 0, strlen(checkinfo->user)+1);		
+	strncpy(user, checkinfo->user, strlen(checkinfo->user));
+	/*addr*/
+	addr = (char *)palloc(strlen(checkinfo->addr)+1);
+	memset(addr, 0, strlen(checkinfo->addr)+1);		
+	strncpy(addr, checkinfo->addr, strlen(checkinfo->addr));
+	/*auth_method*/
+	auth_method = (char *)palloc(strlen(checkinfo->auth_method)+1);
+	memset(auth_method, 0, strlen(checkinfo->auth_method)+1);		
+	strncpy(auth_method, checkinfo->auth_method, strlen(checkinfo->auth_method));
+	newinfo->addr_mark = checkinfo->addr_mark;
+	newinfo->addr_is_ipv6 = false;
+	newinfo->type_loc = 0;
 
-	/*use newinfo to refresh info list*/
-	while(checkinfo && info)
+	strtype = get_connect_type_str(checkinfo->type);
+	newinfo->type_len = strlen(strtype);
+	newinfo->database = database;
+	newinfo->user = user;
+	newinfo->addr = addr;
+	newinfo->auth_method = auth_method;
+	newinfo->options = NULL;
+	newinfo->db_loc = newinfo->type_len + intervallen;
+	newinfo->db_len = strlen(database);
+	newinfo->user_loc = newinfo->db_loc + newinfo->db_len + intervallen;
+	newinfo->user_len = strlen(user);
+	newinfo->addr_loc = newinfo->user_loc + newinfo->user_len + intervallen;
+	newinfo->addr_len = strlen(addr);
+	newinfo->mark_loc = newinfo->addr_loc + newinfo->addr_len + 1;
+	pg_ltoa(newinfo->addr_mark, mark);
+	newinfo->mark_len = strlen(mark);
+	newinfo->method_loc = newinfo->mark_loc + newinfo->mark_len + intervallen;
+	newinfo->method_len = strlen(auth_method);
+	newinfo->opt_loc = newinfo->method_loc + newinfo->method_len + intervallen;
+	newinfo->opt_len = 0;
+	
+	line = (char *)palloc(newinfo->method_loc+newinfo->method_len+2);
+	memcpy(line, strtype, newinfo->type_len);
+	memset(line + newinfo->type_len, ' ', intervallen);
+	memcpy(line+newinfo->db_loc, database, newinfo->db_len);
+	memset(line + newinfo->db_loc + newinfo->db_len, ' ', intervallen);
+	memcpy(line+newinfo->user_loc, user, newinfo->user_len);
+	memset(line + newinfo->user_loc + newinfo->user_len, ' ', intervallen);
+	memcpy(line+newinfo->addr_loc, addr, newinfo->addr_len);
+	line[newinfo->addr_loc+newinfo->addr_len] = '/';
+	memcpy(&(line[newinfo->mark_loc]), &mark, strlen(mark));
+	memset(line+newinfo->mark_loc+newinfo->mark_len, ' ', intervallen);
+	memcpy(line+newinfo->method_loc, auth_method, newinfo->method_len);
+	line[newinfo->method_loc+newinfo->method_len] = '\n';
+	line[newinfo->method_loc+newinfo->method_len+1] = '\0';
+	newinfo->line = line;
+	newinfo->next = NULL;
+	while(infotail->next) 
+	{
+		infotail = infotail->next;
+	}
+	infotail->next = newinfo;
+}
+static char *get_connect_type_str(HbaType connect_type)
+{
+	char *strtype;
+	strtype = palloc0(10);
+	switch(connect_type)
+	{
+		case HBA_TYPE_LOCAL: //local
+		    memcpy(strtype, "local", 5);
+			break;
+		case HBA_TYPE_HOST: //host
+			memcpy(strtype, "host", 4);
+			break;
+		case HBA_TYPE_HOSTSSL: //hostssl
+			memcpy(strtype, "hostssl", 7);
+			break;
+		case HBA_TYPE_HOSTNOSSL: //hostnossl
+			memcpy(strtype, "hostnossl", 9);
+			break;
+		default:
+			break;
+	}
+	return strtype;
+}
+static HbaInfo *delete_pghba_info_from_list(HbaInfo *infohead, HbaInfo *checkinfo)
+{
+	HbaInfo *info_cur = infohead;
+	HbaInfo *info_pre = infohead;
+	Assert(infohead);
+	Assert(checkinfo);
+	/*seek the specified elem*/
+	while(info_cur)
+	{
+		if(checkinfo->type == info_cur->type
+				&& strcmp(checkinfo->database, info_cur->database) == 0
+				&& strcmp(checkinfo->user, info_cur->user) == 0
+				&& strcmp(checkinfo->addr, info_cur->addr) == 0
+				&& strcmp(checkinfo->auth_method, info_cur->auth_method) == 0)
+		{
+			break;
+		}
+		info_pre = info_cur;
+		info_cur = info_cur->next;
+	}
+	/*delete from the list*/
+	
+	if(info_pre == infohead)	
+		infohead = NULL;
+	else
+		info_pre->next = info_cur->next;
+	/*release HbaInfo *info_cur memory*/
+	
+	return infohead;
+}
+
+static bool check_pghba_exist_info(HbaInfo *checkinfo, HbaInfo *infohead)
+{
+	HbaInfo *info = infohead;
+	Assert(checkinfo);
+	Assert(infohead);
+	while(info)
 	{
 		if(checkinfo->type == info->type
 				&& strcmp(checkinfo->database, info->database) == 0
@@ -349,101 +502,39 @@ static void cmd_refresh_pghba_confinfo(HbaInfo *checkinfo, HbaInfo *info)
 				&& strcmp(checkinfo->addr, info->addr) == 0
 				&& strcmp(checkinfo->auth_method, info->auth_method) == 0)
 		{
-			getkey = true;
-			break;
+			return true;
 		}
-		infopre = info;
 		info = info->next;
 	}
-
-	/*append the to the info list*/
-	if (!getkey)
-	{		
-		HbaInfo *newinfo = (HbaInfo *)palloc(sizeof(HbaInfo)+1);
-		newinfo->type = checkinfo->type;
-		/*database*/
-		database = (char *)palloc(strlen(checkinfo->database)+1);
-		memset(database, 0, strlen(checkinfo->database)+1);		
-		strncpy(database, checkinfo->database, strlen(checkinfo->database));
-		/*user*/
-		user = (char *)palloc(strlen(checkinfo->user)+1);
-		memset(user, 0, strlen(checkinfo->user)+1);		
-		strncpy(user, checkinfo->user, strlen(checkinfo->user));
-		/*addr*/
-		addr = (char *)palloc(strlen(checkinfo->addr)+1);
-		memset(addr, 0, strlen(checkinfo->addr)+1);		
-		strncpy(addr, checkinfo->addr, strlen(checkinfo->addr));
-		/*auth_method*/
-		auth_method = (char *)palloc(strlen(checkinfo->auth_method)+1);
-		memset(auth_method, 0, strlen(checkinfo->auth_method)+1);		
-		strncpy(auth_method, checkinfo->auth_method, strlen(checkinfo->auth_method));
-		newinfo->addr_mark = checkinfo->addr_mark;
-		newinfo->addr_is_ipv6 = false;
-		newinfo->type_loc = 0;
-		switch(checkinfo->type)
-		{
-			case 1: //local
-			  strtype = "local";
-				newinfo->type_len = 5;
-				break;
-			case 2: //host
-				strtype = "host";
-				newinfo->type_len = 4;
-				break;
-			case 3: //hostssl
-				strtype = "hostssl";
-				newinfo->type_len = 7;
-				break;
-			case 4: //hostnossl
-				strtype = "hostnossl";
-				newinfo->type_len = 9;
-				break;
-			default:
-				strtype = "none";
-				newinfo->type_len = 0;
-				break;
-		}
-
-		newinfo->database = database;
-		newinfo->user = user;
-		newinfo->addr = addr;
-		newinfo->auth_method = auth_method;
-		newinfo->options = NULL;
-		newinfo->db_loc = newinfo->type_len + intervallen;
-		newinfo->db_len = strlen(database);
-		newinfo->user_loc = newinfo->db_loc + newinfo->db_len + intervallen;
-		newinfo->user_len = strlen(user);
-		newinfo->addr_loc = newinfo->user_loc + newinfo->user_len + intervallen;
-		newinfo->addr_len = strlen(addr);
-		newinfo->mark_loc = newinfo->addr_loc + newinfo->addr_len + 1;
-		pg_ltoa(newinfo->addr_mark, mark);
-		newinfo->mark_len = strlen(mark);
-		newinfo->method_loc = newinfo->mark_loc + newinfo->mark_len + intervallen;
-		newinfo->method_len = strlen(auth_method);
-		newinfo->opt_loc = newinfo->method_loc + newinfo->method_len + intervallen;
-		newinfo->opt_len = 0;
-		
-		line = (char *)palloc(newinfo->method_loc+newinfo->method_len+2);
-		memcpy(line, strtype, newinfo->type_len);
-		memset(line + newinfo->type_len, ' ', intervallen);
-		memcpy(line+newinfo->db_loc, database, newinfo->db_len);
-		memset(line + newinfo->db_loc + newinfo->db_len, ' ', intervallen);
-		memcpy(line+newinfo->user_loc, user, newinfo->user_len);
-		memset(line + newinfo->user_loc + newinfo->user_len, ' ', intervallen);
-		memcpy(line+newinfo->addr_loc, addr, newinfo->addr_len);
-		line[newinfo->addr_loc+newinfo->addr_len] = '/';
-		memcpy(&(line[newinfo->mark_loc]), &mark, strlen(mark));
-		memset(line+newinfo->mark_loc+newinfo->mark_len, ' ', intervallen);
-		memcpy(line+newinfo->method_loc, auth_method, newinfo->method_len);
-		line[newinfo->method_loc+newinfo->method_len] = '\n';
-		line[newinfo->method_loc+newinfo->method_len+1] = '\0';
-		newinfo->line = line;
-		newinfo->next = NULL;
-		infopre->next = newinfo;
-	}
-
+	return false;
 }
-
+static char *pghba_info_parse(char *ptmp, HbaInfo *newinfo, StringInfo infoparastr)
+{
+	/*type*/
+	newinfo->type = infoparastr->data[infoparastr->cursor];
+	infoparastr->cursor = infoparastr->cursor + sizeof(char) + 1;
+	/*database*/
+	Assert((ptmp = &infoparastr->data[infoparastr->cursor]) != '\0' && (infoparastr->cursor < infoparastr->len));
+	newinfo->database = &(infoparastr->data[infoparastr->cursor]);
+	infoparastr->cursor = infoparastr->cursor + strlen(newinfo->database) + 1;
+	/*user*/
+	Assert((ptmp = &infoparastr->data[infoparastr->cursor]) != '\0' && (infoparastr->cursor < infoparastr->len));
+	newinfo->user = &(infoparastr->data[infoparastr->cursor]);
+	infoparastr->cursor = infoparastr->cursor + strlen(newinfo->user) + 1;
+	/*ip*/
+	Assert((ptmp = &infoparastr->data[infoparastr->cursor]) != '\0' && (infoparastr->cursor < infoparastr->len));
+	newinfo->addr = &(infoparastr->data[infoparastr->cursor]);
+	infoparastr->cursor = infoparastr->cursor + strlen(newinfo->addr) + 1;
+	/*mark*/
+	Assert((ptmp = &infoparastr->data[infoparastr->cursor]) != '\0' && (infoparastr->cursor < infoparastr->len));
+	newinfo->addr_mark = atoi(&(infoparastr->data[infoparastr->cursor]));
+	infoparastr->cursor = infoparastr->cursor + strlen(&(infoparastr->data[infoparastr->cursor])) + 1;
+	/*method*/
+	Assert((ptmp = &infoparastr->data[infoparastr->cursor]) != '\0' && (infoparastr->cursor < infoparastr->len));
+	newinfo->auth_method = &(infoparastr->data[infoparastr->cursor]);
+	infoparastr->cursor = infoparastr->cursor + strlen(newinfo->auth_method) + 1;
+	return ptmp;
+}
 
 /*
 * refresh postgresql.conf, the need infomation in msg.

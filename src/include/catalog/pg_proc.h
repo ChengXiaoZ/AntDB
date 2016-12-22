@@ -5282,6 +5282,12 @@ DESCR("flush host");
 DATA(insert OID = 3232 ( mgr_list_hba_by_name      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{23,19,25}" "{o,o,o}" "{row_id,nodename,values}" _null_ mgr_list_hba_by_name _null_ _null_ _null_ ));
 DESCR("mgr list hba by name");
 
+DATA(insert OID = 3233 ( mgr_drop_hba      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{23,19,25}" "{o,o,o}" "{row_id,nodename,values}" _null_ mgr_drop_hba _null_ _null_ _null_ ));
+DESCR("mgr drop hba");
+
+DATA(insert OID = 3234 ( mgr_alter_hba      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{23,19,25}" "{o,o,o}" "{row_id,nodename,values}" _null_ mgr_alter_hba _null_ _null_ _null_ ));
+DESCR("mgr alter hba by name and id");
+
 #endif
 
 /*
