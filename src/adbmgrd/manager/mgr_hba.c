@@ -39,34 +39,18 @@
 #include "catalog/mgr_hba.h"
 #include "utils/formatting.h"
  
-#define SPACE           " "
-#define INVALID_ID		0x7fffffff
-#define CONNECT_TYPE_INDEX     		0
-#define DATABASE_INDEX     			1
-#define ROLE_INDEX     				2
-#define ADDRESS_INDEX     			3
-#define ADDRESS_MASK_INDEX     		4
-#define AUTH_METHOD_INDEX     		5
-#define AUTH_OPTION_INDEX     		6
+#define SPACE          				" "
+#define INVALID_ID					0x7fffffff
+#define HBA_RESULT_COLUMN  			3
+ 
 
-struct HbaParam
-{
-	char conntype;
-	char *database;
-	char *role;
-	char *addr;
-	int  addr_mask;
-	char *auth_method;
-	char *auth_option;	
-};
-
-typedef enum DropHbaType
+typedef enum OperateHbaType
 {
 	HANDLE_NO = 0,	/*don't do any handle for drop table hba*/
 	HBA_ALL=1,		/*drop table hba all*/
 	HBA_NODENAME_ALL,/*drop table hba all base on nodename*/
 	HBA_NODENAME_ID  /*drop table hba all base on row_id and nodename*/
-}DropHbaType;
+}OperateHbaType;
 
 typedef struct TableInfo
 {
@@ -84,110 +68,22 @@ static TupleDesc common_command_tuple_desc = NULL;
 	
 extern void mgr_reload_conf(Oid hostoid, char *nodepath);
 /*--------------------------------------------------------------------*/
+static void mgr_add_hba_all(List *args_list, GetAgentCmdRst *getAgentCmdRst);
+static void mgr_add_hba_one(char *coord_name, List *args_list, GetAgentCmdRst *getAgentCmdRst);
+static bool drop_hba_all(GetAgentCmdRst *getAgentCmdRst);
+static bool drop_hba_nodename_all(char *coord_name, GetAgentCmdRst *getAgentCmdRst);
+static bool drop_hba_nodename_id(char *coord_name, uint32 row_id, GetAgentCmdRst *getAgentCmdRst);
 
 static uint32 get_hba_max_id(void);
 static Oid tuple_insert_table_hba(Datum *values, bool *isnull);
 static HbaType get_connect_type(char *str_type);
 static TupleDesc get_tuple_desc_for_hba(void);
 static HeapTuple tuple_form_table_hba(const uint32 row_id, const Name node_name, const char * values);
-static bool drop_hba_all(GetAgentCmdRst *getAgentCmdRst);
-static bool drop_hba_nodename_all(char *coord_name, GetAgentCmdRst *getAgentCmdRst);
-static bool drop_hba_nodename_id(char *coord_name, uint32 row_id, GetAgentCmdRst *getAgentCmdRst);
 static void delete_table_hba(uint32 row_id, char *coord_name);
-static bool check_hba_tuple_exist(uint32 row_id, char *coord_name);
-
+static bool check_hba_tuple_exist(uint32 row_id, char *coord_name, char *values);
+static bool IDIsValid(uint32 row_id);
 /*--------------------------------------------------------------------*/
-Datum mgr_drop_hba(PG_FUNCTION_ARGS)
-{
-	GetAgentCmdRst getAgentCmdRst;
-	DropHbaType handle_type = HANDLE_NO;
-	HeapTuple tup_result;
-	uint32 row_id = INVALID_ID;
-	List *args_list;
-	char *coord_name;
-	char *num_str;
-	bool ret = true;
-	getAgentCmdRst.ret = true;
-	/*step 1: parase args,and get nodename, row_id;if nodename equal '*', delete all*/
-	if(PG_ARGISNULL(0))
-	{
-		ereport(ERROR, (errmsg("args is null")));
-	}
-	#ifdef ADB
-		args_list = get_fcinfo_namelist("", 0, fcinfo, NULL);
-	#else
-		args_list = get_fcinfo_namelist("", 0, fcinfo);
-	#endif
 
-	coord_name = linitial(args_list);
-	if(args_list->length == 1)
-	{
-		if(strcmp(coord_name,"*") == 0)
-			handle_type = HBA_ALL;
-		else
-			handle_type = HBA_NODENAME_ALL;
-	}
-	else
-	{
-		num_str = lsecond(args_list);
-		row_id = pg_atoi(num_str,sizeof(uint32),0);
-		handle_type = HBA_NODENAME_ID;
-	}
-	/*step 2: check the tuple is exist*/
-	if(HBA_NODENAME_ALL == handle_type)
-	{
-		ret = check_hba_tuple_exist(INVALID_ID, coord_name);
-		if(false == ret)
-		{
-			 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					 ,errmsg("nodename\"%s\"does not exist", coord_name))); 
-		}
-	}	
-	else if(HBA_NODENAME_ID == handle_type)
-	{
-		ret = check_hba_tuple_exist(row_id, coord_name);
-		if(false == ret)
-		{
-			 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					 ,errmsg("nodename \"%s\" with row_id %d does not exist", coord_name, row_id))); 
-		}
-	}
-			
-	/*step 3: operating drop table hba  according to the handle_type*/
-		/*send drop msg to the agent to delete content of pg_hba.conf */
-	initStringInfo(&(getAgentCmdRst.description));
-	switch(handle_type)
-	{
-		case HBA_ALL: ret = drop_hba_all(&getAgentCmdRst);
-			break;
-		case HBA_NODENAME_ALL: ret = drop_hba_nodename_all(coord_name, &getAgentCmdRst);
-			break;
-		case HBA_NODENAME_ID:ret = drop_hba_nodename_id(coord_name, row_id, &getAgentCmdRst);
-			break;
-		default:ereport(ERROR, (errmsg("operating drop table hba")));
-			break;		
-	}
-	/*delete tuple of hba table*/
-	if(true == ret && true == getAgentCmdRst.ret)
-	{
-		switch(handle_type)
-		{
-			case HBA_ALL: delete_table_hba(INVALID_ID, "*");
-				break;
-			case HBA_NODENAME_ALL: delete_table_hba(INVALID_ID, coord_name);
-				break;
-			case HBA_NODENAME_ID: delete_table_hba(row_id, coord_name);
-				break;
-			default:ereport(ERROR, (errmsg("operating drop table hba")));
-			break;
-		}		
-	}
-	/*step 4: show the state of operating drop hba commands */
-	tup_result = tuple_form_table_hba(row_id
-									,(Name)coord_name
-									,ret == true ? "success" : getAgentCmdRst.description.data);
-	return HeapTupleGetDatum(tup_result);
-}
 Datum mgr_alter_hba(PG_FUNCTION_ARGS)
 {
 	HeapTuple tup_result;
@@ -203,7 +99,6 @@ Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS)
 	Form_mgr_hba mgr_hba;
 	ScanKeyData key[1];
 	FuncCallContext *funcctx;
-/*	ListCell **lcp; */
 	TableInfo *info;
 	char *nodestrname;
 	
@@ -261,35 +156,106 @@ Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS)
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 	}
 }
-
-void mgr_add_hba_one(MGRAddHba *node, ParamListInfo params, DestReceiver *dest)
+Datum mgr_add_hba(PG_FUNCTION_ARGS)
+{
+	GetAgentCmdRst getAgentCmdRst;
+	OperateHbaType handle_type = HANDLE_NO;
+	HeapTuple tup_result;
+	List *args_list;
+	char *coord_name;
+	getAgentCmdRst.ret = true;
+	initStringInfo(&getAgentCmdRst.description);
+	/*step 1: parase args,and get nodename,hba values;
+	if nodename equal '*', add to all the coordinator*/
+	if(PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errmsg("args is null")));
+	}
+	#ifdef ADB
+		args_list = get_fcinfo_namelist("", 0, fcinfo, NULL);
+	#else
+		args_list = get_fcinfo_namelist("", 0, fcinfo);
+	#endif
+	if(args_list->length < 2)
+	{
+		ereport(ERROR, (errmsg("args is not enough")));
+	}	
+	coord_name = llast(args_list);
+	if(strcmp(coord_name,"*") == 0) 
+		handle_type = HBA_ALL;         
+	else
+		handle_type = HBA_NODENAME_ALL;
+	/*step 2: operate add hba comamnd*/	
+	args_list = list_delete(args_list, llast(args_list)); /*remove nodename from list*/
+	if(HBA_ALL == handle_type)/*add to all coordinator*/
+	{
+		mgr_add_hba_all(args_list, &getAgentCmdRst);
+	}	
+	else if(HBA_NODENAME_ALL == handle_type)/*add to specified coordinator*/
+	{
+		mgr_add_hba_one(coord_name, args_list, &getAgentCmdRst);
+	}
+	
+	/*step 4: show the state of operating drop hba commands */
+	tup_result = tuple_form_table_hba(INVALID_ID
+									,(Name)coord_name
+									,true == getAgentCmdRst.ret ? "success" : getAgentCmdRst.description.data);
+	pfree(getAgentCmdRst.description.data);
+	return HeapTupleGetDatum(tup_result);
+}
+static void mgr_add_hba_all(List *args_list, GetAgentCmdRst *getAgentCmdRst)
+{
+	Relation rel;
+	HeapScanDesc rel_scan;
+	Form_mgr_node mgr_node;
+	HeapTuple tuple;
+	ScanKeyData key[1];
+	char *coord_name;
+	
+	ScanKeyInit(&key[0],
+			Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+		
+	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		coord_name = NameStr(mgr_node->nodename);
+		mgr_add_hba_one(coord_name, args_list, getAgentCmdRst);
+	}
+	
+	heap_endscan(rel_scan);
+	heap_close(rel, RowExclusiveLock);
+}
+static void mgr_add_hba_one(char *coord_name, List *args_list, GetAgentCmdRst *getAgentCmdRst)
 {
 	Relation rel;
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	char *host_address;
-	char *coord_name;
 	char * node_path;
 	Datum datumPath;
 	Oid hostoid;
 	ListCell *lc;
-	List *list_hba = NIL, *list_elem = NIL;
-	Value *value;
+	List *list_elem = NIL;
 	char *str_elem, *str, *str_remain;
 	StringInfoData infosendmsg;
 	StringInfoData hbainfomsg;	
 	bool isNull = false;
-	GetAgentCmdRst getAgentCmdRst;
 	uint32 hba_max_id = 0;
 	HbaType conntype = HBA_TYPE_EMPTY;
+	bool is_exist = false;
 	Datum datum[Natts_mgr_node];
 	bool isnull[Natts_mgr_node];
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	
-	Assert(node && node->options && node->name);
-	coord_name = node->name;
-	list_hba = node->options;
+	Assert(coord_name);
+	Assert(args_list);
 	
 	/*step1: check the nodename is exist in the mgr_node table and make sure it has been initialized*/
 	rel = heap_open(NodeRelationId, AccessShareLock);
@@ -321,12 +287,10 @@ void mgr_add_hba_one(MGRAddHba *node, ParamListInfo params, DestReceiver *dest)
 	/*step2: parser the hba values and check whether it's valid*/
 	initStringInfo(&infosendmsg);/*send to agent*/
 	initStringInfo(&hbainfomsg);/*add to hba table*/
-	foreach(lc, list_hba)
+	foreach(lc, args_list)
 	{
 		resetStringInfo(&hbainfomsg);
-		value = lfirst(lc);
-		Assert(value && IsA(value, String));
-		str = strVal(value);
+		str = lfirst(lc);
 		str_elem = strtok_r(str, SPACE, &str_remain);
 		conntype = get_connect_type(str_elem);
 		if(conntype == HBA_TYPE_EMPTY)
@@ -344,23 +308,29 @@ void mgr_add_hba_one(MGRAddHba *node, ParamListInfo params, DestReceiver *dest)
 				appendStringInfo(&hbainfomsg, "%s  ",str_elem);
 			}						
 		}	
+		/*check the value whether exist in the hba table*/
+		is_exist = check_hba_tuple_exist(INVALID_ID, coord_name, hbainfomsg.data);
+		if(is_exist)
+		{
+			appendStringInfo(&getAgentCmdRst->description, "nodename %s with values \"%s\" has been existed.\n", coord_name, hbainfomsg.data);
+			continue;
+		}
 		str_elem = palloc0(hbainfomsg.len + 1);
 		memcpy(str_elem, hbainfomsg.data, hbainfomsg.len);
-		list_elem = lappend(list_elem, str_elem);
+		list_elem = lappend(list_elem, str_elem);/*add to list and preprer to add to hbatable*/
 	}
-
+     
 	/*step3: send msg to the specified coordinator to update datanode master's pg_hba.conf*/	
-	initStringInfo(&(getAgentCmdRst.description));	
-	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
-							node_path,
-							&infosendmsg,
-							hostoid,
-							&getAgentCmdRst);
-	if (!getAgentCmdRst.ret)
-		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-    pfree(getAgentCmdRst.description.data);		
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF
+							,node_path
+							,&infosendmsg
+							,hostoid
+							,getAgentCmdRst);
+	if (!getAgentCmdRst->ret)
+		ereport(ERROR, (errmsg("%s\n", getAgentCmdRst->description.data)));		
 
-	/*step4: execute pgxc_ctl reload to the specified host */
+	/*step4: execute pgxc_ctl reload to the specified host, 
+	it's to take effect for the new value in the pg_hba.conf  */
 	mgr_reload_conf(hostoid, node_path);	
 	
 	/*step5: add a new tuple to hba table */
@@ -375,15 +345,14 @@ void mgr_add_hba_one(MGRAddHba *node, ParamListInfo params, DestReceiver *dest)
 		tuple_insert_table_hba(datum, isnull);
 	}
 	
-	/*step6: Release an allocated chunk*/
+	/*step7: Release an allocated chunk*/
 	foreach(lc, list_elem)
 	{
 		pfree(lfirst(lc));
 	}
 	list_free(list_elem);
 	pfree(hbainfomsg.data);
-	pfree(infosendmsg.data);
-		
+	pfree(infosendmsg.data);		
 }
 
 static uint32 get_hba_max_id(void)
@@ -393,19 +362,22 @@ static uint32 get_hba_max_id(void)
 	HeapScanDesc rel_scan;
 	Form_mgr_hba mgr_hba;
 	uint32 max_id = 0;
+	uint32 temp_num = 0;
 	rel = heap_open(HbaRelationId, AccessShareLock);
 	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_hba = (Form_mgr_hba)GETSTRUCT(tuple);
 		Assert(mgr_hba);
-		if(max_id < mgr_hba->row_id)
-			max_id = mgr_hba->row_id;
+		temp_num = mgr_hba->row_id;
+		if(max_id < temp_num)
+			max_id = temp_num;
 	}
 	heap_endscan(rel_scan);
 	heap_close(rel, AccessShareLock);
-	if(max_id > INVALID_ID)
+	if(max_id >= INVALID_ID)
 		ereport(ERROR, (errmsg("the row_id of hba has been used up")));
+	
 	return max_id;
 }
 
@@ -425,22 +397,6 @@ static Oid tuple_insert_table_hba(Datum *values, bool *isnull)
 	heap_freetuple(newtuple);
 	return hba_oid;
 }
-static HbaType get_connect_type(char *str_type)
-{
-	HbaType conntype = HBA_TYPE_EMPTY;
-	char *str_lwr ;
-	Assert(str_type);
-	str_lwr = str_tolower(str_type, strlen(str_type), DEFAULT_COLLATION_OID);
-	if(strcmp(str_lwr, "local") == 0)
-		conntype = HBA_TYPE_LOCAL;
-	else if(strcmp(str_lwr, "host") == 0)
-		conntype = HBA_TYPE_HOST;
-	else if(strcmp(str_lwr, "hostssl") == 0)
-		conntype = HBA_TYPE_HOSTSSL;
-	else if(strcmp(str_lwr, "hostnossl") == 0)
-		conntype = HBA_TYPE_HOSTNOSSL;
-	return conntype;
-}
 
 static TupleDesc get_tuple_desc_for_hba(void)
 {
@@ -450,7 +406,7 @@ static TupleDesc get_tuple_desc_for_hba(void)
         TupleDesc volatile desc = NULL;
         PG_TRY();
         {
-            desc = CreateTemplateTupleDesc(3, false);
+            desc = CreateTemplateTupleDesc(HBA_RESULT_COLUMN, false);
             TupleDescInitEntry(desc, (AttrNumber) 1, "row_id",
                                INT4OID, -1, 0);
             TupleDescInitEntry(desc, (AttrNumber) 2, "nodename",
@@ -472,21 +428,113 @@ static TupleDesc get_tuple_desc_for_hba(void)
 
 static HeapTuple tuple_form_table_hba(const uint32 row_id, const Name node_name, const char * values)
 {
-    Datum datums[3];
-    bool nulls[3];
+    Datum datums[HBA_RESULT_COLUMN];
+    bool nulls[HBA_RESULT_COLUMN];
     TupleDesc desc;
     AssertArg(node_name && values);
+	memset(nulls, false, HBA_RESULT_COLUMN);
     desc = get_tuple_desc_for_hba();
 
-    AssertArg(desc && desc->natts == 3
+    AssertArg(desc && desc->natts == HBA_RESULT_COLUMN
         && desc->attrs[0]->atttypid == INT4OID
         && desc->attrs[1]->atttypid == NAMEOID
         && desc->attrs[2]->atttypid == TEXTOID);
 	datums[0] = Int32GetDatum(row_id);   
     datums[1] = NameGetDatum(node_name);
     datums[2] = CStringGetTextDatum(values);
-    nulls[0] = nulls[1] = nulls[2] = nulls[3] = false;
     return heap_form_tuple(desc, datums, nulls);
+}
+
+Datum mgr_drop_hba(PG_FUNCTION_ARGS)
+{
+	GetAgentCmdRst getAgentCmdRst;
+	OperateHbaType handle_type = HANDLE_NO;
+	HeapTuple tup_result;
+	uint32 row_id = INVALID_ID;
+	List *args_list;
+	char *coord_name;
+	char *num_str;
+	bool ret = true;
+	getAgentCmdRst.ret = true;
+	/*step 1: parase args,and get nodename, row_id;if nodename equal '*', delete all*/
+	if(PG_ARGISNULL(0))
+	{
+		ereport(ERROR, (errmsg("args is null")));
+	}
+	#ifdef ADB
+		args_list = get_fcinfo_namelist("", 0, fcinfo, NULL);
+	#else
+		args_list = get_fcinfo_namelist("", 0, fcinfo);
+	#endif
+
+	coord_name = linitial(args_list);
+	if(args_list->length == 1)
+	{
+		if(strcmp(coord_name,"*") == 0)
+			handle_type = HBA_ALL;
+		else
+			handle_type = HBA_NODENAME_ALL;
+	}
+	else
+	{
+		num_str = lsecond(args_list);
+		row_id = pg_atoi(num_str,sizeof(uint32),0);
+		handle_type = HBA_NODENAME_ID;
+	}
+	/*step 2: check the tuple is exist*/
+	if(HBA_NODENAME_ALL == handle_type)
+	{
+		ret = check_hba_tuple_exist(INVALID_ID, coord_name, NULL);
+		if(false == ret)
+		{
+			 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					 ,errmsg("nodename\"%s\"does not exist", coord_name))); 
+		}
+	}	
+	else if(HBA_NODENAME_ID == handle_type)
+	{
+		ret = check_hba_tuple_exist(row_id, coord_name, NULL);
+		if(false == ret)
+		{
+			 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					 ,errmsg("nodename \"%s\" with row_id %d does not exist", coord_name, row_id))); 
+		}
+	}
+			
+	/*step 3: operating drop table hba  according to the handle_type*/
+		/*send drop msg to the agent to delete content of pg_hba.conf */
+	initStringInfo(&(getAgentCmdRst.description));
+	switch(handle_type)
+	{
+		case HBA_ALL: ret = drop_hba_all(&getAgentCmdRst);
+			break;
+		case HBA_NODENAME_ALL: ret = drop_hba_nodename_all(coord_name, &getAgentCmdRst);
+			break;
+		case HBA_NODENAME_ID:ret = drop_hba_nodename_id(coord_name, row_id, &getAgentCmdRst);
+			break;
+		default:ereport(ERROR, (errmsg("operating drop table hba")));
+			break;		
+	}
+	/*delete tuple of hba table*/
+	if(true == ret && true == getAgentCmdRst.ret)
+	{
+		switch(handle_type)
+		{
+			case HBA_ALL: delete_table_hba(INVALID_ID, "*");
+				break;
+			case HBA_NODENAME_ALL: delete_table_hba(INVALID_ID, coord_name);
+				break;
+			case HBA_NODENAME_ID: delete_table_hba(row_id, coord_name);
+				break;
+			default:ereport(ERROR, (errmsg("operating drop table hba")));
+			break;
+		}		
+	}
+	/*step 4: show the state of operating drop hba commands */
+	tup_result = tuple_form_table_hba(row_id
+									,(Name)coord_name
+									,ret == true ? "success" : getAgentCmdRst.description.data);
+	return HeapTupleGetDatum(tup_result);
 }
 
 static bool drop_hba_all(GetAgentCmdRst *getAgentCmdRst)
@@ -523,7 +571,10 @@ static bool drop_hba_all(GetAgentCmdRst *getAgentCmdRst)
 
 	return ret;
 }
-
+/*
+	delete one row form hba talbe base on nodename,
+	to delete the nodename which you want.
+*/	
 static bool drop_hba_nodename_all(char *coord_name, GetAgentCmdRst *getAgentCmdRst)
 {	
 	Relation rel;
@@ -559,7 +610,10 @@ static bool drop_hba_nodename_all(char *coord_name, GetAgentCmdRst *getAgentCmdR
 	
 	return ret;
 }
-
+/*
+	delete one row form hba talbe base on nodename and row_id,
+	if success return true,else ruturn false;
+*/	
 static bool drop_hba_nodename_id(char *coord_name, uint32 row_id, GetAgentCmdRst *getAgentCmdRst)
 {	
 	Relation rel;
@@ -635,7 +689,7 @@ static bool drop_hba_nodename_id(char *coord_name, uint32 row_id, GetAgentCmdRst
 	heap_close(rel, AccessShareLock);
 	heap_freetuple(tuple);
 	
-	/*step3: parase the hba values*/
+	/*step3: parase the discovered hba values and encode it*/
 	initStringInfo(&infosendmsg);
 	str_elem = strtok_r(hba_values, SPACE, &str_remain);
 	conntype = get_connect_type(str_elem);
@@ -698,7 +752,7 @@ static void delete_table_hba(uint32 row_id, char *coord_name)
 		rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 	else /*if(PointerIsValid(coord_name))*/
 	{
-		if(0< row_id && row_id < INVALID_ID)
+		if(IDIsValid(row_id))
 			rel_scan = heap_beginscan(rel, SnapshotNow, 2, scankey);
 		else
 			rel_scan = heap_beginscan(rel, SnapshotNow, 1, &scankey[1]);
@@ -712,8 +766,13 @@ static void delete_table_hba(uint32 row_id, char *coord_name)
 	heap_endscan(rel_scan);
 	heap_close(rel, RowExclusiveLock);
 }
-
-static bool check_hba_tuple_exist(uint32 row_id, char *coord_name)
+/*
+	1,if row_id == INVALID_ID ,row_id won't be query;
+	2,if coord_name == "*",it will check all the table,
+	else only select the nodname is coord_name in the table;
+	3,if values is NULL,it won't be query
+*/
+static bool check_hba_tuple_exist(uint32 row_id, char *coord_name, char *values)
 {
 	Relation rel;		
 	HeapScanDesc rel_scan;
@@ -721,47 +780,80 @@ static bool check_hba_tuple_exist(uint32 row_id, char *coord_name)
 	ScanKeyData scankey[2];	
 	Form_mgr_hba mgr_hba;
 	bool ret = false;
+	bool is_check_value = true;
+	char *node_name;
 	Assert(coord_name);
 	
+	if(values == NULL)
+		is_check_value = false;
 	ScanKeyInit(&scankey[0]
-				,Anum_mgr_hba_id
-				,BTEqualStrategyNumber
-				,F_INT4EQ
-				,Int32GetDatum(row_id));
+			,Anum_mgr_hba_id
+			,BTEqualStrategyNumber
+			,F_INT4EQ
+			,Int32GetDatum(row_id));
 	ScanKeyInit(&scankey[1]
-				,Anum_mgr_hba_nodename
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,CStringGetDatum(coord_name));
-			
+			,Anum_mgr_hba_nodename
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,CStringGetDatum(coord_name));
+		
 	rel = heap_open(HbaRelationId, RowExclusiveLock);
 	if(strcmp(coord_name, "*") == 0)
 		rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 	else
 	{
-		if(row_id < INVALID_ID && row_id > 0)
+		if(IDIsValid(row_id))
 			rel_scan = heap_beginscan(rel, SnapshotNow, 2, scankey);
 		else
 			rel_scan = heap_beginscan(rel, SnapshotNow, 1, &scankey[1]);
 	}	
+	
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_hba = (Form_mgr_hba)GETSTRUCT(tuple);
 		Assert(mgr_hba);
-		ret = true;
-		break;
+		if(true == is_check_value)
+		{
+			node_name = NameStr(mgr_hba->nodename);
+			if(strcmp(node_name, coord_name) == 0)
+			{
+				ret = true;
+				break;
+			}		
+		}
+		else
+		{
+			ret = true;
+			break;
+		}
 	}
-	
 	heap_endscan(rel_scan);
 	heap_close(rel, RowExclusiveLock);
 	return ret;
 }
 
+static HbaType get_connect_type(char *str_type)
+{
+	HbaType conntype = HBA_TYPE_EMPTY;
+	char *str_lwr ;
+	Assert(str_type);
+	str_lwr = str_tolower(str_type, strlen(str_type), DEFAULT_COLLATION_OID);
+	if(strcmp(str_lwr, "local") == 0)
+		conntype = HBA_TYPE_LOCAL;
+	else if(strcmp(str_lwr, "host") == 0)
+		conntype = HBA_TYPE_HOST;
+	else if(strcmp(str_lwr, "hostssl") == 0)
+		conntype = HBA_TYPE_HOSTSSL;
+	else if(strcmp(str_lwr, "hostnossl") == 0)
+		conntype = HBA_TYPE_HOSTNOSSL;
+	return conntype;
+}
 
-
-
-
-
-
-
+static bool IDIsValid(uint32 row_id)
+{
+	if(0 < row_id && row_id < INVALID_ID)
+		return true;
+	else
+		return false;
+}
 

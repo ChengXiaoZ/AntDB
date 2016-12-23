@@ -4097,13 +4097,6 @@ BEGIN_NODE(MGRAlterHost)
 END_NODE(MGRAlterHost)
 #endif /* NO_NODE_MGRAlterHost */
 
-#ifndef NO_NODE_MGRAddHba
-BEGIN_NODE(MGRAddHba)
-	NODE_STRING(name)
-	NODE_NODE(List, options)
-END_NODE(MGRAddHba)
-#endif /* NO_NODE_MGRAddHba */
-
 #ifndef NO_NODE_MGRAddNode
 BEGIN_NODE(MGRAddNode)
 	NODE_SCALAR(bool, if_not_exists)

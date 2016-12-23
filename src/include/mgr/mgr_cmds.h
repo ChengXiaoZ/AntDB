@@ -160,7 +160,7 @@ extern HeapTuple mgr_get_tuple_node_from_name_type(Relation rel, char *nodename,
 extern char *mgr_nodetype_str(char nodetype);
 extern Datum mgr_clean_all(PG_FUNCTION_ARGS);
 extern int mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bincluster);
-extern Datum mgr_flush_host(PG_FUNCTION_ARGS);
+
 /* mgr_common.c */
 extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);
@@ -222,6 +222,8 @@ extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name node
 
 /*mgr_hba*/
 	
-extern void mgr_add_hba_one(MGRAddHba *node, ParamListInfo params, DestReceiver *dest);
 extern Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS);
+extern Datum mgr_drop_hba(PG_FUNCTION_ARGS);
+extern Datum mgr_alter_hba(PG_FUNCTION_ARGS);
+extern Datum mgr_add_hba(PG_FUNCTION_ARGS);
 #endif /* MGR_CMDS_H */

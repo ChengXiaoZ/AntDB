@@ -1331,14 +1331,15 @@ CleanAllStmt:
 /*hba start*/
 
 AddHbaStmt:
-	ADD_P HBA Ident '(' ObjList ')'
-		{
-			MGRAddHba *node = makeNode(MGRAddHba);
-			node->name = $3;
-			node->options = $5;
-			$$ = (Node*)node;
-		}
-
+	ADD_P HBA set_ident '(' NodeConstList ')'
+	{
+		SelectStmt *stmt = makeNode(SelectStmt);	
+		List *args = lappend($5, makeStringConst($3,@3));
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_add_hba", args));
+		$$ = (Node*)stmt;
+	}
+	
 DropHbaStmt:
 	DROP HBA HbaParaList 
 	{
@@ -1351,9 +1352,11 @@ AlterHbaStmt:
 	ALTER HBA Ident '(' Ident ')' WHERE ROW_ID '=' Iconst
 	{
 		SelectStmt *stmt = makeNode(SelectStmt);
+		char *num = palloc0(15);		
 		List *args = list_make1(makeStringConst($3, @3));
 		args = lappend(args, makeStringConst($5, @5));
-		args = lappend(args, makeIntConst($10, @10));
+		pg_ltoa($10, num);
+		args = lappend(args, makeStringConst(num, @10));
 		stmt->targetList = list_make1(make_star_target(-1));
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_drop_hba", args));
 		$$ = (Node*)stmt;

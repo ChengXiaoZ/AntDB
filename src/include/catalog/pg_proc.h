@@ -5288,9 +5288,11 @@ DESCR("mgr drop hba");
 DATA(insert OID = 3234 ( mgr_alter_hba      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{23,19,25}" "{o,o,o}" "{row_id,nodename,values}" _null_ mgr_alter_hba _null_ _null_ _null_ ));
 DESCR("mgr alter hba by name and id");
 
+DATA(insert OID = 3235 ( mgr_add_hba      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{23,19,25}" "{o,o,o}" "{row_id,nodename,values}" _null_ mgr_add_hba _null_ _null_ _null_ ));
+DESCR("mgr add hba");
+
 DATA(insert OID = 3936 (  mgr_priv_manage        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 25 "20 1009 1009" _null_ _null_ _null_ _null_ mgr_priv_manage _null_ _null_ _null_ ));
 DESCR("mgr grant to user and revoke from user");
-
 
 #endif
 
