@@ -130,6 +130,8 @@ static void mgr_manage_failover(char command_type, char *user_list_str);
 static void mgr_manage_clean(char command_type, char *user_list_str);
 static void mgr_manage_list(char command_type, char *user_list_str);
 static List *DecodeTextArrayToValueList(Datum textarray);
+static void mgr_check_username_valid(List *username_list);
+static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 
 #if (Natts_mgr_node != 9)
@@ -8122,9 +8124,9 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 	command_list = DecodeTextArrayToValueList(datum_command_list);
 	username_list = DecodeTextArrayToValueList(datum_username_list);
 
-	/* check command and user is valid */
-	//check_command_valid(command_list);
-	//check_user_valid(user_list);
+	/* check command and username is valid */
+	mgr_check_command_valid(command_list);
+	mgr_check_username_valid(username_list);
 
 	username_list_str = get_username_list_str(username_list);
 
@@ -8401,3 +8403,59 @@ static List * DecodeTextArrayToValueList(Datum textarray)
 	return value_list;
 }
 
+static void mgr_check_command_valid(List *command_list)
+{
+	ListCell *lc = NULL;
+	Value *command = NULL;
+	char *command_str = NULL;
+
+	foreach(lc, command_list)
+	{
+		command = lfirst(lc);
+		Assert(command && IsA(command, String));
+
+		command_str = strVal(command);
+
+		if (strcmp(command_str, "add") == 0      ||
+			strcmp(command_str, "alter") == 0    ||
+			strcmp(command_str, "append") == 0   ||
+			strcmp(command_str, "clean") == 0    ||
+			strcmp(command_str, "deploy") == 0   ||
+			strcmp(command_str, "drop") == 0     ||
+			strcmp(command_str, "failover") == 0 ||
+			strcmp(command_str, "init") == 0     ||
+			strcmp(command_str, "list") == 0     ||
+			strcmp(command_str, "monitor") == 0  ||
+			strcmp(command_str, "reset") == 0    ||
+			strcmp(command_str, "set") == 0      ||
+			strcmp(command_str, "show") == 0     ||
+			strcmp(command_str, "start") == 0    ||
+			strcmp(command_str, "stop") == 0 )
+			continue;
+		else
+			ereport(ERROR, (errmsg("ADB manager command \"%s\" does not exist", command_str)));
+	}
+
+	return ;
+}
+
+static void mgr_check_username_valid(List *username_list)
+{
+	ListCell *lc = NULL;
+	Value *username = NULL;
+	Oid oid;
+
+	foreach(lc, username_list)
+	{
+		username = lfirst(lc);
+		Assert(username && IsA(username, String));
+
+		oid = GetSysCacheOid1(AUTHNAME, CStringGetDatum(strVal(username)));
+		if (!OidIsValid(oid))
+			ereport(ERROR, (errmsg("role \"%s\" does not exist", strVal(username))));
+		else
+			continue;
+	}
+
+	return ;
+}
