@@ -219,6 +219,7 @@ extern void mgr_update_parm_after_dn_failover(Name oldmastername, char oldmaster
 extern void mgr_parm_after_gtm_failover_handle(Name mastername, char mastertype, Name slavename, char slavetype);
 extern void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
+extern  Datum mgr_flush_host(PG_FUNCTION_ARGS);
 
 /*mgr_hba*/
 	
