@@ -129,6 +129,7 @@ extern Datum mgr_append_coordmaster(PG_FUNCTION_ARGS);
 extern Datum mgr_append_agtmslave(PG_FUNCTION_ARGS);
 extern Datum mgr_append_agtmextra(PG_FUNCTION_ARGS);
 
+extern Datum mgr_list_acl_all(PG_FUNCTION_ARGS);
 extern Datum mgr_priv_manage(PG_FUNCTION_ARGS);
 
 /* extern void mgr_configure_nodes_all(void); */
@@ -168,6 +169,9 @@ extern int pingNode(char *host, char *port);
 extern bool	mgr_check_host_in_use(Oid hostoid);
 extern void mgr_mark_node_in_cluster(Relation rel);
 extern TupleDesc get_showparam_command_tuple_desc(void);
+HeapTuple build_list_acl_command_tuple(const Name name, const char *message);
+TupleDesc get_list_acl_command_tuple_desc(void);
+
 /* get the host address */
 char *get_hostaddress_from_hostoid(Oid hostOid);
 char *get_hostname_from_hostoid(Oid hostOid);

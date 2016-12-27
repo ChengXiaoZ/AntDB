@@ -995,18 +995,29 @@ RETURNS NULL ON NULL INPUT;
 
 --for ADB manager command : grant and revoke
 grant usage on schema adbmgr to public;
+
+-- clean
+revoke execute on function mgr_clean_all() from public;
+
+-- failover
+revoke execute on function mgr_failover_gtm(cstring), mgr_failover_one_dn(cstring) from public;
+
+-- append
 revoke execute on function
-mgr_clean_all(),
-mgr_failover_gtm(cstring),
-mgr_failover_one_dn(cstring),
 mgr_append_dnmaster(cstring),
 mgr_append_dnslave(cstring),
 mgr_append_dnextra(cstring),
 mgr_append_coordmaster(cstring),
 mgr_append_agtmslave(cstring),
-mgr_append_agtmextra(cstring),
-mgr_list_hba_by_name("any")
+mgr_append_agtmextra(cstring)
 from public;
+
+revoke execute on function mgr_priv_manage(bigint,text[],text[]) from public;
+revoke execute on function mgr_list_acl_all()from public;
+
+
+--list
+revoke execute on function mgr_list_hba_by_name("any") from public;
 
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;

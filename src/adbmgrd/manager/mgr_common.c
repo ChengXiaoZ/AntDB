@@ -20,6 +20,7 @@
 #define MAXPATH (512-1)
 
 static TupleDesc common_command_tuple_desc = NULL;
+static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
 static void myUsleep(long microsec);
 
@@ -69,6 +70,50 @@ HeapTuple build_common_command_tuple(const Name name, bool success, const char *
 	datums[2] = CStringGetTextDatum(message);
 	nulls[0] = nulls[1] = nulls[2] = false;
 	return heap_form_tuple(desc, datums, nulls);
+}
+
+HeapTuple build_list_acl_command_tuple(const Name name, const char *message)
+{
+	Datum datums[2];
+	bool nulls[2];
+	TupleDesc desc;
+	AssertArg(name && message);
+	desc = get_list_acl_command_tuple_desc();
+
+	AssertArg(desc && desc->natts == 2
+		&& desc->attrs[0]->atttypid == NAMEOID
+		&& desc->attrs[1]->atttypid == TEXTOID);
+
+	datums[0] = NameGetDatum(name);
+	datums[1] = CStringGetTextDatum(message);
+	nulls[0] = nulls[1] = false;
+	return heap_form_tuple(desc, datums, nulls);
+}
+
+TupleDesc get_list_acl_command_tuple_desc(void)
+{
+	if(common_list_acl_tuple_desc == NULL)
+	{
+		MemoryContext volatile old_context = MemoryContextSwitchTo(TopMemoryContext);
+		TupleDesc volatile desc = NULL;
+		PG_TRY();
+		{
+			desc = CreateTemplateTupleDesc(2, false);
+			TupleDescInitEntry(desc, (AttrNumber) 1, "name",
+							   NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 2, "message",
+							   TEXTOID, -1, 0);
+			common_list_acl_tuple_desc = BlessTupleDesc(desc);
+		}PG_CATCH();
+		{
+			if(desc)
+				FreeTupleDesc(desc);
+			PG_RE_THROW();
+		}PG_END_TRY();
+		(void)MemoryContextSwitchTo(old_context);
+	}
+	Assert(common_list_acl_tuple_desc);
+	return common_list_acl_tuple_desc;
 }
 
 /*get the the address of host in table host*/

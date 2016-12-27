@@ -147,7 +147,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
-				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt 
+				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
@@ -171,7 +171,7 @@ static void check_host_name_isvaild(List *node_name_list);
 
 %type <chr>		node_type cluster_type
 
-%token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE
+%token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE ACL
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARAM HBA
@@ -227,6 +227,7 @@ stmt :
 	| AlterHostStmt
 	| StartAgentStmt
 	| StopAgentStmt
+	| ListAclStmt
 	| ListMonitor
 	| ListParmStmt
 	| AddNodeStmt
@@ -1530,6 +1531,15 @@ DropNodeStmt:
 		}
 	;
 
+ListAclStmt:
+		LIST ACL opt_general_all
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_list_acl_all", NULL));
+			$$ = (Node*)stmt;
+		}
+		;
 
 ListNodeStmt:
 	  LIST NODE
@@ -2359,7 +2369,8 @@ FlushHost:
 	}
 	;
 unreserved_keyword:
-	  ADD_P
+	  ACL
+	| ADD_P
 	| AGENT
 	| ALTER
 	| APPEND

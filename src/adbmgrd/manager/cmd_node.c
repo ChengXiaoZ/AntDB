@@ -9,6 +9,7 @@
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
+#include "catalog/pg_authid.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/mgr_updateparm.h"
 #include "catalog/pg_type.h"
@@ -23,6 +24,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/memutils.h"
+#include "utils/acl.h"
 #include "utils/relcache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
@@ -133,6 +135,17 @@ static List *DecodeTextArrayToValueList(Datum textarray);
 static void mgr_check_username_valid(List *username_list);
 static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
+static List *get_username_list(void);
+static void mgr_get_acl_by_username(char *username, StringInfo acl);
+static bool mgr_acl_list(char *username);
+static bool mgr_acl_append(char *username);
+static bool mgr_acl_failover(char *username);
+static bool mgr_acl_clean(char *username);
+static bool mgr_acl_init(char *username);
+static bool mgr_has_table_priv(char *rolename, char *tablename, char *priv_type);
+static bool mgr_has_func_priv(char *rolename, char *funcname, char *priv_type);
+static List *get_username_list(void);
+static Oid mgr_get_role_oid_or_public(const char *rolname);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -144,6 +157,13 @@ typedef struct InitNodeInfo
 	HeapScanDesc rel_scan;
 	ListCell  **lcp;
 }InitNodeInfo;
+
+typedef struct InitAclInfo
+{
+	Relation rel_authid;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitAclInfo;
 
 /*the values see agt_cmd.c, used for pg_hba.conf add content*/
 typedef enum ConnectType
@@ -8175,7 +8195,7 @@ static void mgr_manage_list(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "adbmgr.host, ");
 		appendStringInfoString(&commandsql, "adbmgr.node, ");
 		appendStringInfoString(&commandsql, "adbmgr.updateparm, ");
-		appendStringInfoString(&commandsql, "adbmgr.hba, ");
+		appendStringInfoString(&commandsql, "adbmgr.hba ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIC_REVOKE)
 	{
@@ -8190,7 +8210,7 @@ static void mgr_manage_list(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "adbmgr.host, ");
 		appendStringInfoString(&commandsql, "adbmgr.node, ");
 		appendStringInfoString(&commandsql, "adbmgr.updateparm, ");
-		appendStringInfoString(&commandsql, "adbmgr.hba, ");
+		appendStringInfoString(&commandsql, "adbmgr.hba ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -8220,13 +8240,13 @@ static void mgr_manage_clean(char command_type, char *user_list_str)
 	{
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_clean_all(), ");
+		appendStringInfoString(&commandsql, "mgr_clean_all() ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIC_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_clean_all(), ");
+		appendStringInfoString(&commandsql, "mgr_clean_all() ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -8257,14 +8277,14 @@ static void mgr_manage_failover(char command_type, char *user_list_str)
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
-		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring) ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIC_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
-		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring) ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -8378,6 +8398,7 @@ static char *get_username_list_str(List *username_list)
 		appendStringInfoChar(&username_list_str, ',');
 	}
 
+	username_list_str.data[username_list_str.len - 1] = '\0';
 	return username_list_str.data;
 }
 
@@ -8458,4 +8479,222 @@ static void mgr_check_username_valid(List *username_list)
 	}
 
 	return ;
+}
+
+Datum mgr_list_acl_all(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	InitAclInfo *info;
+	HeapTuple tup;
+	HeapTuple tup_result;
+	char *username;
+	Form_pg_authid pg_authid;
+	StringInfoData acl;
+
+	initStringInfo(&acl);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		info = palloc(sizeof(*info));
+		info->rel_authid = heap_open(AuthIdRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_authid, SnapshotNow, 0, NULL);
+		info->lcp =NULL;
+		/* save info */
+		funcctx->user_fctx = info;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	tup = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tup == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_authid, AccessShareLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	pg_authid = (Form_pg_authid)GETSTRUCT(tup);
+	Assert(pg_authid);
+
+	resetStringInfo(&acl);
+	username = NameStr(pg_authid->rolname);
+	mgr_get_acl_by_username(username, &acl);
+	tup_result = build_list_acl_command_tuple(&(pg_authid->rolname), acl.data);
+
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+
+static void mgr_get_acl_by_username(char *username, StringInfo acl)
+{
+	Oid roleid;
+
+	roleid = mgr_get_role_oid_or_public(username);
+	if (superuser_arg(roleid))
+	{
+		appendStringInfo(acl, "superuser");
+		return ;
+	}
+
+	if (mgr_acl_init(username))
+	{
+		appendStringInfo(acl, "init ");
+	}
+
+	if (mgr_acl_clean(username))
+	{
+		appendStringInfo(acl, "clean ");
+	}
+
+	if (mgr_acl_failover(username))
+	{
+		appendStringInfo(acl, "failover ");
+	}
+
+	if (mgr_acl_append(username))
+	{
+		appendStringInfo(acl, "append ");
+	}
+
+	if (mgr_acl_list(username))
+	{
+		appendStringInfo(acl, "list ");
+	}
+
+	return;
+}
+
+static bool mgr_acl_list(char *username)
+{
+	bool func;
+	bool table_host;
+	bool table_node;
+	bool table_parm;
+	bool table_hba;
+
+	func       = mgr_has_func_priv(username, "mgr_list_hba_by_name(\"any\")", "execute");
+	table_host = mgr_has_table_priv(username, "adbmgr.host", "select");
+	table_node = mgr_has_table_priv(username, "adbmgr.node", "select");
+	table_parm = mgr_has_table_priv(username, "adbmgr.updateparm", "select");
+	table_hba  = mgr_has_table_priv(username, "adbmgr.hba", "select");
+
+	return (func && table_host &&
+			table_node && table_parm &&
+			table_hba);
+}
+
+static bool mgr_acl_append(char *username)
+{
+	bool func_dnmaster;
+	bool func_dnslave;
+	bool func_dnextra;
+	bool func_cdmaster;
+	bool func_gtmslave;
+	bool func_gtmextra;
+
+	func_dnmaster = mgr_has_func_priv(username, "mgr_append_dnmaster(cstring)", "execute");
+	func_dnslave  = mgr_has_func_priv(username, "mgr_append_dnslave(cstring)", "execute");
+	func_dnextra  = mgr_has_func_priv(username, "mgr_append_dnextra(cstring)", "execute");
+	func_cdmaster = mgr_has_func_priv(username, "mgr_append_coordmaster(cstring)", "execute");
+	func_gtmslave = mgr_has_func_priv(username, "mgr_append_agtmslave(cstring)", "execute");
+	func_gtmextra = mgr_has_func_priv(username, "mgr_append_agtmextra(cstring)", "execute");
+
+	return (func_dnmaster && func_dnslave &&
+			func_dnextra && func_cdmaster &&
+			func_gtmslave && func_gtmextra);
+}
+
+static bool mgr_acl_failover(char *username)
+{
+	bool func_gtm;
+	bool func_dn;
+
+	func_dn  = mgr_has_func_priv(username, "mgr_failover_one_dn(cstring)", "execute");
+	func_gtm = mgr_has_func_priv(username, "mgr_failover_gtm(cstring)", "execute");
+
+	return (func_gtm && func_dn);
+}
+
+static bool mgr_acl_clean(char *username)
+{
+	return mgr_has_func_priv(username, "mgr_clean_all()", "execute");
+}
+
+static bool mgr_acl_init(char *username)
+{
+	return mgr_has_table_priv(username, "adbmgr.initall", "select");
+}
+
+static bool mgr_has_table_priv(char *rolename, char *tablename, char *priv_type)
+{
+	Datum aclresult;
+	NameData name;
+	namestrcpy(&name, rolename);
+
+	aclresult = DirectFunctionCall3(has_table_privilege_name_name,
+									NameGetDatum(&name),
+									CStringGetTextDatum(tablename),
+									CStringGetTextDatum(priv_type));
+
+	return DatumGetBool(aclresult);
+}
+
+static bool mgr_has_func_priv(char *rolename, char *funcname, char *priv_type)
+{
+	Datum aclresult;
+	NameData name;
+	namestrcpy(&name, rolename);
+
+	aclresult = DirectFunctionCall3(has_function_privilege_name_name,
+									NameGetDatum(&name),
+									CStringGetTextDatum(funcname),
+									CStringGetTextDatum(priv_type));
+
+	return DatumGetBool(aclresult);
+}
+
+static List *get_username_list(void)
+{
+	Relation pg_authid_rel;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+
+	Form_pg_authid pg_authid;
+	List *username_list = NULL;
+
+	pg_authid_rel = heap_open(AuthIdRelationId, AccessShareLock);
+	rel_scan =  heap_beginscan(pg_authid_rel, SnapshotNow, 0, NULL);
+
+	while ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		pg_authid = (Form_pg_authid)GETSTRUCT(tuple);
+		Assert(pg_authid);
+
+		username_list = lappend(username_list, makeString(NameStr(pg_authid->rolname)));
+	}
+
+	heap_endscan(rel_scan);
+	heap_close(pg_authid_rel, AccessShareLock);
+
+	return username_list;
+}
+
+static Oid mgr_get_role_oid_or_public(const char *rolname)
+{
+	if (strcmp(rolname, "public") == 0)
+		return ACL_ID_PUBLIC;
+
+	return get_role_oid(rolname, false);
 }
