@@ -2148,6 +2148,9 @@ pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
 		return EOF;
 
 	initStringInfo(&buf);
+	/* RecentGlobalXmin */
+	nval = htonl(RecentGlobalXmin);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
 	/* xmin */
 	nval = htonl(snapshot->xmin);
 	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
@@ -2172,21 +2175,6 @@ pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
 		nval = htonl(snapshot->subxip[i]);
 		appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
 	}
-	/* suboverflowed */
-	appendBinaryStringInfo(&buf, (const char *) &(snapshot->suboverflowed), sizeof(bool));
-	/* takenDuringRecovery */
-	appendBinaryStringInfo(&buf, (const char *) &(snapshot->takenDuringRecovery), sizeof(bool));
-	/* copied */
-	appendBinaryStringInfo(&buf, (const char *) &(snapshot->copied), sizeof(bool));
-	/* curcid */
-	nval = htonl(snapshot->curcid);
-	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(CommandId));
-	/* active_count */
-	nval = htonl(snapshot->active_count);
-	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));
-	/* regd_count */
-	nval = htonl(snapshot->regd_count);
-	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));
 
 	/* message length */
 	if (ensure_out_buffer_capacity(handle->outEnd + 1 + 4 + buf.len, handle) != 0)

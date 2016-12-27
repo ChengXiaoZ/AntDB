@@ -53,7 +53,6 @@ extern void DeleteAllExportedSnapshotFiles(void);
 extern bool ThereAreNoPriorRegisteredSnapshots(void);
 
 #ifdef ADB
-extern void UnsetGlobalSnapshot(void);
 extern void SetGlobalSnapshot(StringInfo input_message);
 extern Snapshot GetGlobalSnapshot(Snapshot snapshot);
 #endif

@@ -2024,13 +2024,6 @@ StartTransaction(void)
 	AtStart_Memory();
 	AtStart_ResourceOwner();
 
-#ifdef ADB
-	/*
-	 * Set global snapshot to NULL, which will get from AGTM.
-	 */
-	UnsetGlobalSnapshot();
-#endif
-
 	/*
 	 * Assign a new LocalTransactionId, and combine it with the backendId to
 	 * form a virtual transaction id.

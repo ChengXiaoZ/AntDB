@@ -58,6 +58,7 @@
 #ifdef ADB
 #include "agtm/agtm.h"
 #include "libpq/pqformat.h"
+#include "postmaster/autovacuum.h"
 #endif
 /*
  * CurrentSnapshot points to the only snapshot taken in transaction-snapshot
@@ -777,10 +778,6 @@ AtEOXact_Snapshot(bool isCommit)
 	CurrentSnapshot = NULL;
 	SecondarySnapshot = NULL;
 
-#ifdef ADB
-	GlobalSnapshot = NULL;
-#endif
-
 	FirstSnapshotSet = false;
 
 	SnapshotResetXmin();
@@ -1258,15 +1255,57 @@ ThereAreNoPriorRegisteredSnapshots(void)
 
 #ifdef ADB
 void
-UnsetGlobalSnapshot(void)
-{
-	GlobalSnapshot = NULL;
-}
-
-void
 SetGlobalSnapshot(StringInfo input_message)
 {
-	/* TODO */
+	uint32			xcnt;
+	int32			subxcnt;
+	int32			maxsubxcnt;
+	bool			suboverflowed = false;
+	int				i;
+	TransactionId	*subxip = NULL;
+
+	Assert(IS_PGXC_DATANODE || IsConnFromCoord());
+	RecentGlobalXmin = pq_getmsgint(input_message, sizeof(TransactionId));
+	if (GlobalSnapshot == NULL)
+	{
+		GlobalSnapshot = (Snapshot) malloc(sizeof(SnapshotData));
+		if (GlobalSnapshot == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+				  errmsg("Fail to malloc \"GlobalSnapshot\"")));
+		memset(GlobalSnapshot, 0, sizeof(SnapshotData));
+	}
+	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
+	GlobalSnapshot->xmax = pq_getmsgint(input_message, sizeof(TransactionId));
+
+	xcnt = pq_getmsgint(input_message, sizeof(uint32));
+	EnlargeSnapshotXip(GlobalSnapshot, xcnt);
+	GlobalSnapshot->xcnt = xcnt;
+	for (i = 0; i < xcnt; i++)
+		GlobalSnapshot->xip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
+
+	subxcnt = pq_getmsgint(input_message, sizeof(int32));
+	maxsubxcnt = GetMaxSnapshotSubxidCount();
+	if (subxcnt > maxsubxcnt)
+	{
+		subxcnt = maxsubxcnt;
+		suboverflowed = true;
+	}
+	if (GlobalSnapshot->subxip == NULL)
+	{
+		subxip = (TransactionId *) malloc(maxsubxcnt * sizeof(TransactionId));
+		if (subxip == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+				  errmsg("Fail to malloc %d subxip of \"GlobalSnapshot\"", maxsubxcnt)));
+	}
+	GlobalSnapshot->subxip = subxip;
+	GlobalSnapshot->subxcnt = subxcnt;
+	GlobalSnapshot->suboverflowed = suboverflowed;
+	for (i = 0; i < subxcnt; i++)
+			GlobalSnapshot->subxip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
+
+	GlobalSnapshot->curcid = GetCurrentCommandId(false);
 }
 
 #ifdef DEBUG_ADB
@@ -1308,10 +1347,19 @@ OutputGlobalSnapshot(Snapshot snapshot)
 Snapshot
 GetGlobalSnapshot(Snapshot snapshot)
 {
-	if (GlobalSnapshot == InvalidSnapshot ||
-		GlobalSnapshot != snapshot)
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
-		GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
+		if (GlobalSnapshot == InvalidSnapshot ||
+			GlobalSnapshot != snapshot ||
+			IsAnyAutoVacuumProcess())
+		{
+			GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
+		}
+	} else
+	{
+		if (GlobalSnapshot == InvalidSnapshot ||
+			IsAnyAutoVacuumProcess())
+			GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
 	}
 #ifdef DEBUG_ADB
 	OutputGlobalSnapshot(GlobalSnapshot);

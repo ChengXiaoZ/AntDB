@@ -16,11 +16,13 @@
 #include "nodes/parsenodes.h"
 #include "nodes/primnodes.h"
 #include "nodes/value.h"
+#include "storage/procarray.h"
 #include "storage/lock.h"
 #include "utils/elog.h"
 #include "utils/memutils.h"
 #include "utils/palloc.h"
 #include "utils/snapmgr.h"
+
 
 static List* parse_string_to_seqOption(StringInfo strOption);
 
@@ -68,9 +70,11 @@ StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output)
 StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 {
 	Snapshot snapshot;
+	static SnapshotData GlobalAgtmSnapshotData;
 
+	MemSet(&GlobalAgtmSnapshotData, 0, sizeof(SnapshotData));
 	pq_getmsgend(message);
-	snapshot = GetTransactionSnapshot();
+	snapshot = GetSnapshotData(&GlobalAgtmSnapshotData);
 
 	/* Respond to the client */
 	pq_sendint(output, AGTM_SNAPSHOT_GET_RESULT, 4);

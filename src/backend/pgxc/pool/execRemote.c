@@ -2329,14 +2329,14 @@ pgxcNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot, char nod
 		if (connections[i]->state == DN_CONNECTION_STATE_QUERY)
 			BufferConnection(connections[i]);
 
-		/*if (snapshot && pgxc_node_send_snapshot(connections[i], snapshot))
+		if (snapshot && pgxc_node_send_snapshot(connections[i], snapshot))
 		{
 			add_error_message(connections[i], "Can not send snapshot to %s",
 				NameStr(connections[i]->name));
 			pfree_pgxc_all_handles(pgxc_handles);
 			pfree(copy_connections);
 			return NULL;
-		}*/
+		}
 
 		if (pgxc_node_send_query(connections[i], query) != 0)
 		{
@@ -3093,7 +3093,7 @@ pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 									RemoteQueryState *remotestate)
 {
 	CommandId	cid;
-	//Snapshot	snapshot = GetActiveSnapshot();
+	Snapshot	snapshot = GetActiveSnapshot();
 	RemoteQuery	*step = (RemoteQuery *) remotestate->ss.ps.plan;
 	if (connection->state == DN_CONNECTION_STATE_QUERY)
 		BufferConnection(connection);
@@ -3132,8 +3132,8 @@ pgxc_start_command_on_connection(PGXCNodeHandle *connection,
 	if (pgxc_node_send_cmd_id(connection, cid) < 0 )
 		return false;
 
-	/*if (snapshot && pgxc_node_send_snapshot(connection, snapshot))
-		return false;*/
+	if (snapshot && pgxc_node_send_snapshot(connection, snapshot))
+		return false;
 
 	if (step->statement || step->cursor || remotestate->rqs_num_params)
 	{
@@ -4126,7 +4126,7 @@ ExecRemoteUtility(RemoteQuery *node)
 	RemoteQueryState *remotestate;
 	bool		force_autocommit = node->force_autocommit;
 	RemoteQueryExecType exec_type = node->exec_type;
-	//Snapshot snapshot = GetActiveSnapshot();
+	Snapshot snapshot = GetActiveSnapshot();
 	PGXCNodeAllHandles *pgxc_connections;
 	int			co_conn_count;
 	int			dn_conn_count;
@@ -4190,13 +4190,13 @@ ExecRemoteUtility(RemoteQuery *node)
 
 			if (conn->state == DN_CONNECTION_STATE_QUERY)
 				BufferConnection(conn);
-			/*if (snapshot && pgxc_node_send_snapshot(conn, snapshot))
+			if (snapshot && pgxc_node_send_snapshot(conn, snapshot))
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Fail to send snapshot to %s",
 							NameStr(conn->name))));
-			}*/
+			}
 #ifdef ADB
 			if(pgxc_node_send_query_tree(conn, node->sql_statement, node->sql_node) != 0)
 #else
@@ -4220,13 +4220,13 @@ ExecRemoteUtility(RemoteQuery *node)
 		/* Now send it to Coordinators if necessary */
 		for (i = 0; i < co_conn_count; i++)
 		{
-			/*if (snapshot && pgxc_node_send_snapshot(pgxc_connections->coord_handles[i], snapshot))
+			if (snapshot && pgxc_node_send_snapshot(pgxc_connections->coord_handles[i], snapshot))
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("Fail to send snapshot to %s",
 						 	NameStr(pgxc_connections->coord_handles[i]->name))));
-			}*/
+			}
 #ifdef ADB
 			if (pgxc_node_send_query_tree(pgxc_connections->coord_handles[i], node->sql_statement, node->sql_node) != 0)
 #else
