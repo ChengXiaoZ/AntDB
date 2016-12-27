@@ -266,6 +266,7 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 {
 	const char *rec_msg_string;
 	StringInfoData output;
+	StringInfoData err_msg;
 	StringInfoData infoparastr;
 	StringInfoData pgconffile;
 	char datapath[MAXPGPATH];
@@ -286,7 +287,7 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
 	initStringInfo(&output);
-	
+	initStringInfo(&err_msg);
 	appendBinaryStringInfo(&infoparastr, &msg->data[msg->cursor], msg->len - msg->cursor);
 
 	/*get datapath*/
@@ -303,18 +304,29 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	while((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len))
 	{		
 		ptmp = pghba_info_parse(ptmp, newinfo, &infoparastr);
-		infohead = cmd_refresh_pghba_confinfo(cmd_type, newinfo, infohead, &output);
+		infohead = cmd_refresh_pghba_confinfo(cmd_type, newinfo, infohead, &err_msg);
 	}
 	
 	/*use the new info list to refresh the pg_hba.conf*/
 	writehbafile(pgconffile.data, infohead);	
 	
 	/*send the result to the manager*/
-	appendStringInfoString(&output, "success");
-	appendStringInfoCharMacro(&output, '\0');
-	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	if(err_msg.len == 0)
+	{
+		appendStringInfoString(&output, "success");
+		appendStringInfoCharMacro(&output, '\0');
+		agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	}
+	else
+	{
+		appendStringInfoString(&output, err_msg.data);
+		appendStringInfoCharMacro(&output, '\0');
+		agt_put_msg(AGT_MSG_ERROR, output.data, output.len);
+	}
+
 	agt_flush();
 	pfree(output.data);
+	pfree(err_msg.data);
 	MemoryContextSwitchTo(oldcontext);
 	MemoryContextDelete(pgconf_context);	
 }
@@ -335,6 +347,14 @@ static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *check
 		{
 			add_pghba_info_list(infohead, checkinfo);	
 		}	
+/*		else
+		{
+			appendStringInfo(err_msg,"\"%s %s %s %s %s\"has exist in the pg_hba.conf.\n",strtype
+																						,checkinfo->database
+																						,checkinfo->user
+																						,checkinfo->addr
+																						,checkinfo->auth_method);
+		}*/
 	}
 	else if(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type)
 	{
@@ -500,6 +520,7 @@ static bool check_pghba_exist_info(HbaInfo *checkinfo, HbaInfo *infohead)
 				&& strcmp(checkinfo->database, info->database) == 0
 				&& strcmp(checkinfo->user, info->user) == 0
 				&& strcmp(checkinfo->addr, info->addr) == 0
+				&& (checkinfo->addr_mark == info->addr_mark)
 				&& strcmp(checkinfo->auth_method, info->auth_method) == 0)
 		{
 			return true;
