@@ -51,8 +51,7 @@
 #define SYNC            't'
 #define ASYNC           'f'
 #define SPACE           ' '
-#define PRIV_GRANT      'G'
-#define PRIC_REVOKE     'R'
+
 
 typedef struct AppendNodeInfo
 {
@@ -146,6 +145,7 @@ static bool mgr_has_table_priv(char *rolename, char *tablename, char *priv_type)
 static bool mgr_has_func_priv(char *rolename, char *funcname, char *priv_type);
 static List *get_username_list(void);
 static Oid mgr_get_role_oid_or_public(const char *rolname);
+static void mgr_priv_all(char command_type, char *username_list_str);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -8124,6 +8124,40 @@ static void mgr_add_extension(char *sqlstr)
 
 }
 
+Datum mgr_priv_all_to_username(PG_FUNCTION_ARGS)
+{
+	List *username_list = NIL;
+	Datum datum_username_list;
+	char *username_list_str = NULL;
+
+	char command_type = PG_GETARG_CHAR(0);
+	Assert(command_type == PRIV_GRANT || command_type == PRIV_REVOKE);
+
+	datum_username_list = PG_GETARG_DATUM(1);
+	username_list = DecodeTextArrayToValueList(datum_username_list);
+
+	mgr_check_username_valid(username_list);
+
+	username_list_str = get_username_list_str(username_list);
+	mgr_priv_all(command_type, username_list_str);
+
+	if (command_type == PRIV_GRANT)
+		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
+	else
+		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_priv_all(char command_type, char *username_list_str)
+{
+	mgr_manage_init(command_type, username_list_str);
+	mgr_manage_append(command_type, username_list_str);
+	mgr_manage_failover(command_type, username_list_str);
+	mgr_manage_clean(command_type, username_list_str);
+	mgr_manage_list(command_type, username_list_str);
+
+	return;
+}
+
 Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 {
 	List *command_list = NIL;
@@ -8135,7 +8169,7 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 	Datum datum_username_list;
 
 	char command_type = PG_GETARG_CHAR(0);
-	Assert(command_type == PRIV_GRANT || command_type == PRIC_REVOKE);
+	Assert(command_type == PRIV_GRANT || command_type == PRIV_REVOKE);
 
 	datum_command_list = PG_GETARG_DATUM(1);
 	datum_username_list = PG_GETARG_DATUM(2);
@@ -8197,7 +8231,7 @@ static void mgr_manage_list(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "adbmgr.updateparm, ");
 		appendStringInfoString(&commandsql, "adbmgr.hba ");
 		appendStringInfoString(&commandsql, "TO ");
-	}else if (command_type == PRIC_REVOKE)
+	}else if (command_type == PRIV_REVOKE)
 	{
 		// revoke execute on function func_name [, ...] from user_name [, ...];
 		// revoke select on schema.view [, ...] from user [, ...]
@@ -8242,7 +8276,7 @@ static void mgr_manage_clean(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_clean_all() ");
 		appendStringInfoString(&commandsql, "TO ");
-	}else if (command_type == PRIC_REVOKE)
+	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
@@ -8279,7 +8313,7 @@ static void mgr_manage_failover(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
 		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring) ");
 		appendStringInfoString(&commandsql, "TO ");
-	}else if (command_type == PRIC_REVOKE)
+	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
@@ -8321,7 +8355,7 @@ static void mgr_manage_append(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "mgr_append_agtmslave(cstring), ");
 		appendStringInfoString(&commandsql, "mgr_append_agtmextra(cstring) ");
 		appendStringInfoString(&commandsql, "TO ");
-	}else if (command_type == PRIC_REVOKE)
+	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
@@ -8360,7 +8394,7 @@ static void mgr_manage_init(char command_type, char *user_list_str)
 	{
 		/*grant select on schema.view [, ...] to user [, ...] */
 		appendStringInfoString(&commandsql, "GRANT select ON adbmgr.initall TO ");
-	}else if (command_type == PRIC_REVOKE)
+	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke select on schema.view [, ...] from user [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE select ON adbmgr.initall FROM ");

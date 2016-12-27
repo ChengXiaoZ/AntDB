@@ -266,7 +266,7 @@ GrantStmt:
 		GRANT privilege_list TO username_list
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			Node *command_type = makeIntConst('G', -1);
+			Node *command_type = makeIntConst(PRIV_GRANT, -1);
 			Node *privs = makeAArrayExpr($2, @2);
 			Node *names = makeAArrayExpr($4, @4);
 			List *args = list_make3(command_type, privs, names);
@@ -274,15 +274,35 @@ GrantStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_manage", args));
 			$$ = (Node*)stmt;
 		}
+		| GRANT ALL TO username_list
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *command_type = makeIntConst(PRIV_GRANT, -1);
+			Node *names = makeAArrayExpr($4, @4);
+			List *args = list_make2(command_type, names);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_all_to_username", args));
+			$$ = (Node*)stmt;
+		}
 		| REVOKE privilege_list FROM username_list
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			Node *command_type = makeIntConst('R', -1);
+			Node *command_type = makeIntConst(PRIV_REVOKE, -1);
 			Node *privs = makeAArrayExpr($2, @2);
 			Node *names = makeAArrayExpr($4, @4);
 			List *args = list_make3(command_type, privs, names);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_manage", args));
+			$$ = (Node*)stmt;
+		}
+		| REVOKE ALL FROM username_list
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *command_type = makeIntConst(PRIV_REVOKE, -1);
+			Node *names = makeAArrayExpr($4, @4);
+			List *args = list_make2(command_type, names);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_all_to_username", args));
 			$$ = (Node*)stmt;
 		}
 		;
@@ -296,7 +316,6 @@ privilege_list:
 
 privilege : IDENT { $$ = makeStringConst(pstrdup($1), @1); };
 			| unreserved_keyword { $$ = makeStringConst(pstrdup($1), @1); }
-			| reserved_keyword	 { $$ = makeStringConst(pstrdup($1), @1); }
 			;
 
 username_list:

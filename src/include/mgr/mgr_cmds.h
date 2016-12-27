@@ -13,6 +13,9 @@
 #include "utils/timestamp.h"
 
 #define run_success "success"
+#define PRIV_GRANT        'G'
+#define PRIV_REVOKE       'R'
+
 
 typedef struct GetAgentCmdRst
 {
@@ -131,6 +134,7 @@ extern Datum mgr_append_agtmextra(PG_FUNCTION_ARGS);
 
 extern Datum mgr_list_acl_all(PG_FUNCTION_ARGS);
 extern Datum mgr_priv_manage(PG_FUNCTION_ARGS);
+extern Datum mgr_priv_all_to_username(PG_FUNCTION_ARGS);
 
 /* extern void mgr_configure_nodes_all(void); */
 extern Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);
