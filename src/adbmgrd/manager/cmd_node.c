@@ -8133,7 +8133,7 @@ Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 	Datum datum_command_list;
 
 	char command_type = PG_GETARG_CHAR(0);
-	Assert(command_type == PRIV_GRANT || command_type == PRIV_REVOKE)
+	Assert(command_type == PRIV_GRANT || command_type == PRIV_REVOKE);
 	datum_command_list = PG_GETARG_DATUM(1);
 
 	/* get command list and username list  */
