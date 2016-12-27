@@ -70,9 +70,25 @@ StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output)
 StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 {
 	Snapshot snapshot;
-	static SnapshotData GlobalAgtmSnapshotData;
+	static SnapshotData GlobalAgtmSnapshotData = {
+		NULL,
+		InvalidTransactionId,
+		InvalidTransactionId,
+		NULL,
+		0,
+		0,
+		NULL,
+		false,
+		false,
+		false,
+		0,
+		0,
+		0,
+#ifdef ADB
+		0,
+#endif /* ADB */
+		};
 
-	MemSet(&GlobalAgtmSnapshotData, 0, sizeof(SnapshotData));
 	pq_getmsgend(message);
 	snapshot = GetSnapshotData(&GlobalAgtmSnapshotData);
 
