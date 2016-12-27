@@ -8123,6 +8123,52 @@ static void mgr_add_extension(char *sqlstr)
 	heap_close(rel_node, RowExclusiveLock);
 
 }
+Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
+{
+	List *command_list = NIL;
+	List *username_list = NIL;
+	ListCell *lc = NULL;
+	Value *command = NULL;
+	char *username_list_str = NULL;
+	Datum datum_command_list;
+
+	char command_type = PG_GETARG_CHAR(0);
+	Assert(command_type == PRIV_GRANT || command_type == PRIV_REVOKE)
+	datum_command_list = PG_GETARG_DATUM(1);
+
+	/* get command list and username list  */
+	command_list = DecodeTextArrayToValueList(datum_command_list);
+	username_list = get_username_list();
+
+	/* check command is valid */
+	mgr_check_command_valid(command_list);
+
+	username_list_str = get_username_list_str(username_list);
+
+	foreach(lc, command_list)
+	{
+		command = lfirst(lc);
+		Assert(command && IsA(command, String));
+
+		if (strcmp(strVal(command), "init") == 0)
+			mgr_manage_init(command_type, username_list_str);
+		else if (strcmp(strVal(command), "append") == 0)
+			mgr_manage_append(command_type, username_list_str);
+		else if (strcmp(strVal(command), "failover") == 0)
+			mgr_manage_failover(command_type, username_list_str);
+		else if (strcmp(strVal(command), "clean") == 0)
+			mgr_manage_clean(command_type, username_list_str);
+		else if (strcmp(strVal(command), "list") == 0)
+			mgr_manage_list(command_type, username_list_str);
+		else
+			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
+	}
+
+	if (command_type == PRIV_GRANT)
+		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
+	else
+		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
 
 Datum mgr_priv_all_to_username(PG_FUNCTION_ARGS)
 {
@@ -8488,7 +8534,7 @@ static void mgr_check_command_valid(List *command_list)
 			strcmp(command_str, "stop") == 0 )
 			continue;
 		else
-			ereport(ERROR, (errmsg("ADB manager command \"%s\" does not exist", command_str)));
+			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", command_str)));
 	}
 
 	return ;

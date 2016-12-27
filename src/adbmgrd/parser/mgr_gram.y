@@ -284,6 +284,16 @@ GrantStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_all_to_username", args));
 			$$ = (Node*)stmt;
 		}
+		| GRANT privilege_list TO ALL
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *command_type = makeIntConst(PRIV_GRANT, -1);
+			Node *privs = makeAArrayExpr($2, @2);
+			List *args = list_make2(command_type, privs);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_list_to_all", args));
+			$$ = (Node*)stmt;
+		}
 		| REVOKE privilege_list FROM username_list
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -303,6 +313,16 @@ GrantStmt:
 			List *args = list_make2(command_type, names);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_all_to_username", args));
+			$$ = (Node*)stmt;
+		}
+		| REVOKE privilege_list FROM ALL
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *command_type = makeIntConst(PRIV_REVOKE, -1);
+			Node *privs = makeAArrayExpr($2, @2);
+			List *args = list_make2(command_type, privs);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_priv_list_to_all", args));
 			$$ = (Node*)stmt;
 		}
 		;

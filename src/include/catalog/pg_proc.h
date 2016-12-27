@@ -5297,6 +5297,9 @@ DESCR("mgr grant to user and revoke from user");
 DATA(insert OID = 4911 (  mgr_priv_all_to_username        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 25 "20 1009" _null_ _null_ _null_ _null_ mgr_priv_all_to_username _null_ _null_ _null_ ));
 DESCR("mgr grant all to username_list and revoke all from username_list");
 
+DATA(insert OID = 4912 (  mgr_priv_list_to_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 25 "20 1009" _null_ _null_ _null_ _null_ mgr_priv_list_to_all _null_ _null_ _null_ ));
+DESCR("mgr grant all to username_list and revoke all from username_list");
+
 DATA(insert OID = 4929 (  mgr_list_acl_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,25}" "{o,o}" "{username, acl}" _null_ mgr_list_acl_all _null_ _null_ _null_ ));
 DESCR("mgr list access privileges all");
 

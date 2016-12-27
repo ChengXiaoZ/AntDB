@@ -1014,6 +1014,8 @@ from public;
 
 revoke execute on function mgr_priv_manage(bigint,text[],text[]) from public;
 revoke execute on function mgr_list_acl_all()from public;
+revoke execute on function mgr_priv_list_to_all(bigint,text[]) from public;
+revoke execute on function mgr_priv_all_to_username(bigint,text[]) from public;
 
 
 --list
