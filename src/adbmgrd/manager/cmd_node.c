@@ -1366,6 +1366,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Form_mgr_node mgr_node_gtm;
 	Datum datumPath;
 	Datum DatumMaster;
+	Datum DatumStopDnMaster;
 	StringInfoData buf;
 	StringInfoData infosendmsg;
 	StringInfoData strinfoport;
@@ -1391,6 +1392,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	bool ismasterrunning = 0;
 	HeapTuple gtmmastertuple;
 	NameData cndnnamedata;
+	HeapTuple mastertuple;
 
 	getAgentCmdRst->ret = false;
 	initStringInfo(&infosendmsg);
@@ -1564,6 +1566,34 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
 	{
+		/*stop gtm master*/
+		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
+		if(!HeapTupleIsValid(mastertuple))
+		{
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("gtm master \"%s\" does not exist", cndnname)));
+		}
+		DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_gtm_master, (Datum)0);
+		if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
+			ereport(WARNING, (errmsg("stop gtm master \"%s\" fail", cndnname)));
+		ReleaseSysCache(mastertuple);
+
+		appendStringInfo(&infosendmsg, " %s -D %s", cmdmode, cndnPath);
+	}
+	else if (AGT_CMD_DN_FAILOVER == cmdtype)
+	{
+		/*stop datanode master*/
+		 mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
+		 if(!HeapTupleIsValid(mastertuple))
+		 {
+						 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+										 ,errmsg("datanode master \"%s\" dosen't exist", cndnname)));
+		 }
+		 DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(cndnname));
+		 if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
+						 ereport(WARNING, (errmsg("stop datanode master \"%s\" fail", cndnname)));
+			ReleaseSysCache(mastertuple);
+			
 		appendStringInfo(&infosendmsg, " %s -D %s", cmdmode, cndnPath);
 	}
 	else if (AGT_CMD_AGTM_RESTART == cmdtype)
@@ -5891,7 +5921,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
 	Form_mgr_node mgr_nodetmp;
-	Form_mgr_node mgr_node_dnmaster;
 	HeapTuple tuple;
 	HeapTuple mastertuple;
 	Oid hostOidtmp;
@@ -5899,11 +5928,9 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Oid nodemasternameoid;
 	Oid newgtmtupleoid;
 	Datum datumPath;
-	Datum DatumStopDnMaster;
 	bool isNull;
 	bool bget = false;
 	char *cndnPathtmp;
-	NameData dnmastername;
 	NameData cndnname;
 	char *strlabel;
 	char aimtuplenodetype;
@@ -5930,13 +5957,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			,errmsg("gtm master \"%s\" does not exist", cndnname.data)));
 	}
-	/*get master name*/
-	mgr_node_dnmaster = (Form_mgr_node)GETSTRUCT(mastertuple);
-	Assert(mgr_node_dnmaster);
-	namestrcpy(&dnmastername, NameStr(mgr_node_dnmaster->nodename));
-	DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_gtm_master, (Datum)0);
-	if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
-		ereport(WARNING, (errmsg("stop gtm master \"%s\" fail", dnmastername.data)));
 	/*2.refresh all coordinator/datanode postgresql.conf:agtm_port,agtm_host*/
 	/*get agtm_port,agtm_host*/
 	resetStringInfo(&infosendmsg);
@@ -5993,13 +6013,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	if(!getAgentCmdRst->ret)
 	{
 		ereport(LOG, (errmsg("refresh %s %s/postgresql.conf of gtm master fail", hostaddress, cndnPath)));
-	}
-	/*restart new gtm master*/
-	resetStringInfo(&(getAgentCmdRst->description));
-	mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
-	if(!getAgentCmdRst->ret)
-	{
-		ereport(ERROR, (errmsg("agtm_ctl restart gtm %s fail", "master")));
 	}
 	/*6.update gtm extra nodemasternameoid, refresh gtm extra recovery.conf*/
 	ScanKeyInit(&key[0],
@@ -6068,7 +6081,6 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	Oid masterhostOid;
 	Oid newmastertupleoid;
 	Datum datumPath;
-	Datum DatumStopDnMaster;
 	bool isNull;
 	bool bgetextra = false;
 	bool getrefresh = false;
@@ -6078,25 +6090,13 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	char secondnodetype;
 	ScanKeyData key[3];
 
-	/*0.stop the old datanode master*/
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			,errmsg("datanode master \"%s\" dosen't exist", cndnname->data)));
 	}
-	DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(cndnname->data));
-	if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
-		ereport(WARNING, (errmsg("stop datanode master \"%s\" fail", cndnname->data)));
-	/*1. restart datanode*/
-	resetStringInfo(&(getAgentCmdRst->description));
-	mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, aimtuple, shutdown_f);
-	if(!getAgentCmdRst->ret)
-	{
-		ereport(ERROR,
-			(errmsg("pg_ctl restart datanode fail: path=%s", cndnPath)));
-		return;
-	}
+
 	/*2.refresh pgxc_node systable */
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
