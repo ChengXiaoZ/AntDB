@@ -124,6 +124,7 @@ extern Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_agent_all(PG_FUNCTION_ARGS);
 
 extern Datum mgr_append_dnmaster(PG_FUNCTION_ARGS);
 extern Datum mgr_append_dnslave(PG_FUNCTION_ARGS);
