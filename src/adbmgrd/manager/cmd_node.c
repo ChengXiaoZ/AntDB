@@ -147,6 +147,7 @@ static List *get_username_list(void);
 static Oid mgr_get_role_oid_or_public(const char *rolname);
 static void mgr_priv_all(char command_type, char *username_list_str);
 
+extern void mgr_clean_hba_table(void);
 #if (Natts_mgr_node != 9)
 #error "need change code"
 #endif
@@ -6381,6 +6382,7 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 		/* end of row */
 		heap_endscan(info->rel_scan);
 		heap_close(info->rel_node, RowExclusiveLock);
+		mgr_clean_hba_table();/*clean the contxt of hba table*/
 		pfree(info);
 		SRF_RETURN_DONE(funcctx);
 	}

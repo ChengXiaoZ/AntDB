@@ -311,19 +311,20 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	writehbafile(pgconffile.data, infohead);	
 	
 	/*send the result to the manager*/
-	if(err_msg.len == 0)
+/*	if(err_msg.len == 0)
 	{
+*/
 		appendStringInfoString(&output, "success");
-		appendStringInfoCharMacro(&output, '\0');
+/*		appendStringInfoCharMacro(&output, '\0'); */
 		agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
-	}
+/*	}
 	else
 	{
 		appendStringInfoString(&output, err_msg.data);
 		appendStringInfoCharMacro(&output, '\0');
-		agt_put_msg(AGT_MSG_ERROR, output.data, output.len);
+		agt_put_msg(AGT_MSG_NOTICE, output.data, output.len);
 	}
-
+*/
 	agt_flush();
 	pfree(output.data);
 	pfree(err_msg.data);
@@ -371,6 +372,7 @@ static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *check
 																						,checkinfo->auth_method);
 		}		
 	}
+
 	pfree(strtype);
 	return infohead;
 }
