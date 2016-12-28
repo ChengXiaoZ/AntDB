@@ -2193,6 +2193,8 @@ static bool node_pool_in_using(ADBNodePool *node_pool)
 {
 	Size i,j;
 	PoolAgent *agent;
+	ListCell *lc;
+	ADBNodePoolSlot *slot;
 	AssertArg(node_pool);
 
 	for(i=0;i<agentCount;++i)
@@ -2209,6 +2211,12 @@ static bool node_pool_in_using(ADBNodePool *node_pool)
 		{
 			if(agent->coord_connections[j]
 				&& agent->coord_connections[j]->parent == node_pool)
+				return true;
+		}
+		foreach(lc, agent->list_wait)
+		{
+			slot = lfirst(lc);
+			if(slot && slot->parent == node_pool)
 				return true;
 		}
 	}
