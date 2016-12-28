@@ -2,7 +2,9 @@
  * commands of hba
  */
 
-
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include "postgres.h"
 #include "access/genam.h"
 #include "access/heapam.h"
@@ -39,12 +41,13 @@
 #include "catalog/mgr_hba.h"
 #include "utils/formatting.h"
 
- 
+
 #define SPACE          				" "
 #define INVALID_ID					0x7fffffff
 #define HBA_RESULT_COLUMN  			3
+#define HBA_ELEM_NUM				6
+#define is_digit(c) ((unsigned)(c) - '0' <= 9)
  
-
 typedef enum OperateHbaType
 {
 	HANDLE_NO = 0,	/*don't do any handle for drop table hba*/
@@ -87,6 +90,7 @@ static void delete_table_hba(uint32 row_id, char *coord_name);
 static bool check_hba_tuple_exist(uint32 row_id, char *coord_name, char *values);
 static bool IDIsValid(uint32 row_id);
 static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg);
+static bool is_auth_method_valid(char *method);
 /*--------------------------------------------------------------------*/
 Datum mgr_alter_hba(PG_FUNCTION_ARGS)
 {
@@ -95,25 +99,8 @@ Datum mgr_alter_hba(PG_FUNCTION_ARGS)
 	tup_result = tuple_form_table_hba(21, (Name)coord_name, "success");
 	return HeapTupleGetDatum(tup_result);
 }
-static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
-{
-	bool is_valid = true;
-	MemoryContext pgconf_context;
-	MemoryContext oldcontext;
-	pgconf_context = AllocSetContextCreate(CurrentMemoryContext,
-									"pghbaadd",
-									ALLOCSET_DEFAULT_MINSIZE,
-									ALLOCSET_DEFAULT_INITSIZE,
-									ALLOCSET_DEFAULT_MAXSIZE);
-	oldcontext = MemoryContextSwitchTo(pgconf_context);
 
-		
-
-	MemoryContextSwitchTo(oldcontext);
-	MemoryContextDelete(pgconf_context);
-	return is_valid;
-}
-
+	
 Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS)
 {
 	List *nodenamelist;
@@ -356,11 +343,21 @@ static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_lis
 				break;		
 		}
 		if(PointerIsValid(lc_elem))
+		{
 			pfree(str_elem);
+		}
 		else
 		{
-			appendBinaryStringInfo(&infosendmsg, hbasendmsg.data, hbasendmsg.len);
-			list_elem = lappend(list_elem, str_elem);
+			if(check_pghbainfo_vaild(&hbasendmsg, &err_msg->description))
+			{
+				appendBinaryStringInfo(&infosendmsg, hbasendmsg.data, hbasendmsg.len);
+				list_elem = lappend(list_elem, str_elem);
+			}
+			else
+			{
+				appendStringInfo(&err_msg->description, "nodename %s with \"%s\" has the upper error\n", coord_name, str_elem);
+				err_msg->ret = false;
+			}
 		}
 						
 	}
@@ -378,7 +375,7 @@ static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_lis
 			appendStringInfo(&err_msg->description, "%s\n",getAgentCmdRst.description.data);
 			err_msg->ret = false;
 		}
-		else
+		else   
 		{
 			/*step4: execute pgxc_ctl reload to the specified host, 
 			it's to take effect for the new value in the pg_hba.conf  */
@@ -916,3 +913,106 @@ static bool IDIsValid(uint32 row_id)
 		return false;
 }
 
+static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
+{
+	bool is_valid = true;
+	HbaInfo *newinfo;
+	char *str_elem;
+	int count_elem;
+	MemoryContext pgconf_context;
+	MemoryContext oldcontext;
+	pgconf_context = AllocSetContextCreate(CurrentMemoryContext,
+									"pghbaadd",
+									ALLOCSET_DEFAULT_MINSIZE,
+									ALLOCSET_DEFAULT_INITSIZE,
+									ALLOCSET_DEFAULT_MAXSIZE);
+	oldcontext = MemoryContextSwitchTo(pgconf_context);
+	newinfo = palloc(sizeof(HbaInfo));
+	count_elem = 0;
+	str_elem = hba_info->data;
+	while(str_elem)
+	{
+		count_elem = count_elem + 1;
+		hba_info->cursor = hba_info->cursor + strlen(str_elem) + 1;
+		str_elem = &(hba_info->data[hba_info->cursor]);
+		if(hba_info->cursor >= hba_info->len)
+			break;
+	}
+	if(count_elem != HBA_ELEM_NUM)
+	{
+		is_valid = false;
+		appendStringInfoString(err_msg, "the item of hba content is not enough\n");
+		goto func_end;
+	}
+	hba_info->cursor = 0;
+	
+	/*type*/
+	newinfo->type = hba_info->data[hba_info->cursor];
+	hba_info->cursor = hba_info->cursor + sizeof(char) + 1;
+	/*database*/
+	newinfo->database = &(hba_info->data[hba_info->cursor]);
+	hba_info->cursor = hba_info->cursor + strlen(newinfo->database) + 1;
+	/*user*/
+	newinfo->user = &(hba_info->data[hba_info->cursor]);
+	hba_info->cursor = hba_info->cursor + strlen(newinfo->user) + 1;
+	/*ip*/
+	newinfo->addr = &(hba_info->data[hba_info->cursor]);
+	hba_info->cursor = hba_info->cursor + strlen(newinfo->addr) + 1;
+	/*mask*/
+	newinfo->addr_mark = atoi(&(hba_info->data[hba_info->cursor]));
+	hba_info->cursor = hba_info->cursor + strlen(&(hba_info->data[hba_info->cursor])) + 1;
+	/*method*/
+	newinfo->auth_method = &(hba_info->data[hba_info->cursor]);
+	
+	if(is_digit(newinfo->database[0]))
+	{
+		is_valid = false;
+		appendStringInfoString(err_msg, "the database name cann't be start of digit\n");
+		goto func_end;
+	}
+	
+	if(is_digit(newinfo->user[0]))
+	{
+		is_valid = false;
+		appendStringInfoString(err_msg, "the user name cann't be start of digit\n");
+		goto func_end;
+	}
+	if(inet_aton(newinfo->addr, NULL) == 0)
+	{
+		is_valid = false;
+		appendStringInfoString(err_msg, "the address is not vaild\n");
+		goto func_end;
+	}
+	if(newinfo->addr_mark < 0 || newinfo->addr_mark > 32)
+	{
+		is_valid = false;
+		appendStringInfoString(err_msg, "the ip mask is not vaild\n");
+		goto func_end;
+	}
+	if(!is_auth_method_valid(newinfo->auth_method))
+	{
+		is_valid = false;
+		appendStringInfoString(err_msg, "the auth_method is not vaild\n");
+		goto func_end;
+	}
+func_end:
+	MemoryContextSwitchTo(oldcontext);
+	MemoryContextDelete(pgconf_context);
+	return is_valid;
+}
+
+static bool is_auth_method_valid(char *method)
+{	
+	char *AuthMethod[11] = {"trust", "reject", "md5", "password", "gss", "sspi"
+						  , "krb5", "ident", "ldap", "cert", "pam"};
+	int i = 0;	
+	char *method_lwr;
+	Assert(method);
+	method_lwr = str_tolower(method, strlen(method), DEFAULT_COLLATION_OID);
+	for(i = 0; i < 11; ++i)
+	{
+		if(strcmp(method_lwr, AuthMethod[i]) == 0)
+			return true;
+	}
+	return false;
+}
