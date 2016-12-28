@@ -91,6 +91,7 @@ static bool check_hba_tuple_exist(uint32 row_id, char *coord_name, char *values)
 static bool IDIsValid(uint32 row_id);
 static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg);
 static bool is_auth_method_valid(char *method);
+static bool is_ipv4_vaild(const char *str);
 /*--------------------------------------------------------------------*/
 Datum mgr_alter_hba(PG_FUNCTION_ARGS)
 {
@@ -977,7 +978,7 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
 		appendStringInfoString(err_msg, "the user name cann't be start of digit\n");
 		goto func_end;
 	}
-	if(inet_aton(newinfo->addr, NULL) == 0)
+	if(is_ipv4_vaild(newinfo->addr) == 0)
 	{
 		is_valid = false;
 		appendStringInfoString(err_msg, "the address is not vaild\n");
@@ -1016,3 +1017,18 @@ static bool is_auth_method_valid(char *method)
 	}
 	return false;
 }
+
+static bool is_ipv4_vaild(const char *str)
+{
+    int i, a[4];
+    char end;
+    if( sscanf(str, "%d.%d.%d.%d%c", &a[0], &a[1], &a[2], &a[3], &end) != 4 )
+        return 0;
+    for(i=0; i<4; i++) 
+	{
+		if (a[i] < 0 || a[i] > 255) 
+			return 0;
+	}
+    return 1;
+}
+
