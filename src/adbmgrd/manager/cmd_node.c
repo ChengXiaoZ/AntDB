@@ -125,6 +125,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
 static char *get_username_list_str(List *user_list);
+static void mgr_manage_monitor(char command_type, char *user_list_str);
 static void mgr_manage_init(char command_type, char *user_list_str);
 static void mgr_manage_append(char command_type, char *user_list_str);
 static void mgr_manage_failover(char command_type, char *user_list_str);
@@ -135,6 +136,7 @@ static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 static List *get_username_list(void);
 static void mgr_get_acl_by_username(char *username, StringInfo acl);
+static bool mgr_acl_monitor(char *username);
 static bool mgr_acl_list(char *username);
 static bool mgr_acl_append(char *username);
 static bool mgr_acl_failover(char *username);
@@ -8246,6 +8248,8 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 			mgr_manage_clean(command_type, username_list_str);
 		else if (strcmp(strVal(command), "list") == 0)
 			mgr_manage_list(command_type, username_list_str);
+		else if (strcmp(strVal(command), "monitor") == 0)
+			mgr_manage_monitor(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8254,6 +8258,64 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
 	else
 		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_manage_monitor(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		// grant execute on function func_name [, ...] to user_name [, ...];
+		// grant select on schema.view [, ...] to user [, ...]
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_monitor_agent_all(), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_agent_hostlist(text[]), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_gtm_all(), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_datanode_all(), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_namelist(bigint, \"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_all(bigint) ");
+		appendStringInfoString(&commandsql, "TO ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "GRANT select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.monitor_all ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIV_REVOKE)
+	{
+		// revoke execute on function func_name [, ...] from user_name [, ...];
+		// revoke select on schema.view [, ...] from user [, ...]
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_monitor_agent_all(), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_agent_hostlist(text[]), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_gtm_all(), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_datanode_all(), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_namelist(bigint, \"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_all(bigint) ");
+		appendStringInfoString(&commandsql, "FROM ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "REVOKE select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.monitor_all ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
 }
 
 static void mgr_manage_list(char command_type, char *user_list_str)
@@ -8632,7 +8694,29 @@ static void mgr_get_acl_by_username(char *username, StringInfo acl)
 		appendStringInfo(acl, "list ");
 	}
 
+	if (mgr_acl_monitor(username))
+	{
+		appendStringInfo(acl, "monitor ");
+	}
+
 	return;
+}
+
+static bool mgr_acl_monitor(char *username)
+{
+	bool f1, f2, f3, f4, f5, f6;
+	bool t1;
+
+	f1 = mgr_has_func_priv(username, "mgr_monitor_agent_all()", "execute");
+	f2 = mgr_has_func_priv(username, "mgr_monitor_agent_hostlist(text[])", "execute");
+	f3 = mgr_has_func_priv(username, "mgr_monitor_gtm_all()", "execute");
+	f4 = mgr_has_func_priv(username, "mgr_monitor_datanode_all()", "execute");
+	f5 = mgr_has_func_priv(username, "mgr_monitor_nodetype_namelist(bigint, \"any\")", "execute");
+	f6 = mgr_has_func_priv(username, "mgr_monitor_nodetype_all(bigint)", "execute");
+
+	t1  = mgr_has_table_priv(username, "adbmgr.monitor_all", "select");
+
+	return (f1 && f2 && f3 && f4 && f5 && f6 && t1);
 }
 
 static bool mgr_acl_list(char *username)

@@ -1012,6 +1012,16 @@ mgr_append_agtmslave(cstring),
 mgr_append_agtmextra(cstring)
 from public;
 
+-- monitor
+revoke execute on function
+mgr_monitor_agent_all(),
+mgr_monitor_agent_hostlist(text[]),
+mgr_monitor_gtm_all(),
+mgr_monitor_datanode_all(),
+mgr_monitor_nodetype_namelist(bigint, "any"),
+mgr_monitor_nodetype_all(bigint)
+from public;
+
 revoke execute on function mgr_priv_manage(bigint,text[],text[]) from public;
 revoke execute on function mgr_list_acl_all()from public;
 revoke execute on function mgr_priv_list_to_all(bigint,text[]) from public;
