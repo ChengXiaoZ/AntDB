@@ -76,7 +76,7 @@ extern void mgr_reload_conf(Oid hostoid, char *nodepath);
 //extern HbaInfo* parse_hba_file(const char *filename);
 /*--------------------------------------------------------------------*/
 static void mgr_add_hba_all(uint32 *hba_max_id, List *args_list, GetAgentCmdRst *err_msg);
-static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_list, GetAgentCmdRst *err_msg);
+static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_list, GetAgentCmdRst *err_msg, bool record_err_msg);
 static void drop_hba_all(GetAgentCmdRst *err_msg);
 static void drop_hba_nodename_all(char *coord_name, GetAgentCmdRst *err_msg);
 static void drop_hba_nodename_id(char *coord_name, uint32 row_id, GetAgentCmdRst *err_msg);
@@ -89,9 +89,8 @@ static HeapTuple tuple_form_table_hba(const uint32 row_id, const Name node_name,
 static void delete_table_hba(uint32 row_id, char *coord_name);
 static bool check_hba_tuple_exist(uint32 row_id, char *coord_name, char *values);
 static bool IDIsValid(uint32 row_id);
-static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg);
+static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg, bool record_err_msg);
 static bool is_auth_method_valid(char *method);
-static bool is_ipv4_vaild(const char *str);
 /*--------------------------------------------------------------------*/
 Datum mgr_alter_hba(PG_FUNCTION_ARGS)
 {
@@ -206,7 +205,7 @@ Datum mgr_add_hba(PG_FUNCTION_ARGS)
 	}	
 	else if(HBA_NODENAME_ALL == handle_type)
 	{
-		mgr_add_hba_one(&hba_max_id, coord_name, args_list, &err_msg);
+		mgr_add_hba_one(&hba_max_id, coord_name, args_list, &err_msg, true);
 	}	
 	/*step 3: show the state of operating drop hba commands */
 	tup_result = tuple_form_table_hba(INVALID_ID
@@ -224,7 +223,7 @@ static void mgr_add_hba_all(uint32 *hba_max_id, List *args_list, GetAgentCmdRst 
 	HeapTuple tuple;
 	ScanKeyData key[1];
 	char *coord_name;
-	
+	bool record_err_msg = true;
 	ScanKeyInit(&key[0],
 			Anum_mgr_node_nodetype
 			,BTEqualStrategyNumber
@@ -238,14 +237,14 @@ static void mgr_add_hba_all(uint32 *hba_max_id, List *args_list, GetAgentCmdRst 
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
 		coord_name = NameStr(mgr_node->nodename);
-		mgr_add_hba_one(hba_max_id, coord_name, args_list, err_msg);
-		
+		mgr_add_hba_one(hba_max_id, coord_name, args_list, err_msg, record_err_msg);
+		record_err_msg = false;
 	}
 	
 	heap_endscan(rel_scan);
 	heap_close(rel, RowExclusiveLock);
 }
-static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_list, GetAgentCmdRst *err_msg)
+static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_list, GetAgentCmdRst *err_msg, bool record_err_msg)
 {
 	Relation rel;
 	HeapTuple tuple;
@@ -265,6 +264,7 @@ static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_lis
 	HbaType conntype = HBA_TYPE_EMPTY;
 	GetAgentCmdRst getAgentCmdRst;
 	bool is_exist = false;
+	bool is_valid = false;
 	Datum datum[Natts_mgr_node];
 	bool isnull[Natts_mgr_node];
 	memset(datum, 0, sizeof(datum));
@@ -312,10 +312,6 @@ static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_lis
 		memcpy(split_str,str,strlen(str)+1);
 		str_elem = strtok_r(split_str, SPACE, &str_remain);
 		conntype = get_connect_type(str_elem);
-		if(conntype == HBA_TYPE_EMPTY)
-		{
-			ereport(ERROR, (errmsg("%s", "the type of hba is wrong")));
-		}
 		appendStringInfo(&hbasendmsg, "%c%c", conntype, '\0');	
 		appendStringInfo(&hbainfomsg, "%s", str_elem);
 		while(str_elem != NULL)
@@ -327,6 +323,17 @@ static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_lis
 				appendStringInfo(&hbainfomsg, "  %s",str_elem);
 			}						
 		}	
+		/*check the hba value is valid*/
+		is_valid = check_pghbainfo_vaild(&hbasendmsg, &err_msg->description, record_err_msg);
+		if(false == is_valid)
+		{
+			if(true == record_err_msg)
+			{
+				err_msg->ret = false;
+				appendStringInfo(&err_msg->description, "in the item \"%s\".\n",str);
+			}
+			continue;
+		}
 		/*check the value whether exist in the hba table*/
 		is_exist = check_hba_tuple_exist(INVALID_ID, coord_name, hbainfomsg.data);
 		if(is_exist)
@@ -349,18 +356,9 @@ static void mgr_add_hba_one(uint32 *hba_max_id, char *coord_name, List *args_lis
 		}
 		else
 		{
-			if(check_pghbainfo_vaild(&hbasendmsg, &err_msg->description))
-			{
-				appendBinaryStringInfo(&infosendmsg, hbasendmsg.data, hbasendmsg.len);
-				list_elem = lappend(list_elem, str_elem);
-			}
-			else
-			{
-				appendStringInfo(&err_msg->description, "nodename %s with \"%s\" has the upper error\n", coord_name, str_elem);
-				err_msg->ret = false;
-			}
-		}
-						
+			appendBinaryStringInfo(&infosendmsg, hbasendmsg.data, hbasendmsg.len);
+			list_elem = lappend(list_elem, str_elem);
+		}						
 	}
 	if(list_length(list_elem) > 0)
 	{	
@@ -914,12 +912,14 @@ static bool IDIsValid(uint32 row_id)
 		return false;
 }
 
-static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
+static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg, bool record_err_msg)
 {
 	bool is_valid = true;
 	HbaInfo *newinfo;
 	char *str_elem;
+	StringInfoData str_hbainfo;
 	int count_elem;
+	int ipaddr;
 	MemoryContext pgconf_context;
 	MemoryContext oldcontext;
 	pgconf_context = AllocSetContextCreate(CurrentMemoryContext,
@@ -929,6 +929,7 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
 									ALLOCSET_DEFAULT_MAXSIZE);
 	oldcontext = MemoryContextSwitchTo(pgconf_context);
 	newinfo = palloc(sizeof(HbaInfo));
+	initStringInfo(&str_hbainfo);
 	count_elem = 0;
 	str_elem = hba_info->data;
 	while(str_elem)
@@ -942,7 +943,8 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
 	if(count_elem != HBA_ELEM_NUM)
 	{
 		is_valid = false;
-		appendStringInfoString(err_msg, "the item of hba content is not enough\n");
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"number of hba item fields is incorrect\"\n");
 		goto func_end;
 	}
 	hba_info->cursor = 0;
@@ -964,36 +966,63 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg)
 	hba_info->cursor = hba_info->cursor + strlen(&(hba_info->data[hba_info->cursor])) + 1;
 	/*method*/
 	newinfo->auth_method = &(hba_info->data[hba_info->cursor]);
-	
+	if(HBA_TYPE_EMPTY == newinfo->type)
+	{
+		is_valid = false;
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the conntype is invalid\"\n");
+		goto func_end;
+	}
 	if(is_digit(newinfo->database[0]))
 	{
 		is_valid = false;
-		appendStringInfoString(err_msg, "the database name cann't be start of digit\n");
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the database name cannot start with a number\"\n");
+		goto func_end;
+	}
+	if(newinfo->database[0] == '\'')
+	{
+		is_valid = false;
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the database name cannot start with a single quotes\"\n");
 		goto func_end;
 	}
 	
 	if(is_digit(newinfo->user[0]))
 	{
 		is_valid = false;
-		appendStringInfoString(err_msg, "the user name cann't be start of digit\n");
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the user name cannot start with a number\"\n");
 		goto func_end;
-	}
-	if(is_ipv4_vaild(newinfo->addr) == 0)
+	}	
+	if(newinfo->user[0] == '\'')
 	{
 		is_valid = false;
-		appendStringInfoString(err_msg, "the address is not vaild\n");
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the user name cannot start with a single quotes\"\n");
+		goto func_end;
+	}
+	
+	if(inet_pton(AF_INET, newinfo->addr, &ipaddr) == 0)
+	{
+		is_valid = false;
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the address is invaild\"\n");
 		goto func_end;
 	}
 	if(newinfo->addr_mark < 0 || newinfo->addr_mark > 32)
 	{
 		is_valid = false;
-		appendStringInfoString(err_msg, "the ip mask is not vaild\n");
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the ip mask is invaild\"\n");
 		goto func_end;
 	}
+	
 	if(!is_auth_method_valid(newinfo->auth_method))
 	{
 		is_valid = false;
-		appendStringInfoString(err_msg, "the auth_method is not vaild\n");
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the auth_method is invaild\"\n");
 		goto func_end;
 	}
 func_end:
@@ -1018,17 +1047,5 @@ static bool is_auth_method_valid(char *method)
 	return false;
 }
 
-static bool is_ipv4_vaild(const char *str)
-{
-    int i, a[4];
-    char end;
-    if( sscanf(str, "%d.%d.%d.%d%c", &a[0], &a[1], &a[2], &a[3], &end) != 4 )
-        return 0;
-    for(i=0; i<4; i++) 
-	{
-		if (a[i] < 0 || a[i] > 255) 
-			return 0;
-	}
-    return 1;
-}
+
 
