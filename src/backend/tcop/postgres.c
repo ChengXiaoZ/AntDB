@@ -2276,6 +2276,18 @@ exec_bind_message(StringInfo input_message)
 					 errhidestmt(true),
 					 errdetail_params(params)));
 			break;
+#ifdef ADB
+		case 3:
+			ereport(LOG,
+					(errmsg("<adb_parse> duration: %s ms  bind %s%s%s",
+							msec_str,
+							*stmt_name ? stmt_name : "<unnamed>",
+							*portal_name ? "/" : "",
+							*portal_name ? portal_name : ""),
+					 errhidestmt(true),
+					 errdetail_params(params)));
+			break;
+#endif
 	}
 
 	if (save_log_statement_stats)
@@ -2574,7 +2586,11 @@ check_log_statement(List *stmt_list)
 int
 check_log_duration(char *msec_str, bool was_logged)
 {
+#ifdef ADB
+	if (log_parse_query || log_duration || log_min_duration_statement >= 0)
+#else
 	if (log_duration || log_min_duration_statement >= 0)
+#endif
 	{
 		long		secs;
 		int			usecs;
@@ -2585,6 +2601,15 @@ check_log_duration(char *msec_str, bool was_logged)
 							GetCurrentTimestamp(),
 							&secs, &usecs);
 		msecs = usecs / 1000;
+
+#ifdef ADB
+		if (log_parse_query)
+		{
+			snprintf(msec_str, 32, "%ld.%03d",
+					 secs * 1000 + msecs, usecs % 1000);
+			return 3;
+		}
+#endif
 
 		/*
 		 * This odd-looking test for log_min_duration_statement being exceeded
