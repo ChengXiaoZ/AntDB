@@ -3273,8 +3273,16 @@ do_query(RemoteQueryState *node)
 #ifdef ADB
 		dnhandles = (PGXCNodeHandle **)
 			palloc0(regular_conn_count * sizeof(PGXCNodeHandle *));
-		memcpy(dnhandles, connections,
-			regular_conn_count * sizeof(PGXCNodeHandle *));
+		if (pgxc_connections->primary_handle)
+		{
+			memcpy(dnhandles, connections,
+				(regular_conn_count - 1) * sizeof(PGXCNodeHandle *));
+			dnhandles[regular_conn_count - 1] = pgxc_connections->primary_handle;
+		} else
+		{
+			memcpy(dnhandles, connections,
+				regular_conn_count * sizeof(PGXCNodeHandle *));
+		}
 		num_dnhandles = regular_conn_count;
 #endif
 	}
