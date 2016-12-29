@@ -4155,10 +4155,4 @@ BEGIN_NODE(MGRStartAgent)
 END_NODE(MGRStartAgent)
 #endif /* NO_NODE_MGRStartAgent */
 
-#ifndef NO_NODE_MGRStopAgent
-BEGIN_NODE(MGRStopAgent)
-	NODE_NODE(List, hosts)
-END_NODE(MGRStopAgent)
-#endif /* NO_NODE_MGRStopAgent */
-
 #endif /* ADBMGRD */

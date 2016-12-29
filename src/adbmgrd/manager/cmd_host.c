@@ -64,8 +64,6 @@ static void append_file_to_tar(FILE *tar, const char *path, const char *name);
 static bool host_is_localhost(const char *name);
 static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo msg, const char *password);
 static void get_pghome(char *pghome);
-static void mgr_stop_agent_all(DestReceiver *dest);
-static void mgr_stop_agent_objlist(List *hosts, DestReceiver *dest);
 static void check_host_name_isvaild(List *host_name_list);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
@@ -1118,20 +1116,9 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 	}
 }
 
-void mgr_stop_agent(MGRStopAgent *node, ParamListInfo params, DestReceiver *dest)
+Datum mgr_stop_agent_all(PG_FUNCTION_ARGS) 
 {
-	if (node->hosts == NIL) // for STOP AGENT ALL
-	{
-		mgr_stop_agent_all(dest);
-	}
-	else // for STOP AGENT host1,host2,...
-	{
-		mgr_stop_agent_objlist(node->hosts, dest);
-	}
-}
-
-static void mgr_stop_agent_all(DestReceiver *dest)
-{
+	FuncCallContext *funcctx;
 	StartAgentInfo *info;
 	HeapTuple tup;
 	HeapTuple tup_result;
@@ -1142,224 +1129,104 @@ static void mgr_stop_agent_all(DestReceiver *dest)
 	char cmdtype = AGT_CMD_STOP_AGENT;
 	int retry = 0;
 	const int retrymax = 10;
-	TupleDesc desc;
-	TupleTableSlot *slot;
-	MemoryContext context;
-	MemoryContext oldcontext;
 
-	context = AllocSetContextCreate(CurrentMemoryContext, "stop_agent"
-					, ALLOCSET_DEFAULT_MINSIZE
-					, ALLOCSET_DEFAULT_INITSIZE
-					, ALLOCSET_DEFAULT_MAXSIZE);
-	desc = get_common_command_tuple_desc();
-	(*dest->rStartup)(dest, CMD_UTILITY, desc);
-	slot = MakeSingleTupleTableSlot(desc);
-	oldcontext = CurrentMemoryContext;
-
-	info = palloc(sizeof(*info));
-	info->rel_host = heap_open(HostRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
-
-	while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	if (SRF_IS_FIRSTCALL())
 	{
-		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-		Assert(mgr_host);
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-		/* test is running ? */
-		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-		if(!ma_isconnected(ma))
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+
+		/* save info */
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	tup = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if(tup == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+	Assert(mgr_host);
+
+	/* test is running ? */
+	ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+	if(!ma_isconnected(ma))
+	{
+		tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("not running"));
+		ma_close(ma);
+	}else
+	{
+		initStringInfo(&message);
+		initStringInfo(&(getAgentCmdRst.description));
+
+		/*send cmd*/
+		ma_beginmessage(&message, AGT_MSG_COMMAND);
+		ma_sendbyte(&message, cmdtype);
+		ma_sendstring(&message, "stop agent");
+		ma_endmessage(&message, ma);
+		if (!ma_flush(ma, true))
 		{
-			tup_result = build_common_command_tuple(&(mgr_host->hostname)
-				, true, _("not running"));
+			getAgentCmdRst.ret = false;
+			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 			ma_close(ma);
-		}else
-		{
-			initStringInfo(&message);
-			initStringInfo(&(getAgentCmdRst.description));
-			/*send cmd*/
-			ma_beginmessage(&message, AGT_MSG_COMMAND);
-			ma_sendbyte(&message, cmdtype);
-			ma_sendstring(&message, "stop agent");
-			ma_endmessage(&message, ma);
-			if (!ma_flush(ma, true))
-			{
-				getAgentCmdRst.ret = false;
-				appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-				ma_close(ma);
-				tup_result = build_common_command_tuple(&(mgr_host->hostname)
-				, getAgentCmdRst.ret, getAgentCmdRst.description.data);
-			}
-			else
-			{
-				mgr_recv_msg(ma, &getAgentCmdRst);
-				ma_close(ma);
-				/*check stop agent result*/
-				retry = 0;
-				while (retry++ < retrymax)
-				{
-					/*sleep 0.2s, wait the agent process to be killed, max try retrymax times*/
-					usleep(200000);
-					ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-					if(!ma_isconnected(ma))
-					{
-						getAgentCmdRst.ret = 1;
-						resetStringInfo(&(getAgentCmdRst.description));
-						appendStringInfoString(&(getAgentCmdRst.description), run_success);
-						ma_close(ma);
-						break;
-					}
-					else
-					{
-						getAgentCmdRst.ret = 0;
-						resetStringInfo(&(getAgentCmdRst.description));
-						appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
-						ma_close(ma);
-					}
-				}
-				tup_result = build_common_command_tuple(
-					&(mgr_host->hostname)
-					, getAgentCmdRst.ret == 0 ? false:true
-					, getAgentCmdRst.description.data);
-				if(getAgentCmdRst.description.data)
-					pfree(getAgentCmdRst.description.data);
-			}
+			tup_result = build_common_command_tuple(&(mgr_host->hostname)
+			, getAgentCmdRst.ret, getAgentCmdRst.description.data);
 		}
-		ExecClearTuple(slot);
-		ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
-		MemoryContextSwitchTo(oldcontext);
-		(*dest->receiveSlot)(slot, dest);
-	}
-	heap_endscan(info->rel_scan);
-	heap_close(info->rel_host, AccessShareLock);
-	pfree(info);
-}
-
-static void mgr_stop_agent_objlist(List *hosts, DestReceiver *dest)
-{
-	InitNodeInfo *info;
-	HeapTuple tup;
-	TupleTableSlot *slot;
-	TupleDesc desc;
-	ManagerAgent *ma;
-	HeapTuple tup_result;
-	Form_mgr_host mgr_host;
-	MemoryContext context;
-	MemoryContext oldcontext;
-	ListCell *lc;
-	Value *value;
-	NameData name;
-	char cmdtype = AGT_CMD_STOP_AGENT;
-	TupleDesc host_desc;
-	StringInfoData message;
-	int retry = 0;
-	const int retrymax = 10;
-	GetAgentCmdRst getAgentCmdRst;
-
-	context = AllocSetContextCreate(CurrentMemoryContext, "stop_agent"
-					, ALLOCSET_DEFAULT_MINSIZE
-					, ALLOCSET_DEFAULT_INITSIZE
-					, ALLOCSET_DEFAULT_MAXSIZE);
-	desc = get_common_command_tuple_desc();
-	(*dest->rStartup)(dest, CMD_UTILITY, desc);
-	slot = MakeSingleTupleTableSlot(desc);
-	oldcontext = CurrentMemoryContext;
-
-	info = palloc(sizeof(*info));
-	info->rel_host = heap_open(HostRelationId, AccessShareLock);
-	host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
-	heap_close(info->rel_host, AccessShareLock);
-
-	foreach(lc, hosts)
-	{
-		value = lfirst(lc);
-		Assert(value && IsA(value, String));
-		namestrcpy(&name, strVal(value));
-
-		tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
-
-		if (HeapTupleIsValid(tup))
+		else
 		{
-			mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-			Assert(mgr_host);
+			mgr_recv_msg(ma, &getAgentCmdRst);
+			ma_close(ma);
 
-			ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-			if (!ma_isconnected(ma))
+			/*check stop agent result*/
+			retry = 0;
+			while (retry++ < retrymax)
 			{
-				tup_result = build_common_command_tuple(&name, true, _("not running"));
-				ma_close(ma);
-				ReleaseSysCache(tup);
-			}
-			else
-			{
-				initStringInfo(&message);
-				initStringInfo(&(getAgentCmdRst.description));
-				/*send cmd*/
-				ma_beginmessage(&message, AGT_MSG_COMMAND);
-				ma_sendbyte(&message, cmdtype);
-				ma_sendstring(&message, "stop agent");
-				ma_endmessage(&message, ma);
-
-				if (!ma_flush(ma, true))
+				/*sleep 0.2s, wait the agent process to be killed, max try retrymax times*/
+				usleep(200000);
+				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+				if(!ma_isconnected(ma))
 				{
-					getAgentCmdRst.ret = false;
-					appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+					getAgentCmdRst.ret = 1;
+					resetStringInfo(&(getAgentCmdRst.description));
+					appendStringInfoString(&(getAgentCmdRst.description), run_success);
 					ma_close(ma);
-					tup_result = build_common_command_tuple(&(mgr_host->hostname)
-						, getAgentCmdRst.ret, getAgentCmdRst.description.data);
-					ReleaseSysCache(tup);
+					break;
 				}
-
-				mgr_recv_msg(ma, &getAgentCmdRst);
-				ma_close(ma);
-
-				/*check stop agent result*/
-				retry = 0;
-				while (retry++ < retrymax)
+				else
 				{
-					/*sleep 0.2s, wait the agent process to be killed, max try retrymax times*/
-					usleep(200000);
-					ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-					if(!ma_isconnected(ma))
-					{
-						getAgentCmdRst.ret = 1;
-						resetStringInfo(&(getAgentCmdRst.description));
-						appendStringInfoString(&(getAgentCmdRst.description), run_success);
-						ma_close(ma);
-						break;
-					}
-					else
-					{
-						getAgentCmdRst.ret = 0;
-						resetStringInfo(&(getAgentCmdRst.description));
-						appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
-						ma_close(ma);
-					}
+					getAgentCmdRst.ret = 0;
+					resetStringInfo(&(getAgentCmdRst.description));
+					appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
+					ma_close(ma);
 				}
-				tup_result = build_common_command_tuple(
-					&(mgr_host->hostname)
-					, getAgentCmdRst.ret == 0 ? false:true
-					, getAgentCmdRst.description.data);
-
-				ReleaseSysCache(tup);
-
-				if(getAgentCmdRst.description.data)
-					pfree(getAgentCmdRst.description.data);
 			}
-		}else
-		{
-			tup_result = build_common_command_tuple(&name, false, _("host does not exist"));
+
+			tup_result = build_common_command_tuple(
+				&(mgr_host->hostname)
+				, getAgentCmdRst.ret == 0 ? false:true
+				, getAgentCmdRst.description.data);
+
+			if(getAgentCmdRst.description.data)
+				pfree(getAgentCmdRst.description.data);
 		}
-
-		MemoryContextSwitchTo(context);
-		MemoryContextResetAndDeleteChildren(context);
-
-		ExecClearTuple(slot);
-		ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
-		MemoryContextSwitchTo(oldcontext);
-		(*dest->receiveSlot)(slot, dest);
 	}
-	FreeTupleDesc(host_desc);
-	pfree(info);
+
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
 Datum mgr_monitor_agent_all(PG_FUNCTION_ARGS)

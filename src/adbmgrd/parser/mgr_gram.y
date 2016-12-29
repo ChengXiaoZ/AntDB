@@ -992,14 +992,9 @@ StartAgentStmt:
 StopAgentStmt:
 		STOP AGENT ALL
 		{
-			MGRStopAgent *stmt = makeNode(MGRStopAgent);
-			stmt->hosts = NIL;
-			$$ = (Node*)stmt;
-		}
-		| STOP AGENT ObjList
-		{
-			MGRStopAgent *stmt = makeNode(MGRStopAgent);
-			stmt->hosts = $3;
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent_all", NULL));
 			$$ = (Node*)stmt;
 		}
 		;

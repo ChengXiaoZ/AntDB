@@ -117,6 +117,7 @@ extern Datum mgr_start_dn_slave(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_slave(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_slave_f(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_slave_i(PG_FUNCTION_ARGS);
+extern Datum mgr_stop_agent_all(PG_FUNCTION_ARGS);
 extern Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shutdown_mode);
 
 extern Datum mgr_monitor_all(PG_FUNCTION_ARGS);
