@@ -39,7 +39,7 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 	agtm_use_result_type(res, &buf, AGTM_GET_GXID_RESULT);
 	pq_copymsgbytes(&buf, (char*)&gxid, sizeof(TransactionId));
 
-	ereport(LOG, 
+	ereport(DEBUG1, 
 		(errmsg("get global xid: %d from agtm", gxid)));
 
 	agtm_use_result_end(&buf);
@@ -263,6 +263,9 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	pq_copymsgbytes(&buf, (char*)&(snapshot->regd_count), sizeof(snapshot->regd_count));
 
 	agtm_use_result_end(&buf);
+
+	if (GetCurrentCommandId(false) > snapshot->curcid)
+		snapshot->curcid = GetCurrentCommandId(false);
 	return snapshot;
 }
 
