@@ -5171,6 +5171,10 @@ DESCR("mgr stop gtm slave");
 DATA(insert OID = 4915 ( mgr_stop_agent_all      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_agent_all _null_ _null_ _null_ ));
 DESCR("mgr stop agent all");
 
+DATA(insert OID = 4916 ( mgr_stop_agent_hostnamelist      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "1009" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_agent_hostnamelist _null_ _null_ _null_ ));
+DESCR("mgr stop agent hostname list");
+
+
 DATA(insert OID = 3181 ( mgr_stop_gtm_slave_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_slave_f _null_ _null_ _null_ ));
 DESCR("mgr stop gtm slave");
 

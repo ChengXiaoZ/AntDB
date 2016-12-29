@@ -40,6 +40,13 @@ typedef struct StartAgentInfo
 	HeapScanDesc	rel_scan;
 }StartAgentInfo;
 
+typedef struct StopAgentInfo
+{
+	Relation		rel_host;
+	HeapScanDesc	rel_scan;
+    ListCell  **lcp;
+}StopAgentInfo;
+
 typedef struct InitNodeInfo
 {
 	Relation rel_host;
@@ -1119,7 +1126,7 @@ void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *d
 Datum mgr_stop_agent_all(PG_FUNCTION_ARGS) 
 {
 	FuncCallContext *funcctx;
-	StartAgentInfo *info;
+	StopAgentInfo *info;
 	HeapTuple tup;
 	HeapTuple tup_result;
 	Form_mgr_host mgr_host;
@@ -1139,6 +1146,7 @@ Datum mgr_stop_agent_all(PG_FUNCTION_ARGS)
 		info = palloc(sizeof(*info));
 		info->rel_host = heap_open(HostRelationId, AccessShareLock);
 		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+        info->lcp = NULL;
 
 		/* save info */
 		funcctx->user_fctx = info;
@@ -1220,6 +1228,146 @@ Datum mgr_stop_agent_all(PG_FUNCTION_ARGS)
 				&(mgr_host->hostname)
 				, getAgentCmdRst.ret == 0 ? false:true
 				, getAgentCmdRst.description.data);
+
+			if(getAgentCmdRst.description.data)
+				pfree(getAgentCmdRst.description.data);
+		}
+	}
+
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
+Datum mgr_stop_agent_hostnamelist(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	StopAgentInfo *info;
+	ListCell **lcp = NULL;
+	HeapTuple tup;
+	HeapTuple tup_result;
+	Form_mgr_host mgr_host;
+	ManagerAgent *ma;
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData message;
+	char cmdtype = AGT_CMD_STOP_AGENT;
+	int retry = 0;
+	const int retrymax = 10;
+	Datum datum_hostname_list;
+	List *hostname_list = NIL;
+	Value *hostname;
+	NameData name;
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		datum_hostname_list = PG_GETARG_DATUM(0);
+		hostname_list = DecodeTextArrayToValueList(datum_hostname_list);
+		check_host_name_isvaild(hostname_list);
+
+		info = palloc(sizeof(*info));
+		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
+		*(info->lcp) = list_head(hostname_list);
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+
+		/* save info */
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	lcp = info->lcp;
+	if (*lcp == NULL)
+	{
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	hostname = (Value *)lfirst(*lcp);
+	*lcp = lnext(*lcp);
+	namestrcpy(&name, strVal(hostname));
+
+	tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+	if(tup == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		ReleaseSysCache(tup);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+	Assert(mgr_host);
+
+	/* test is running ? */
+	ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+	if(!ma_isconnected(ma))
+	{
+		tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("not running"));
+		ReleaseSysCache(tup);
+		ma_close(ma);
+	}else
+	{
+		initStringInfo(&message);
+		initStringInfo(&(getAgentCmdRst.description));
+
+		/*send cmd*/
+		ma_beginmessage(&message, AGT_MSG_COMMAND);
+		ma_sendbyte(&message, cmdtype);
+		ma_sendstring(&message, "stop agent");
+		ma_endmessage(&message, ma);
+		if (!ma_flush(ma, true))
+		{
+			getAgentCmdRst.ret = false;
+			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+			ma_close(ma);
+			tup_result = build_common_command_tuple(&(mgr_host->hostname)
+													, getAgentCmdRst.ret,
+													getAgentCmdRst.description.data);
+		ReleaseSysCache(tup);
+		}
+		else
+		{
+			mgr_recv_msg(ma, &getAgentCmdRst);
+			ma_close(ma);
+
+			/*check stop agent result*/
+			retry = 0;
+			while (retry++ < retrymax)
+			{
+				/*sleep 0.2s, wait the agent process to be killed, max try retrymax times*/
+				usleep(200000);
+				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+				if(!ma_isconnected(ma))
+				{
+					getAgentCmdRst.ret = 1;
+					resetStringInfo(&(getAgentCmdRst.description));
+					appendStringInfoString(&(getAgentCmdRst.description), run_success);
+					ma_close(ma);
+					break;
+				}
+				else
+				{
+					getAgentCmdRst.ret = 0;
+					resetStringInfo(&(getAgentCmdRst.description));
+					appendStringInfoString(&(getAgentCmdRst.description), "stop agent fail");
+					ma_close(ma);
+				}
+			}
+
+			tup_result = build_common_command_tuple(&(mgr_host->hostname)
+												, getAgentCmdRst.ret == 0 ? false:true
+												, getAgentCmdRst.description.data);
+
+			ReleaseSysCache(tup);
 
 			if(getAgentCmdRst.description.data)
 				pfree(getAgentCmdRst.description.data);

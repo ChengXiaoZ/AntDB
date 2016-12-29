@@ -997,6 +997,15 @@ StopAgentStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent_all", NULL));
 			$$ = (Node*)stmt;
 		}
+		| STOP AGENT hostname_list
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *hostnames = makeAArrayExpr($3, @3);
+			List *arg = list_make1(hostnames);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_agent_hostnamelist", arg));
+			$$ = (Node*)stmt;
+		}
 		;
 
 /* parm start*/
