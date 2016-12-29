@@ -1431,6 +1431,86 @@ Datum mgr_monitor_agent_all(PG_FUNCTION_ARGS)
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
+Datum mgr_monitor_agent_hostlist(PG_FUNCTION_ARGS)
+{
+	FuncCallContext * funcctx;
+	ListCell **lcp = NULL;
+	Datum datum_hostname_list;
+	List *hostname_list = NIL;
+	HeapTuple tup,tup_result;
+	InitHostInfo *info;
+	Value *hostname;
+	ManagerAgent *ma;
+	bool success;
+	NameData name;
+	StringInfoData buf;
+	initStringInfo(&buf);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		datum_hostname_list = PG_GETARG_DATUM(0);
+		hostname_list = DecodeTextArrayToValueList(datum_hostname_list);
+		check_host_name_isvaild(hostname_list);
+
+		info = palloc(sizeof(*info));
+		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
+		*(info->lcp) = list_head(hostname_list);
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	lcp = info->lcp;
+	if (*lcp == NULL)
+	{
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	hostname = (Value *)lfirst(*lcp);
+	*lcp = lnext(*lcp);
+	namestrcpy(&name, strVal(hostname));
+
+	tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+	resetStringInfo(&buf);
+
+	if (HeapTupleIsValid(tup))
+	{
+		/* test is running ? */
+		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+		if(ma_isconnected(ma))
+		{
+			success = true;
+			appendStringInfoString(&buf, "running");
+			ReleaseSysCache(tup);
+			ma_close(ma);
+		}
+		else
+		{
+			success = false;
+			appendStringInfoString(&buf, "not running");
+			ReleaseSysCache(tup);
+			ma_close(ma);
+		}
+	}
+
+	tup_result = build_common_command_tuple(&name, success, buf.data);
+	pfree(buf.data);
+
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+
 static void check_host_name_isvaild(List *host_name_list)
 {
 	ListCell *lc = NULL;

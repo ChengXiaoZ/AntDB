@@ -125,6 +125,7 @@ extern Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_agent_all(PG_FUNCTION_ARGS);
+extern Datum mgr_monitor_agent_hostlist(PG_FUNCTION_ARGS);
 
 extern Datum mgr_append_dnmaster(PG_FUNCTION_ARGS);
 extern Datum mgr_append_dnslave(PG_FUNCTION_ARGS);
@@ -177,6 +178,7 @@ extern void mgr_mark_node_in_cluster(Relation rel);
 extern TupleDesc get_showparam_command_tuple_desc(void);
 HeapTuple build_list_acl_command_tuple(const Name name, const char *message);
 TupleDesc get_list_acl_command_tuple_desc(void);
+List * DecodeTextArrayToValueList(Datum textarray);
 
 /* get the host address */
 char *get_hostaddress_from_hostoid(Oid hostOid);

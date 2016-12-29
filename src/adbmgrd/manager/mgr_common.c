@@ -12,7 +12,9 @@
 #include "catalog/mgr_host.h"
 #include "catalog/mgr_cndnnode.h"
 #include "utils/rel.h"
+#include "utils/array.h"
 #include "utils/tqual.h"
+#include "executor/spi.h"
 #include "../../interfaces/libpq/libpq-fe.h"
 #include "utils/fmgroids.h"
 
@@ -522,4 +524,26 @@ TupleDesc get_showparam_command_tuple_desc(void)
 	}
 	Assert(common_command_tuple_desc);
 	return common_command_tuple_desc;
+}
+
+List * DecodeTextArrayToValueList(Datum textarray)
+{
+	ArrayType  *array = NULL;
+	Datum *elemdatums;
+	int num_elems;
+	List *value_list = NIL;
+	int i;
+
+	Assert( PointerIsValid(DatumGetPointer(textarray)));
+
+	array = DatumGetArrayTypeP(textarray);
+	Assert(ARR_ELEMTYPE(array) == TEXTOID);
+
+	deconstruct_array(array, TEXTOID, -1, false, 'i', &elemdatums, NULL, &num_elems);
+	for (i = 0; i < num_elems; ++i)
+	{
+		value_list = lappend(value_list, makeString(TextDatumGetCString(elemdatums[i])));
+	}
+
+	return value_list;
 }

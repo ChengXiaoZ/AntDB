@@ -130,7 +130,6 @@ static void mgr_manage_append(char command_type, char *user_list_str);
 static void mgr_manage_failover(char command_type, char *user_list_str);
 static void mgr_manage_clean(char command_type, char *user_list_str);
 static void mgr_manage_list(char command_type, char *user_list_str);
-static List *DecodeTextArrayToValueList(Datum textarray);
 static void mgr_check_username_valid(List *username_list);
 static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
@@ -8482,28 +8481,6 @@ static char *get_username_list_str(List *username_list)
 
 	username_list_str.data[username_list_str.len - 1] = '\0';
 	return username_list_str.data;
-}
-
-static List * DecodeTextArrayToValueList(Datum textarray)
-{
-	ArrayType  *array = NULL;
-	Datum *elemdatums;
-	int num_elems;
-	List *value_list = NIL;
-	int i;
-
-	Assert( PointerIsValid(DatumGetPointer(textarray)));
-
-	array = DatumGetArrayTypeP(textarray);
-	Assert(ARR_ELEMTYPE(array) == TEXTOID);
-
-	deconstruct_array(array, TEXTOID, -1, false, 'i', &elemdatums, NULL, &num_elems);
-	for (i = 0; i < num_elems; ++i)
-	{
-		value_list = lappend(value_list, makeString(TextDatumGetCString(elemdatums[i])));
-	}
-
-	return value_list;
 }
 
 static void mgr_check_command_valid(List *command_list)

@@ -148,11 +148,11 @@ static void check_host_name_isvaild(List *node_name_list);
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt ListAclStmt
-				CreateUserStmt DropUserStmt GrantStmt privilege username
+				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
-				OptRoleList name_list privilege_list username_list
+				OptRoleList name_list privilege_list username_list hostname_list
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
 
@@ -659,7 +659,25 @@ MonitorStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_agent_all", NULL));
 			$$ = (Node*)stmt;
 		}
+		| MONITOR AGENT hostname_list
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *hostnames = makeAArrayExpr($3, @3);
+			List *arg = list_make1(hostnames);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_agent_hostlist", arg));
+			$$ = (Node*)stmt;
+		}
 		;
+
+hostname_list:
+			hostname
+				{ $$ = list_make1($1); }
+			| hostname_list ',' hostname
+				{ $$ = lappend($1, $3); }
+			;
+
+hostname : IDENT { $$ = makeStringConst(pstrdup($1), @1); };
 
 node_type:
 		DATANODE MASTER			{$$ = CNDN_TYPE_DATANODE_MASTER;}
