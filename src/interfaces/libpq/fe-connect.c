@@ -2838,10 +2838,13 @@ makeEmptyPGconn(void)
 	}
 
 #ifdef ADB
-	conn->custom = NULL;
-	conn->funs = NULL;
-	conn->is_attached = false;
-	conn->close_sock_on_end = true;
+	if (conn)
+	{
+		conn->custom = NULL;
+		conn->funs = NULL;
+		conn->is_attached = false;
+		conn->close_sock_on_end = true;
+	}
 #endif /* ADB */
 
 	return conn;
