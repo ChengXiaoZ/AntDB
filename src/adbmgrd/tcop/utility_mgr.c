@@ -44,9 +44,6 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRShowParam:
 		tag = "SHOW PARAM";
 		break;
-	case T_MGRStartAgent:
-		tag = "START AGENT";
-		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
 		tag = "???";
@@ -92,9 +89,6 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRShowParam:
 		mgr_showparam((MGRShowParam*)parsetree, params, dest);
-		break;
-	case T_MGRStartAgent:
-		mgr_start_agent((MGRStartAgent*)parsetree, params, dest);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)

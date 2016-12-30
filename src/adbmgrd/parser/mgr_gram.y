@@ -975,16 +975,20 @@ AlterHostStmt:
 StartAgentStmt:
 		START AGENT ALL opt_password
 		{
-			MGRStartAgent *stmt = makeNode(MGRStartAgent);
-			stmt->hosts = NIL;
-			stmt->password = $4;
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_agent_all", args));
 			$$ = (Node*)stmt;
 		}
-		| START AGENT ObjList opt_password
+		| START AGENT hostname_list opt_password
 		{
-			MGRStartAgent *stmt = makeNode(MGRStartAgent);
-			stmt->hosts = $3;
-			stmt->password = $4;
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *password = makeStringConst($4, -1);
+			Node *hostnames = makeAArrayExpr($3, @3);
+			List *args = list_make2(password, hostnames);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_agent_hostnamelist", args));
 			$$ = (Node*)stmt;
 		}
 		;

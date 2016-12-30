@@ -896,231 +896,271 @@ static void get_pghome(char *pghome)
 	get_parent_directory(pghome);
 }
 
-void mgr_start_agent(MGRStartAgent *node,  ParamListInfo params, DestReceiver *dest)
+/*
+* command format: start agent host1 [, ...] password xxx;
+*/
+Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 {
 	InitNodeInfo *info;
 	HeapTuple tup;
-	TupleTableSlot *slot;
-	TupleDesc desc;
 	ManagerAgent *ma;
 	HeapTuple tup_result;
 	Form_mgr_host mgr_host;
-	MemoryContext context;
-	MemoryContext oldcontext;
 	int ret;
-	StringInfoData buf;
+	List *listhost = NIL;
+	ListCell **lcp;
+	NameData name;
+	StringInfoData message;
+	StringInfoData exec_path;
+	Datum datumpath;
+	char		*password;
+	Value *hostname;
+	char *host_addr;
+	bool isNull = true;
+	FuncCallContext *funcctx;
+	Datum datum_hostname_list;
 
-	initStringInfo(&buf);
-
-	context = AllocSetContextCreate(CurrentMemoryContext, "start_agent"
-					, ALLOCSET_DEFAULT_MINSIZE
-					, ALLOCSET_DEFAULT_INITSIZE
-					, ALLOCSET_DEFAULT_MAXSIZE);
-	desc = get_common_command_tuple_desc();
-	(*dest->rStartup)(dest, CMD_UTILITY, desc);
-	slot = MakeSingleTupleTableSlot(desc);
-	oldcontext = CurrentMemoryContext;
-
-	if (node->hosts == NIL)
+	Assert(PG_NARGS() == 2);
+	password = PG_GETARG_CSTRING(0);	
+	if (SRF_IS_FIRSTCALL())
 	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		info = palloc(sizeof(*info));
+		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		info->rel_host = heap_open(HostRelationId, AccessShareLock);
 		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
-		info->lcp =NULL;
 
+		datum_hostname_list = PG_GETARG_DATUM(1);
+		listhost = DecodeTextArrayToValueList(datum_hostname_list);
+		check_host_name_isvaild(listhost);
+
+		*(info->lcp) = list_head(listhost);
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();	
+	info = funcctx->user_fctx;
+	Assert(info);
+	lcp = info->lcp;
+	if (*lcp == NULL)
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		SRF_RETURN_DONE(funcctx);
+	}
+	hostname = (Value *) lfirst(*lcp);
+	*lcp = lnext(*lcp);
+	namestrcpy(&name, strVal(hostname));
+	initStringInfo(&message);
+	initStringInfo(&exec_path);
+	tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+	if (HeapTupleIsValid(tup))
+	{
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
+
+		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+		if (ma_isconnected(ma))
+		{
+			appendStringInfoString(&message, "running");
+			ret = 0;
+		}
+		else
+		{
+			/* get exec path */
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
+			if(isNull)
+			{
+				ReleaseSysCache(tup);
+				ma_close(ma);
+				pfree(message.data);
+				pfree(exec_path.data);
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+					, errmsg("column hostpghome is null")));
+			}
+			appendStringInfoString(&exec_path, TextDatumGetCString(datumpath));
+			if(exec_path.data[exec_path.len] != '/')
+				appendStringInfoChar(&exec_path, '/');
+			appendStringInfoString(&exec_path, "bin/agent");
+
+			/* append argument */
+			appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
+
+			/* get host address */
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+			if(isNull)
+				host_addr = NameStr(mgr_host->hostname);
+			else
+				host_addr = TextDatumGetCString(datumpath);
+
+			/* exec start */
+			if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
+			{
+				appendStringInfoString(&message, _("telnet not support yet"));
+				ret = 1;
+			}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
+			{
+				ret = ssh2_start_agent(host_addr
+					, mgr_host->hostport
+					, NameStr(mgr_host->hostuser)
+					, password /* password for libssh2*/
+					, exec_path.data
+					, &message);
+			}else
+			{
+				appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
+				ret = 1;
+			}
+		}
+		ReleaseSysCache(tup);
+		ma_close(ma);
+	}else
+	{
+		appendStringInfoString(&message, "host does not exist");
+		ret = 1;
+	}
+	tup_result = build_common_command_tuple(&name, ret == 0 ? true:false, message.data);
+	pfree(message.data);
+	pfree(exec_path.data);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+}
+/*
+* command format:  start agent all password xxx;
+*/ 
+Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
+{
+	InitNodeInfo *info;
+	HeapTuple tup;
+	ManagerAgent *ma;
+	HeapTuple tup_result;
+	Form_mgr_host mgr_host;
+	int ret;
+	List *listhost;
+	ListCell **lcp;
+	NameData name;
+	StringInfoData message;
+	StringInfoData exec_path;
+	Datum datumpath;
+	char *password;
+	char *hostname;
+	char *host_addr;
+	bool isNull = true;
+	FuncCallContext *funcctx;
+
+	Assert(PG_NARGS() == 1);
+	password = PG_GETARG_CSTRING(0);	
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		info = palloc(sizeof(*info));
+		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
+		listhost = NIL;
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		/*get host list*/
 		while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 		{
 			mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-			Assert(mgr_host);
-
-			resetStringInfo(&buf);
-			MemoryContextSwitchTo(context);
-			MemoryContextResetAndDeleteChildren(context);
-
-			ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-			if(ma_isconnected(ma))
-			{
-				tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("running"));
-			}else
-			{
-				StringInfoData exec_path;
-				StringInfoData message;
-				Datum datum;
-				char *host_addr;
-				int ret;
-				bool isNull;
-
-				/* get exec path */
-				datum = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
-				if(isNull)
-				{
-					ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-						, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-						, errmsg("column hostpghome is null")));
-				}
-
-				initStringInfo(&exec_path);
-				appendStringInfoString(&exec_path, TextDatumGetCString(datum));
-				if(exec_path.data[exec_path.len] != '/')
-					appendStringInfoChar(&exec_path, '/');
-				appendStringInfoString(&exec_path, "bin/agent");
-
-				/* append argument */
-				appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
-
-				/* get host address */
-				datum = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
-				if(isNull)
-					host_addr = NameStr(mgr_host->hostname);
-				else
-					host_addr = TextDatumGetCString(datum);
-
-				/* exec start */
-				initStringInfo(&message);
-				if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
-				{
-					appendStringInfoString(&message, _("telnet not support yet"));
-					ret = 1;
-				}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
-				{
-					ret = ssh2_start_agent(host_addr
-						, mgr_host->hostport
-						, NameStr(mgr_host->hostuser)
-						, node->password /* password for libssh2*/
-						, exec_path.data
-						, &message);
-				}else
-				{
-					appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
-					ret = 1;
-				}
-
-				tup_result = build_common_command_tuple(&(mgr_host->hostname), ret == 0 ? true:false, message.data);
-				pfree(message.data);
-				pfree(exec_path.data);
-			}
-			ma_close(ma);
-			ExecClearTuple(slot);
-			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
-			MemoryContextSwitchTo(oldcontext);
-			(*dest->receiveSlot)(slot, dest);
+			Assert(mgr_host);			
+			listhost = lappend(listhost, mgr_host->hostname.data);
 		}
+		*(info->lcp) = list_head(listhost);
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();	
+	info = funcctx->user_fctx;
+	Assert(info);
+	lcp = info->lcp;
+	if (*lcp == NULL)
+	{
 		heap_endscan(info->rel_scan);
 		heap_close(info->rel_host, AccessShareLock);
-		pfree(info);
+		SRF_RETURN_DONE(funcctx);
 	}
-	else
+	hostname = (char *) lfirst(*lcp);
+	*lcp = lnext(*lcp);
+	namestrcpy(&name, hostname);
+	initStringInfo(&message);
+	initStringInfo(&exec_path);
+	tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+	if (HeapTupleIsValid(tup))
 	{
-		ListCell *lc;
-		Value *value;
-		NameData name;
-		TupleDesc host_desc;
-		StringInfoData message;
+		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
+		Assert(mgr_host);
 
-		initStringInfo(&message);
-
-		info = palloc(sizeof(*info));
-		info->rel_host = heap_open(HostRelationId, AccessShareLock);
-		host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
-		heap_close(info->rel_host, AccessShareLock);
-
-		foreach(lc, node->hosts)
+		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
+		if (ma_isconnected(ma))
 		{
-			value = lfirst(lc);
-			Assert(value && IsA(value, String));
-			namestrcpy(&name, strVal(value));
-
-			tup = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
-			resetStringInfo(&message);
-
-			if (HeapTupleIsValid(tup))
+			appendStringInfoString(&message, "running");
+			ret = 0;
+		}
+		else
+		{
+			/* get exec path */
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
+			if(isNull)
 			{
-				mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-				Assert(mgr_host);
-
-				ma = ma_connect_hostoid(HeapTupleGetOid(tup));
-				if (ma_isconnected(ma))
-				{
-					ReleaseSysCache(tup);
-					appendStringInfoString(&message, "running");
-					ret = 0;
-				}
-				else
-				{
-					StringInfoData exec_path;
-					Datum datumpath;
-					char *host_addr;
-					int ret;
-					bool isNull;
-
-					/* get exec path */
-					datumpath = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
-					if(isNull)
-					{
-						ReleaseSysCache(tup);
-						ma_close(ma);
-						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-							, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-							, errmsg("column hostpghome is null")));
-					}
-					initStringInfo(&exec_path);
-					appendStringInfoString(&exec_path, TextDatumGetCString(datumpath));
-					if(exec_path.data[exec_path.len] != '/')
-						appendStringInfoChar(&exec_path, '/');
-					appendStringInfoString(&exec_path, "bin/agent");
-
-					/* append argument */
-					appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
-
-					/* get host address */
-					datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
-					if(isNull)
-						host_addr = NameStr(mgr_host->hostname);
-					else
-						host_addr = TextDatumGetCString(datumpath);
-
-					/* exec start */
-					if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
-					{
-						ReleaseSysCache(tup);
-						appendStringInfoString(&message, _("telnet not support yet"));
-						ret = 1;
-					}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
-					{
-						ret = ssh2_start_agent(host_addr
-							, mgr_host->hostport
-							, NameStr(mgr_host->hostuser)
-							, node->password /* password for libssh2*/
-							, exec_path.data
-							, &message);
-					}else
-					{
-					    ReleaseSysCache(tup);
-						appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
-						ret = 1;
-					}
-
-					ReleaseSysCache(tup);
-				}
+				ReleaseSysCache(tup);
 				ma_close(ma);
+				pfree(message.data);
+				pfree(exec_path.data);
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+					, errmsg("column hostpghome is null")));
+			}
+			appendStringInfoString(&exec_path, TextDatumGetCString(datumpath));
+			if(exec_path.data[exec_path.len] != '/')
+				appendStringInfoChar(&exec_path, '/');
+			appendStringInfoString(&exec_path, "bin/agent");
+
+			/* append argument */
+			appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
+
+			/* get host address */
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+			if(isNull)
+				host_addr = NameStr(mgr_host->hostname);
+			else
+				host_addr = TextDatumGetCString(datumpath);
+
+			/* exec start */
+			if(mgr_host->hostproto == HOST_PROTOCOL_TELNET)
+			{
+				appendStringInfoString(&message, _("telnet not support yet"));
+				ret = 1;
+			}else if(mgr_host->hostproto == HOST_PROTOCOL_SSH)
+			{
+				ret = ssh2_start_agent(host_addr
+					, mgr_host->hostport
+					, NameStr(mgr_host->hostuser)
+					, password /* password for libssh2*/
+					, exec_path.data
+					, &message);
 			}else
 			{
-				appendStringInfoString(&message, "host does not exist");
+				appendStringInfo(&message, _("unknown protocol '%d'"), mgr_host->hostproto);
 				ret = 1;
 			}
-			MemoryContextSwitchTo(context);
-			MemoryContextResetAndDeleteChildren(context);
-
-			tup_result = build_common_command_tuple(&name, ret == 0 ? true:false, message.data);
-
-			ExecClearTuple(slot);
-			ExecStoreTuple(tup_result, slot, InvalidBuffer, false);
-			MemoryContextSwitchTo(oldcontext);
-			(*dest->receiveSlot)(slot, dest);
 		}
-		FreeTupleDesc(host_desc);
-		pfree(info);
+		ReleaseSysCache(tup);
+		ma_close(ma);
+	}else
+	{
+		appendStringInfoString(&message, "host does not exist");
+		ret = 1;
 	}
+	tup_result = build_common_command_tuple(&name, ret == 0 ? true:false, message.data);
+	pfree(message.data);
+	pfree(exec_path.data);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
 Datum mgr_stop_agent_all(PG_FUNCTION_ARGS) 

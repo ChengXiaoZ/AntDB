@@ -5093,8 +5093,11 @@ DESCR("close pool connection in  idle_slot");
 #endif
 
 #ifdef ADBMGRD
-DATA(insert OID = 3186 (  mgr_start_agent		PGNSP PGUID 12 10 400 0 0 f f f f f t s 2 0 2249 "2275 2275" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_start_agent _null_ _null_ _null_ ));
-DESCR("state list of start agent");
+DATA(insert OID = 3186 ( mgr_start_agent_all      PGNSP PGUID 12 10 400 0 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_start_agent_all _null_ _null_ _null_ ));
+DESCR("start agent all");
+
+DATA(insert OID = 4917 ( mgr_start_agent_hostnamelist      PGNSP PGUID 12 10 400 0 0 f f f f f t s 2 0 2249 "2275 1009" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_start_agent_hostnamelist _null_ _null_ _null_ ));
+DESCR("start agent hostlist");
 
 DATA(insert OID = 3178 ( mgr_init_gtm_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm_master _null_ _null_ _null_ ));
 DESCR("init gtm master");
