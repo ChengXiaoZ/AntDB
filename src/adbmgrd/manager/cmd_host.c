@@ -1384,7 +1384,7 @@ Datum mgr_monitor_agent_all(PG_FUNCTION_ARGS)
 	HeapTuple tup;
 	HeapTuple tup_result;
 	Form_mgr_host mgr_host;
-	bool success;
+	bool success = false;
 	ManagerAgent *ma;
 	StringInfoData buf;
 
@@ -1456,7 +1456,7 @@ Datum mgr_monitor_agent_hostlist(PG_FUNCTION_ARGS)
 	InitHostInfo *info;
 	Value *hostname;
 	ManagerAgent *ma;
-	bool success;
+	bool success = false;
 	NameData name;
 	StringInfoData buf;
 	initStringInfo(&buf);
