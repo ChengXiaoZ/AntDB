@@ -54,6 +54,7 @@ extern bool ThereAreNoPriorRegisteredSnapshots(void);
 
 #ifdef ADB
 extern void SetGlobalSnapshot(StringInfo input_message);
+extern void UnsetGlobalSnapshot(void);
 extern Snapshot GetGlobalSnapshot(Snapshot snapshot);
 #endif
 

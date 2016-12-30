@@ -4685,6 +4685,15 @@ PostgresMain(int argc, char *argv[],
 
 			ReadyForQuery(whereToSendOutput);
 
+#ifdef ADB
+			/*
+			 * Helps us catch any problems where we did not send down a snapshot
+			 * when it was expected. However if any deferred trigger is supposed
+			 * to be fired at commit time we need to preserve the snapshot sent previously
+			 */
+			if ((IS_PGXC_DATANODE || IsConnFromCoord()) && !IsAnyAfterTriggerDeferred())
+				UnsetGlobalSnapshot();
+#endif
 			send_ready_for_query = false;
 		}
 

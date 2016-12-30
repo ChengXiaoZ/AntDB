@@ -78,6 +78,7 @@ static Snapshot CurrentSnapshot = NULL;
 static Snapshot SecondarySnapshot = NULL;
 #ifdef ADB
 static Snapshot GlobalSnapshot = NULL;
+static bool GlobalSnapshotSet = false;
 #endif
 
 /*
@@ -143,7 +144,9 @@ static List *exportedSnapshots = NIL;
 static Snapshot CopySnapshot(Snapshot snapshot);
 static void FreeSnapshot(Snapshot snapshot);
 static void SnapshotResetXmin(void);
-
+#ifdef ADB
+static Snapshot CopyGlobalSnapshot(Snapshot snapshot);
+#endif
 
 /*
  * GetTransactionSnapshot
@@ -780,6 +783,10 @@ AtEOXact_Snapshot(bool isCommit)
 
 	FirstSnapshotSet = false;
 
+#ifdef ADB
+	UnsetGlobalSnapshot();
+#endif
+
 	SnapshotResetXmin();
 }
 
@@ -1306,6 +1313,34 @@ SetGlobalSnapshot(StringInfo input_message)
 			GlobalSnapshot->subxip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
 
 	GlobalSnapshot->curcid = GetCurrentCommandId(false);
+
+	GlobalSnapshotSet = true;
+}
+
+void
+UnsetGlobalSnapshot(void)
+{
+	GlobalSnapshotSet = false;
+}
+
+static Snapshot
+CopyGlobalSnapshot(Snapshot snapshot)
+{
+	Assert(snapshot && snapshot->xip && snapshot->subxip);
+	Assert(GlobalSnapshotSet);
+	Assert(GlobalSnapshot);
+
+	snapshot->xmin = GlobalSnapshot->xmin;
+	snapshot->xmax = GlobalSnapshot->xmax;
+	EnlargeSnapshotXip(snapshot, GlobalSnapshot->xcnt);
+	memcpy(snapshot->xip, GlobalSnapshot->xip,
+		GlobalSnapshot->xcnt * sizeof(TransactionId));
+	Assert(GlobalSnapshot->subxcnt <= GetMaxSnapshotSubxidCount());
+	snapshot->subxcnt = GlobalSnapshot->subxcnt;
+	snapshot->suboverflowed = GlobalSnapshot->suboverflowed;
+	memcpy(snapshot->subxip, GlobalSnapshot->subxip,
+		GlobalSnapshot->subxcnt * sizeof(TransactionId));
+	return snapshot;
 }
 
 #ifdef DEBUG_ADB
@@ -1348,24 +1383,18 @@ Snapshot
 GetGlobalSnapshot(Snapshot snapshot)
 {
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-	{
-		if (GlobalSnapshot == InvalidSnapshot ||
-			GlobalSnapshot != snapshot ||
-			IsAnyAutoVacuumProcess())
-		{
-			GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
-		}
-	} else
-	{
-		if (GlobalSnapshot == InvalidSnapshot ||
-			IsAnyAutoVacuumProcess())
-			GlobalSnapshot = agtm_GetGlobalSnapShot(snapshot);
-	}
+		return agtm_GetGlobalSnapShot(snapshot);
+
+	if (GlobalSnapshot == NULL ||
+		GlobalSnapshotSet == false ||
+		IsAnyAutoVacuumProcess())
+		return agtm_GetGlobalSnapShot(snapshot);
+
 #ifdef DEBUG_ADB
 	OutputGlobalSnapshot(GlobalSnapshot);
 #endif
 
-	return GlobalSnapshot;
+	return CopyGlobalSnapshot(snapshot);
 }
 #endif /* ADB */
 
