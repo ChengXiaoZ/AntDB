@@ -1002,6 +1002,9 @@ revoke execute on function mgr_clean_all() from public;
 -- failover
 revoke execute on function mgr_failover_gtm(cstring), mgr_failover_one_dn(cstring) from public;
 
+-- show
+revoke execute on function mgr_show_var_param( "any") from public;
+
 -- append
 revoke execute on function
 mgr_append_dnmaster(cstring),
