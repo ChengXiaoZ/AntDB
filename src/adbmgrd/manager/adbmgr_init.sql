@@ -1030,9 +1030,21 @@ revoke execute on function mgr_list_acl_all()from public;
 revoke execute on function mgr_priv_list_to_all(bigint,text[]) from public;
 revoke execute on function mgr_priv_all_to_username(bigint,text[]) from public;
 
-
 --list
 revoke execute on function mgr_list_hba_by_name("any") from public;
+
+--start
+revoke execute on function
+mgr_start_agent_all(cstring),
+mgr_start_agent_hostnamelist(cstring,text[]),
+mgr_start_gtm_master("any"),
+mgr_start_gtm_slave("any"),
+mgr_start_gtm_extra("any"),
+mgr_start_cn_master("any"),
+mgr_start_dn_master("any"),
+mgr_start_dn_slave("any"),
+mgr_start_dn_extra("any")
+from public;
 
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;

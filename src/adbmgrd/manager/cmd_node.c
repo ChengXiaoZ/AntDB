@@ -125,6 +125,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
 static char *get_username_list_str(List *user_list);
+static void mgr_manage_start(char command_type, char *user_list_str);
 static void mgr_manage_show(char command_type, char *user_list_str);
 static void mgr_manage_monitor(char command_type, char *user_list_str);
 static void mgr_manage_init(char command_type, char *user_list_str);
@@ -137,6 +138,7 @@ static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 static List *get_username_list(void);
 static void mgr_get_acl_by_username(char *username, StringInfo acl);
+static bool mgr_acl_start(char *username);
 static bool mgr_acl_show(char *username);
 static bool mgr_acl_monitor(char *username);
 static bool mgr_acl_list(char *username);
@@ -8169,6 +8171,9 @@ Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 			mgr_manage_monitor(command_type, username_list_str);
 		else if (strcmp(strVal(command), "show") == 0)
 			mgr_manage_show(command_type, username_list_str);
+		else if (strcmp(strVal(command), "start") == 0)
+			mgr_manage_start(command_type, username_list_str);
+
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8211,6 +8216,7 @@ static void mgr_priv_all(char command_type, char *username_list_str)
 	mgr_manage_list(command_type, username_list_str);
 	mgr_manage_monitor(command_type, username_list_str);
     mgr_manage_show(command_type, username_list_str);
+    mgr_manage_start(command_type, username_list_str);
 	return;
 }
 
@@ -8259,6 +8265,8 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 			mgr_manage_monitor(command_type, username_list_str);
         else if (strcmp(strVal(command), "show") == 0)
 			mgr_manage_show(command_type, username_list_str);
+        else if (strcmp(strVal(command), "start") == 0)
+			mgr_manage_start(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8267,6 +8275,74 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
 	else
 		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_manage_start(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		// grant execute on function func_name [, ...] to user_name [, ...];
+		// grant select on schema.view [, ...] to user [, ...]
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_start_agent_all(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_start_agent_hostnamelist(cstring,text[]), ");
+		appendStringInfoString(&commandsql, "mgr_start_gtm_master(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_gtm_slave(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_gtm_extra(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_cn_master(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_dn_master(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_dn_slave(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_dn_extra(\"any\") ");
+		appendStringInfoString(&commandsql, "TO ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "GRANT select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.start_gtm_all, ");
+		appendStringInfoString(&commandsql, "adbmgr.start_datanode_all, ");
+		appendStringInfoString(&commandsql, "adbmgr.startall ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIV_REVOKE)
+	{
+		// revoke execute on function func_name [, ...] from user_name [, ...];
+		// revoke select on schema.view [, ...] from user [, ...]
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_start_agent_all(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_start_agent_hostnamelist(cstring,text[]), ");
+		appendStringInfoString(&commandsql, "mgr_start_gtm_master(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_gtm_slave(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_gtm_extra(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_cn_master(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_dn_master(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_dn_slave(\"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_start_dn_extra(\"any\") ");
+		appendStringInfoString(&commandsql, "FROM ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "REVOKE select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.start_gtm_all, ");
+		appendStringInfoString(&commandsql, "adbmgr.start_datanode_all, ");
+		appendStringInfoString(&commandsql, "adbmgr.startall ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
 }
 
 static void mgr_manage_show(char command_type, char *user_list_str)
@@ -8749,16 +8825,39 @@ static void mgr_get_acl_by_username(char *username, StringInfo acl)
 		appendStringInfo(acl, "show ");
 	}
 
+	if (mgr_acl_start(username))
+	{
+		appendStringInfo(acl, "start ");
+	}
+
 	return;
+}
+
+static bool mgr_acl_start(char *username)
+{
+	bool f1, f2, f3, f4, f5, f6, f7, f8, f9;
+	bool t1, t2, t3;
+
+	f1 = mgr_has_func_priv(username, "mgr_start_agent_all(cstring)", "execute");
+	f2 = mgr_has_func_priv(username, "mgr_stop_agent_hostnamelist(text[])", "execute");
+	f3 = mgr_has_func_priv(username, "mgr_start_gtm_master(\"any\")", "execute");
+	f4 = mgr_has_func_priv(username, "mgr_start_gtm_slave(\"any\")", "execute");
+	f5 = mgr_has_func_priv(username, "mgr_start_gtm_extra(\"any\")", "execute");
+	f6 = mgr_has_func_priv(username, "mgr_start_cn_master(\"any\")", "execute");
+	f7 = mgr_has_func_priv(username, "mgr_start_dn_master(\"any\")", "execute");
+	f8 = mgr_has_func_priv(username, "mgr_start_dn_slave(\"any\")", "execute");
+	f9 = mgr_has_func_priv(username, "mgr_start_dn_extra(\"any\")", "execute");
+
+	t1  = mgr_has_table_priv(username, "adbmgr.start_gtm_all", "select");
+	t2  = mgr_has_table_priv(username, "adbmgr.start_datanode_all", "select");
+	t3  = mgr_has_table_priv(username, "adbmgr.startall", "select");
+
+	return (f1 && f2 && f3 && f4 && f5 && f6 && f8 && f9 && t1 && t2 && t3);
 }
 
 static bool mgr_acl_show(char *username)
 {
-	bool f1;
-
-	f1 = mgr_has_func_priv(username, "mgr_show_var_param(\"any\")", "execute");
-
-	return f1;
+    return mgr_has_func_priv(username, "mgr_show_var_param(\"any\")", "execute");
 }
 
 static bool mgr_acl_monitor(char *username)
