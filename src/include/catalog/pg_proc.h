@@ -5319,6 +5319,10 @@ DESCR("mgr grant all to username_list and revoke all from username_list");
 DATA(insert OID = 4929 (  mgr_list_acl_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,25}" "{o,o}" "{username, acl}" _null_ mgr_list_acl_all _null_ _null_ _null_ ));
 DESCR("mgr list access privileges all");
 
+DATA(insert OID = 4917 ( mgr_show_var_param      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{type,success,message}" _null_ mgr_show_var_param _null_ _null_ _null_ ));
+DESCR("mgr show nodename param");
+
+
 #endif
 
 /*

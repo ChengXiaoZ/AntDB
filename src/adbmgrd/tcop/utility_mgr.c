@@ -41,8 +41,8 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRUpdateparmReset:
 		tag = "RESET PARAM";
 		break;
-	case T_MGRShowParam:
-		tag = "SHOW PARAM";
+	case T_MGRStartAgent:
+		tag = "START AGENT";
 		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
@@ -87,8 +87,13 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 	case T_MGRUpdateparmReset:
 		mgr_reset_updateparm((MGRUpdateparmReset*)parsetree, params, dest);
 		break;
+<<<<<<< f7230b2d1ea5283a42b926bd23c99ce8b969a3e0
 	case T_MGRShowParam:
 		mgr_showparam((MGRShowParam*)parsetree, params, dest);
+=======
+	case T_MGRStartAgent:
+		mgr_start_agent((MGRStartAgent*)parsetree, params, dest);
+>>>>>>> ADB manager,权限管理，把命令show 转换成由系统函数实现。
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)

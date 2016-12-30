@@ -8163,6 +8163,8 @@ Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 			mgr_manage_clean(command_type, username_list_str);
 		else if (strcmp(strVal(command), "list") == 0)
 			mgr_manage_list(command_type, username_list_str);
+		else if (strcmp(strVal(command), "monitor") == 0)
+			mgr_manage_monitor(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8203,6 +8205,7 @@ static void mgr_priv_all(char command_type, char *username_list_str)
 	mgr_manage_failover(command_type, username_list_str);
 	mgr_manage_clean(command_type, username_list_str);
 	mgr_manage_list(command_type, username_list_str);
+	mgr_manage_monitor(command_type, username_list_str);
 
 	return;
 }

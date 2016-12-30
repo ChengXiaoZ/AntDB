@@ -547,3 +547,33 @@ List * DecodeTextArrayToValueList(Datum textarray)
 
 	return value_list;
 }
+
+void check_nodename_isvalid(char *nodename)
+{
+	HeapTuple tuple;
+	ScanKeyData key[2];
+	Relation rel;
+	HeapScanDesc rel_scan;
+
+	rel = heap_open(NodeRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodename
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,CStringGetDatum(nodename));
+	ScanKeyInit(&key[1]
+			,Anum_mgr_node_nodeincluster
+			,BTEqualStrategyNumber
+			,F_BOOLEQ
+			,BoolGetDatum(true));
+	rel_scan = heap_beginscan(rel, SnapshotNow, 2, key);
+
+	tuple = heap_getnext(rel_scan, ForwardScanDirection);
+	if (tuple == NULL)
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			,errmsg("node name \"%s\" does not exist", nodename)));
+
+	heap_endscan(rel_scan);
+	heap_close(rel, AccessShareLock);
+}

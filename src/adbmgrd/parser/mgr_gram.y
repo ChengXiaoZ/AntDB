@@ -2410,15 +2410,19 @@ ListMonitor:
 			$$ = (Node*)stmt;
 		}
 	;
+
 ShowStmt:
 	SHOW Ident var_showparam
 	{
-		MGRShowParam *node = makeNode(MGRShowParam);
-		node->nodename = $2;
-		node->param = $3;
-		$$ = (Node*)node;
+		SelectStmt *stmt = makeNode(SelectStmt);
+		List *args = list_make1(makeStringConst($2, @2));
+		args = lappend(args, makeStringConst($3, @3));
+		stmt->targetList = list_make1(make_star_target(-1));
+		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_show_var_param", args));
+		$$ = (Node*)stmt;
 	}
 	;
+
 FlushHost:
 	FLUSH HOST
 	{

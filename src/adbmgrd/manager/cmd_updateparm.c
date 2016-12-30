@@ -16,6 +16,7 @@
 #include "mgr/mgr_cmds.h"
 #include "mgr/mgr_msg_type.h"
 #include "miscadmin.h"
+#include "funcapi.h"
 #include "nodes/parsenodes.h"
 #include "parser/mgr_node.h"
 #include "utils/builtins.h"
@@ -56,6 +57,13 @@ typedef enum CheckInsertParmStatus
 	PARM_NEED_UPDATE,
 	PARM_NEED_NONE
 }CheckInsertParmStatus;
+
+typedef struct InitNodeInfo
+{
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitNodeInfo;
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -1564,15 +1572,13 @@ void mgr_parm_after_gtm_failover_handle(Name mastername, char mastertype, Name s
 /*
 * show parameter, command: SHOW NODENAME PARAMETER
 */
-void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
+Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 {
 	HeapTuple tuple;
 	HeapTuple out;
-	TupleTableSlot *slot;
+	FuncCallContext *funcctx;
 	TupleDesc desc;
-	MemoryContext context;
-	MemoryContext oldcontext;
-	Relation rel;
+	InitNodeInfo *info;
 	StringInfoData buf;
 	StringInfoData infosendmsg;
 	NameData nodename;
@@ -1581,33 +1587,23 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 	ScanKeyData key[2];
 	Form_mgr_node mgr_node;
 	GetAgentCmdRst getAgentCmdRst;
-	HeapScanDesc rel_scan;
 	char *nodetypestr;
 	/*max port is 65535,so the length of portstr is 6*/
 	char portstr[6]="00000";
-	bool bget = false;
-	
-	AssertArg(node && dest && node->nodename && node->param);
-	/*get node name and parameter name*/
-	namestrcpy(&nodename, node->nodename);
-	namestrcpy(&param, node->param);
 
-	context = AllocSetContextCreate(CurrentMemoryContext, "showparam"
-					, ALLOCSET_DEFAULT_MINSIZE
-					, ALLOCSET_DEFAULT_INITSIZE
-					, ALLOCSET_DEFAULT_MAXSIZE);
-	desc = get_showparam_command_tuple_desc();
-	(*dest->rStartup)(dest, CMD_UTILITY, desc);
-	slot = MakeSingleTupleTableSlot(desc);
-	initStringInfo(&buf);
-	oldcontext = CurrentMemoryContext;
-	PG_TRY();
+	/*get node name and parameter name*/
+	namestrcpy(&nodename, PG_GETARG_CSTRING(0));
+	namestrcpy(&param, PG_GETARG_CSTRING(1));
+
+	if (SRF_IS_FIRSTCALL())
 	{
-		TupleDesc node_desc;
-		rel = heap_open(NodeRelationId, AccessShareLock);
-		node_desc = CreateTupleDescCopy(RelationGetDescr(rel));
-		initStringInfo(&(getAgentCmdRst.description));
-		/*find the tuple ,which the node name is equal nodename*/
+		MemoryContext oldcontext;
+		check_nodename_isvalid(nodename.data);
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		info = palloc(sizeof(*info));
+		info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 		ScanKeyInit(&key[0]
 			,Anum_mgr_node_nodename
 			,BTEqualStrategyNumber
@@ -1618,49 +1614,56 @@ void mgr_showparam(MGRShowParam *node, ParamListInfo params, DestReceiver *dest)
 				,BTEqualStrategyNumber
 				,F_BOOLEQ
 				,BoolGetDatum(true));
-		rel_scan = heap_beginscan(rel, SnapshotNow, 2, key);
-		initStringInfo(&infosendmsg);
-		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			Assert(mgr_node);
-			/*send the command string to agent to get the value*/
-			sprintf(portstr, "%d", mgr_node->nodeport);
-			resetStringInfo(&(getAgentCmdRst.description));
-			resetStringInfo(&infosendmsg);
-			appendStringInfo(&infosendmsg, "%s", portstr);
-			appendStringInfoCharMacro(&infosendmsg, '\0');
-			appendStringInfo(&infosendmsg, "%s", param.data);
-			appendStringInfoCharMacro(&infosendmsg, '\0');
-			if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
-				mgr_send_show_parameters(AGT_CMD_SHOW_AGTM_PARAM, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
-			else
-				mgr_send_show_parameters(AGT_CMD_SHOW_CNDN_PARAM, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
-			MemoryContextSwitchTo(context);
-			MemoryContextResetAndDeleteChildren(context);
-			nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
-			namestrcpy(&nodetypedata, nodetypestr);
-			pfree(nodetypestr);
-			out = build_common_command_tuple(&nodetypedata, getAgentCmdRst.ret, getAgentCmdRst.description.data);
-			ExecClearTuple(slot);
-			ExecStoreTuple(out, slot, InvalidBuffer, false);
-			MemoryContextSwitchTo(oldcontext);
-			(*dest->receiveSlot)(slot, dest);
-			bget = true;
-		}
-		heap_endscan(rel_scan);
-		heap_close(rel, AccessShareLock);
-		FreeTupleDesc(node_desc);
-		pfree(infosendmsg.data);
-		pfree(getAgentCmdRst.description.data);
-	}PG_CATCH();
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+		info->lcp =NULL;
+
+		/* save info */
+		funcctx->user_fctx = info;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+	desc = get_showparam_command_tuple_desc();
+	initStringInfo(&buf);
+
+	initStringInfo(&(getAgentCmdRst.description));
+	/*find the tuple ,which the node name is equal nodename*/
+
+	initStringInfo(&infosendmsg);
+	while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 	{
-		PG_RE_THROW();
-	}PG_END_TRY();
-	(*dest->rShutdown)(dest);
-	if (!bget)
-		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-			,errmsg("node name \"%s\" does not exist", nodename.data)));
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		/*send the command string to agent to get the value*/
+		sprintf(portstr, "%d", mgr_node->nodeport);
+		resetStringInfo(&(getAgentCmdRst.description));
+		resetStringInfo(&infosendmsg);
+		appendStringInfo(&infosendmsg, "%s", portstr);
+		appendStringInfoCharMacro(&infosendmsg, '\0');
+		appendStringInfo(&infosendmsg, "%s", param.data);
+		appendStringInfoCharMacro(&infosendmsg, '\0');
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+			mgr_send_show_parameters(AGT_CMD_SHOW_AGTM_PARAM, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
+		else
+			mgr_send_show_parameters(AGT_CMD_SHOW_CNDN_PARAM, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
+
+		nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
+		namestrcpy(&nodetypedata, nodetypestr);
+		pfree(nodetypestr);
+		out = build_common_command_tuple(&nodetypedata, getAgentCmdRst.ret, getAgentCmdRst.description.data);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(out));
+	}
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+
+	SRF_RETURN_DONE(funcctx);
 }
 
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst)
