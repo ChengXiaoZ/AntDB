@@ -13,7 +13,6 @@
 
 CATALOG(mgr_hba,3191)
 {
-	int32		row_id;			/*  */
 	NameData	nodename;		/* node name */
 	text		hbavalue;		/* storing a line of pg_hba.conf */
 } FormData_mgr_hba;
@@ -29,10 +28,9 @@ typedef FormData_mgr_hba *Form_mgr_hba;
  *		compiler constants for mgr_updateparm
  * ----------------
  */
-#define Natts_mgr_hba				3
-#define Anum_mgr_hba_id				1
-#define Anum_mgr_hba_nodename		2
-#define Anum_mgr_hba_value			3
+#define Natts_mgr_hba				2
+#define Anum_mgr_hba_nodename		1
+#define Anum_mgr_hba_value			2
 
 
 

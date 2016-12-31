@@ -241,6 +241,5 @@ extern Datum mgr_show_var_param(PG_FUNCTION_ARGS);
 	
 extern Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS);
 extern Datum mgr_drop_hba(PG_FUNCTION_ARGS);
-extern Datum mgr_alter_hba(PG_FUNCTION_ARGS);
 extern Datum mgr_add_hba(PG_FUNCTION_ARGS);
 #endif /* MGR_CMDS_H */

@@ -147,7 +147,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
-				AddHbaStmt DropHbaStmt ListHbaStmt AlterHbaStmt ListAclStmt
+				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
@@ -257,7 +257,6 @@ stmt :
 	| AddHbaStmt
 	| DropHbaStmt
 	| ListHbaStmt
-	| AlterHbaStmt 
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -1402,22 +1401,10 @@ AddHbaStmt:
 	}
 	
 DropHbaStmt:
-	DROP HBA HbaParaList 
+	DROP HBA set_ident HbaParaList 
 	{
-		SelectStmt *stmt = makeNode(SelectStmt);		
-		stmt->targetList = list_make1(make_star_target(-1));
-		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_drop_hba", $3));
-		$$ = (Node*)stmt;
-	}
-AlterHbaStmt:
-	ALTER HBA Ident '(' Ident ')' WHERE ROW_ID '=' Iconst
-	{
-		SelectStmt *stmt = makeNode(SelectStmt);
-		char *num = palloc0(15);		
-		List *args = list_make1(makeStringConst($3, @3));
-		args = lappend(args, makeStringConst($5, @5));
-		pg_ltoa($10, num);
-		args = lappend(args, makeStringConst(num, @10));
+		SelectStmt *stmt = makeNode(SelectStmt);	
+		List *args = lappend($4, makeStringConst($3,@3));		
 		stmt->targetList = list_make1(make_star_target(-1));
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_drop_hba", args));
 		$$ = (Node*)stmt;
@@ -1438,16 +1425,12 @@ ListHbaStmt:
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_list_hba_by_name", $3));
 		$$ = (Node*)stmt;
 	}
+	
 HbaParaList:
-	set_ident 	{$$ = list_make1(makeStringConst($1, @1));}
-	| Ident WHERE ROW_ID '=' Iconst
-	{
-		List *args = list_make1(makeStringConst($1, @1));
-		char *num = palloc0(15);
-		pg_ltoa($5, num);
-		args = lappend(args, makeStringConst(num, @5));
-		$$ = args;
-	}
+	'(' NodeConstList ')' 	{$$ = $2;}
+	| /*empty*/             {$$ = NIL;}
+	
+	
 /*hba end*/
 
 /* gtm/coordinator/datanode 
