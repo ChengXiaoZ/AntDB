@@ -43,7 +43,6 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 		(errmsg("get global xid: %d from agtm", gxid)));
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	return gxid;
 }
@@ -87,7 +86,6 @@ agtm_CreateSequence(const char * seqName, const char * database,
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_INIT_RESULT);
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	pfree(strOption.data);
 	PQclear(res);
 	ereport(DEBUG1,
@@ -133,7 +131,6 @@ agtm_AlterSequence(const char * seqName, const char * database,
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_ALTER_RESULT);
 	
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	pfree(strOption.data);
 	PQclear(res);
 	ereport(DEBUG1,
@@ -173,7 +170,6 @@ agtm_DropSequence(const char * seqName, const char * database, const char * sche
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_RESULT);
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("drop sequence on agtm :%s", seqName)));
@@ -199,7 +195,6 @@ agtms_DropSequenceByDataBase(const char * database)
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_BYDB_RESULT);
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("drop sequence on agtm by database :%s", database)));
@@ -241,7 +236,6 @@ void agtm_RenameSequence(const char * seqName, const char * database,
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_RENAME_RESULT);
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("rename sequence %s rename to %s", seqName, newName)));
@@ -268,7 +262,6 @@ agtm_GetTimestamptz(void)
 		(errmsg("get timestamp: %ld from agtm", timestamp)));
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	return timestamp;
 }
@@ -313,7 +306,6 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	pq_copymsgbytes(&buf, (char*)&(snapshot->regd_count), sizeof(snapshot->regd_count));
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 
 	if (GetCurrentCommandId(false) > snapshot->curcid)
@@ -343,7 +335,6 @@ agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 		(errmsg("get xid %u status %d", xid, xid_status)));
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	return xid_status;
 }
@@ -385,7 +376,6 @@ agtm_DealSequence(const char *seqname, const char * database,
 	pq_copymsgbytes(&buf, (char*)&seq, sizeof(seq));
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	return seq;
 }
@@ -469,7 +459,6 @@ agtm_SetSeqValCalled(const char *seqname, const char * database,
 	pq_copymsgbytes(&buf, (char*)&seq, sizeof(seq));
 
 	agtm_use_result_end(&buf);
-	pfree(buf.data);
 	PQclear(res);
 	return seq;
 }
