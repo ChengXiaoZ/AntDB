@@ -5345,9 +5345,8 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 void mgr_send_conf_parameters(char filetype, char *datapath, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst)
 {
 	ManagerAgent *ma;
-	StringInfoData sendstrmsg
-				,buf;
-	bool execok;
+	StringInfoData sendstrmsg;
+	StringInfoData buf;
 	
 	initStringInfo(&sendstrmsg);
 	appendStringInfoString(&sendstrmsg, datapath);
@@ -5376,7 +5375,7 @@ void mgr_send_conf_parameters(char filetype, char *datapath, StringInfo infosend
 		return;
 	}
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, getAgentCmdRst);
+	mgr_recv_msg(ma, getAgentCmdRst);
 	ma_close(ma);	
 }
 
@@ -7430,12 +7429,7 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, char *nodename, char nodetype, int32 newport)
 {
 	Form_mgr_node mgr_node;
-	Datum datumpath;
 	StringInfoData infosendmsg;
-	char *nodepath;
-	Oid hostoid;
-	Oid mastertupleoid;
-	bool isNull = false;
 	ScanKeyData key[1];
 	HeapScanDesc rel_scan;
 	HeapTuple tuple =NULL;
@@ -7470,18 +7464,6 @@ static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, 
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
-			hostoid = mgr_node->nodehost;
-			mastertupleoid = mgr_node->nodemasternameoid;
-			/*get path*/
-			datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
-			if(isNull)
-			{
-				heap_endscan(rel_scan);
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-					, errmsg("column nodepath is null")));
-			}
-			nodepath = TextDatumGetCString(datumpath);
 			if (GTM_TYPE_GTM_MASTER == nodetype)
 			{
 				if (GTM_TYPE_GTM_EXTRA == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype)

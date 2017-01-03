@@ -1577,7 +1577,6 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 	HeapTuple tuple;
 	HeapTuple out;
 	FuncCallContext *funcctx;
-	TupleDesc desc;
 	InitNodeInfo *info;
 	StringInfoData buf;
 	StringInfoData infosendmsg;
@@ -1627,7 +1626,6 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 	Assert(funcctx);
 	info = funcctx->user_fctx;
 	Assert(info);
-	desc = get_showparam_command_tuple_desc();
 	initStringInfo(&buf);
 
 	initStringInfo(&(getAgentCmdRst.description));
@@ -1669,9 +1667,8 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst)
 {
 	ManagerAgent *ma;
-	StringInfoData sendstrmsg
-									,buf;
-	bool execok;
+	StringInfoData sendstrmsg;
+	StringInfoData buf;
 	
 	initStringInfo(&sendstrmsg);
 	mgr_append_infostr_infostr(&sendstrmsg, infosendmsg);
@@ -1698,8 +1695,7 @@ static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid h
 		return;
 	}
 	/*check the receive msg*/
-	execok = mgr_recv_showparam_msg(ma, getAgentCmdRst);
-	Assert(execok == getAgentCmdRst->ret);
+	mgr_recv_showparam_msg(ma, getAgentCmdRst);
 	ma_close(ma);	
 }
 
