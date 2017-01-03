@@ -43,6 +43,8 @@ agtm_GetGlobalTransactionId(bool isSubXact)
 		(errmsg("get global xid: %d from agtm", gxid)));
 
 	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	return gxid;
 }
 
@@ -70,14 +72,24 @@ agtm_CreateSequence(const char * seqName, const char * database,
 	databaseSize = strlen(database);
 	schemaSize = strlen(schema);
 
-	agtm_send_message(AGTM_MSG_SEQUENCE_INIT, "%d%d %p%d %d%d %p%d %d%d %p%d %p%d", nameSize, 4, seqName, nameSize, 
-		databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, strOption.data, strOption.len);
+	agtm_send_message(AGTM_MSG_SEQUENCE_INIT, 
+					  "%d%d %p%d %d%d %p%d %d%d %p%d %p%d",
+					  nameSize, 4,
+					  seqName, nameSize,
+					  databaseSize, 4,
+					  database, databaseSize,
+					  schemaSize, 4,
+					  schema, schemaSize,
+					  strOption.data, strOption.len);
 
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_INIT);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_INIT_RESULT);
 
+	agtm_use_result_end(&buf);
+	pfree(buf.data);
 	pfree(strOption.data);
+	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("create sequence on agtm :%s", seqName)));
 }
@@ -106,13 +118,24 @@ agtm_AlterSequence(const char * seqName, const char * database,
 	databaseSize = strlen(database);
 	schemaSize = strlen(schema);
 
-	agtm_send_message(AGTM_MSG_SEQUENCE_ALTER, "%d%d %p%d %d%d %p%d %d%d %p%d %p%d", nameSize, 4, seqName, nameSize, 
-			databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize, strOption.data, strOption.len);
+	agtm_send_message(AGTM_MSG_SEQUENCE_ALTER,
+					  "%d%d %p%d %d%d %p%d %d%d %p%d %p%d",
+					  nameSize, 4,
+					  seqName, nameSize,
+					  databaseSize, 4,
+					  database, databaseSize,
+					  schemaSize, 4, schema,
+					  schemaSize, strOption.data,
+					  strOption.len);
+
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_ALTER);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_ALTER_RESULT);
-
+	
+	agtm_use_result_end(&buf);
+	pfree(buf.data);
 	pfree(strOption.data);
+	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("alter sequence on agtm :%s", seqName)));
 }
@@ -136,12 +159,22 @@ agtm_DropSequence(const char * seqName, const char * database, const char * sche
 	dbNameSize = strlen(database);
 	schemaNameSize = strlen(schema);
 
-	agtm_send_message(AGTM_MSG_SEQUENCE_DROP, "%d%d %p%d %d%d %p%d %d%d %p%d", seqNameSize, 4, seqName, seqNameSize,
-		dbNameSize, 4, database, dbNameSize, schemaNameSize, 4, schema, schemaNameSize);
+	agtm_send_message(AGTM_MSG_SEQUENCE_DROP,
+					 "%d%d %p%d %d%d %p%d %d%d %p%d",
+					 seqNameSize, 4,
+					 seqName, seqNameSize,
+					 dbNameSize, 4,
+					 database, dbNameSize,
+					 schemaNameSize, 4,
+					 schema, schemaNameSize);
+
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_DROP);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_RESULT);
 
+	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("drop sequence on agtm :%s", seqName)));
 }
@@ -165,6 +198,9 @@ agtms_DropSequenceByDataBase(const char * database)
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_DROP_BYDB_RESULT);
 
+	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("drop sequence on agtm by database :%s", database)));
 }
@@ -188,13 +224,25 @@ void agtm_RenameSequence(const char * seqName, const char * database,
 	schemaNameSize = strlen(schema);
 	newNameSize = strlen(newName);
 
-	agtm_send_message(AGTM_MSG_SEQUENCE_RENAME, "%d%d %p%d %d%d %p%d %d%d %p%d %d%d %p%d %d%d", seqNameSize, 4, seqName, seqNameSize,
-	dbNameSize, 4, database, dbNameSize, schemaNameSize, 4, schema, schemaNameSize, newNameSize, 4, newName, newNameSize, type ,4);
+	agtm_send_message(AGTM_MSG_SEQUENCE_RENAME,
+					  "%d%d %p%d %d%d %p%d %d%d %p%d %d%d %p%d %d%d",
+					  seqNameSize, 4,
+					  seqName, seqNameSize,
+					  dbNameSize, 4,
+					  database, dbNameSize,
+					  schemaNameSize, 4,
+					  schema, schemaNameSize,
+					  newNameSize, 4,
+					  newName, newNameSize,
+					  type, 4);
 
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_RENAME);
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_RENAME_RESULT);
 
+	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	ereport(DEBUG1,
 		(errmsg("rename sequence %s rename to %s", seqName, newName)));
 }
@@ -220,6 +268,8 @@ agtm_GetTimestamptz(void)
 		(errmsg("get timestamp: %ld from agtm", timestamp)));
 
 	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	return timestamp;
 }
 
@@ -263,6 +313,8 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	pq_copymsgbytes(&buf, (char*)&(snapshot->regd_count), sizeof(snapshot->regd_count));
 
 	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 
 	if (GetCurrentCommandId(false) > snapshot->curcid)
 		snapshot->curcid = GetCurrentCommandId(false);
@@ -291,6 +343,8 @@ agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 		(errmsg("get xid %u status %d", xid, xid_status)));
 
 	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	return xid_status;
 }
 
@@ -316,8 +370,14 @@ agtm_DealSequence(const char *seqname, const char * database,
 	seqNameSize = strlen(seqname);
 	databaseSize = strlen(database);
 	schemaSize = strlen(schema);
-	agtm_send_message(type, "%d%d %p%d %d%d %p%d %d%d %p%d", seqNameSize, 4, seqname, seqNameSize,
-		databaseSize, 4, database, databaseSize, schemaSize, 4, schema, schemaSize);
+	agtm_send_message(type, 
+					"%d%d %p%d %d%d %p%d %d%d %p%d",
+					seqNameSize, 4,
+					seqname, seqNameSize,
+					databaseSize, 4,
+					database, databaseSize,
+					schemaSize, 4,
+					schema, schemaSize);
 
 	res = agtm_get_result(type);
 	Assert(res);
@@ -325,6 +385,8 @@ agtm_DealSequence(const char *seqname, const char * database,
 	pq_copymsgbytes(&buf, (char*)&seq, sizeof(seq));
 
 	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	return seq;
 }
 
@@ -391,9 +453,15 @@ agtm_SetSeqValCalled(const char *seqname, const char * database,
 	databaseSize = strlen(database);
 	schemaSize = strlen(schema);
 
-	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL, "%d%d %p%d %d%d %p%d %d%d %p%d" INT64_FORMAT "%c",
-			seqNameSize, 4, seqname, seqNameSize, databaseSize, 4, database, databaseSize, 
-			schemaSize, 4, schema, schemaSize, nextval, iscalled);
+	agtm_send_message(AGTM_MSG_SEQUENCE_SET_VAL,
+					"%d%d %p%d %d%d %p%d %d%d %p%d" INT64_FORMAT "%c",
+					seqNameSize, 4,
+					seqname, seqNameSize,
+					databaseSize, 4,
+					database, databaseSize,
+					schemaSize, 4,
+					schema, schemaSize,
+					nextval, iscalled);
 
 	res = agtm_get_result(AGTM_MSG_SEQUENCE_SET_VAL);
 	Assert(res);
@@ -401,6 +469,8 @@ agtm_SetSeqValCalled(const char *seqname, const char * database,
 	pq_copymsgbytes(&buf, (char*)&seq, sizeof(seq));
 
 	agtm_use_result_end(&buf);
+	pfree(buf.data);
+	PQclear(res);
 	return seq;
 }
 
