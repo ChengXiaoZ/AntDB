@@ -1,0 +1,59 @@
+<!--
+doc/src/sgml/ref/mgr_add_hba.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ADDHBA">
+  <refmeta>
+    <refentrytitle>ADD HBA</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ADD HBA</refname>
+    <refpurpose>add the content to the hba table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-addhba">
+    <primary>ADD HBA</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+	<synopsis>
+ADD HBA { ALL | coord_name } ( "hba_value" [, ...] )
+</synopsis>
+</refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+   <command>ADD HBA</command> add the content to the hba table,and it's alse add to pg_hba.conf file.
+The hba_value must be the format "conntype database user ip mask method".
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+  <para>
+   add the content to all coordinator's pg_hba.conf file:
+<programlisting>
+add hba all("host postgres gz 10.14.23.100 32 trust","host postgres gz 10.14.23.101 24 trust");
+</programlisting>
+  </para>
+  <para>
+   add the content to the specified coordinator's pg_hba.conf file:
+<programlisting>
+add hba coord1("host postgres mas 10.1.226.202 32 trust");
+</programlisting>
+  </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-drophba"></member>
+      <member><xref linkend="mgr-listhba"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

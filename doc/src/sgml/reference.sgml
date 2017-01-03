@@ -273,6 +273,7 @@
    &mgrAddCoordinator;
    &mgrAddDatanode;
    &mgrAddGtm;
+   &mgrAddHba;
    &mgrAddHost;
    &mgrAlterCoordinator;
    &mgrAlterDatanode;
@@ -281,19 +282,21 @@
    &mgrAppendCoordinator;
    &mgrAppendDatanode;
    &mgrAppendGtm;
-   &mgrCleanAll
+   &mgrCleanAll;
    &mgrDeploy;
-   &mgrDropCoordinator
-   &mgrDropDatanode
-   &mgrDropGtm
+   &mgrDropCoordinator;
+   &mgrDropDatanode;
+   &mgrDropGtm;
+   &mgrDropHba;
    &mgrDropHost;
-   &mgrFailoverDatanode
-   &mgrFailoverGtm
-   &mgrFlushHost
+   &mgrFailoverDatanode;
+   &mgrFailoverGtm;
+   &mgrFlushHost;
    &mgrInitAll;
-   &mgrListHost
-   &mgrListNode
-   &mgrListParam
+   &mgrListHba;
+   &mgrListHost;
+   &mgrListNode;
+   &mgrListParam;
    &mgrMonitorAgent;
    &mgrMonitorAll;
    &mgrMonitorCoordinator;

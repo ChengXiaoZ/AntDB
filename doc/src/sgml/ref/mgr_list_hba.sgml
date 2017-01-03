@@ -1,0 +1,58 @@
+<!--
+doc/src/sgml/ref/mgr_list_hba.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-LISTHBA">
+  <refmeta>
+    <refentrytitle>LIST HBA</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>LIST HBA</refname>
+    <refpurpose>show the content of the hba table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-listhba">
+    <primary>LIST HBA</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+	<synopsis>
+LIST HBA [ coord_name [, ...] ]
+</synopsis>
+</refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+   <command>LIST HBA</command> show the content of the hba table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+  <para>
+   List all content of the hba table:
+<programlisting>
+LIST HBA;
+</programlisting>
+  </para>
+  <para>
+   List the content of coord_name:
+<programlisting>
+LIST HBA coord_name;
+</programlisting>
+  </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-addhba"></member>
+      <member><xref linkend="mgr-drophba"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

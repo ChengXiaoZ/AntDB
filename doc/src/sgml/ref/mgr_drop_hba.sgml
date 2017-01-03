@@ -1,0 +1,59 @@
+<!--
+doc/src/sgml/ref/mgr_drop_hba.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-DROPHBA">
+  <refmeta>
+    <refentrytitle>DROP HBA</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>DROP HBA</refname>
+    <refpurpose>drop the content from the hba table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-drophba">
+    <primary>DROP HBA</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+DROP HBA { ALL | coord_name } [ ( "hba_value" [, ...] ) ]
+</synopsis>
+</refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+   <command>DROP HBA</command> drop the content from the hba table,and it's alse delete from the pg_hba.conf file.
+The hba_value must be the format "conntype database user ip mask method".
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+  <para>
+   drop the specified content from all the pg_hba.conf file which own to coordinator:
+<programlisting>
+drop hba all("host postgres gz 10.14.23.100 32 trust","host postgres gz 10.14.23.101 trust");
+</programlisting>
+  </para>
+  <para>
+   rop the specified content from the coord1's pg_hba.conf file:
+<programlisting>
+drop hba coord1("host postgres mas 10.1.226.202 32 trust");
+</programlisting>
+  </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-addhba"></member>
+      <member><xref linkend="mgr-listhba"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

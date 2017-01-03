@@ -194,6 +194,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrAddCoordinator  SYSTEM "mgr_add_coordinator.sgml">
 <!ENTITY mgrAddDatanode     SYSTEM "mgr_add_datanode.sgml">
 <!ENTITY mgrAddGtm          SYSTEM "mgr_add_gtm.sgml">
+<!ENTITY mgrAddHba          SYSTEM "mgr_add_hba.sgml">
 <!ENTITY mgrAddHost         SYSTEM "mgr_add_host.sgml">
 <!ENTITY mgrAlterCoordinator SYSTEM "mgr_alter_coordinator.sgml">
 <!ENTITY mgrAlterDatanode   SYSTEM "mgr_alter_datanode.sgml">
@@ -207,11 +208,13 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrDropCoordinator SYSTEM "mgr_drop_coordinator.sgml">
 <!ENTITY mgrDropDatanode    SYSTEM "mgr_drop_datanode.sgml">
 <!ENTITY mgrDropGtm         SYSTEM "mgr_drop_gtm.sgml">
+<!ENTITY mgrDropHba         SYSTEM "mgr_drop_hba.sgml">
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
 <!ENTITY mgrFailoverDatanode SYSTEM "mgr_failover_datanode.sgml">
 <!ENTITY mgrFailoverGtm     SYSTEM "mgr_failover_gtm.sgml">
 <!ENTITY mgrFlushHost       SYSTEM "mgr_flush_host.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
+<!ENTITY mgrListHba        	SYSTEM "mgr_list_hba.sgml">
 <!ENTITY mgrListHost        SYSTEM "mgr_list_host.sgml">
 <!ENTITY mgrListNode        SYSTEM "mgr_list_node.sgml">
 <!ENTITY mgrListParam       SYSTEM "mgr_list_param.sgml">
