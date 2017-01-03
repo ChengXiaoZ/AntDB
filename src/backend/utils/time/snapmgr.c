@@ -1327,9 +1327,9 @@ SetGlobalSnapshot(StringInfo input_message)
 	xcnt = pq_getmsgint(input_message, sizeof(uint32));
 	/* xip */
 	EnlargeSnapshotXip(GlobalSnapshot, xcnt);
-	GlobalSnapshot->xcnt = xcnt;
 	for (i = 0; i < xcnt; i++)
 		GlobalSnapshot->xip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
+	GlobalSnapshot->xcnt = xcnt;
 	/* subxcnt */
 	subxcnt = pq_getmsgint(input_message, sizeof(int32));
 	/* subxip */
@@ -1381,6 +1381,7 @@ CopyGlobalSnapshot(Snapshot snapshot)
 	EnlargeSnapshotXip(snapshot, GlobalSnapshot->xcnt);
 	memcpy(snapshot->xip, GlobalSnapshot->xip,
 		GlobalSnapshot->xcnt * sizeof(TransactionId));
+	snapshot->xcnt = GlobalSnapshot->xcnt;
 	Assert(GlobalSnapshot->subxcnt <= GetMaxSnapshotSubxidCount());
 	snapshot->subxcnt = GlobalSnapshot->subxcnt;
 	snapshot->suboverflowed = GlobalSnapshot->suboverflowed;
