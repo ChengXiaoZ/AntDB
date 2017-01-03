@@ -1464,7 +1464,6 @@ void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 	HeapTuple looptuple;
 	ScanKeyData scankey[2];
 	HeapScanDesc rel_scan;
-	Form_mgr_updateparm mgr_updateparm;
 	
 	/*for nodename is MACRO_STAND_FOR_ALL_NODENAME, only when type if master then delete the tuple*/
 	if (strcmp(MACRO_STAND_FOR_ALL_NODENAME, nodename->data) == 0)
@@ -1494,8 +1493,6 @@ void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, scankey);
 	while((looptuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
-		Assert(mgr_updateparm);
 		simple_heap_delete(noderel, &looptuple->t_self);
 		CatalogUpdateIndexes(noderel, looptuple);
 	}
