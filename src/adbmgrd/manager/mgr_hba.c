@@ -240,7 +240,6 @@ static void mgr_add_hba_one(char *coord_name, List *args_list, GetAgentCmdRst *e
 	Relation rel;
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
-	char *host_address;
 	char * node_path;
 	Datum datumPath;
 	Oid hostoid;
@@ -280,7 +279,6 @@ static void mgr_add_hba_one(char *coord_name, List *args_list, GetAgentCmdRst *e
 				 ,errmsg("coordinator\"%s\" does not init", coord_name)));
 	}
 	hostoid = mgr_node->nodehost;
-	host_address = get_hostaddress_from_hostoid(hostoid);
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
 	if(isNull)
 	{
@@ -646,7 +644,6 @@ static void drop_hba_nodename_value(char *coord_name, char *hbavalue, GetAgentCm
 	Relation rel;
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
-	char *host_address;
 	char * node_path;
 	Datum datumPath;
 	Oid hostoid;
@@ -672,7 +669,6 @@ static void drop_hba_nodename_value(char *coord_name, char *hbavalue, GetAgentCm
 		return;
 	}
 	hostoid = mgr_node->nodehost;
-	host_address = get_hostaddress_from_hostoid(hostoid);
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
 	if(isNull)
 	{
@@ -688,6 +684,8 @@ static void drop_hba_nodename_value(char *coord_name, char *hbavalue, GetAgentCm
 	if(check_hba_tuple_exist(coord_name, hbavalue) == false)
 	{
 		pfree(infosendmsg.data);
+		appendStringInfo(&err_msg->description, "coordinator \"%s\" with \"%s\" does not exist\n",coord_name, hbavalue);
+		err_msg->ret = false;
 		return;
 	}
 	if(check_pghbainfo_vaild(&infosendmsg, &(err_msg->description), true) == false)
