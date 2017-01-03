@@ -2157,6 +2157,9 @@ pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
 	/* xmax */
 	nval = htonl(snapshot->xmax);
 	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(TransactionId));
+	/* curcid */
+	nval = htonl(snapshot->curcid);
+	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(CommandId));
 	/* xcnt */
 	nval = htonl(snapshot->xcnt);
 	appendBinaryStringInfo(&buf, (const char *) &nval, sizeof(uint32));

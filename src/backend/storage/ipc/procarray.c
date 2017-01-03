@@ -1449,8 +1449,8 @@ GetSnapshotData(Snapshot snapshot)
 	{
 		Snapshot snap PG_USED_FOR_ASSERTS_ONLY;
 		snap = GetGlobalSnapshot(snapshot);
-		//Assert(snap == snapshot);
-		//Assert(snap->xcnt <= snap->max_xcnt);
+		Assert(snap == snapshot);
+		Assert(snap->xcnt <= snap->max_xcnt);
 		snapshot = snap;
 		subcount = snapshot->subxcnt;
 		count = snapshot->xcnt;

@@ -1261,6 +1261,41 @@ ThereAreNoPriorRegisteredSnapshots(void)
 }
 
 #ifdef ADB
+#ifdef DEBUG_ADB
+static void
+OutputGlobalSnapshot(Snapshot snapshot)
+{
+	StringInfoData buf;
+	int i;
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "Global Snapshot:");
+	if (snapshot)
+	{
+		appendStringInfo(&buf, " xmin: %u", snapshot->xmin);
+		appendStringInfo(&buf, " xmax: %u", snapshot->xmax);
+		appendStringInfo(&buf, " curcid: %u", snapshot->curcid);
+		appendStringInfo(&buf, " xip:");
+		for (i = 0; i < snapshot->xcnt; i++)
+			appendStringInfo(&buf, " %u", snapshot->xip[i]);
+		appendStringInfo(&buf, " subxip:");
+		for (i = 0; i < snapshot->subxcnt; i++)
+			appendStringInfo(&buf, " %u", snapshot->subxip[i]);
+		appendStringInfo(&buf, " suboverflowed: %s", snapshot->suboverflowed ? "true" : "false");
+		/*
+		appendStringInfo(&buf, " takenDuringRecovery: %s", snapshot->takenDuringRecovery ? "true" : "false");
+		appendStringInfo(&buf, " copied: %s", snapshot->copied ? "true" : "false");
+		appendStringInfo(&buf, " active_count: %u", snapshot->active_count);
+		appendStringInfo(&buf, " regd_count: %u", snapshot->regd_count);
+		*/
+	}
+
+	ereport(DEBUG1,
+		(errmsg("%s", buf.data)));
+	pfree(buf.data);
+}
+#endif
+
 void
 SetGlobalSnapshot(StringInfo input_message)
 {
@@ -1282,39 +1317,49 @@ SetGlobalSnapshot(StringInfo input_message)
 				  errmsg("Fail to malloc \"GlobalSnapshot\"")));
 		memset(GlobalSnapshot, 0, sizeof(SnapshotData));
 	}
+	/* xmin */
 	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
+	/* xmax */
 	GlobalSnapshot->xmax = pq_getmsgint(input_message, sizeof(TransactionId));
-
+	/* curcid */
+	GlobalSnapshot->curcid = pq_getmsgint(input_message, sizeof(CommandId));
+	/* xcnt */
 	xcnt = pq_getmsgint(input_message, sizeof(uint32));
+	/* xip */
 	EnlargeSnapshotXip(GlobalSnapshot, xcnt);
 	GlobalSnapshot->xcnt = xcnt;
 	for (i = 0; i < xcnt; i++)
 		GlobalSnapshot->xip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
-
+	/* subxcnt */
 	subxcnt = pq_getmsgint(input_message, sizeof(int32));
-	maxsubxcnt = GetMaxSnapshotSubxidCount();
-	if (subxcnt > maxsubxcnt)
+	/* subxip */
+	if (subxcnt > 0)
 	{
-		subxcnt = maxsubxcnt;
-		suboverflowed = true;
+		maxsubxcnt = GetMaxSnapshotSubxidCount();
+		if (subxcnt > maxsubxcnt)
+		{
+			subxcnt = maxsubxcnt;
+			suboverflowed = true;
+		}
+		if (GlobalSnapshot->subxip == NULL)
+		{
+			subxip = (TransactionId *) malloc(maxsubxcnt * sizeof(TransactionId));
+			if (subxip == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_OUT_OF_MEMORY),
+					  errmsg("Fail to malloc %d subxip of \"GlobalSnapshot\"", maxsubxcnt)));
+			GlobalSnapshot->subxip = subxip;
+		}
+		GlobalSnapshot->subxcnt = subxcnt;
+		GlobalSnapshot->suboverflowed = suboverflowed;
+		for (i = 0; i < subxcnt; i++)
+				GlobalSnapshot->subxip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
 	}
-	if (GlobalSnapshot->subxip == NULL)
-	{
-		subxip = (TransactionId *) malloc(maxsubxcnt * sizeof(TransactionId));
-		if (subxip == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-				  errmsg("Fail to malloc %d subxip of \"GlobalSnapshot\"", maxsubxcnt)));
-	}
-	GlobalSnapshot->subxip = subxip;
-	GlobalSnapshot->subxcnt = subxcnt;
-	GlobalSnapshot->suboverflowed = suboverflowed;
-	for (i = 0; i < subxcnt; i++)
-			GlobalSnapshot->subxip[i] = pq_getmsgint(input_message, sizeof(TransactionId));
-
-	GlobalSnapshot->curcid = GetCurrentCommandId(false);
 
 	GlobalSnapshotSet = true;
+#ifdef DEBUG_ADB
+	OutputGlobalSnapshot(GlobalSnapshot);
+#endif
 }
 
 void
@@ -1332,6 +1377,7 @@ CopyGlobalSnapshot(Snapshot snapshot)
 
 	snapshot->xmin = GlobalSnapshot->xmin;
 	snapshot->xmax = GlobalSnapshot->xmax;
+	snapshot->curcid = GlobalSnapshot->curcid;
 	EnlargeSnapshotXip(snapshot, GlobalSnapshot->xcnt);
 	memcpy(snapshot->xip, GlobalSnapshot->xip,
 		GlobalSnapshot->xcnt * sizeof(TransactionId));
@@ -1343,57 +1389,47 @@ CopyGlobalSnapshot(Snapshot snapshot)
 	return snapshot;
 }
 
-#ifdef DEBUG_ADB
-static void
-OutputGlobalSnapshot(Snapshot snapshot)
-{
-	StringInfoData buf;
-	int i;
-
-	initStringInfo(&buf);
-	appendStringInfo(&buf, "Global Snapshot:");
-	if (snapshot)
-	{
-		appendStringInfo(&buf, " xmin: %u", snapshot->xmin);
-		appendStringInfo(&buf, " xmax: %u", snapshot->xmax);
-		appendStringInfo(&buf, " xip:");
-		for (i = 0; i < snapshot->xcnt; i++)
-			appendStringInfo(&buf, " %u", snapshot->xip[i]);
-		appendStringInfo(&buf, " subxip:");
-		for (i = 0; i < snapshot->subxcnt; i++)
-			appendStringInfo(&buf, " %u", snapshot->subxip[i]);
-		appendStringInfo(&buf, " suboverflowed: %s", snapshot->suboverflowed ? "true" : "false");
-		appendStringInfo(&buf, " takenDuringRecovery: %s", snapshot->takenDuringRecovery ? "true" : "false");
-		appendStringInfo(&buf, " copied: %s", snapshot->copied ? "true" : "false");
-		appendStringInfo(&buf, " curcid: %u", snapshot->curcid);
-		appendStringInfo(&buf, " active_count: %u", snapshot->active_count);
-		appendStringInfo(&buf, " regd_count: %u", snapshot->regd_count);
-	}
-
-	ereport(DEBUG1,
-		(errmsg("%s", buf.data)));
-	pfree(buf.data);
-}
-#endif
-
 /*
  * Entry of snapshot obtention for Postgres-XC node
  */
 Snapshot
 GetGlobalSnapshot(Snapshot snapshot)
 {
-	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-		return agtm_GetGlobalSnapShot(snapshot);
+	Snapshot ret;
 
+	/*
+	 * Master-Coordinator get snapshot from AGTM
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		ret = agtm_GetGlobalSnapShot(snapshot);
+#ifdef DEBUG_ADB
+		OutputGlobalSnapshot(ret);
+#endif
+		return ret;
+	}
+
+	/*
+	 * Datanode or NoMaster-Coordinator get snapshot
+	 * from AGTM when GlobalSnapshot is invalid or
+	 * current process is AutoVacuum process.
+	 */
 	if (GlobalSnapshot == NULL ||
 		GlobalSnapshotSet == false ||
 		IsAnyAutoVacuumProcess())
-		return agtm_GetGlobalSnapShot(snapshot);
-
+	{
+		ret = agtm_GetGlobalSnapShot(snapshot);
 #ifdef DEBUG_ADB
-	OutputGlobalSnapshot(GlobalSnapshot);
+		OutputGlobalSnapshot(ret);
 #endif
+		return ret;
+	}
 
+
+	/*
+	 * Datanode or NoMaster-Coordinator copy snapshot
+	 * from Master-Coordinator.
+	 */
 	return CopyGlobalSnapshot(snapshot);
 }
 #endif /* ADB */
