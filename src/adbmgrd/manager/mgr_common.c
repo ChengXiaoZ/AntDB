@@ -580,10 +580,21 @@ void check_nodename_isvalid(char *nodename)
 
 bool mgr_has_function_privilege_name(char *funcname, char *priv_type)
 {
-    Datum aclresult;
-    aclresult = DirectFunctionCall2(has_function_privilege_name,
-                                    CStringGetTextDatum(funcname),
-                                    CStringGetTextDatum(priv_type));
-    return DatumGetBool(aclresult);
+	Datum aclresult;
+	aclresult = DirectFunctionCall2(has_function_privilege_name,
+							CStringGetTextDatum(funcname),
+							CStringGetTextDatum(priv_type));
+
+	return DatumGetBool(aclresult);
+}
+
+bool mgr_has_table_privilege_name(char *tablename, char *priv_type)
+{
+	Datum aclresult;
+	aclresult = DirectFunctionCall2(has_table_privilege_name,
+							CStringGetTextDatum(tablename),
+							CStringGetTextDatum(priv_type));
+
+	return DatumGetBool(aclresult);
 }
 

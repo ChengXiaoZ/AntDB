@@ -125,6 +125,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
 static char *get_username_list_str(List *user_list);
+static void mgr_manage_drop(char command_type, char *user_list_str);
 static void mgr_manage_add(char command_type, char *user_list_str);
 static void mgr_manage_start(char command_type, char *user_list_str);
 static void mgr_manage_show(char command_type, char *user_list_str);
@@ -139,6 +140,7 @@ static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 static List *get_username_list(void);
 static void mgr_get_acl_by_username(char *username, StringInfo acl);
+static bool mgr_acl_drop(char *username);
 static bool mgr_acl_add(char *username);
 static bool mgr_acl_start(char *username);
 static bool mgr_acl_show(char *username);
@@ -184,19 +186,20 @@ typedef enum ConnectType
 
 void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 {
-    if (mgr_has_function_privilege_name("mgr_add_host_func(boolean,cstring,\"any\")", "execute"))
-    {
-        DirectFunctionCall4(mgr_add_node_func, BoolGetDatum(node->if_not_exists),
-                                          CharGetDatum(node->nodetype),
-		                                  CStringGetDatum(node->name),
-		                                  PointerGetDatum(node->options));
-        return;
-    }
-    else
-    {
-        ereport(ERROR, (errmsg("permission denied")));
-        return ;
-    }
+	if (mgr_has_priv_add())
+	{
+		DirectFunctionCall4(mgr_add_node_func,
+									BoolGetDatum(node->if_not_exists),
+									CharGetDatum(node->nodetype),
+									CStringGetDatum(node->name),
+									PointerGetDatum(node->options));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
 }
 
 Datum mgr_add_node_func(PG_FUNCTION_ARGS)
@@ -218,10 +221,10 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	ObjectAddress myself;
 	ObjectAddress host;
 	Oid cndn_oid;
-	char nodetype;			/*coordinator or datanode master/slave*/
+	char nodetype;   /*coordinator or datanode master/slave*/
 	bool if_not_exists = PG_GETARG_BOOL(0);
-    char *nodename = PG_GETARG_CSTRING(2);
-    List *options = (List *)PG_GETARG_POINTER(3);
+	char *nodename = PG_GETARG_CSTRING(2);
+	List *options = (List *)PG_GETARG_POINTER(3);
 	nodetype = PG_GETARG_CHAR(1);
 	nodestring = mgr_nodetype_str(nodetype);
 
@@ -319,7 +322,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid value for parameter \"sync\": \"%s\", must be \"true|t|on\" or \"false|f|off\"", str)));
 			}
-		}else      
+		}else
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" is not recognized", def->defname)
@@ -416,7 +419,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	host.objectId = DatumGetObjectId(datum[Anum_mgr_node_nodehost-1]);
 	host.objectSubId = 0;
 	recordDependencyOn(&myself, &host, DEPENDENCY_NORMAL);
-    PG_RETURN_BOOL(true);
+	PG_RETURN_BOOL(true);
 }
 
 void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest)
@@ -568,6 +571,23 @@ void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest
 
 void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 {
+	if (mgr_has_priv_drop())
+	{
+		DirectFunctionCall3(mgr_drop_node_func,
+									BoolGetDatum(node->if_exists),
+									CharGetDatum(node->nodetype),
+									PointerGetDatum(node->names));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
+{
 	Relation rel;
 	Relation rel_updateparm;
 	HeapTuple tuple;
@@ -583,8 +603,9 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	Form_mgr_node mgr_node;
 	int getnum = 0;
 	int nodenum = 0;
-
-	nodetype = node->nodetype;
+	bool if_exists = PG_GETARG_BOOL(0);
+	List *name_list = (List *)PG_GETARG_POINTER(2);
+	nodetype = PG_GETARG_CHAR(1);
 	nodestring = mgr_nodetype_str(nodetype);
 
 	context = AllocSetContextCreate(CurrentMemoryContext
@@ -596,7 +617,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	old_context = MemoryContextSwitchTo(context);
 
 	/* first we need check is it all exists and used by other */
-	foreach(lc, node->names)
+	foreach(lc, name_list)
 	{
 		val = lfirst(lc);
 		Assert(val && IsA(val,String));
@@ -605,7 +626,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 		tuple = mgr_get_tuple_node_from_name_type(rel, NameStr(name), nodetype);
 		if(!HeapTupleIsValid(tuple))
 		{
-			if(node->if_exists)
+			if(if_exists)
 			{
 				ereport(NOTICE,  (errcode(ERRCODE_UNDEFINED_OBJECT),
 					errmsg("%s \"%s\" does not exist, skipping", nodestring, NameStr(name))));
@@ -660,7 +681,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 		}
 	}
 	heap_endscan(rel_scan);
-	foreach(lc, node->names)
+	foreach(lc, name_list)
 	{
 		val = lfirst(lc);
 		Assert(val  && IsA(val,String));
@@ -687,6 +708,7 @@ void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest)
 	heap_close(rel, RowExclusiveLock);
 	(void)MemoryContextSwitchTo(old_context);
 	MemoryContextDelete(context);
+	PG_RETURN_BOOL(true);
 }
 
 /*
@@ -8180,7 +8202,8 @@ Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 			mgr_manage_start(command_type, username_list_str);
 		else if (strcmp(strVal(command), "add") == 0)
 			mgr_manage_add(command_type, username_list_str);
-
+		else if (strcmp(strVal(command), "drop") == 0)
+			mgr_manage_drop(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8225,6 +8248,7 @@ static void mgr_priv_all(char command_type, char *username_list_str)
     mgr_manage_show(command_type, username_list_str);
     mgr_manage_start(command_type, username_list_str);
     mgr_manage_add(command_type, username_list_str);
+    mgr_manage_drop(command_type, username_list_str);
 	return;
 }
 
@@ -8277,6 +8301,8 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 			mgr_manage_start(command_type, username_list_str);
         else if (strcmp(strVal(command), "add") == 0)
 			mgr_manage_add(command_type, username_list_str);
+        else if (strcmp(strVal(command), "drop") == 0)
+			mgr_manage_drop(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8285,6 +8311,56 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
 	else
 		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_manage_drop(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant execute on function func_name [, ...] to user_name [, ...] */
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_drop_host_func(boolean, \"any\"), ");
+        appendStringInfoString(&commandsql, "mgr_drop_node_func(boolean, \"char\", \"any\") ");
+		appendStringInfoString(&commandsql, "TO ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "GRANT select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.hba ");
+		appendStringInfoString(&commandsql, "TO ");
+
+
+	}else if (command_type == PRIV_REVOKE)
+	{
+		/*revoke execute on function func_name [, ...] from user_name [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_drop_host_func(boolean, \"any\"), ");
+        appendStringInfoString(&commandsql, "mgr_drop_node_func(boolean, \"char\", \"any\") ");
+		appendStringInfoString(&commandsql, "FROM ");
+		appendStringInfoString(&commandsql, user_list_str);
+		appendStringInfoString(&commandsql, ";");
+		appendStringInfoString(&commandsql, "REVOKE select ON ");
+		appendStringInfoString(&commandsql, "adbmgr.hba ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
 }
 
 static void mgr_manage_add(char command_type, char *user_list_str)
@@ -8588,15 +8664,15 @@ static void mgr_manage_failover(char command_type, char *user_list_str)
 	{
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
-		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring) ");
+		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring, cstring, boolean), ");
+		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring,boolean) ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring), ");
-		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring) ");
+		appendStringInfoString(&commandsql, "mgr_failover_one_dn(cstring, cstring, boolean), ");
+		appendStringInfoString(&commandsql, "mgr_failover_gtm(cstring,boolean) ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -8883,7 +8959,38 @@ static void mgr_get_acl_by_username(char *username, StringInfo acl)
 		appendStringInfo(acl, "add ");
 	}
 
+	if (mgr_acl_drop(username))
+	{
+		appendStringInfo(acl, "drop ");
+	}
+
 	return;
+}
+
+bool mgr_has_priv_drop(void)
+{
+    bool f1, f2;
+    bool t1;
+
+    f1 = mgr_has_function_privilege_name("mgr_drop_host_func(boolean, \"any\")", "execute");
+    f2 = mgr_has_function_privilege_name("mgr_drop_node_func(boolean, \"char\", \"any\")", "execute");
+
+    t1 = mgr_has_table_privilege_name("adbmgr.hba","select");
+
+    return (f1 && f2 && t1);
+}
+
+static bool mgr_acl_drop(char *username)
+{
+    bool f1, f2;
+    bool t1;
+
+    f1 = mgr_has_func_priv(username, "mgr_drop_host_func(boolean,\"any\")", "execute");
+    f2 = mgr_has_func_priv(username, "mgr_drop_node_func(boolean,\"char\",\"any\")", "execute");
+
+    t1 = mgr_has_table_priv(username, "adbmgr.hba", "select");
+
+    return (f1 && f2 && t1);
 }
 
 bool mgr_has_priv_add(void)
@@ -8996,8 +9103,8 @@ static bool mgr_acl_failover(char *username)
 	bool func_gtm;
 	bool func_dn;
 
-	func_dn  = mgr_has_func_priv(username, "mgr_failover_one_dn(cstring)", "execute");
-	func_gtm = mgr_has_func_priv(username, "mgr_failover_gtm(cstring)", "execute");
+	func_dn  = mgr_has_func_priv(username, "mgr_failover_one_dn(cstring,cstring,boolean)", "execute");
+	func_gtm = mgr_has_func_priv(username, "mgr_failover_gtm(cstring, boolean)", "execute");
 
 	return (func_gtm && func_dn);
 }

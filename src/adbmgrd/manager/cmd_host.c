@@ -75,19 +75,18 @@ static void check_host_name_isvaild(List *host_name_list);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
-
-    if (mgr_has_priv_add())
-    {
-        DirectFunctionCall3(mgr_add_host_func, BoolGetDatum(node->if_not_exists),
-		                                  CStringGetDatum(node->name),
-		                                  PointerGetDatum(node->options));
-        return;
-    }
-    else
-    {
-        ereport(ERROR, (errmsg("permission denied")));
-        return ;
-    }
+	if (mgr_has_priv_add())
+	{
+		DirectFunctionCall3(mgr_add_host_func, BoolGetDatum(node->if_not_exists),
+								CStringGetDatum(node->name),
+								PointerGetDatum(node->options));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
 }
 
 Datum mgr_add_host_func(PG_FUNCTION_ARGS)
@@ -110,9 +109,9 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 	struct sockaddr_in *sinp;
 	struct in_addr addr;
 	int ret;
-    bool if_not_exists = PG_GETARG_BOOL(0);
-    char *hostname = PG_GETARG_CSTRING(1);
-    List *options = (List *)PG_GETARG_POINTER(2);
+	bool if_not_exists = PG_GETARG_BOOL(0);
+	char *hostname = PG_GETARG_CSTRING(1);
+	List *options = (List *)PG_GETARG_POINTER(2);
 
 	rel = heap_open(HostRelationId, RowExclusiveLock);
 	namestrcpy(&name, hostname);
@@ -280,10 +279,26 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 
 	/* at end, close relation */
 	heap_close(rel, RowExclusiveLock);
-    PG_RETURN_BOOL(true);
+	PG_RETURN_BOOL(true);
 }
 
 void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_drop())
+	{
+		DirectFunctionCall2(mgr_drop_host_func,
+							BoolGetDatum(node->if_exists),
+							PointerGetDatum(node->hosts));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return;
+	}
+}
+
+Datum mgr_drop_host_func(PG_FUNCTION_ARGS)
 {
 	Relation rel;
 	HeapTuple tuple;
@@ -291,6 +306,8 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 	Value *val;
 	MemoryContext context, old_context;
 	NameData name;
+	bool if_exists = PG_GETARG_BOOL(0);
+	List *host_list = (List *)PG_GETARG_POINTER(1);
 
 	context = AllocSetContextCreate(CurrentMemoryContext
 			,"DROP HOST"
@@ -301,7 +318,7 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 	old_context = MemoryContextSwitchTo(context);
 
 	/* first we need check is it all exists and used by other */
-	foreach(lc, node->hosts)
+	foreach(lc, host_list)
 	{
 		val = lfirst(lc);
 		Assert(val && IsA(val,String));
@@ -310,7 +327,7 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 		tuple = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
 		if(!HeapTupleIsValid(tuple))
 		{
-			if(node->if_exists)
+			if(if_exists)
 			{
 				ereport(NOTICE,  (errcode(ERRCODE_UNDEFINED_OBJECT),
 					errmsg("host \"%s\" dose not exist, skipping", NameStr(name))));
@@ -332,7 +349,7 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 	}
 
 	/* now we can delete host(s) */
-	foreach(lc, node->hosts)
+	foreach(lc, host_list)
 	{
 		val = lfirst(lc);
 		Assert(val  && IsA(val,String));
@@ -349,6 +366,7 @@ void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
 	heap_close(rel, RowExclusiveLock);
 	(void)MemoryContextSwitchTo(old_context);
 	MemoryContextDelete(context);
+	PG_RETURN_BOOL(true);
 }
 
 void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest)

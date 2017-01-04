@@ -49,8 +49,10 @@ extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver 
 extern void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_deplory(MGRDeplory *node,  ParamListInfo params, DestReceiver *dest);
 extern Datum mgr_start_agent_all(PG_FUNCTION_ARGS);
+extern Datum mgr_drop_host_func(PG_FUNCTION_ARGS);
 extern Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS);
 extern bool mgr_has_priv_add(void);
+extern bool mgr_has_priv_drop(void);
 extern void mgr_stop_agent(MGRStopAgent *node,  ParamListInfo params, DestReceiver *dest);
 extern void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceiver *dest);
 extern int ssh2_start_agent(const char *hostname, 
@@ -99,6 +101,7 @@ extern Datum mgr_failover_one_dn(PG_FUNCTION_ARGS);
 extern void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_node(MGRAlterNode *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver *dest);
+extern Datum mgr_drop_node_func(PG_FUNCTION_ARGS);
 extern Datum mgr_init_all(PG_FUNCTION_ARGS);
 extern Datum mgr_init_cn_master(PG_FUNCTION_ARGS);
 extern void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *shutdown_mode);
@@ -188,7 +191,7 @@ TupleDesc get_list_acl_command_tuple_desc(void);
 List * DecodeTextArrayToValueList(Datum textarray);
 void check_nodename_isvalid(char *nodename);
 bool mgr_has_function_privilege_name(char *funcname, char *priv_type);
-
+bool mgr_has_table_privilege_name(char *tablename, char *priv_type);
 
 /* get the host address */
 char *get_hostaddress_from_hostoid(Oid hostOid);
