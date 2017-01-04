@@ -158,7 +158,7 @@ static void check_host_name_isvaild(List *node_name_list);
 
 %type <defelt>	CreateOptRoleElem AlterOptRoleElem
 
-%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type
+%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type opt_general_force
 %type <vsetstmt> set_rest set_rest_more
 %type <value>	NumericOnly
 
@@ -166,7 +166,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %type <str>		Ident SConst ColLabel var_name opt_boolean_or_string
 				NonReservedWord NonReservedWord_or_Sconst set_ident
 				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
-				opt_general_all opt_general_force var_dotparam var_showparam
+				opt_general_all var_dotparam var_showparam
 				sub_like_expr RoleId name ColId
 
 %type <chr>		node_type cluster_type
@@ -2149,9 +2149,8 @@ FailoverStmt:
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("slave", -1));
-			args = lappend(args,makeStringConst($4, -1));
-			if($5 != NULL)
-				args = lappend(args,makeStringConst($5, @5));
+			args = lappend(args, makeStringConst($4, -1));
+			args = lappend(args, makeBoolAConst($5, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
@@ -2160,9 +2159,8 @@ FailoverStmt:
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("extra", -1));
-			args = lappend(args,makeStringConst($4, -1));
-			if($5 != NULL)
-				args = lappend(args,makeStringConst($5, @5));
+			args = lappend(args, makeStringConst($4, -1));
+			args = lappend(args, makeBoolAConst($5, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
@@ -2171,9 +2169,8 @@ FailoverStmt:
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("either", -1));
-			args = lappend(args,makeStringConst($3, -1));
-			if($4 != NULL)
-				args = lappend(args,makeStringConst($4, @4));
+			args = lappend(args, makeStringConst($3, -1));
+			args = lappend(args, makeBoolAConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
@@ -2182,8 +2179,7 @@ FailoverStmt:
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("slave", -1));
-			if($4 != NULL)
-				args = lappend(args,makeStringConst($4, @4));
+			args = lappend(args, makeBoolAConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
@@ -2192,8 +2188,7 @@ FailoverStmt:
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("extra", -1));
-			if($4 != NULL)
-				args = lappend(args,makeStringConst($4, @4));
+			args = lappend(args, makeBoolAConst($4,-1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
@@ -2202,16 +2197,15 @@ FailoverStmt:
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst("either", -1));
-			if($3 != NULL)
-				args = lappend(args,makeStringConst($3, @3));
+			args = lappend(args, makeBoolAConst($3,-1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
 			$$ = (Node*)stmt;
 		}
 	;
 opt_general_force:
-	FORCE      {$$ = pstrdup("force");}
-	|/*empty*/ {$$ = NULL;}
+	FORCE		{$$ = TRUE;}
+	|/*empty*/	{$$ = FALSE;}
 /* cndn end*/
 
 DeploryStmt:

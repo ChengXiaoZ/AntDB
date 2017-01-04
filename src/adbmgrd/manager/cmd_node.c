@@ -4969,7 +4969,7 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 {
 	char *typestr = PG_GETARG_CSTRING(0);
 	char *nodename = PG_GETARG_CSTRING(1);
-	char *force_str = PG_GETARG_CSTRING(2);
+	bool force_get = PG_GETARG_BOOL(2);
 	char cmdtype = AGT_CMD_DN_FAILOVER;
 	char nodetype;
 	bool force = false;
@@ -4978,7 +4978,7 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 
 	/*check all coordinators running normal*/
 	mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
-	if(strcmp(force_str, "force") ==0)
+	if(force_get)
 		force = true;
 	if (strcmp(typestr, "slave") == 0)
 	{
@@ -5853,7 +5853,7 @@ void mgr_mark_node_in_cluster(Relation rel)
 Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 {
 	char *typestr = PG_GETARG_CSTRING(0);
-	char *force_str = PG_GETARG_CSTRING(1);
+	bool force_get = PG_GETARG_BOOL(1);
 	char cmdtype = AGT_CMD_GTM_SLAVE_FAILOVER;
 	char nodetype = GTM_TYPE_GTM_SLAVE;
 	char *nodename = NULL; /*just use for input parameter*/
@@ -5867,7 +5867,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	Datum datum;
 
-	if(strcmp(force_str, "force") ==0)
+	if(force_get)
 		force = true;
 	/*get GTM master name*/
 	ScanKeyInit(&key[0]
