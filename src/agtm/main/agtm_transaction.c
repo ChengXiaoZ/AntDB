@@ -95,6 +95,7 @@ StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 	/* Respond to the client */
 	pq_sendint(output, AGTM_SNAPSHOT_GET_RESULT, 4);
 
+	pq_sendbytes(output, (char *)&RecentGlobalXmin, sizeof (TransactionId));
 	pq_sendbytes(output, (char *)&snapshot->xmin, sizeof (TransactionId));
 	pq_sendbytes(output, (char *)&snapshot->xmax, sizeof (TransactionId));
 

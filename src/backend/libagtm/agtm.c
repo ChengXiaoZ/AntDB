@@ -14,6 +14,7 @@
 #include "libpq/pqformat.h"
 #include "pgxc/pgxc.h"
 #include "storage/procarray.h"
+#include "utils/snapmgr.h"
 
 #include <unistd.h>
 
@@ -284,6 +285,7 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_SNAPSHOT_GET_RESULT);
 
+	pq_copymsgbytes(&buf, (char*)&(RecentGlobalXmin), sizeof(RecentGlobalXmin));
 	pq_copymsgbytes(&buf, (char*)&(snapshot->xmin), sizeof(snapshot->xmin));
 	pq_copymsgbytes(&buf, (char*)&(snapshot->xmax), sizeof(snapshot->xmax));
 	xcnt = pq_getmsgint(&buf, sizeof(snapshot->xcnt));
