@@ -194,17 +194,6 @@ GetTransactionSnapshot(void)
 		return CurrentSnapshot;
 	}
 
-#ifdef AGTM
-	if (IsTransactionState())
-	{
-		return CurrentSnapshot;
-	} else
-	{
-		CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
-		return CurrentSnapshot;
-	}
-#endif
-
 	if (IsolationUsesXactSnapshot())
 	{
 #ifdef PGXC
