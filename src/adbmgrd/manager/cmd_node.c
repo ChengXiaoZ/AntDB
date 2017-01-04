@@ -8394,24 +8394,16 @@ static void mgr_manage_drop(char command_type, char *user_list_str)
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_drop_host_func(boolean, \"any\"), ");
-		appendStringInfoString(&commandsql, "mgr_drop_node_func(boolean, \"char\", \"any\") ");
-		appendStringInfoString(&commandsql, "TO ");
-		appendStringInfoString(&commandsql, user_list_str);
-		appendStringInfoString(&commandsql, ";");
-		appendStringInfoString(&commandsql, "GRANT select ON ");
-		appendStringInfoString(&commandsql, "adbmgr.hba ");
+		appendStringInfoString(&commandsql, "mgr_drop_node_func(boolean, \"char\", \"any\"), ");
+        appendStringInfoString(&commandsql, "mgr_drop_hba(\"any\") ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_drop_host_func(boolean, \"any\"), ");
-		appendStringInfoString(&commandsql, "mgr_drop_node_func(boolean, \"char\", \"any\") ");
-		appendStringInfoString(&commandsql, "FROM ");
-		appendStringInfoString(&commandsql, user_list_str);
-		appendStringInfoString(&commandsql, ";");
-		appendStringInfoString(&commandsql, "REVOKE select ON ");
-		appendStringInfoString(&commandsql, "adbmgr.hba ");
+		appendStringInfoString(&commandsql, "mgr_drop_node_func(boolean, \"char\", \"any\"), ");
+        appendStringInfoString(&commandsql, "mgr_drop_hba(\"any\") ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -8442,14 +8434,16 @@ static void mgr_manage_add(char command_type, char *user_list_str)
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_add_host_func(boolean,cstring,\"any\"), ");
-		appendStringInfoString(&commandsql, "mgr_add_node_func(boolean,\"char\",cstring,\"any\") ");
+		appendStringInfoString(&commandsql, "mgr_add_node_func(boolean,\"char\",cstring,\"any\"), ");
+        appendStringInfoString(&commandsql, "mgr_add_hba(\"any\") ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
 		appendStringInfoString(&commandsql, "mgr_add_host_func(boolean,cstring,\"any\"), ");
-		appendStringInfoString(&commandsql, "mgr_add_node_func(boolean,\"char\",cstring,\"any\") ");
+		appendStringInfoString(&commandsql, "mgr_add_node_func(boolean,\"char\",cstring,\"any\"), ");
+        appendStringInfoString(&commandsql, "mgr_add_hba(\"any\") ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -9060,48 +9054,46 @@ static bool mgr_acl_alter(char *username)
 
 bool mgr_has_priv_drop(void)
 {
-	bool f1, f2;
-	bool t1;
+	bool f1, f2, f3;
 
 	f1 = mgr_has_function_privilege_name("mgr_drop_host_func(boolean, \"any\")", "execute");
 	f2 = mgr_has_function_privilege_name("mgr_drop_node_func(boolean, \"char\", \"any\")", "execute");
+    f3 = mgr_has_function_privilege_name("mgr_drop_hba(\"any\")", "execute");
 
-	t1 = mgr_has_table_privilege_name("adbmgr.hba","select");
-
-	return (f1 && f2 && t1);
+    return (f1 && f2 && f3);
 }
 
 static bool mgr_acl_drop(char *username)
 {
-	bool f1, f2;
-	bool t1;
+	bool f1, f2, f3;
 
 	f1 = mgr_has_func_priv(username, "mgr_drop_host_func(boolean,\"any\")", "execute");
 	f2 = mgr_has_func_priv(username, "mgr_drop_node_func(boolean,\"char\",\"any\")", "execute");
+    f3 = mgr_has_func_priv(username, "mgr_drop_hba(\"any\")", "execute");
 
-	t1 = mgr_has_table_priv(username, "adbmgr.hba", "select");
-
-	return (f1 && f2 && t1);
+	return (f1 && f2 && f3);
 }
 
 bool mgr_has_priv_add(void)
 {
-	bool f1, f2;
+	bool f1, f2, f3;
 
 	f1 = mgr_has_function_privilege_name("mgr_add_host_func(boolean,cstring,\"any\")", "execute");
 	f2 = mgr_has_function_privilege_name("mgr_add_node_func(boolean,\"char\",cstring,\"any\")", "execute");
+    f3 = mgr_has_function_privilege_name("mgr_add_hba(\"any\")", "execute");
 
-	return (f1 && f2);
+	return (f1 && f2 && f3);
 }
 
 static bool mgr_acl_add(char *username)
 {
-	bool f1, f2;
+	bool f1, f2, f3;
 
 	f1 = mgr_has_func_priv(username, "mgr_add_host_func(boolean,cstring,\"any\")", "execute");
 	f2 = mgr_has_func_priv(username, "mgr_add_node_func(boolean,\"char\",cstring,\"any\")", "execute");
+    f3 = mgr_has_func_priv(username, "mgr_add_hba(\"any\")", "execute");
 
-	return (f1 && f2);
+	return (f1 && f2 && f3);
 }
 
 static bool mgr_acl_start(char *username)
