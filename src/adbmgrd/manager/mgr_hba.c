@@ -206,6 +206,7 @@ Datum mgr_add_hba(PG_FUNCTION_ARGS)
 	pfree(err_msg.description.data);		
 	return HeapTupleGetDatum(tup_result);
 }
+
 static void mgr_add_hba_all(List *args_list, GetAgentCmdRst *err_msg)
 {
 	Relation rel;
@@ -235,6 +236,7 @@ static void mgr_add_hba_all(List *args_list, GetAgentCmdRst *err_msg)
 	heap_endscan(rel_scan);
 	heap_close(rel, RowExclusiveLock);
 }
+
 static void mgr_add_hba_one(char *coord_name, List *args_list, GetAgentCmdRst *err_msg, bool record_err_msg)
 {
 	Relation rel;
@@ -847,7 +849,9 @@ static HbaType get_connect_type(char *str_type)
 {
 	HbaType conntype = HBA_TYPE_EMPTY;
 	char *str_lwr ;
-	Assert(str_type);
+//	Assert(str_type);
+	if(!PointerIsValid(str_type))
+		return conntype;
 	str_lwr = str_tolower(str_type, strlen(str_type), DEFAULT_COLLATION_OID);
 	if(strcmp(str_lwr, "host") == 0)
 		conntype = HBA_TYPE_HOST;
