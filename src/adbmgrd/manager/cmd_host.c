@@ -371,6 +371,23 @@ Datum mgr_drop_host_func(PG_FUNCTION_ARGS)
 
 void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest)
 {
+	if (mgr_has_priv_alter())
+	{
+		DirectFunctionCall3(mgr_alter_host_func,
+								BoolGetDatum(node->if_not_exists),
+								CStringGetDatum(node->name),
+								PointerGetDatum(node->options));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
+{
 	Relation rel;
 	Relation rel_node;
 	HeapTuple tuple;
@@ -386,19 +403,22 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 	bool got[Natts_mgr_host];
 	Form_mgr_node mgr_node;
 	TupleDesc host_dsc;
-	
-	Assert(node && node->name);
+	List *options = (List *)PG_GETARG_POINTER(2);
+	bool if_not_exists = PG_GETARG_BOOL(0);
+	char *name_str = PG_GETARG_CSTRING(1);
+	Assert(name_str != NULL);
+
 	rel = heap_open(HostRelationId, RowExclusiveLock);
 	host_dsc = RelationGetDescr(rel);
-	namestrcpy(&name, node->name);
+	namestrcpy(&name, name_str);
 	/* check whether exists */
 	tuple = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
 	if(!SearchSysCacheExists1(HOSTHOSTNAME, NameGetDatum(&name)))
 	{
-		if(node->if_not_exists)
+		if(if_not_exists)
 		{
 			heap_close(rel, RowExclusiveLock);
-			return;
+			PG_RETURN_BOOL(false);
 		}
 
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
@@ -411,7 +431,7 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 
 	/* name */
 	datum[Anum_mgr_host_hostname-1] = NameGetDatum(&name);
-	foreach(lc,node->options)
+	foreach(lc, options)
 	{
 		def = lfirst(lc);
 		Assert(def && IsA(def, DefElem));
@@ -527,6 +547,7 @@ void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest
 	ReleaseSysCache(tuple);
 	/* at end, close relation */
 	heap_close(rel, RowExclusiveLock);
+	PG_RETURN_BOOL(true);
 }
 
 void mgr_deplory(MGRDeplory *node, ParamListInfo params, DestReceiver *dest)

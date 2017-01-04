@@ -5326,10 +5326,16 @@ DATA(insert OID = 4933 (  mgr_add_node_func        PGNSP PGUID 12 10 400 0 0 f f
 DESCR("mgr add node");
 
 DATA(insert OID = 4934 (  mgr_drop_host_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 16 "16 2276" _null_ _null_ _null_ _null_ mgr_drop_host_func _null_ _null_ _null_ ));
-DESCR("mgr add host");
+DESCR("mgr drop host");
 
 DATA(insert OID = 4935 (  mgr_drop_node_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "16 18 2276" _null_ _null_ _null_ _null_ mgr_drop_node_func _null_ _null_ _null_ ));
-DESCR("mgr add node");
+DESCR("mgr drop node");
+
+DATA(insert OID = 4936 (  mgr_alter_host_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "16 2275 2276" _null_ _null_ _null_ _null_ mgr_alter_host_func _null_ _null_ _null_ ));
+DESCR("mgr alter host");
+
+DATA(insert OID = 4937 (  mgr_alter_node_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 4 0 16 "16 18 2275 2276" _null_ _null_ _null_ _null_ mgr_alter_node_func _null_ _null_ _null_ ));
+DESCR("mgr alter node");
 
 #endif
 

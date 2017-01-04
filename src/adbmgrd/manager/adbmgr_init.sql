@@ -1058,6 +1058,11 @@ mgr_drop_host_func(boolean,"any"),
 mgr_drop_node_func(boolean,"char","any")
 from public;
 
+--alter
+revoke execute on function
+mgr_alter_host_func(boolean, cstring, "any"),
+mgr_alter_node_func(boolean, "char", cstring, "any")
+from public;
 
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
