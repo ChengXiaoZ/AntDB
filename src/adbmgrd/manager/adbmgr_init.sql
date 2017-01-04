@@ -1046,6 +1046,12 @@ mgr_start_dn_slave("any"),
 mgr_start_dn_extra("any")
 from public;
 
+--add
+revoke execute on function
+mgr_add_host_func(boolean,cstring,"any"),
+mgr_add_node_func(boolean,"char",cstring,"any")
+from public;
+
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
 --insert into parm select '*', name, setting, unit, context, vartype,  min_val, max_val, enumvals from pg_settings order by 2;

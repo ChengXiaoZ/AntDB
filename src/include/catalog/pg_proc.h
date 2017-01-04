@@ -5319,6 +5319,11 @@ DESCR("mgr list access privileges all");
 DATA(insert OID = 4927 ( mgr_show_var_param      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{type,success,message}" _null_ mgr_show_var_param _null_ _null_ _null_ ));
 DESCR("mgr show nodename param");
 
+DATA(insert OID = 4932 (  mgr_add_host_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "16 2275 2276" _null_ _null_ _null_ _null_ mgr_add_host_func _null_ _null_ _null_ ));
+DESCR("mgr add host");
+
+DATA(insert OID = 4933 (  mgr_add_node_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 4 0 16 "16 18 2275 2276" _null_ _null_ _null_ _null_ mgr_add_node_func _null_ _null_ _null_ ));
+DESCR("mgr add node");
 
 #endif
 

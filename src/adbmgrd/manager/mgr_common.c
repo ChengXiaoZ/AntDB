@@ -577,3 +577,13 @@ void check_nodename_isvalid(char *nodename)
 	heap_endscan(rel_scan);
 	heap_close(rel, AccessShareLock);
 }
+
+bool mgr_has_function_privilege_name(char *funcname, char *priv_type)
+{
+    Datum aclresult;
+    aclresult = DirectFunctionCall2(has_function_privilege_name,
+                                    CStringGetTextDatum(funcname),
+                                    CStringGetTextDatum(priv_type));
+    return DatumGetBool(aclresult);
+}
+

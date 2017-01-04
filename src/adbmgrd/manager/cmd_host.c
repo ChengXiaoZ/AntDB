@@ -75,6 +75,23 @@ static void check_host_name_isvaild(List *host_name_list);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
+
+    if (mgr_has_priv_add())
+    {
+        DirectFunctionCall3(mgr_add_host_func, BoolGetDatum(node->if_not_exists),
+		                                  CStringGetDatum(node->name),
+		                                  PointerGetDatum(node->options));
+        return;
+    }
+    else
+    {
+        ereport(ERROR, (errmsg("permission denied")));
+        return ;
+    }
+}
+
+Datum mgr_add_host_func(PG_FUNCTION_ARGS)
+{
 	Relation rel;
 	HeapTuple tuple;
 	ListCell *lc;
@@ -93,19 +110,21 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 	struct sockaddr_in *sinp;
 	struct in_addr addr;
 	int ret;
-	Assert(node && node->name);
+    bool if_not_exists = PG_GETARG_BOOL(0);
+    char *hostname = PG_GETARG_CSTRING(1);
+    List *options = (List *)PG_GETARG_POINTER(2);
 
 	rel = heap_open(HostRelationId, RowExclusiveLock);
-	namestrcpy(&name, node->name);
+	namestrcpy(&name, hostname);
 	/* check exists */
 	if(SearchSysCacheExists1(HOSTHOSTNAME, NameGetDatum(&name)))
 	{
-		if(node->if_not_exists)
+		if(if_not_exists)
 		{
 			ereport(NOTICE,  (errcode(ERRCODE_DUPLICATE_OBJECT),
 				errmsg("host \"%s\" already exists, skipping", NameStr(name))));
 			heap_close(rel, RowExclusiveLock);
-			return;
+			PG_RETURN_BOOL(false);
 		}
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
 				, errmsg("host \"%s\" already exists", NameStr(name))));
@@ -116,7 +135,7 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 
 	/* name */
 	datum[Anum_mgr_host_hostname-1] = NameGetDatum(&name);
-	foreach(lc,node->options)
+	foreach(lc,options)
 	{
 		def = lfirst(lc);
 		Assert(def && IsA(def, DefElem));
@@ -261,6 +280,7 @@ void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 
 	/* at end, close relation */
 	heap_close(rel, RowExclusiveLock);
+    PG_RETURN_BOOL(true);
 }
 
 void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest)
