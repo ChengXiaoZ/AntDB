@@ -586,6 +586,7 @@ static void drop_hba_all_value(List *args_list, GetAgentCmdRst *err_msg)
 	Form_mgr_hba mgr_hba;	
 	char *coord_name;
 	bool is_exist = false;
+	bool tuple_exist = false;
 	List *name_list = NIL;
 	ListCell *lc_value, *lc_name;
 	/*Traverse all the coordinator in the node table*/
@@ -595,6 +596,7 @@ static void drop_hba_all_value(List *args_list, GetAgentCmdRst *err_msg)
 	{
 		mgr_hba = (Form_mgr_hba)GETSTRUCT(tuple);
 		Assert(mgr_hba);
+		tuple_exist = true;
 		coord_name = NameStr(mgr_hba->nodename);
 		is_exist = false;
 		foreach(lc_name, name_list)
@@ -610,6 +612,12 @@ static void drop_hba_all_value(List *args_list, GetAgentCmdRst *err_msg)
 	}
 	heap_endscan(rel_scan);
 	heap_close(rel, AccessShareLock);
+	if(false == tuple_exist)
+	{
+		appendStringInfo(&(err_msg->description), "%s", "Error: the hba talbe is empty.\n");
+		err_msg->ret = false;
+		return;
+	}
 	foreach(lc_name, name_list)
 	{
 		coord_name = lfirst(lc_name);
