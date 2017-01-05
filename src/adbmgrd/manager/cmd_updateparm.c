@@ -96,6 +96,27 @@ static void mgr_string_add_single_quota(Name value);
 */
 void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest)
 {
+	if (mgr_has_priv_set())
+	{
+		DirectFunctionCall7(mgr_add_updateparm_func,
+							CharGetDatum(node->parmtype),
+							CStringGetDatum(node->nodename),
+							CharGetDatum(node->nodetype),
+							CStringGetDatum(node->key),
+							CStringGetDatum(node->value),
+							BoolGetDatum(node->is_force),
+							PointerGetDatum(node->options));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS)
+{
 	Relation rel_updateparm;
 	Relation rel_parm;
 	Relation rel_node;
@@ -105,11 +126,22 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	bool bneednotice = true;
-	char nodetype;			/*master/slave/extra*/
-	Assert(node && node->nodename && node->nodetype && node->parmtype);
-	nodetype = node->nodetype;
+	char nodetype; /*master/slave/extra*/
+
+	MGRUpdateparm *parm_node;
+	parm_node = palloc(sizeof(*parm_node));
+	parm_node->parmtype = PG_GETARG_CHAR(0);
+	parm_node->nodename = PG_GETARG_CSTRING(1);
+	parm_node->nodetype = PG_GETARG_CHAR(2);
+	parm_node->key = PG_GETARG_CSTRING(3);
+	parm_node->value = PG_GETARG_CSTRING(4);
+	parm_node->is_force = PG_GETARG_BOOL(5);
+	parm_node->options = (List *)PG_GETARG_POINTER(6);
+
+	Assert(parm_node && parm_node->nodename && parm_node->nodetype && parm_node->parmtype);
+	nodetype = parm_node->nodetype;
 	/*nodename*/
-	namestrcpy(&nodename, node->nodename);
+	namestrcpy(&nodename, parm_node->nodename);
 	/*open systbl: mgr_parm*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
@@ -131,7 +163,7 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 				break;
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
-			mgr_add_givenname_updateparm(node, &(mgr_node->nodename), mgr_node->nodetype, rel_node, rel_updateparm, rel_parm, bneednotice);
+			mgr_add_givenname_updateparm(parm_node, &(mgr_node->nodename), mgr_node->nodetype, rel_node, rel_updateparm, rel_parm, bneednotice);
 			bneednotice = false;
 		}
 		heap_endscan(rel_scan);
@@ -140,15 +172,17 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 	else
 	{
 		bneednotice = true;
-		mgr_add_givenname_updateparm(node, &nodename, nodetype, rel_node, rel_updateparm, rel_parm, bneednotice);
+		mgr_add_givenname_updateparm(parm_node, &nodename, nodetype, rel_node, rel_updateparm, rel_parm, bneednotice);
 	}
 	/*close relation */
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel_parm, RowExclusiveLock);
 	heap_close(rel_node, RowExclusiveLock);
+	pfree(parm_node);
+	PG_RETURN_BOOL(true);
 }
 
-static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, char nodetype, Relation rel_node, Relation rel_updateparm, Relation rel_parm, bool bneednotice)
+static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename, char nodetype, Relation rel_node, Relation rel_updateparm, Relation rel_parm, bool bneednotice)
 {
 	HeapTuple newtuple;
 	Datum datum[Natts_mgr_updateparm];
@@ -167,7 +201,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 	StringInfoData paramstrdata;
 	bool isnull[Natts_mgr_updateparm];
 	bool bsighup = false;
-	char parmtype;			/*coordinator or datanode or gtm */
+	char parmtype; /*coordinator or datanode or gtm */
 	char *pvalue;
 	int insertparmstatus;
 	int effectparmstatus;
@@ -180,14 +214,14 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 		char value[namemaxlen];
 	};
 	struct keyvalue *key_value = NULL;
-	Assert(node && node->parmtype);
-	parmtype =  node->parmtype;
+	Assert(parm_node && parm_node->parmtype);
+	parmtype =  parm_node->parmtype;
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	initStringInfo(&enumvalue);
 
 	/*check the key and value*/
-	foreach(lc,node->options)
+	foreach(lc, parm_node->options)
 	{
 		def = lfirst(lc);
 		Assert(def && IsA(def, DefElem));
@@ -199,7 +233,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, cha
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
 		}
-		if (!node->is_force)
+		if (!parm_node->is_force)
 		{
 			/*check the parameter is right for the type node of postgresql.conf*/
 			resetStringInfo(&enumvalue);
