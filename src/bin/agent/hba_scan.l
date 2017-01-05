@@ -27,6 +27,8 @@ typedef enum HBA_SCAN_TOKEN
 	HBA_CONF_IPV4,
 	HBA_CONF_IPV6,
 	HBA_CONF_ID,
+	HBA_CONF_STRING,
+	HBA_CONF_UNQUOTED_STRING,
 
 	HBA_CONF_COMMENT,
 	HBA_CONF_EOL
@@ -49,6 +51,7 @@ static char *hba_lex_get_line(FILE *fp, Size *slen);
 static HbaInfo* hba_parse_line(yyscan_t scanner, char *line, Size slen, YY_BUFFER_STATE tmp_state);
 static void process_hba_type(int token, YYSTYPE *yysval, HbaInfo *info);
 static char* hba_lex_string(yyscan_t scanner, YYSTYPE *yysval);
+static char* hba_lex_db_user(yyscan_t scanner, YYSTYPE *yysval);
 
 %}
 
@@ -69,12 +72,12 @@ static char* hba_lex_string(yyscan_t scanner, YYSTYPE *yysval);
 DIGIT			[0-9]
 HEXDIGIT		[0-9a-fA-F]
 
-UNIT_LETTER		[a-z]
+UNIT_LETTER		[a-zA-Z]
 
 INTEGER			{DIGIT}+
 
-LETTER			[a-z_\200-\377]
-LETTER_OR_DIGIT [a-z_0-9\200-\377]
+LETTER			[A-Za-z_\200-\377]
+LETTER_OR_DIGIT [A-Za-z_0-9\200-\377]
 
 ID				{LETTER}{LETTER_OR_DIGIT}*
 
@@ -86,6 +89,8 @@ IP6RC		{IP6PART}:
 IP6LC		:{IP6PART}
 IP6FULL		{IP6RC}{7,7}{IP6PART}
 
+UNQUOTED_STRING {LETTER}({LETTER_OR_DIGIT}|[-._:/\*\$@%])*
+STRING			\'([^'\\\n#"]|\\.|\'\')*\'
 %%
 
 \n					hba_flex_file_no++; return HBA_CONF_EOL;
@@ -114,6 +119,9 @@ IP6FULL		{IP6RC}{7,7}{IP6PART}
 [lL][oO][cC][aA][lL]					return HBA_CONF_LOCAL;
 
 {ID}				return HBA_CONF_ID;
+
+{STRING}			return HBA_CONF_STRING;
+{UNQUOTED_STRING}	return HBA_CONF_UNQUOTED_STRING;
 
 .					return yytext[0];
 <<EOF>>				return HBA_CONF_EOL;
@@ -207,12 +215,12 @@ static HbaInfo* hba_parse_line(yyscan_t scanner, char *line, Size slen, YY_BUFFE
 	}
 
 	/* parse database */
-	info->database = hba_lex_string(scanner, &yysval);
+	info->database = hba_lex_db_user(scanner, &yysval);
 	info->db_loc = yysval.start;
 	info->db_len = yysval.length;
 
 	/* parse user */
-	info->user = hba_lex_string(scanner, &yysval);
+	info->user = hba_lex_db_user(scanner, &yysval);
 	info->user_loc = yysval.start;
 	info->user_len = yysval.length;
 
@@ -344,6 +352,26 @@ static char* hba_lex_string(yyscan_t scanner, YYSTYPE *yysval)
 	switch(token)
 	{
 	case HBA_CONF_INTEGER:
+	case HBA_CONF_COMMENT:
+	case HBA_CONF_EOL:
+		REPORT_HBA_LEX_ERROR(yysval);
+		return NULL;	/* keep compiler quiet */
+	default:
+		break;
+	}
+	result = pnstrdup(yysval->line + yysval->start, yysval->length);
+	return result;
+}
+
+static char* hba_lex_db_user(yyscan_t scanner, YYSTYPE *yysval)
+{
+	char *result;
+	int token;
+	AssertArg(scanner && yysval && yysval->line);
+
+	token = yylex(yysval, scanner);
+	switch(token)
+	{
 	case HBA_CONF_COMMENT:
 	case HBA_CONF_EOL:
 		REPORT_HBA_LEX_ERROR(yysval);
