@@ -5340,6 +5340,9 @@ DESCR("mgr alter node");
 DATA(insert OID = 4938 (  mgr_add_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 7 0 16 "18 2275 18 2275 2275 16 2276" _null_ _null_ _null_ _null_ mgr_add_updateparm_func _null_ _null_ _null_ ));
 DESCR("mgr set param");
 
+DATA(insert OID = 4939 (  mgr_reset_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 6 0 16 "18 2275 18 2275 16 2276" _null_ _null_ _null_ _null_ mgr_reset_updateparm_func _null_ _null_ _null_ ));
+DESCR("mgr reset param");
+
 #endif
 
 /*

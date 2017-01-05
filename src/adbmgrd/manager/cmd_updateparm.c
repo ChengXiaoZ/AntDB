@@ -1007,6 +1007,26 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
 */
 void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestReceiver *dest)
 {
+	if (mgr_has_priv_reset())
+	{
+		DirectFunctionCall6(mgr_reset_updateparm_func,
+							CharGetDatum(node->parmtype),
+							CStringGetDatum(node->nodename),
+							CharGetDatum(node->nodetype),
+							CStringGetDatum(node->key),
+							BoolGetDatum(node->is_force),
+							PointerGetDatum(node->options));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
+{
 	Relation rel_updateparm;
 	Relation rel_parm;
 	Relation rel_node;
@@ -1042,12 +1062,21 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	int vartype; /*the parm value type: bool, string, enum, int*/
 	Form_mgr_updateparm mgr_updateparm;
 
+	MGRUpdateparmReset *parm_node;
+	parm_node = palloc(sizeof(*parm_node));
+	parm_node->parmtype = PG_GETARG_CHAR(0);
+	parm_node->nodename = PG_GETARG_CSTRING(1);
+	parm_node->nodetype = PG_GETARG_CHAR(2);
+	parm_node->key = PG_GETARG_CSTRING(3);
+	parm_node->is_force = PG_GETARG_BOOL(4);
+	parm_node->options = (List *)PG_GETARG_POINTER(5);
+
 	initStringInfo(&enumvalue);
-	Assert(node && node->nodename && node->nodetype && node->parmtype);
-	nodetype = node->nodetype;
-	parmtype =  node->parmtype;
+	Assert(parm_node && parm_node->nodename && parm_node->nodetype && parm_node->parmtype);
+	nodetype = parm_node->nodetype;
+	parmtype =  parm_node->parmtype;
 	/*nodename*/
-	namestrcpy(&nodename, node->nodename);
+	namestrcpy(&nodename, parm_node->nodename);
 	
 	/*open systbl: mgr_parm*/
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
@@ -1060,7 +1089,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 
 	initStringInfo(&paramstrdata);
 	/*check the key*/
-	foreach(lc,node->options)
+	foreach(lc, parm_node->options)
 	{
 		def = lfirst(lc);
 		Assert(def && IsA(def, DefElem));
@@ -1071,7 +1100,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 				, errmsg("permission denied: \"%s\" shoule be modified in \"node\" table before init all, \nuse \"list node\" to get information", key.data)));
 		}
 		/*check the parameter is right for the type node of postgresql.conf*/
-		if (!node->is_force)
+		if (!parm_node->is_force)
 		{
 			resetStringInfo(&enumvalue);
 			mgr_check_parm_in_pgconf(rel_parm, parmtype, &key, &defaultvalue, &vartype, &parmunit, &parmmin, &parmmax, &effectparmstatus, &enumvalue, bneednotice);
@@ -1079,18 +1108,18 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 		if (PGC_SIGHUP == effectparmstatus)
 			bsighup = true;
 		/*get key, value to send string*/
-		if (!node->is_force)
+		if (!parm_node->is_force)
 			mgr_append_pgconf_paras_str_str(key.data, defaultvalue.data, &paramstrdata);
 		else
 			mgr_append_pgconf_paras_str_str(key.data, "force", &paramstrdata);
 	}
 	/*refresh param table*/
-	foreach(lc,node->options)
+	foreach(lc,parm_node->options)
 	{
 		def = lfirst(lc);
 		Assert(def && IsA(def, DefElem));
 		namestrcpy(&key, def->defname);
-		if (node->is_force)
+		if (parm_node->is_force)
 		{
 			/*use "none" to label the row is no use, just to show the node does not set this parameter in its postgresql.conf*/
 			namestrcpy(&defaultvalue, DEFAULT_VALUE);
@@ -1246,7 +1275,7 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	/*if the gtm/coordinator/datanode has inited, it will refresh the postgresql.conf of the node*/
 	if (bsighup)
 		effectparmstatus = PGC_SIGHUP;
-	if (!node->is_force)
+	if (!parm_node->is_force)
 		mgr_reload_parm(rel_node, nodename.data, nodetype, &paramstrdata, effectparmstatus, false);
 	else
 		mgr_reload_parm(rel_node, nodename.data, nodetype, &paramstrdata, PGC_POSTMASTER, true);
@@ -1255,7 +1284,9 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 	/*close relation */
 	heap_close(rel_updateparm, RowExclusiveLock);
 	heap_close(rel_parm, RowExclusiveLock);
-	heap_close(rel_node, RowExclusiveLock);	
+	heap_close(rel_node, RowExclusiveLock);
+	pfree(parm_node);
+	PG_RETURN_BOOL(true);
 }
 
 /*

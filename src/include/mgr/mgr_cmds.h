@@ -53,6 +53,7 @@ extern Datum mgr_drop_host_func(PG_FUNCTION_ARGS);
 extern Datum mgr_alter_host_func(PG_FUNCTION_ARGS);
 extern Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS);
 extern Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS);
+extern Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS);
 extern void mgr_stop_agent(MGRStopAgent *node,  ParamListInfo params, DestReceiver *dest);
 extern void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceiver *dest);
 extern int ssh2_start_agent(const char *hostname, 
@@ -156,6 +157,7 @@ extern bool mgr_has_priv_add(void);
 extern bool mgr_has_priv_drop(void);
 extern bool mgr_has_priv_alter(void);
 extern bool mgr_has_priv_set(void);
+extern bool mgr_has_priv_reset(void);
 
 extern void mgr_start_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple);
 extern List * get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo
