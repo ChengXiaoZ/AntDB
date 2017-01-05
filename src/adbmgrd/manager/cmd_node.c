@@ -4331,12 +4331,12 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 		if (!execok)
 			ereport(WARNING, (errmsg("create node on all coordinators fail %s", 
 				getAgentCmdRst.description.data)));
-		pfree(getAgentCmdRst.description.data);
 	}
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
+	pfree(getAgentCmdRst.description.data);
 }
 
 static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
@@ -4499,10 +4499,11 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	if (execok)
-		ereport(WARNING, (errmsg("dump input node info fail")));
+	if (!execok)
+		ereport(WARNING, (errmsg("dump input node info fail %s", getAgentCmdRst.description.data)));
 	ma_close(ma);
 	pfree(dn_master_addr);
+	pfree(getAgentCmdRst.description.data);
 }
 
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
