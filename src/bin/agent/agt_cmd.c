@@ -1063,7 +1063,7 @@ static void cmd_get_showparam_values(char cmdtype, StringInfo buf)
 	strcpy(portstr, rec_msg_string);
 	strcpy(param, rec_msg_string + strlen(portstr) + 1);
 	/*get param*/
-	appendStringInfo(&sqlstr, "select name, case when unit IS NULL  THEN case vartype when 'string' then quote_literal(setting) else setting end ELSE case unit  when '' then setting||unit else quote_literal(setting||unit) end  END from pg_settings where name like '%%%s%%' order by 1", param);
+	appendStringInfo(&sqlstr, "select name from pg_settings where name like '%%%s%%' order by 1", param);
 	if (AGT_CMD_SHOW_CNDN_PARAM == cmdtype)
 	{
 		pwd = getpwuid(getuid());
@@ -1101,9 +1101,12 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 	StringInfoData constr;
 	PGconn* conn;
 	PGresult *res;
+	PGresult *res_showall;
 	char *oneCoordValueStr = NULL;
 	int nrow = 0;
+	int nrow_all = 0;
 	int iloop = 0;
+	int jloop = 0;
 	
 	initStringInfo(&constr);
 	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
@@ -1117,8 +1120,6 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 		pfree(constr.data);
 		ereport(ERROR,
 		(errmsg("%s", PQerrorMessage(conn))));
-		/*PQfinish(conn);*/
-		/*return NULL;*/
 	}
 	res = PQexec(conn, sqlstr);
 	if(PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1127,11 +1128,9 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 		pfree(constr.data);
 		ereport(ERROR,
 		(errmsg("%s" , PQresultErrorMessage(res))));
-		/*PQclear(res);*/
-		/*return NULL;*/
 	}
 	/*check column number*/
-	Assert(2 == PQnfields(res));
+	Assert(1 == PQnfields(res));
 	/*get row num*/
 	nrow = PQntuples(res);
 	if (nrow)
@@ -1143,17 +1142,35 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 	{
 		strcat(oneCoordValueStr,"no parameter be found");
 	}
+	/* get "show all" result */
+	res_showall = PQexec(conn, "show all");
+	if(PQresultStatus(res_showall) != PGRES_TUPLES_OK)
+	{
+		PQfinish(conn);
+		pfree(constr.data);
+		ereport(ERROR,
+		(errmsg("%s" , PQresultErrorMessage(res_showall))));
+	}
+	nrow_all = PQntuples(res_showall);
+	Assert(nrow_all >= nrow);
 	for (iloop=0; iloop<nrow; iloop++)
 	{
-		strcat(oneCoordValueStr, PQgetvalue(res, iloop, 0 ));
-		strcat(oneCoordValueStr, " = ");
-		strcat(oneCoordValueStr, PQgetvalue(res, iloop, 1 ));
-		if(iloop != nrow-1)
-			strcat(oneCoordValueStr, "\t\n");
-		else
-			strcat(oneCoordValueStr, "\0");
+		for (jloop=0; jloop<nrow_all; jloop++)
+		{
+			if (strcmp(PQgetvalue(res, iloop, 0 ), PQgetvalue(res_showall, jloop, 0 )) != 0)
+				continue;
+			strcat(oneCoordValueStr, PQgetvalue(res_showall, jloop, 0 ));
+			strcat(oneCoordValueStr, " = ");
+			strcat(oneCoordValueStr, PQgetvalue(res_showall, jloop, 1 ));
+			if(iloop != nrow-1)
+				strcat(oneCoordValueStr, "\t\n");
+			else
+				strcat(oneCoordValueStr, "\0");
+			break;
+		}
 	}
 	PQclear(res);
+	PQclear(res_showall);
 	PQfinish(conn);
 	pfree(constr.data);
 	return oneCoordValueStr;
@@ -1169,7 +1186,6 @@ static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf)
 	char port[64];
 	char dbname[64];
 	char *address = "127.0.0.1";
-	char *valuestr;
 	int i = 0;
 	
 	initStringInfo(&output);
@@ -1210,17 +1226,7 @@ static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf)
 		}
 	}
 	/*get the sqlstring values*/
-	if (AGT_CMD_GET_EXPLAIN_STRINGVALUES == cmdtype)
-	{
-		valuestr = mgr_get_showparam(sqlstr.data, user, address, atoi(port), dbname);
-		if (valuestr)
-		{
-			appendStringInfo(&output, "%s", valuestr);
-			pfree(valuestr);
-		}
-	}
-	else
-		mgr_execute_sqlstring(user, atoi(port), address, dbname, sqlstr.data, &output);
+	mgr_execute_sqlstring(user, atoi(port), address, dbname, sqlstr.data, &output);
 	pfree(sqlstr.data);
 	if (output.len == 0)
 	{
