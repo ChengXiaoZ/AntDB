@@ -1719,7 +1719,6 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, getAgentCmdRst);
-	Assert(execok == getAgentCmdRst->ret);
 	ma_close(ma);
 	
 	if (AGT_CMD_GTM_SLAVE_INIT == cmdtype)
@@ -3732,7 +3731,6 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg, buf;
 	GetAgentCmdRst getAgentCmdRst;
-	bool execok;
 
 	initStringInfo(&sendstrmsg);
 	initStringInfo(&(getAgentCmdRst.description));
@@ -3779,8 +3777,7 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 		return;
 	}
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	mgr_recv_msg(ma, &getAgentCmdRst);
 	ma_close(ma);
 	if (!getAgentCmdRst.ret)
 		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
@@ -3923,111 +3920,7 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	heap_close(noderelation, AccessShareLock);
 	pfree(hostaddr);
 }
-/*
-static void mgr_alter_pgxc_node(PG_FUNCTION_ARGS, char *nodename, Oid nodehostoid, int32 nodeport)
-{
-	InitNodeInfo *info;
-	ScanKeyData key[2];
-	HeapTuple tuple;
-	ManagerAgent *ma;
-	Form_mgr_node mgr_node;
-	StringInfoData psql_cmd;
-	bool execok = false;
-	StringInfoData buf;
-	char *user = NULL;
-	char *address = NULL;
 
-	GetAgentCmdRst getAgentCmdRst;
-
-	initStringInfo(&(getAgentCmdRst.description));
-
-	ScanKeyInit(&key[0]
-				,Anum_mgr_node_nodename
-				,BTEqualStrategyNumber
-				,F_NAMEEQ
-				,CStringGetDatum(nodename));
-
-	ScanKeyInit(&key[1]
-				,Anum_mgr_node_nodeinited
-				,BTEqualStrategyNumber
-				,F_BOOLEQ
-				,BoolGetDatum(false));
-
-	info = palloc(sizeof(*info));
-	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
-	info->lcp = NULL;
-
-	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
-	if(tuple == NULL)
-	{
-*/		/* end of row */
-/*		heap_endscan(info->rel_scan);
-		heap_close(info->rel_node, AccessShareLock);
-		pfree(info);
-		return ;
-	}
-
-	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-	Assert(mgr_node);
-
-*/	/* connection agent */
-/*	ma = ma_connect_hostoid(mgr_node->nodehost);
-	if (!ma_isconnected(ma))
-	{
-*/		/* report error message */
-/*		getAgentCmdRst.ret = false;
-		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-		ma_close(ma);
-
-		heap_endscan(info->rel_scan);
-		heap_close(info->rel_node, AccessShareLock);
-		pfree(info);
-
-		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
-						get_hostname_from_hostoid(mgr_node->nodehost))));
-		return;
-	}
-
-	initStringInfo(&psql_cmd);
-	user = get_hostuser_from_hostoid(nodehostoid);
-	address = get_hostaddress_from_hostoid(nodehostoid);
-	appendStringInfo(&psql_cmd, " -h %s -p %u -d %s -U %s -a -c \""
-					,address
-					,nodeport
-					,DEFAULT_DB
-					,user);
-
-	appendStringInfo(&psql_cmd, " ALTER NODE \\\"%s\\\" WITH (TYPE = 'coordinator', HOST='%s', PORT=%d);"
-					,nodename
-					,address
-					,nodeport);
-	pfree(user);
-	pfree(address);
-	appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
-
-	ma_beginmessage(&buf, AGT_MSG_COMMAND);
-	ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
-	ma_sendstring(&buf, psql_cmd.data);
-	pfree(psql_cmd.data);
-	ma_endmessage(&buf, ma);
-
-	if (! ma_flush(ma, true))
-	{
-		getAgentCmdRst.ret = false;
-		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
-		ma_close(ma);
-	}
-
-*/	/*check the receive msg*/
-/*	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
-	ma_close(ma);
-	heap_endscan(info->rel_scan);
-	heap_close(info->rel_node, AccessShareLock);
-	pfree(info);
-}
-*/
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 {
 	InitNodeInfo *info;
@@ -4169,8 +4062,13 @@ void mgr_reload_conf(Oid hostoid, char *nodepath)
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg, buf;
 	GetAgentCmdRst getAgentCmdRst;
-	bool execok;
+	bool execok = false;
+	char *addr;
+	NameData hostaddr;
 
+	addr = get_hostname_from_hostoid(hostoid);
+	namestrcpy(&hostaddr, addr);
+	pfree(addr);
 	initStringInfo(&sendstrmsg);
 	initStringInfo(&(getAgentCmdRst.description));
 	appendStringInfo(&sendstrmsg, " reload -D %s", nodepath); /* pg_ctl reload -D pathdir */
@@ -4183,7 +4081,7 @@ void mgr_reload_conf(Oid hostoid, char *nodepath)
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
 		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
-						get_hostname_from_hostoid(hostoid))));
+						hostaddr.data)));
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -4201,8 +4099,13 @@ void mgr_reload_conf(Oid hostoid, char *nodepath)
 	}
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
 	ma_close(ma);
+	if (!execok)
+	{
+		ereport(WARNING, (errmsg("%s reload -D %s fail %s",
+			hostaddr.data, nodepath, getAgentCmdRst.description.data)));
+	}
+	pfree(getAgentCmdRst.description.data);
 }
 
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue)
@@ -4270,6 +4173,8 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 	GetAgentCmdRst getAgentCmdRst;
 	ManagerAgent *ma;
 	bool execok = false;
+	char *addr;
+	NameData hostaddr;
 
 	initStringInfo(&cmd_str);
 	initStringInfo(&buf);
@@ -4277,6 +4182,9 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 
 	appendStringInfo(&cmd_str, "rm -f %s", temp_file);
 
+	addr = get_hostname_from_hostoid(dnhostoid);
+	namestrcpy(&hostaddr, addr);
+	pfree(addr);
 	/* connection agent */
 	ma = ma_connect_hostoid(dnhostoid);
 	if (!ma_isconnected(ma))
@@ -4286,7 +4194,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
 		ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
-						get_hostname_from_hostoid(dnhostoid))));
+						hostaddr.data)));
 		return;
 	}
 
@@ -4306,8 +4214,11 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	if(!execok)
+		ereport(WARNING, (errmsg("%s rm -f %s fail %s", 
+			hostaddr.data, temp_file, getAgentCmdRst.description.data)));
 	ma_close(ma);
+	pfree(getAgentCmdRst.description.data);
 }
 
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *dnname, Oid dnhostoid, int32 dnport)
@@ -4416,8 +4327,11 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 
 		/*check the receive msg*/
 		execok = mgr_recv_msg(ma, &getAgentCmdRst);
-		Assert(execok == getAgentCmdRst.ret);
 		ma_close(ma);
+		if (!execok)
+			ereport(WARNING, (errmsg("create node on all coordinators fail %s", 
+				getAgentCmdRst.description.data)));
+		pfree(getAgentCmdRst.description.data);
 	}
 
 	heap_endscan(info->rel_scan);
@@ -4431,7 +4345,6 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 	StringInfoData buf;
 	GetAgentCmdRst getAgentCmdRst;
 	ManagerAgent *ma;
-	bool execok = false;
 
 	initStringInfo(&start_cmd);
 	initStringInfo(&buf);
@@ -4488,8 +4401,7 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 	}
 
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	mgr_recv_msg(ma, &getAgentCmdRst);
 	ma_close(ma);
 	if (!getAgentCmdRst.ret)
 		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
@@ -4501,7 +4413,6 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 	StringInfoData buf;
 	GetAgentCmdRst getAgentCmdRst;
 	ManagerAgent *ma;
-	bool execok = false;
 
 	initStringInfo(&stop_cmd);
 	initStringInfo(&buf);
@@ -4537,10 +4448,8 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid)
 	}
 
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	mgr_recv_msg(ma, &getAgentCmdRst);
 	ma_close(ma);
-
 	if (!getAgentCmdRst.ret)
 		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
@@ -4590,7 +4499,8 @@ static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_ma
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	if (execok)
+		ereport(WARNING, (errmsg("dump input node info fail")));
 	ma_close(ma);
 	pfree(dn_master_addr);
 }
@@ -4601,7 +4511,6 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 	StringInfoData buf;
 	GetAgentCmdRst getAgentCmdRst;
 	ManagerAgent *ma;
-	bool execok = false;
 
 	initStringInfo(&start_cmd);
 	initStringInfo(&buf);
@@ -4637,8 +4546,7 @@ static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid)
 	}
 
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	mgr_recv_msg(ma, &getAgentCmdRst);
 	ma_close(ma);
 
 	if (!getAgentCmdRst.ret)
@@ -4651,7 +4559,6 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *t
 	StringInfoData buf;
 	GetAgentCmdRst getAgentCmdRst;
 	ManagerAgent *ma;
-	bool execok = false;
 	char * hostaddr;
 
 	initStringInfo(&pg_dumpall_cmd);
@@ -4689,8 +4596,7 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *t
 	}
 
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	mgr_recv_msg(ma, &getAgentCmdRst);
 	ma_close(ma);
 	pfree(hostaddr);
 
@@ -4988,7 +4894,6 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 	ManagerAgent *ma;
 	StringInfoData buf;
 	GetAgentCmdRst getAgentCmdRst;
-	bool execok = false;
 
 	initStringInfo(&infosendmsg);
 	initStringInfo(&(getAgentCmdRst.description));
@@ -5025,8 +4930,7 @@ static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
 	}
 
 	/*check the receive msg*/
-	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	mgr_recv_msg(ma, &getAgentCmdRst);
 	ma_close(ma);
 
 	if (!getAgentCmdRst.ret)
@@ -5397,13 +5301,16 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 
 	/*check the receive msg*/
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
-	Assert(execok == getAgentCmdRst.ret);
+	if (!execok)
+		ereport(WARNING, (errmsg("config all, create node on all coordinators fail %s", 
+				getAgentCmdRst.description.data)));
 	func_end:
 		tup_result = build_common_command_tuple( &(getAgentCmdRst.nodename)
 				,getAgentCmdRst.ret
 				,getAgentCmdRst.ret == true ? "success":getAgentCmdRst.description.data);
 
 	ma_close(ma);
+	pfree(getAgentCmdRst.description.data);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));	
 }
 
@@ -7127,7 +7034,6 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 	HeapScanDesc scan;
 	HeapTuple tup, temp_tuple;
 	Form_mgr_node mgr_node;
-	Form_mgr_host mgr_host;
 	ListCell *lc_out, *lc_in, *cn_lc, *dn_lc;
 	Datum host_addr;
 	char *host_address;
@@ -7148,8 +7054,6 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);	
 	while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{	
-		mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-		Assert(mgr_host);
 		host_addr = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(rel), &isNull);
 		host_address = pstrdup(TextDatumGetCString(host_addr));
 		if(isNull)
@@ -7481,7 +7385,6 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 	if(PointerIsValid(prefer_cndn->coordiantor_list))
 	{
 		execok = mgr_recv_msg(ma, getAgentCmdRst);
-		Assert(execok == getAgentCmdRst->ret);
 		if(execok != true)
 		{
 			result = false;
@@ -7831,6 +7734,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 		{
 			/* report error message */	
 			ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));
+			ma_close(ma);
 			break;
 		}
 		ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -7839,11 +7743,13 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 		ma_endmessage(&buf, ma);
 		if (! ma_flush(ma, true))
 		{
-			ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));			
+			ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));
+			ma_close(ma);
 			break;
 		}
 		resetStringInfo(&getAgentCmdRst.description);
 		execok = mgr_recv_msg(ma, &getAgentCmdRst);
+		ma_close(ma);
 		if (!execok)
 		{
 			address = get_hostaddress_from_hostoid(mgr_node->nodehost);
@@ -8092,6 +7998,7 @@ static void mgr_check_all_agent(void)
 		{
 			heap_endscan(rel_scan);
 			heap_close(rel_host, AccessShareLock);
+			ma_close(ma);
 			ereport(ERROR, (errmsg("hostname \"%s\" : agent is not running", NameStr(mgr_host->hostname))));
 		}
 		ma_close(ma);
@@ -8157,6 +8064,7 @@ static void mgr_add_extension(char *sqlstr)
 		heap_endscan(rel_scan);
 		heap_close(rel_node, RowExclusiveLock);
 		ereport(WARNING, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
+		ma_close(ma);
 		return;
 	}
 	initStringInfo(&buf);
@@ -8170,6 +8078,7 @@ static void mgr_add_extension(char *sqlstr)
 		heap_endscan(rel_scan);
 		heap_close(rel_node, RowExclusiveLock);
 		ereport(WARNING, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
+		ma_close(ma);
 		return;
 	}
 	getAgentCmdRst.ret = false;
@@ -8181,6 +8090,7 @@ static void mgr_add_extension(char *sqlstr)
 		ereport(WARNING, (errmsg(" %s %s:  %s fail, %s", address, NameStr(mgr_node->nodename), sqlstr, getAgentCmdRst.description.data)));
 		pfree(address);
 	}
+	ma_close(ma);
 	pfree(getAgentCmdRst.description.data);
 	heap_endscan(rel_scan);
 	heap_close(rel_node, RowExclusiveLock);
