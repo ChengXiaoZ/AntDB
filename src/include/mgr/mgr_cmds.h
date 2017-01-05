@@ -47,11 +47,16 @@ typedef struct Monitor_Threshold
 extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest);
-extern void mgr_deplory(MGRDeplory *node,  ParamListInfo params, DestReceiver *dest);
+
 extern Datum mgr_start_agent_all(PG_FUNCTION_ARGS);
+extern Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS);
+
+extern Datum mgr_deploy_all(PG_FUNCTION_ARGS);
+extern Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS);
+
 extern Datum mgr_drop_host_func(PG_FUNCTION_ARGS);
 extern Datum mgr_alter_host_func(PG_FUNCTION_ARGS);
-extern Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS);
+
 extern Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS);
 extern Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS);
 extern void mgr_stop_agent(MGRStopAgent *node,  ParamListInfo params, DestReceiver *dest);

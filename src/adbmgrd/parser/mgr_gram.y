@@ -2211,16 +2211,20 @@ opt_general_force:
 DeploryStmt:
 	  DEPLOY ALL opt_password
 		{
-			MGRDeplory *stmt = makeNode(MGRDeplory);
-			stmt->hosts = NIL;
-			stmt->password = $3;
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_deploy_all", args));
 			$$ = (Node*)stmt;
 		}
-	| DEPLOY ObjList opt_password
+	| DEPLOY hostname_list opt_password
 		{
-			MGRDeplory *stmt = makeNode(MGRDeplory);
-			stmt->hosts = $2;
-			stmt->password = $3;
+			SelectStmt *stmt = makeNode(SelectStmt);
+			Node *password = makeStringConst($3, -1);
+			Node *hostnames = makeAArrayExpr($2, @2);
+			List *args = list_make2(password, hostnames);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_deploy_hostnamelist", args));
 			$$ = (Node*)stmt;
 		}
 	;

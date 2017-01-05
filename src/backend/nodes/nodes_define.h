@@ -4120,13 +4120,6 @@ BEGIN_NODE(MGRDropNode)
 END_NODE(MGRDropNode)
 #endif /* NO_NODE_MGRDropNode */
 
-#ifndef NO_NODE_MGRDeplory
-BEGIN_NODE(MGRDeplory)
-	NODE_NODE(List, hosts)
-	NODE_STRING(password)
-END_NODE(MGRDeplory)
-#endif /* NO_NODE_MGRDeplory */
-
 #ifndef NO_NODE_MGRUpdateparm
 BEGIN_NODE(MGRUpdateparm)
 	NODE_SCALAR(char, parmtype)

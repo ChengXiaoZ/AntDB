@@ -61,6 +61,12 @@ typedef struct InitHostInfo
 	ListCell  **lcp;
 }InitHostInfo;
 
+typedef struct InitDeployInfo
+{
+	Relation rel_host;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitDeployInfo;
 
 #if (Natts_mgr_host != 7)
 #error "need change code"
@@ -550,100 +556,169 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
-void mgr_deplory(MGRDeplory *node, ParamListInfo params, DestReceiver *dest)
+Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 {
+	InitDeployInfo *info = NULL;
+	FuncCallContext *funcctx = NULL;
 	FILE volatile *tar = NULL;
 	HeapTuple tuple;
 	HeapTuple out;
-	TupleTableSlot *slot;
 	Form_mgr_host host;
-	TupleDesc desc;
-	MemoryContext context;
-	MemoryContext oldcontext;
-	Relation rel;
+	char *str_addr;
+	Datum datum;
+	bool isnull = false;
+	bool success = false;
+	char *password = PG_GETARG_CSTRING(0);
 	StringInfoData buf;
-	bool success;
-	HeapScanDesc scan;
-	AssertArg(node && dest);
 
-	context = AllocSetContextCreate(CurrentMemoryContext, "deplory"
-					, ALLOCSET_DEFAULT_MINSIZE
-					, ALLOCSET_DEFAULT_INITSIZE
-					, ALLOCSET_DEFAULT_MAXSIZE);
-	desc = get_common_command_tuple_desc();
-	(*dest->rStartup)(dest, CMD_UTILITY, desc);
-	slot = MakeSingleTupleTableSlot(desc);
 	initStringInfo(&buf);
-	oldcontext = CurrentMemoryContext;
-	PG_TRY();
+
+	if (SRF_IS_FIRSTCALL())
 	{
-		if(node->hosts == NIL)
-		{
-			rel = heap_open(HostRelationId, AccessShareLock);
-			scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
-			while((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-			{
-				host = (Form_mgr_host)GETSTRUCT(tuple);
-				if(tar == NULL)
-					tar = make_tar_package();
-				resetStringInfo(&buf);
-				MemoryContextSwitchTo(context);
-				MemoryContextResetAndDeleteChildren(context);
-				success = deploy_to_host((FILE*)tar, RelationGetDescr(rel), tuple, &buf, node->password);
-				out = build_common_command_tuple(&host->hostname, success, buf.data);
-				ExecClearTuple(slot);
-				ExecStoreTuple(out, slot, InvalidBuffer, false);
-				MemoryContextSwitchTo(oldcontext);
-				(*dest->receiveSlot)(slot, dest);
-			}
-			heap_endscan(scan);
-			heap_close(rel, AccessShareLock);
-		}else
-		{
-			ListCell *lc;
-			Value *value;
-			TupleDesc host_desc;
-			NameData name;
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-			check_host_name_isvaild(node->hosts);
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
 
-			rel = heap_open(HostRelationId, AccessShareLock);
-			host_desc = CreateTupleDescCopy(RelationGetDescr(rel));
-			heap_close(rel, AccessShareLock);
-			foreach(lc, node->hosts)
-			{
-				value = lfirst(lc);
-				Assert(value && IsA(value, String));
-				namestrcpy(&name, strVal(value));
-				tuple = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
-				resetStringInfo(&buf);
-				if(HeapTupleIsValid(tuple))
-				{
-					if(tar == NULL)
-						tar = make_tar_package();
-					success = deploy_to_host((FILE*)tar, host_desc, tuple, &buf, node->password);
-					ReleaseSysCache(tuple);
-				}
+		info->rel_scan = heap_beginscan(info->rel_host,SnapshotNow,0,NULL);
+		info->lcp = NULL;
 
-				MemoryContextSwitchTo(context);
-				MemoryContextResetAndDeleteChildren(context);
-				out = build_common_command_tuple(&name, success, buf.data);
-				ExecClearTuple(slot);
-				ExecStoreTuple(out, slot, InvalidBuffer, false);
-				MemoryContextSwitchTo(oldcontext);
-				(*dest->receiveSlot)(slot, dest);
-			}
-			FreeTupleDesc(host_desc);
-		}
-	}PG_CATCH();
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	tuple = heap_getnext(info->rel_scan,ForwardScanDirection);
+	if (tuple == NULL)
 	{
-		if(tar != NULL)
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		if(tar)
 			fclose((FILE*)tar);
-		PG_RE_THROW();
-	}PG_END_TRY();
-	(*dest->rShutdown)(dest);
-	if(tar)
-		fclose((FILE*)tar);
+
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	host = (Form_mgr_host)GETSTRUCT(tuple);
+	if(tar == NULL)
+		tar = make_tar_package();
+
+	resetStringInfo(&buf);
+	success = deploy_to_host((FILE*)tar, RelationGetDescr(info->rel_host), tuple, &buf, password);
+
+	datum = heap_getattr(tuple, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isnull);
+	if(isnull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errmsg("column hostaddr is null")));
+	}
+	str_addr = TextDatumGetCString(datum);
+	if (success && !(host_is_localhost(str_addr)))
+		appendStringInfo(&buf, "success");
+
+	out = build_common_command_tuple(&host->hostname, success, buf.data);
+
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(out));
+}
+
+Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
+{
+	InitDeployInfo *info = NULL;
+	FuncCallContext *funcctx = NULL;
+	ListCell **lcp = NULL;
+	FILE volatile *tar = NULL;
+	HeapTuple out;
+	Value *hostname;
+	bool success = false;
+	HeapTuple tuple;
+	char *password = PG_GETARG_CSTRING(0);
+	List *hostname_list = NIL;
+	NameData name;
+	char *str_addr;
+	Datum datum;
+	bool isnull = false;
+	StringInfoData buf;
+
+	initStringInfo(&buf);
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+		info = palloc(sizeof(*info));
+		info->rel_host = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
+
+		hostname_list = DecodeTextArrayToValueList(PG_GETARG_DATUM(1));
+		check_host_name_isvaild(hostname_list);
+
+		*(info->lcp) = list_head(hostname_list);
+		funcctx->user_fctx = info;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	lcp = info->lcp;
+	if (*lcp == NULL)
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		if(tar)
+			fclose((FILE*)tar);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	resetStringInfo(&buf);
+
+	hostname = (Value *)lfirst(*lcp);
+	*lcp = lnext(*lcp);
+
+	namestrcpy(&name, strVal(hostname));
+	tuple = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&name));
+	if (tuple == NULL)
+	{
+		/* end of row */
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_host, AccessShareLock);
+		pfree(info);
+		ReleaseSysCache(tuple);
+		SRF_RETURN_DONE(funcctx);
+	}
+
+	if(tar == NULL)
+		tar = make_tar_package();
+	success = deploy_to_host((FILE*)tar, RelationGetDescr(info->rel_host), tuple, &buf, password);
+
+	datum = heap_getattr(tuple, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isnull);
+	if(isnull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errmsg("column hostaddr is null")));
+	}
+	str_addr = TextDatumGetCString(datum);
+	if (success && !(host_is_localhost(str_addr)))
+		appendStringInfo(&buf, "success");
+
+	out = build_common_command_tuple(&name, success, buf.data);
+
+	ReleaseSysCache(tuple);
+	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(out));
 }
 
 static FILE* make_tar_package(void)

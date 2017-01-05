@@ -476,7 +476,6 @@ typedef enum NodeTag
 	,T_MGRAlterNode
 	,T_MGRDropNode
 	,T_MGRListNode
-	,T_MGRDeplory
 	,T_MGRUpdateparm
 	,T_MGRUpdateparmReset
 	,T_MGRShowParam

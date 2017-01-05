@@ -5343,6 +5343,12 @@ DESCR("mgr set param");
 DATA(insert OID = 4939 (  mgr_reset_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 6 0 16 "18 2275 18 2275 16 2276" _null_ _null_ _null_ _null_ mgr_reset_updateparm_func _null_ _null_ _null_ ));
 DESCR("mgr reset param");
 
+DATA(insert OID = 4940 ( mgr_deploy_all      PGNSP PGUID 12 10 400 0 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_deploy_all _null_ _null_ _null_ ));
+DESCR("start agent all");
+
+DATA(insert OID = 4941 ( mgr_deploy_hostnamelist      PGNSP PGUID 12 10 400 0 0 f f f f f t s 2 0 2249 "2275 1009" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_deploy_hostnamelist _null_ _null_ _null_ ));
+DESCR("start agent hostlist");
+
 #endif
 
 /*

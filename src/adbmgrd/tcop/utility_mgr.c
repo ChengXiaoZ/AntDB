@@ -32,9 +32,6 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRDropNode:
 		tag = "DROP NODE";
 		break;
-	case T_MGRDeplory:
-		tag = "DEPLORY";
-		break;
 	case T_MGRUpdateparm:
 		tag = "SET PARAM";
 		break;
@@ -77,9 +74,6 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRDropNode:
 		mgr_drop_node((MGRDropNode*)parsetree, params, dest);
-		break;
-	case T_MGRDeplory:
-		mgr_deplory((MGRDeplory*)parsetree, params, dest);
 		break;
 	case T_MGRUpdateparm:
 		mgr_add_updateparm((MGRUpdateparm*)parsetree, params, dest);
