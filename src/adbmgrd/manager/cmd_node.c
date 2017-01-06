@@ -9029,7 +9029,12 @@ static char *get_username_list_str(List *username_list)
 		username = lfirst(lc);
 		Assert(username && IsA(username, String));
 
+		/* add double quotes for the user name */
+		/* in order to make the user name in digital or pure digital effective */
+		appendStringInfoChar(&username_list_str, '"');
 		appendStringInfoString(&username_list_str, strVal(username));
+		appendStringInfoChar(&username_list_str, '"');
+
 		appendStringInfoChar(&username_list_str, ',');
 	}
 
