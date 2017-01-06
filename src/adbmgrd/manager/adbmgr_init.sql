@@ -1107,6 +1107,10 @@ mgr_stop_dn_extra_f("any"),
 mgr_stop_dn_extra_i("any")
 from public;
 
+--flush host
+revoke execute on function mgr_flush_host() from public;
+
+
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
 --insert into parm select '*', name, setting, unit, context, vartype,  min_val, max_val, enumvals from pg_settings order by 2;

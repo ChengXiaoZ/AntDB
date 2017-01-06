@@ -125,6 +125,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
 static char *get_username_list_str(List *user_list);
+static void mgr_manage_flush(char command_type, char *user_list_str);
 static void mgr_manage_stop_func(StringInfo commandsql);
 static void mgr_manage_stop_view(StringInfo commandsql);
 static void mgr_manage_stop(char command_type, char *user_list_str);
@@ -147,6 +148,7 @@ static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 static List *get_username_list(void);
 static void mgr_get_acl_by_username(char *username, StringInfo acl);
+static bool mgr_acl_flush(char *username);
 static bool mgr_acl_stop(char *username);
 static bool mgr_acl_deploy(char *username);
 static bool mgr_acl_reset(char *username);
@@ -8144,6 +8146,8 @@ Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 			mgr_manage_drop(command_type, username_list_str);
 		else if (strcmp(strVal(command), "failover") == 0)
 			mgr_manage_failover(command_type, username_list_str);
+		else if (strcmp(strVal(command), "flush") == 0)
+			mgr_manage_flush(command_type, username_list_str);
 		else if (strcmp(strVal(command), "init") == 0)
 			mgr_manage_init(command_type, username_list_str);
 		else if (strcmp(strVal(command), "list") == 0)
@@ -8202,6 +8206,7 @@ static void mgr_priv_all(char command_type, char *username_list_str)
 	mgr_manage_deploy(command_type, username_list_str);
 	mgr_manage_drop(command_type, username_list_str);
 	mgr_manage_failover(command_type, username_list_str);
+	mgr_manage_flush(command_type, username_list_str);
 	mgr_manage_init(command_type, username_list_str);
 	mgr_manage_list(command_type, username_list_str);
 	mgr_manage_monitor(command_type, username_list_str);
@@ -8259,6 +8264,8 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 			mgr_manage_drop(command_type, username_list_str);
 		else if (strcmp(strVal(command), "failover") == 0)
 			mgr_manage_failover(command_type, username_list_str);
+		else if (strcmp(strVal(command), "flush") == 0)
+			mgr_manage_flush(command_type, username_list_str);
 		else if (strcmp(strVal(command), "init") == 0)
 			mgr_manage_init(command_type, username_list_str);
 		else if (strcmp(strVal(command), "list") == 0)
@@ -8283,6 +8290,42 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
 	else
 		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_manage_flush(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant execute on function func_name [, ...] to user_name [, ...] */
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_flush_host() ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIV_REVOKE)
+	{
+		/*revoke execute on function func_name [, ...] from user_name [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_flush_host() ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
 }
 
 static void mgr_manage_stop_func(StringInfo commandsql)
@@ -9014,6 +9057,7 @@ static void mgr_check_command_valid(List *command_list)
 			strcmp(command_str, "deploy") == 0   ||
 			strcmp(command_str, "drop") == 0     ||
 			strcmp(command_str, "failover") == 0 ||
+            strcmp(command_str, "flush") == 0    ||
 			strcmp(command_str, "init") == 0     ||
 			strcmp(command_str, "list") == 0     ||
 			strcmp(command_str, "monitor") == 0  ||
@@ -9138,6 +9182,9 @@ static void mgr_get_acl_by_username(char *username, StringInfo acl)
 	if (mgr_acl_failover(username))
 		appendStringInfo(acl, "failover ");
 
+	if (mgr_acl_flush(username))
+		appendStringInfo(acl, "flush ");
+
 	if (mgr_acl_init(username))
 		appendStringInfo(acl, "init ");
 
@@ -9163,6 +9210,11 @@ static void mgr_get_acl_by_username(char *username, StringInfo acl)
 		appendStringInfo(acl, "stop ");
 
 	return;
+}
+
+static bool mgr_acl_flush(char *username)
+{
+	return mgr_has_func_priv(username, "mgr_flush_host()", "execute");
 }
 
 static bool mgr_acl_stop(char *username)
