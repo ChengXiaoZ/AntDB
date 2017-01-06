@@ -143,7 +143,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				ListParmStmt StartAgentStmt AddNodeStmt StopAgentStmt
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
-				MonitorStmt FailoverStmt ConfigAllStmt DeploryStmt
+				MonitorStmt FailoverStmt /* ConfigAllStmt */ DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
@@ -179,7 +179,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword> PASSWORD CLEAN RESET WHERE ROW_ID
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
-%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
+%token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 %token<keyword> GRANT REVOKE FROM
 
 /* for ADB monitor*/
@@ -240,7 +240,7 @@ stmt :
 	| StartNodeMasterStmt
 	| StopNodeMasterStmt
 	| FailoverStmt
-	| ConfigAllStmt
+/*	| ConfigAllStmt */
 	| DeploryStmt
 	| Gethostparm     /* for ADB monitor host page */
 	| Gettopologyparm /* for ADB monitor home page */
@@ -604,14 +604,15 @@ Get_host_threshold:
 		}
 		;
 
-ConfigAllStmt:
-		CONFIG ALL
-		{
-            SelectStmt *stmt = makeNode(SelectStmt);
-            stmt->targetList = list_make1(make_star_target(-1));
-            stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_configure_nodes_all", NULL));
-            $$ = (Node*)stmt;
-		};
+/*ConfigAllStmt:
+ *	CONFIG ALL
+ *	{
+ *		SelectStmt *stmt = makeNode(SelectStmt);
+ *		stmt->targetList = list_make1(make_star_target(-1));
+ *		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_configure_nodes_all", NULL));
+ *		$$ = (Node*)stmt;
+ *	};
+ */
 
 MonitorStmt:
 		MONITOR opt_general_all
@@ -2422,7 +2423,7 @@ unreserved_keyword:
 	| CHECK_PASSWORD
 	| CHECK_USER
 	| CLEAN
-	| CONFIG
+/*	| CONFIG */
 	| COORDINATOR
 	| DATANODE
 	| DEPLOY
