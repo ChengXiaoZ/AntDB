@@ -125,6 +125,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 static void mgr_check_all_agent(void);
 static void mgr_add_extension(char *sqlstr);
 static char *get_username_list_str(List *user_list);
+static void mgr_manage_deploy(char command_type, char *user_list_str);
 static void mgr_manage_reset(char command_type, char *user_list_str);
 static void mgr_manage_set(char command_type, char *user_list_str);
 static void mgr_manage_alter(char command_type, char *user_list_str);
@@ -143,6 +144,7 @@ static void mgr_check_command_valid(List *command_list);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 static List *get_username_list(void);
 static void mgr_get_acl_by_username(char *username, StringInfo acl);
+static bool mgr_acl_deploy(char *username);
 static bool mgr_acl_reset(char *username);
 static bool mgr_acl_set(char *username);
 static bool mgr_acl_alter(char *username);
@@ -8124,32 +8126,34 @@ Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 		command = lfirst(lc);
 		Assert(command && IsA(command, String));
 
-		if (strcmp(strVal(command), "init") == 0)
-			mgr_manage_init(command_type, username_list_str);
+		if (strcmp(strVal(command), "add") == 0)
+			mgr_manage_add(command_type, username_list_str);
+		else if (strcmp(strVal(command), "alter") == 0)
+			mgr_manage_alter(command_type, username_list_str);
 		else if (strcmp(strVal(command), "append") == 0)
 			mgr_manage_append(command_type, username_list_str);
-		else if (strcmp(strVal(command), "failover") == 0)
-			mgr_manage_failover(command_type, username_list_str);
 		else if (strcmp(strVal(command), "clean") == 0)
 			mgr_manage_clean(command_type, username_list_str);
+		else if (strcmp(strVal(command), "deploy") == 0)
+			mgr_manage_deploy(command_type, username_list_str);
+		else if (strcmp(strVal(command), "drop") == 0)
+			mgr_manage_drop(command_type, username_list_str);
+		else if (strcmp(strVal(command), "failover") == 0)
+			mgr_manage_failover(command_type, username_list_str);
+		else if (strcmp(strVal(command), "init") == 0)
+			mgr_manage_init(command_type, username_list_str);
 		else if (strcmp(strVal(command), "list") == 0)
 			mgr_manage_list(command_type, username_list_str);
 		else if (strcmp(strVal(command), "monitor") == 0)
 			mgr_manage_monitor(command_type, username_list_str);
+		else if (strcmp(strVal(command), "reset") == 0)
+			mgr_manage_reset(command_type, username_list_str);
+		else if (strcmp(strVal(command), "set") == 0)
+			mgr_manage_set(command_type, username_list_str);
 		else if (strcmp(strVal(command), "show") == 0)
 			mgr_manage_show(command_type, username_list_str);
 		else if (strcmp(strVal(command), "start") == 0)
 			mgr_manage_start(command_type, username_list_str);
-		else if (strcmp(strVal(command), "add") == 0)
-			mgr_manage_add(command_type, username_list_str);
-		else if (strcmp(strVal(command), "drop") == 0)
-			mgr_manage_drop(command_type, username_list_str);
-		else if (strcmp(strVal(command), "alter") == 0)
-			mgr_manage_alter(command_type, username_list_str);
-		else if (strcmp(strVal(command), "set") == 0)
-			mgr_manage_set(command_type, username_list_str);
-		else if (strcmp(strVal(command), "reset") == 0)
-			mgr_manage_reset(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8185,19 +8189,20 @@ Datum mgr_priv_all_to_username(PG_FUNCTION_ARGS)
 
 static void mgr_priv_all(char command_type, char *username_list_str)
 {
-	mgr_manage_init(command_type, username_list_str);
+	mgr_manage_add(command_type, username_list_str);
+	mgr_manage_alter(command_type, username_list_str);
 	mgr_manage_append(command_type, username_list_str);
-	mgr_manage_failover(command_type, username_list_str);
 	mgr_manage_clean(command_type, username_list_str);
+	mgr_manage_deploy(command_type, username_list_str);
+	mgr_manage_drop(command_type, username_list_str);
+	mgr_manage_failover(command_type, username_list_str);
+	mgr_manage_init(command_type, username_list_str);
 	mgr_manage_list(command_type, username_list_str);
 	mgr_manage_monitor(command_type, username_list_str);
+	mgr_manage_reset(command_type, username_list_str);
+	mgr_manage_set(command_type, username_list_str);
 	mgr_manage_show(command_type, username_list_str);
 	mgr_manage_start(command_type, username_list_str);
-	mgr_manage_add(command_type, username_list_str);
-	mgr_manage_drop(command_type, username_list_str);
-	mgr_manage_alter(command_type, username_list_str);
-	mgr_manage_set(command_type, username_list_str);
-	mgr_manage_reset(command_type, username_list_str);
 
 	return;
 }
@@ -8233,32 +8238,34 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 		command = lfirst(lc);
 		Assert(command && IsA(command, String));
 
-		if (strcmp(strVal(command), "init") == 0)
-			mgr_manage_init(command_type, username_list_str);
+		if (strcmp(strVal(command), "add") == 0)
+			mgr_manage_add(command_type, username_list_str);
+		else if (strcmp(strVal(command), "alter") == 0)
+			mgr_manage_alter(command_type, username_list_str);
 		else if (strcmp(strVal(command), "append") == 0)
 			mgr_manage_append(command_type, username_list_str);
-		else if (strcmp(strVal(command), "failover") == 0)
-			mgr_manage_failover(command_type, username_list_str);
 		else if (strcmp(strVal(command), "clean") == 0)
 			mgr_manage_clean(command_type, username_list_str);
+		else if (strcmp(strVal(command), "deploy") == 0)
+			mgr_manage_deploy(command_type, username_list_str);
+		else if (strcmp(strVal(command), "drop") == 0)
+			mgr_manage_drop(command_type, username_list_str);
+		else if (strcmp(strVal(command), "failover") == 0)
+			mgr_manage_failover(command_type, username_list_str);
+		else if (strcmp(strVal(command), "init") == 0)
+			mgr_manage_init(command_type, username_list_str);
 		else if (strcmp(strVal(command), "list") == 0)
 			mgr_manage_list(command_type, username_list_str);
 		else if (strcmp(strVal(command), "monitor") == 0)
 			mgr_manage_monitor(command_type, username_list_str);
-        else if (strcmp(strVal(command), "show") == 0)
-			mgr_manage_show(command_type, username_list_str);
-        else if (strcmp(strVal(command), "start") == 0)
-			mgr_manage_start(command_type, username_list_str);
-        else if (strcmp(strVal(command), "add") == 0)
-			mgr_manage_add(command_type, username_list_str);
-        else if (strcmp(strVal(command), "drop") == 0)
-			mgr_manage_drop(command_type, username_list_str);
-        else if (strcmp(strVal(command), "alter") == 0)
-			mgr_manage_alter(command_type, username_list_str);
-		else if (strcmp(strVal(command), "set") == 0)
-			mgr_manage_set(command_type, username_list_str);
 		else if (strcmp(strVal(command), "reset") == 0)
 			mgr_manage_reset(command_type, username_list_str);
+		else if (strcmp(strVal(command), "set") == 0)
+			mgr_manage_set(command_type, username_list_str);
+		else if (strcmp(strVal(command), "show") == 0)
+			mgr_manage_show(command_type, username_list_str);
+		else if (strcmp(strVal(command), "start") == 0)
+			mgr_manage_start(command_type, username_list_str);
 		else
 			ereport(ERROR, (errmsg("unrecognized command type \"%s\"", strVal(command))));
 	}
@@ -8267,6 +8274,44 @@ Datum mgr_priv_manage(PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(cstring_to_text("GRANT"));
 	else
 		PG_RETURN_TEXT_P(cstring_to_text("REVOKE"));
+}
+
+static void mgr_manage_deploy(char command_type, char *user_list_str)
+{
+	StringInfoData commandsql;
+	int exec_ret;
+	int ret;
+	initStringInfo(&commandsql);
+
+	if (command_type == PRIV_GRANT)
+	{
+		/*grant execute on function func_name [, ...] to user_name [, ...] */
+		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_deploy_all(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_deploy_hostnamelist(cstring, text[]) ");
+		appendStringInfoString(&commandsql, "TO ");
+	}else if (command_type == PRIV_REVOKE)
+	{
+		/*revoke execute on function func_name [, ...] from user_name [, ...] */
+		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
+		appendStringInfoString(&commandsql, "mgr_deploy_all(cstring), ");
+		appendStringInfoString(&commandsql, "mgr_deploy_hostnamelist(cstring, text[]) ");
+		appendStringInfoString(&commandsql, "FROM ");
+	}
+	else
+		ereport(ERROR, (errmsg("command type is wrong: %c", command_type)));
+
+	appendStringInfoString(&commandsql, user_list_str);
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_connect failed: error code %d", ret)));
+
+	exec_ret = SPI_execute(commandsql.data, false, 0);
+	if (exec_ret != SPI_OK_UTILITY)
+		ereport(ERROR, (errmsg("grant/revoke: SPI_execute failed: error code %d", exec_ret)));
+
+	SPI_finish();
+	return;
 }
 
 static void mgr_manage_reset(char command_type, char *user_list_str)
@@ -8971,72 +9016,59 @@ static void mgr_get_acl_by_username(char *username, StringInfo acl)
 		return ;
 	}
 
-	if (mgr_acl_init(username))
-	{
-		appendStringInfo(acl, "init ");
-	}
-
-	if (mgr_acl_clean(username))
-	{
-		appendStringInfo(acl, "clean ");
-	}
-
-	if (mgr_acl_failover(username))
-	{
-		appendStringInfo(acl, "failover ");
-	}
-
-	if (mgr_acl_append(username))
-	{
-		appendStringInfo(acl, "append ");
-	}
-
-	if (mgr_acl_list(username))
-	{
-		appendStringInfo(acl, "list ");
-	}
-
-	if (mgr_acl_monitor(username))
-	{
-		appendStringInfo(acl, "monitor ");
-	}
-
-	if (mgr_acl_show(username))
-	{
-		appendStringInfo(acl, "show ");
-	}
-
-	if (mgr_acl_start(username))
-	{
-		appendStringInfo(acl, "start ");
-	}
-
 	if (mgr_acl_add(username))
-	{
 		appendStringInfo(acl, "add ");
-	}
-
-	if (mgr_acl_drop(username))
-	{
-		appendStringInfo(acl, "drop ");
-	}
 
 	if (mgr_acl_alter(username))
-	{
 		appendStringInfo(acl, "alter ");
-	}
 
-	if (mgr_acl_set(username))
-	{
-		appendStringInfo(acl, "set ");
-	}
+	if (mgr_acl_append(username))
+		appendStringInfo(acl, "append ");
+
+	if (mgr_acl_clean(username))
+		appendStringInfo(acl, "clean ");
+
+	if (mgr_acl_deploy(username))
+		appendStringInfo(acl, "deploy ");
+
+	if (mgr_acl_drop(username))
+		appendStringInfo(acl, "drop ");
+
+	if (mgr_acl_failover(username))
+		appendStringInfo(acl, "failover ");
+
+	if (mgr_acl_init(username))
+		appendStringInfo(acl, "init ");
+
+	if (mgr_acl_list(username))
+		appendStringInfo(acl, "list ");
+
+	if (mgr_acl_monitor(username))
+		appendStringInfo(acl, "monitor ");
 
 	if (mgr_acl_reset(username))
-	{
 		appendStringInfo(acl, "reset ");
-	}
+
+	if (mgr_acl_set(username))
+		appendStringInfo(acl, "set ");
+
+	if (mgr_acl_show(username))
+		appendStringInfo(acl, "show ");
+
+	if (mgr_acl_start(username))
+		appendStringInfo(acl, "start ");
 
 	return;
+}
+
+static bool mgr_acl_deploy(char *username)
+{
+	bool f1, f2;
+
+	f1 = mgr_has_func_priv(username, "mgr_deploy_all(cstring)", "execute");
+	f2 = mgr_has_func_priv(username, "mgr_deploy_hostnamelist(cstring, text[])", "execute");
+
+	return (f1 && f2);
 }
 
 bool mgr_has_priv_reset(void)

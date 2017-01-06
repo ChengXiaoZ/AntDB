@@ -72,13 +72,6 @@ typedef struct MGRDropNode
 	List		*names;		/* list of A_Const(String) */
 }MGRDropNode;
 
-typedef struct MGRDeplory
-{
-	NodeTag		type;
-	List		*hosts;		/* list of Value(String), NIL for ALL */
-	char		*password;
-}MGRDeplory;
-
 typedef struct MGRUpdateparm
 {
 	NodeTag		type;
