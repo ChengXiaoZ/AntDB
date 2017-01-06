@@ -1080,6 +1080,33 @@ mgr_deploy_all(cstring),
 mgr_deploy_hostnamelist(cstring, text[])
 from public;
 
+--stop
+revoke execute on function
+mgr_stop_agent_all(),
+mgr_stop_agent_hostnamelist(text[]),
+mgr_stop_gtm_master("any"),
+mgr_stop_gtm_master_f("any"),
+mgr_stop_gtm_master_i("any"),
+mgr_stop_gtm_slave("any"),
+mgr_stop_gtm_slave_f("any"),
+mgr_stop_gtm_slave_i("any"),
+mgr_stop_gtm_extra("any"),
+mgr_stop_gtm_extra_f("any"),
+mgr_stop_gtm_extra_i("any"),
+mgr_stop_cn_master("any"),
+mgr_stop_cn_master_f("any"),
+mgr_stop_cn_master_i("any"),
+mgr_stop_dn_master("any"),
+mgr_stop_dn_master_f("any"),
+mgr_stop_dn_master_i("any"),
+mgr_stop_dn_slave("any"),
+mgr_stop_dn_slave_f( "any"),
+mgr_stop_dn_slave_i( "any"),
+mgr_stop_dn_extra("any"),
+mgr_stop_dn_extra_f("any"),
+mgr_stop_dn_extra_i("any")
+from public;
+
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
 --insert into parm select '*', name, setting, unit, context, vartype,  min_val, max_val, enumvals from pg_settings order by 2;
