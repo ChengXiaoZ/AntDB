@@ -149,10 +149,13 @@ static void check_host_name_isvaild(List *node_name_list);
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
+				AlterUserStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
 				OptRoleList name_list privilege_list username_list hostname_list
+				AlterOptRoleList
+
 %type <node>	general_option_item general_option_arg target_el
 %type <node> 	var_value
 
@@ -220,6 +223,7 @@ stmtmulti:	stmtmulti ';' stmt
 
 stmt :
 	  AddHostStmt
+	| AlterUserStmt
 	| CreateUserStmt
 	| DropUserStmt
 	| DropHostStmt
@@ -260,6 +264,17 @@ stmt :
 	| /* empty */
 		{ $$ = NULL; }
 	;
+
+AlterUserStmt:
+			ALTER USER RoleId AlterOptRoleList
+				 {
+					AlterRoleStmt *n = makeNode(AlterRoleStmt);
+					n->role = $3;
+					n->action = +1; /* add, if there are members */
+					n->options = $4;
+					$$ = (Node *)n;
+				 }
+			;
 
 GrantStmt:
 		GRANT privilege_list TO username_list
@@ -379,9 +394,14 @@ CreateUserStmt:
 			;
 
 OptRoleList:
-			OptRoleList CreateOptRoleElem	{ $$ = lappend($1, $2); }
-			| /* EMPTY */			{ $$ = NIL; }
+			OptRoleList CreateOptRoleElem     { $$ = lappend($1, $2); }
+			| /* EMPTY */                     { $$ = NIL; }
 		;
+
+AlterOptRoleList:
+			AlterOptRoleList AlterOptRoleElem  { $$ = lappend($1, $2); }
+			| /* EMPTY */                      { $$ = NIL; }
+			;
 
 CreateOptRoleElem:
 			AlterOptRoleElem	{ $$ = $1; }
