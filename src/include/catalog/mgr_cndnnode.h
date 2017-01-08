@@ -65,4 +65,9 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define CNDN_TYPE_DATANODE		'D'
 #define CNDN_TYPE_GTM			'G'
 
+#define SHUTDOWN_S  "smart"
+#define SHUTDOWN_F  "fast"
+#define SHUTDOWN_I  "immediate"
+#define TAKEPLAPARM_N  "none"
+
 #endif /* MGR_CNDNNODE_H */

@@ -37,10 +37,6 @@
 #include "../../interfaces/libpq/libpq-fe.h"
 
 #define DEFAULT_DB "postgres"
-#define shutdown_s  "smart"
-#define shutdown_f  "fast"
-#define shutdown_i  "immediate"
-#define takeplaparm_n  "none"
 #define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
 #define PG_DUMPALL_TEMP_FILE "/tmp/pg_dumpall_temp"
 #define MAX_WAL_SENDERS_NUM	5
@@ -754,7 +750,10 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 Datum 
 mgr_init_gtm_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_INIT, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_MASTER);
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
 /*
@@ -763,7 +762,10 @@ mgr_init_gtm_master(PG_FUNCTION_ARGS)
 Datum 
 mgr_init_gtm_slave(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_SLAVE_INIT, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_SLAVE);
+	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_SLAVE_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 /*
 * execute init gtm extra, send infomation to agent to init gtm extra 
@@ -771,7 +773,10 @@ mgr_init_gtm_slave(PG_FUNCTION_ARGS)
 Datum 
 mgr_init_gtm_extra(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_SLAVE_INIT, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_EXTRA);
+	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_SLAVE_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 /*
 * init coordinator master dn1,dn2...
@@ -780,7 +785,19 @@ mgr_init_gtm_extra(PG_FUNCTION_ARGS)
 Datum 
 mgr_init_cn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CNDN_CNDN_INIT, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	if (PG_ARGISNULL(0))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_COORDINATOR_MASTER);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CNDN_CNDN_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo); 
 }
 
 /*
@@ -790,201 +807,19 @@ mgr_init_cn_master(PG_FUNCTION_ARGS)
 Datum 
 mgr_init_dn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_CNDN_CNDN_INIT, fcinfo, takeplaparm_n);
-}
+	List *nodenamelist = NIL;
 
-/*
-* execute init datanode slave, send infomation to agent to init it 
-*/
-Datum 
-mgr_init_dn_slave(PG_FUNCTION_ARGS)
-{
-	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tuple;
-	HeapTuple aimtuple;
-	HeapTuple mastertuple;
-	Relation rel_node;
-	HeapScanDesc scan;
-	Form_mgr_node mgr_node;
-	bool gettuple = false;
-	ScanKeyData key[2];
-	uint32 masterport;
-	Oid masterhostOid;
-	char *masterhostaddress;
-	char *mastername;
-	FuncCallContext *funcctx;
-	const char *nodename = PG_GETARG_CSTRING(0);
-	Assert(nodename);
-	
-	/*output the exec result: col1 hostname,col2 SUCCESS(t/f),col3 description*/	
-	if (SRF_IS_FIRSTCALL())
+	if (PG_ARGISNULL(0))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_MASTER);
+	else
 	{
-		MemoryContext oldcontext;
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		/* get the master name */
-		ScanKeyInit(&key[0]
-			,Anum_mgr_node_nodename
-			,BTEqualStrategyNumber, F_NAMEEQ
-			,NameGetDatum(nodename));
-		ScanKeyInit(&key[1]
-			,Anum_mgr_node_nodetype
-			,BTEqualStrategyNumber
-			,F_CHAREQ
-			,CharGetDatum(CNDN_TYPE_DATANODE_SLAVE));
-		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			Assert(mgr_node);
-			if(strcmp(NameStr(mgr_node->nodename), nodename) == 0)
-			{
-				/*check the nodetype*/
-				if(mgr_node->nodetype != CNDN_TYPE_DATANODE_SLAVE)
-				{
-					ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-						, errmsg("the type of \"%s\" is not datanode slave, use \"list node\" to check", nodename)));
-				}
-				aimtuple = tuple;
-				gettuple = true;
-				break;
-			}
-			
-		}
-		if(gettuple == false)
-		{
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, errmsg("datanode slave \"%s\" does not exist", nodename)));
-		}
-		/*get the master port, master host address*/
-		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
-		if(!HeapTupleIsValid(mastertuple))
-		{
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, errmsg("datanode master \"%s\" does not exist", nodename)));
-		}
-		mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
-		Assert(mastertuple);
-		masterport = mgr_node->nodeport;
-		masterhostOid = mgr_node->nodehost;
-		mastername = NameStr(mgr_node->nodename);
-		masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
-		ReleaseSysCache(mastertuple);
-		initStringInfo(&(getAgentCmdRst.description));
-		mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, rel_node, aimtuple, masterhostaddress,masterport, mastername);
-		tuple = build_common_command_tuple(
-			&(getAgentCmdRst.nodename)
-			, getAgentCmdRst.ret
-			, getAgentCmdRst.description.data);
-		pfree(getAgentCmdRst.description.data);
-		pfree(masterhostaddress);
-		heap_endscan(scan);
-		heap_close(rel_node, RowExclusiveLock);
-		MemoryContextSwitchTo(oldcontext);
-		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
 	}
-	/* we have only one datanode slave for given name, returnd at first time */
-	funcctx = SRF_PERCALL_SETUP();
-	Assert(funcctx);
-	SRF_RETURN_DONE(funcctx);
-}
-
-/*
-* execute init datanode extra, send infomation to agent to init it 
-*/
-Datum 
-mgr_init_dn_extra(PG_FUNCTION_ARGS)
-{
-	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tuple
-			,aimtuple
-			,mastertuple;
-	Relation rel_node;
-	HeapScanDesc scan;
-	Form_mgr_node mgr_node;
-	bool gettuple = false;
-	ScanKeyData key[2];
-	uint32 masterport;
-	Oid masterhostOid;
-	char *masterhostaddress;
-	char *mastername;
-	FuncCallContext *funcctx;
-	const char *nodename = PG_GETARG_CSTRING(0);
-	Assert(nodename);
-	
-	/*output the exec result: col1 hostname,col2 SUCCESS(t/f),col3 description*/	
-	if (SRF_IS_FIRSTCALL())
-	{
-		MemoryContext oldcontext;
-		funcctx = SRF_FIRSTCALL_INIT();
-		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		/* get the master name */
-		ScanKeyInit(&key[0]
-			,Anum_mgr_node_nodename
-			,BTEqualStrategyNumber, F_NAMEEQ
-			,NameGetDatum(nodename));
-		ScanKeyInit(&key[1]
-			,Anum_mgr_node_nodetype
-			,BTEqualStrategyNumber
-			,F_CHAREQ
-			,CharGetDatum(CNDN_TYPE_DATANODE_EXTRA));
-		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
-		while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			Assert(mgr_node);
-			if(strcmp(NameStr(mgr_node->nodename), nodename) == 0)
-			{
-				/*check the nodetype*/
-				if(mgr_node->nodetype != CNDN_TYPE_DATANODE_EXTRA)
-				{
-					ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
-						, errmsg("the type of \"%s\" is not datanode extra, use \"list node\" to check", nodename)));
-				}
-				aimtuple = tuple;
-				gettuple = true;
-				break;
-			}
-			
-		}
-		if(gettuple == false)
-		{
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, errmsg("datanode slave \"%s\" does not exist", nodename)));
-		}
-		/*get the master port, master host address*/
-		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
-		if(!HeapTupleIsValid(mastertuple))
-		{
-			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("datanode master \"%s\" does not exist", nodename)));
-		}
-		mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
-		Assert(mastertuple);
-		masterport = mgr_node->nodeport;
-		masterhostOid = mgr_node->nodehost;
-		mastername = NameStr(mgr_node->nodename);
-		masterhostaddress = get_hostaddress_from_hostoid(masterhostOid);
-		ReleaseSysCache(mastertuple);
-		initStringInfo(&(getAgentCmdRst.description));
-		mgr_init_dn_slave_get_result(AGT_CMD_CNDN_SLAVE_INIT, &getAgentCmdRst, rel_node, aimtuple, masterhostaddress,masterport, mastername);
-		tuple = build_common_command_tuple(
-			&(getAgentCmdRst.nodename)
-			, getAgentCmdRst.ret
-			, getAgentCmdRst.description.data);
-		pfree(getAgentCmdRst.description.data);
-		pfree(masterhostaddress);
-		heap_endscan(scan);
-		heap_close(rel_node, RowExclusiveLock);
-		MemoryContextSwitchTo(oldcontext);
-		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
-	}
-	/* we have only one datanode slave for given name, returnd at first time */
-	funcctx = SRF_PERCALL_SETUP();
-	Assert(funcctx);
-	SRF_RETURN_DONE(funcctx);
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_CNDN_CNDN_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
 /*
@@ -1324,7 +1159,13 @@ get_fcinfo_namelist(const char *sepstr, int argidx,
 */
 Datum mgr_start_gtm_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_START_MASTER, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_MASTER);
+	if (!PG_ARGISNULL(0) && nodenamelist == NIL)
+			ereport(ERROR,(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s does not exist", mgr_nodetype_str(GTM_TYPE_GTM_MASTER))));
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_START_MASTER, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
 /*
@@ -1356,7 +1197,7 @@ static bool mgr_start_one_gtm_master(void)
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(AGT_CMD_GTM_START_MASTER, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
+	mgr_runmode_cndn_get_result(AGT_CMD_GTM_START_MASTER, &getAgentCmdRst, rel_node, aimtuple, TAKEPLAPARM_N);
 	heap_endscan(rel_scan);
 	heap_close(rel_node, RowExclusiveLock);
 	pfree(getAgentCmdRst.description.data);
@@ -1369,14 +1210,26 @@ static bool mgr_start_one_gtm_master(void)
 */
 Datum mgr_start_gtm_slave(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_START_SLAVE, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_SLAVE);
+	if (!PG_ARGISNULL(0) && nodenamelist == NIL)
+			ereport(ERROR,(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s does not exist", mgr_nodetype_str(GTM_TYPE_GTM_SLAVE))));
+	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_START_SLAVE, nodenamelist, TAKEPLAPARM_N, fcinfo); 
 }
 /*
 * start gtm extra
 */
 Datum mgr_start_gtm_extra(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_START_SLAVE, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_EXTRA);
+	if (!PG_ARGISNULL(0) && nodenamelist == NIL)
+			ereport(ERROR,(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s does not exist", mgr_nodetype_str(GTM_TYPE_GTM_EXTRA))));
+	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_START_SLAVE, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 /*
 * start coordinator master dn1,dn2...
@@ -1384,7 +1237,21 @@ Datum mgr_start_gtm_extra(PG_FUNCTION_ARGS)
 */
 Datum mgr_start_cn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_START, fcinfo, takeplaparm_n);
+	List *nodenamelist = NIL;
+
+	if (PG_ARGISNULL(0))
+	{
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_COORDINATOR_MASTER);
+	}
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
 /*
@@ -1393,7 +1260,20 @@ Datum mgr_start_cn_master(PG_FUNCTION_ARGS)
 */
 Datum mgr_start_dn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_START, fcinfo, takeplaparm_n);	
+	List *nodenamelist = NIL;
+
+	if (PG_ARGISNULL(0))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_MASTER);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
+	
 }
 
 /*
@@ -1418,7 +1298,7 @@ Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS)
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, info->rel_node, aimtuple, takeplaparm_n);
+	mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, info->rel_node, aimtuple, TAKEPLAPARM_N);
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
@@ -1436,7 +1316,19 @@ Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS)
 */
 Datum mgr_start_dn_slave(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_START, fcinfo, takeplaparm_n);	
+	List *nodenamelist = NIL;
+
+	if (PG_ARGISNULL(0))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_SLAVE);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
 /*
@@ -1445,7 +1337,19 @@ Datum mgr_start_dn_slave(PG_FUNCTION_ARGS)
 */
 Datum mgr_start_dn_extra(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_START, fcinfo, takeplaparm_n);	
+	List *nodenamelist = NIL;
+
+	if (PG_ARGISNULL(0))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_EXTRA);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
 void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *shutdown_mode)
@@ -1822,17 +1726,15 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 */
 Datum mgr_stop_gtm_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, fcinfo, shutdown_s);
-}
+	List *nodenamelist = NIL;
+	char *stop_mode;
 
-Datum mgr_stop_gtm_master_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_gtm_master_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, fcinfo, shutdown_i);
+	stop_mode = PG_GETARG_CSTRING(0);
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_MASTER);
+	if (!PG_ARGISNULL(1) && nodenamelist == NIL)
+			ereport(ERROR,(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s does not exist", mgr_nodetype_str(GTM_TYPE_GTM_MASTER))));
+	return mgr_runmode_cndn(GTM_TYPE_GTM_MASTER, AGT_CMD_GTM_STOP_MASTER, nodenamelist, stop_mode, fcinfo);
 }
 
 /*
@@ -1865,7 +1767,7 @@ Datum mgr_stop_one_gtm_master(PG_FUNCTION_ARGS)
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
 	//tupleret = heap_copytuple(aimtuple);
-	mgr_runmode_cndn_get_result(AGT_CMD_GTM_STOP_MASTER, &getAgentCmdRst, rel_node, aimtuple, shutdown_i);
+	mgr_runmode_cndn_get_result(AGT_CMD_GTM_STOP_MASTER, &getAgentCmdRst, rel_node, aimtuple, SHUTDOWN_I);
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
@@ -1882,32 +1784,29 @@ Datum mgr_stop_one_gtm_master(PG_FUNCTION_ARGS)
 */
 Datum mgr_stop_gtm_slave(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_STOP_SLAVE, fcinfo, shutdown_s);
+	List *nodenamelist = NIL;
+	char *stop_mode;
+
+	stop_mode = PG_GETARG_CSTRING(0);
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_SLAVE);
+	if (!PG_ARGISNULL(1) && nodenamelist == NIL)
+			ereport(ERROR,(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s does not exist", mgr_nodetype_str(GTM_TYPE_GTM_SLAVE))));
+	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_STOP_SLAVE, nodenamelist, stop_mode, fcinfo);
 }
 
-Datum mgr_stop_gtm_slave_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_STOP_SLAVE, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_gtm_slave_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_STOP_SLAVE, fcinfo, shutdown_i);
-}
 /*stop gtm extra*/
 Datum mgr_stop_gtm_extra(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_STOP_SLAVE, fcinfo, shutdown_s);
-}
+	List *nodenamelist = NIL;
+	char *stop_mode;
 
-Datum mgr_stop_gtm_extra_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_STOP_SLAVE, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_gtm_extra_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_STOP_SLAVE, fcinfo, shutdown_i);
+	stop_mode = PG_GETARG_CSTRING(0);
+	nodenamelist = mgr_get_nodetype_namelist(GTM_TYPE_GTM_EXTRA);
+	if (!PG_ARGISNULL(1) && nodenamelist == NIL)
+			ereport(ERROR,(errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s does not exist", mgr_nodetype_str(GTM_TYPE_GTM_EXTRA))));
+	return mgr_runmode_cndn(GTM_TYPE_GTM_EXTRA, AGT_CMD_GTM_STOP_SLAVE, nodenamelist, stop_mode, fcinfo); 
 }
 
 /*
@@ -1916,35 +1815,44 @@ Datum mgr_stop_gtm_extra_i(PG_FUNCTION_ARGS)
 */
 Datum mgr_stop_cn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_STOP, fcinfo, shutdown_s);
+	List *nodenamelist = NIL;
+	char *stop_mode;
+
+	stop_mode = PG_GETARG_CSTRING(0);
+	if (PG_ARGISNULL(1))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_COORDINATOR_MASTER);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
-Datum mgr_stop_cn_master_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_STOP, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_cn_master_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_STOP, fcinfo, shutdown_i);
-}
 /*
 * stop datanode master cn1,cn2...
 * stop datanode master all
 */
 Datum mgr_stop_dn_master(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, fcinfo, shutdown_s);
-}
+	List *nodenamelist = NIL;
+	char *stop_mode;
 
-Datum mgr_stop_dn_master_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_dn_master_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, fcinfo, shutdown_i);
+	stop_mode = PG_GETARG_CSTRING(0);
+	if (PG_ARGISNULL(1))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_MASTER);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
 /*
@@ -1968,7 +1876,7 @@ Datum mgr_stop_one_dn_master(PG_FUNCTION_ARGS)
 	}
 	/*get execute cmd result from agent*/
 	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(AGT_CMD_DN_STOP, &getAgentCmdRst, info->rel_node, aimtuple, shutdown_i);
+	mgr_runmode_cndn_get_result(AGT_CMD_DN_STOP, &getAgentCmdRst, info->rel_node, aimtuple, SHUTDOWN_I);
 	tup_result = build_common_command_tuple(
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
@@ -1986,17 +1894,21 @@ Datum mgr_stop_one_dn_master(PG_FUNCTION_ARGS)
 */
 Datum mgr_stop_dn_slave(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_STOP, fcinfo, shutdown_s);
-}
+	List *nodenamelist = NIL;
+	char *stop_mode;
 
-Datum mgr_stop_dn_slave_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_STOP, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_dn_slave_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_STOP, fcinfo, shutdown_i);
+	stop_mode = PG_GETARG_CSTRING(0);
+	if (PG_ARGISNULL(1))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_SLAVE);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
 /*
@@ -2005,42 +1917,43 @@ Datum mgr_stop_dn_slave_i(PG_FUNCTION_ARGS)
 */
 Datum mgr_stop_dn_extra(PG_FUNCTION_ARGS)
 {
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_STOP, fcinfo, shutdown_s);
-}
+	List *nodenamelist = NIL;
+	char *stop_mode;
 
-Datum mgr_stop_dn_extra_f(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_STOP, fcinfo, shutdown_f);
-}
-
-Datum mgr_stop_dn_extra_i(PG_FUNCTION_ARGS)
-{
-	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_STOP, fcinfo, shutdown_i);
+	stop_mode = PG_GETARG_CSTRING(0);
+	if (PG_ARGISNULL(1))
+		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_EXTRA);
+	else
+	{
+		#ifdef ADB
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
+		#else
+			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+		#endif
+	}
+	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
 /*
 * get the result of start/stop/init gtm master/slave, coordinator master/slave, datanode master/slave
 */
-Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shutdown_mode)
+Datum mgr_runmode_cndn(char nodetype, char cmdtype, List* nodenamelist , char *shutdown_mode, PG_FUNCTION_ARGS)
 {
-	List *nodenamelist;
 	GetAgentCmdRst getAgentCmdRst;
-	HeapTuple tup_result
-			,tuple
-			,aimtuple =NULL;
+	HeapTuple tup_result;
+	HeapTuple aimtuple =NULL;
 	FuncCallContext *funcctx;
 	ListCell **lcp;
 	InitNodeInfo *info;
 	char *nodestrname;
 	NameData nodenamedata;
 	Form_mgr_node mgr_node;
-	ScanKeyData key[2];
-	
+	List* nodenamelist_new;
+
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
-		nodenamelist = NIL;
 		/* create a function context for cross-call persistence */
 		funcctx = SRF_FIRSTCALL_INIT();
 		/* switch to memory context appropriate for multiple function calls */
@@ -2049,66 +1962,8 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shut
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		if(PG_ARGISNULL(0)) /* no argument, start all */
-		{
-			/*add all the type of node name to list*/
-			ScanKeyInit(&key[0],
-				Anum_mgr_node_nodetype
-				,BTEqualStrategyNumber
-				,F_CHAREQ
-				,CharGetDatum(nodetype));
-			info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
-			while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
-			{
-					mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-					Assert(mgr_node);
-					nodestrname = NameStr(mgr_node->nodename);
-					nodenamelist = lappend(nodenamelist, nodestrname);
-			}
-			heap_endscan(info->rel_scan);
-		}
-		else
-		{
-			/*check init gtm master/slave/extra; start|stop gtm master/slave/extra */
-			if ((GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
-					&& (AGT_CMD_GTM_INIT == cmdtype || AGT_CMD_GTM_SLAVE_INIT == cmdtype || AGT_CMD_GTM_START_MASTER == cmdtype 
-					|| AGT_CMD_GTM_START_SLAVE == cmdtype || AGT_CMD_GTM_STOP_MASTER == cmdtype || AGT_CMD_GTM_STOP_SLAVE == cmdtype))
-			{
-				/*get gtm name*/
-				ScanKeyInit(&key[0],
-					Anum_mgr_node_nodetype
-					,BTEqualStrategyNumber
-					,F_CHAREQ
-					,CharGetDatum(nodetype));
-				info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
-				while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
-				{
-						mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-						Assert(mgr_node);
-						nodestrname = NameStr(mgr_node->nodename);
-						nodenamelist = lappend(nodenamelist, nodestrname);
-						break;
-				}
-				heap_endscan(info->rel_scan);
-				/*check gtm master/slave/extra exist*/
-				if (nodenamelist == NIL)
-				{
-					heap_close(info->rel_node, RowExclusiveLock);
-					ereport(ERROR, 
-					(errcode(ERRCODE_UNDEFINED_OBJECT), 
-						errmsg("%s does not exist", mgr_nodetype_str(nodetype))));
-				}
-			}
-			else
-			{
-				#ifdef ADB
-					nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-				#else
-					nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-				#endif
-			}
-		}
-		*(info->lcp) = list_head(nodenamelist);
+		nodenamelist_new = list_copy(nodenamelist);
+		*(info->lcp) = list_head(nodenamelist_new);
 		funcctx->user_fctx = info;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -2127,13 +1982,14 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, PG_FUNCTION_ARGS, char *shut
 	*lcp = lnext(*lcp);
 	if(namestrcpy(&nodenamedata, nodestrname) != 0)
 	{
+		heap_close(info->rel_node, RowExclusiveLock);
 		ereport(ERROR, (errmsg("namestrcpy %s fail", nodestrname)));
 	}
 	aimtuple = mgr_get_tuple_node_from_name_type(info->rel_node, NameStr(nodenamedata), nodetype);
 	if (!HeapTupleIsValid(aimtuple))
 	{
-		ereport(ERROR, 
-		(errcode(ERRCODE_UNDEFINED_OBJECT), 
+		heap_close(info->rel_node, RowExclusiveLock);
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT), 
 			errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), nodestrname)));
 	}
 	/*check the type is given type*/
@@ -5037,7 +4893,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 	}
 	pfree(nodestring);
 	initStringInfo(&(getAgentCmdRst.description));
-	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, takeplaparm_n);
+	mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, TAKEPLAPARM_N);
 	heap_freetuple(aimtuple);
 	namestrcpy(&(getAgentCmdRst.nodename),nodename);
 	tup_result = build_common_command_tuple(
@@ -6046,7 +5902,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		}
 		/*restart gtm extra*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, tuple, shutdown_f);
+		mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, getAgentCmdRst, noderel, tuple, SHUTDOWN_F);
 		if(!getAgentCmdRst->ret)
 		{
 			ereport(WARNING, (errmsg("agtm_ctl restart gtm %s fail", strlabel)));
@@ -6188,7 +6044,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 		}
 		/*restart datanode extra/slave*/
 		resetStringInfo(&(getAgentCmdRst->description));
-		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, shutdown_f);
+		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, getAgentCmdRst, noderel, tuple, SHUTDOWN_F);
 		if(!getAgentCmdRst->ret)
 		{
 			ereport(WARNING, (errmsg("pg_ctl restart datanode %s %s fail", NameStr(mgr_nodetmp->nodename), strtmp)));
@@ -7558,15 +7414,15 @@ static bool mgr_modify_node_parameter_after_initd(Relation rel_node, HeapTuple n
 			case GTM_TYPE_GTM_MASTER:
 			case GTM_TYPE_GTM_SLAVE:
 			case GTM_TYPE_GTM_EXTRA:
-				mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, &getAgentCmdRst, rel_node, nodetuple, shutdown_f);
+				mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, &getAgentCmdRst, rel_node, nodetuple, SHUTDOWN_F);
 				break;
 			case CNDN_TYPE_COORDINATOR_MASTER:
-				mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, &getAgentCmdRst, rel_node, nodetuple, shutdown_f);
+				mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, &getAgentCmdRst, rel_node, nodetuple, SHUTDOWN_F);
 				break;
 			case CNDN_TYPE_DATANODE_MASTER:
 			case CNDN_TYPE_DATANODE_SLAVE:
 			case CNDN_TYPE_DATANODE_EXTRA:
-				mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, nodetuple, shutdown_f);
+				mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, nodetuple, SHUTDOWN_F);
 				break;
 			default:
 				break;
@@ -7678,11 +7534,11 @@ static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, 
 	{
 		case GTM_TYPE_GTM_SLAVE:
 		case GTM_TYPE_GTM_EXTRA:
-			mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, &getAgentCmdRst, rel_node, aimtuple, shutdown_f);
+			mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, &getAgentCmdRst, rel_node, aimtuple, SHUTDOWN_F);
 			break;
 		case CNDN_TYPE_DATANODE_SLAVE:
 		case CNDN_TYPE_DATANODE_EXTRA:
-			mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, aimtuple, shutdown_f);
+			mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, aimtuple, SHUTDOWN_F);
 			break;
 		default:
 			break;
@@ -7956,11 +7812,11 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 		{
 			case GTM_TYPE_GTM_SLAVE:
 			case GTM_TYPE_GTM_EXTRA:
-				mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, &getAgentCmdRst, rel_node, tuple, shutdown_f);
+				mgr_runmode_cndn_get_result(AGT_CMD_AGTM_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_F);
 				break;
 			case CNDN_TYPE_DATANODE_SLAVE:
 			case CNDN_TYPE_DATANODE_EXTRA:
-				mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, tuple, shutdown_f);
+				mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_F);
 				break;
 			default:
 				break;
@@ -8333,26 +8189,12 @@ static void mgr_manage_stop_func(StringInfo commandsql)
 	appendStringInfoString(commandsql, "mgr_stop_agent_all(), ");
 	appendStringInfoString(commandsql, "mgr_stop_agent_hostnamelist(text[]), ");
 	appendStringInfoString(commandsql, "mgr_stop_gtm_master(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_gtm_master_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_gtm_master_i(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_gtm_slave(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_gtm_slave_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_gtm_slave_i(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_gtm_extra(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_gtm_extra_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_gtm_extra_i(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_cn_master(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_cn_master_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_cn_master_i(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_dn_master(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_master_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_master_i(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_dn_slave(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_slave_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_slave_i(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_dn_extra(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_extra_f(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_extra_i(\"any\") ");
 
 	return;
 }
@@ -9549,4 +9391,33 @@ static Oid mgr_get_role_oid_or_public(const char *rolname)
 		return ACL_ID_PUBLIC;
 
 	return get_role_oid(rolname, false);
+}
+
+List* mgr_get_nodetype_namelist(char nodetype)
+{
+	ScanKeyData key[1];
+	HeapScanDesc rel_scan;
+	HeapTuple tuple =NULL;
+	Relation rel_node;
+	List *nodenamelist =NIL;
+	Form_mgr_node mgr_node;
+
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	ScanKeyInit(&key[0],
+					Anum_mgr_node_nodetype
+					,BTEqualStrategyNumber
+					,F_CHAREQ
+					,CharGetDatum(nodetype));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		nodenamelist = lappend(nodenamelist, NameStr(mgr_node->nodename));
+		if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+						break;
+	}
+	heap_endscan(rel_scan);
+	heap_close(rel_node, AccessShareLock);
+	return nodenamelist;
 }

@@ -1103,6 +1103,7 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 	PGresult *res;
 	PGresult *res_showall;
 	char *oneCoordValueStr = NULL;
+	char *valuestr;
 	int nrow = 0;
 	int nrow_all = 0;
 	int iloop = 0;
@@ -1161,7 +1162,11 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 				continue;
 			strcat(oneCoordValueStr, PQgetvalue(res_showall, jloop, 0 ));
 			strcat(oneCoordValueStr, " = ");
-			strcat(oneCoordValueStr, PQgetvalue(res_showall, jloop, 1 ));
+			valuestr = PQgetvalue(res_showall, jloop, 1 );
+			if (strcmp(valuestr, "") == 0)
+				strcat(oneCoordValueStr, "''");
+			else
+				strcat(oneCoordValueStr, valuestr);
 			if(iloop != nrow-1)
 				strcat(oneCoordValueStr, "\t\n");
 			else

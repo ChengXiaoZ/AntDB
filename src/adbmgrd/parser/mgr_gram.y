@@ -168,7 +168,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %type <keyword>	unreserved_keyword reserved_keyword
 %type <str>		Ident SConst ColLabel var_name opt_boolean_or_string
 				NonReservedWord NonReservedWord_or_Sconst set_ident
-				opt_password opt_stop_mode_s opt_stop_mode_f opt_stop_mode_i
+				opt_password opt_stop_mode
 				opt_general_all var_dotparam var_showparam
 				sub_like_expr RoleId name ColId
 
@@ -1645,25 +1645,22 @@ InitNodeStmt:
 /*	INIT GTM MASTER 
 *		{
 *			SelectStmt *stmt = makeNode(SelectStmt);
-*			List *args = list_make1(makeStringConst("gtm", -1));
 *			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_master", args));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_master", NULL));
 *			$$ = (Node*)stmt;
 *		}
 *	| INIT GTM SLAVE 
 *		{
 *			SelectStmt *stmt = makeNode(SelectStmt);
-*			List *args = list_make1(makeStringConst("gtm", -1));
 *			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_slave", args));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_slave", NULL));
 *			$$ = (Node*)stmt;
 *		}
 *	| INIT GTM EXTRA 
 *		{
 *			SelectStmt *stmt = makeNode(SelectStmt);
-*			List *args = list_make1(makeStringConst("gtm", -1));
 *			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extra", args));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extra", NULL));
 *			$$ = (Node*)stmt;
 *		}
 *	| INIT COORDINATOR NodeConstList
@@ -1696,14 +1693,14 @@ InitNodeStmt:
 *			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", args));
 *			$$ = (Node*)stmt;
 *		}
-*	| INIT DATANODE SLAVE AConstList
+*	| INIT DATANODE SLAVE NodeConstList
 *		{
 *			SelectStmt *stmt = makeNode(SelectStmt);
 *			stmt->targetList = list_make1(make_star_target(-1));
 *			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave", $4));
 *			$$ = (Node*)stmt;
 *		}
-*	| INIT DATANODE EXTRA AConstList
+*	| INIT DATANODE EXTRA NodeConstList
 *		{
 *			SelectStmt *stmt = makeNode(SelectStmt);
 *			stmt->targetList = list_make1(make_star_target(-1));
@@ -1849,319 +1846,140 @@ StartNodeMasterStmt:
 		}
 	;
 StopNodeMasterStmt:
-		STOP GTM MASTER opt_stop_mode_s
+		STOP GTM MASTER opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
+			List *args = list_make1(makeStringConst($4, -1));
+			args = lappend(args,makeStringConst("gtm", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_master", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM MASTER opt_stop_mode_f
+	|	STOP GTM SLAVE opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_master_f", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP GTM MASTER opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_master_i", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP GTM SLAVE opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
+			List *args = list_make1(makeStringConst($4, -1));
+			args = lappend(args,makeStringConst("gtm", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_slave", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM SLAVE opt_stop_mode_f
+	|	STOP GTM EXTRA opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_slave_f", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP GTM SLAVE opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_slave_i", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP GTM EXTRA opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
+			List *args = list_make1(makeStringConst($4, -1));
+			args = lappend(args,makeStringConst("gtm", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM EXTRA opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra_f", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP GTM EXTRA opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("gtm", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra_i", args));
-			$$ = (Node*)stmt;
-		}
-	| STOP GTM ALL opt_stop_mode_s
+	| STOP GTM ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all"), -1));
+			if (strcmp($4, SHUTDOWN_S) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all"), -1));
+			else if (strcmp($4, SHUTDOWN_F) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_f"), -1));
+			else
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_i"), -1));
 			$$ = (Node*)stmt;
 		}
-	| STOP GTM ALL opt_stop_mode_f
+	|	STOP COORDINATOR NodeConstList opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_f"), -1));
-			$$ = (Node*)stmt;
-		}
-	| STOP GTM ALL opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_i"), -1));
-			$$ = (Node*)stmt;
-		}
-	|	STOP COORDINATOR AConstList opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master", $3));
-			$$ = (Node*)stmt;
-		}
-	|	STOP COORDINATOR AConstList opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master_i", $3));
-			$$ = (Node*)stmt;
-		}
-	|	STOP COORDINATOR AConstList opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master_f", $3));
-			$$ = (Node*)stmt;
-		}
-	|	STOP COORDINATOR ALL opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($4, -1));
+			args = list_concat(args, $3);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP COORDINATOR ALL opt_stop_mode_f
+	|	STOP COORDINATOR ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($4, -1));
+			args = list_concat(args, list_make1(makeNullAConst(-1)));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master_f", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP COORDINATOR ALL opt_stop_mode_i
+	|	STOP DATANODE MASTER NodeConstList opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master_i", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE MASTER AConstList opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE MASTER AConstList opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master_f", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE MASTER AConstList opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master_i", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE MASTER ALL opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, $4);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE MASTER ALL opt_stop_mode_f
+	|	STOP DATANODE MASTER ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, list_make1(makeNullAConst(-1)));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master_f", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE MASTER ALL opt_stop_mode_i
+	|	STOP DATANODE SLAVE NodeConstList opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_master_i", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE SLAVE AConstList opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE SLAVE AConstList opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave_f", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE SLAVE AConstList opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave_i", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA AConstList opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA AConstList opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_f", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA AConstList opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_i", $4));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA ALL opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA ALL opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_f", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA ALL opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra_i", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE SLAVE ALL opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, $4);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE SLAVE ALL opt_stop_mode_f
+	|	STOP DATANODE SLAVE ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, list_make1(makeNullAConst(-1)));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave_f", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE SLAVE ALL opt_stop_mode_i
+	|	STOP DATANODE EXTRA NodeConstList opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, $4);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave_i", args));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE ALL opt_stop_mode_s
+	|	STOP DATANODE EXTRA ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, list_make1(makeNullAConst(-1)));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_datanode_all"), -1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE ALL opt_stop_mode_f
+
+	|	STOP DATANODE ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_datanode_all_f"), -1));
+			if (strcmp($4, SHUTDOWN_S) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_datanode_all"), -1));
+			else if (strcmp($4, SHUTDOWN_F) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_datanode_all_f"), -1));
+			else
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_datanode_all_i"), -1));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE ALL opt_stop_mode_i
+	|	STOP ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_datanode_all_i"), -1));
-			$$ = (Node*)stmt;
-		}
-	|	STOP ALL opt_stop_mode_s
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stopall"), -1));
-			$$ = (Node*)stmt;
-		}
-	|	STOP ALL opt_stop_mode_f
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stopall_f"), -1));
-			$$ = (Node*)stmt;
-		}
-	|	STOP ALL opt_stop_mode_i
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stopall_i"), -1));
+			if (strcmp($3, SHUTDOWN_S) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stopall"), -1));
+			else if (strcmp($3, SHUTDOWN_F) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stopall_f"), -1));
+			else
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stopall_i"), -1));
 			$$ = (Node*)stmt;
 		}
 	;
@@ -2255,19 +2073,16 @@ opt_password:
 	| PASSWORD ColLabel		{ $$ = $2; }
 	| /* empty */			{ $$ = NULL; }
 	;
-opt_stop_mode_s:
-	MODE SMART			{ $$ = pstrdup("MODE SMART"); }
-	| MODE S			{ $$ = pstrdup("MODE SMART"); }
-	| /* empty */		{ $$ = pstrdup("MODE SMART"); }
+opt_stop_mode:
+	MODE SMART			{ $$ = pstrdup(SHUTDOWN_S); }
+	| MODE S			{ $$ = pstrdup(SHUTDOWN_S); }
+	| /* empty */		{ $$ = pstrdup(SHUTDOWN_S); }
+	| MODE FAST	{ $$ = pstrdup(SHUTDOWN_F); }
+	| MODE F	{ $$ = pstrdup(SHUTDOWN_F); }
+	|	MODE IMMEDIATE		{ $$ = pstrdup(SHUTDOWN_I); }
+	| MODE I			{ $$ = pstrdup(SHUTDOWN_I); }
 	;
-opt_stop_mode_f:
-	MODE FAST	{ $$ = pstrdup("MODE FAST"); }
-	| MODE F	{ $$ = pstrdup("MODE FAST"); }
-	;
-opt_stop_mode_i:
-	MODE IMMEDIATE		{ $$ = pstrdup("MODE IMMEDIATE"); }
-	| MODE I			{ $$ = pstrdup("MODE IMMEDIATE"); }
-	;
+
 opt_gtm_inner_type:
 	  MASTER { $$ = GTM_TYPE_GTM_MASTER; }
 	| SLAVE { $$ = GTM_TYPE_GTM_SLAVE; }
