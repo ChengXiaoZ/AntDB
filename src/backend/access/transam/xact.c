@@ -549,11 +549,19 @@ static void
 AssignTransactionId(TransactionState s)
 {
 	bool		isSubXact = (s->parent != NULL);
+#ifdef ADB
+	bool		is_under_agtm = IsUnderAGTM();
+#endif /* ADB */
 	ResourceOwner currentOwner;
 
 	/* Assert that caller didn't screw up */
 	Assert(!TransactionIdIsValid(s->transactionId));
 	Assert(s->state == TRANS_INPROGRESS);
+
+#ifdef ADB
+	if(isSubXact && is_under_agtm)
+		ereport(ERROR, (errmsg("cannot assign XIDs in child transaction")));
+#endif /* ADB */
 
 	/*
 	 * Ensure parent(s) have XIDs, so that a child always has an XID later
@@ -588,7 +596,7 @@ AssignTransactionId(TransactionState s)
 	/*
 	 * Get global transaction xid from AGTM.
 	 */
-	if (IsUnderAGTM())
+	if (is_under_agtm)
 	{
 		agtm_BeginTransaction();
 		s->transactionId = GetNewGlobalTransactionId(isSubXact);
