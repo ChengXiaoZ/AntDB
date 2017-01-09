@@ -18,7 +18,11 @@
 
 /* GUC variables */
 extern bool adbmonitor_start_daemon;
+#if defined(ADB_MONITOR_POOL)
+extern int adbmonitor_max_workers;
+#else
 extern int adbmonitor_probable_workers;
+#endif
 extern int adbmonitor_naptime;
 
 /* adb monitor launcher PID, only valid when worker is shutting down */

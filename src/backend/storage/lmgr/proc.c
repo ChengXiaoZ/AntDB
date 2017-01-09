@@ -242,7 +242,7 @@ InitProcGlobal(void)
 		 * linear search.   PGPROCs for prepared transactions are added to a
 		 * free list by TwoPhaseShmemInit().
 		 */
-#if defined(ADBMGRD)
+#if defined(ADBMGRD) && !defined(ADB_MONITOR_POOL)
 		/*
 		 * ADBQ:
 		 *     Keep adb monitor process in freeProcs. it may go wrong, but not
@@ -257,7 +257,7 @@ InitProcGlobal(void)
 			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->freeProcs;
 			ProcGlobal->freeProcs = &procs[i];
 		}
-#if defined(ADBMGRD)
+#if defined(ADBMGRD) && !defined(ADB_MONITOR_POOL)
 		else if (i < MaxConnections + adbmonitor_probable_workers + 1 +
 			autovacuum_max_workers + 1)
 #else
@@ -268,6 +268,15 @@ InitProcGlobal(void)
 			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->autovacFreeProcs;
 			ProcGlobal->autovacFreeProcs = &procs[i];
 		}
+#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+		else if (i < MaxConnections + autovacuum_max_workers + 1 +
+					 adbmonitor_max_workers + 1)
+		{
+			/* PGPROC for adb monitor launcher/worker, add to adbmntFreeProcs list */
+			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->adbmntFreeProcs;
+			ProcGlobal->adbmntFreeProcs = &procs[i];
+		}
+#endif
 		else if (i < MaxBackends)
 		{
 			/* PGPROC for bgworker, add to bgworkerFreeProcs list */
@@ -331,6 +340,10 @@ InitProcess(void)
 
 	if (IsAnyAutoVacuumProcess())
 		MyProc = procglobal->autovacFreeProcs;
+#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+	else if (IsAnyAdbMonitorProcess())
+		MyProc = procglobal->adbmntFreeProcs;
+#endif
 	else if (IsBackgroundWorker)
 		MyProc = procglobal->bgworkerFreeProcs;
 	else
@@ -340,6 +353,10 @@ InitProcess(void)
 	{
 		if (IsAnyAutoVacuumProcess())
 			procglobal->autovacFreeProcs = (PGPROC *) MyProc->links.next;
+#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+		if (IsAnyAdbMonitorProcess())
+			procglobal->adbmntFreeProcs = (PGPROC *) MyProc->links.next;
+#endif
 		else if (IsBackgroundWorker)
 			procglobal->bgworkerFreeProcs = (PGPROC *) MyProc->links.next;
 		else

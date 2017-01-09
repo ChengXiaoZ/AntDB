@@ -194,6 +194,10 @@ typedef struct PROC_HDR
 	PGPROC	   *freeProcs;
 	/* Head of list of autovacuum's free PGPROC structures */
 	PGPROC	   *autovacFreeProcs;
+#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+	/* Head of list of adb monitor's free PGPROC structures */
+	PGPROC	   *adbmntFreeProcs;
+#endif
 	/* Head of list of bgworker free PGPROC structures */
 	PGPROC	   *bgworkerFreeProcs;
 	/* WALWriter process's latch */

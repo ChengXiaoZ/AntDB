@@ -60,7 +60,11 @@
  * GUC parameters
  */
 bool	adbmonitor_start_daemon = false;
+#if defined(ADB_MONITOR_POOL)
+int		adbmonitor_max_workers;
+#else
 int		adbmonitor_probable_workers;
+#endif
 int		adbmonitor_naptime;
 
 /* Flags to tell if we are in an adb monitor process */
@@ -94,6 +98,9 @@ typedef struct AmlJobData *AmlJob;
  */
 typedef struct WorkerInfoData
 {
+#if defined(ADB_MONITOR_POOL)
+	dlist_node	wi_links;
+#endif
 	Oid			wi_job;
 	PGPROC	   *wi_proc;
 	pid_t		wi_launcherpid;
@@ -129,6 +136,9 @@ typedef struct
 {
 	sig_atomic_t am_signal[AdbMntNumSignals];
 	pid_t		am_launcherpid;
+#if defined(ADB_MONITOR_POOL)
+	dlist_head	am_freeWorkers;
+#endif
 	WorkerInfo	am_startingWorker;
 } AdbMonitorShmemStruct;
 
@@ -150,7 +160,7 @@ int AdbMonitorLauncherPid = 0;
 NON_EXEC_STATIC void AdbMntLauncherMain(int argc, char *argv[]) __attribute__((noreturn));
 NON_EXEC_STATIC void AdbMntWorkerMain(int argc, char *argv[]) __attribute__((noreturn));
 
-static void launcher_determine_sleep(struct timeval * nap);
+static void launcher_determine_sleep(bool canlaunch, struct timeval * nap);
 static AmlJob launcher_obtain_amljob(void);
 static void launch_worker(TimestampTz now);
 static void rebuild_job_htab(void);
@@ -371,7 +381,12 @@ AdbMntLauncherMain(int argc, char *argv[])
 		 * process.  So it's WaitLatch, then ResetLatch, then check for
 		 * wakening conditions.
 		 */
-		launcher_determine_sleep(&nap);
+#if defined(ADB_MONITOR_POOL)
+		launcher_determine_sleep(!dlist_is_empty(&AdbMonitorShmem->am_freeWorkers),
+								 &nap);
+#else
+		launcher_determine_sleep(true, &nap);
+#endif
 
 		/* Allow singal catchup interrupts while sleeping */
 		EnableCatchupInterrupt();
@@ -443,7 +458,11 @@ AdbMntLauncherMain(int argc, char *argv[])
 
 		LWLockAcquire(AdbmonitorLock, LW_SHARED);
 
+#if defined(ADB_MONITOR_POOL)
+		can_launch = !dlist_is_empty(&AdbMonitorShmem->am_freeWorkers);
+#else
 		can_launch = true;
+#endif
 		if (AdbMonitorShmem->am_startingWorker != NULL)
 		{
 			int			waittime;
@@ -484,6 +503,10 @@ AdbMntLauncherMain(int argc, char *argv[])
 					worker->wi_proc = NULL;
 					worker->wi_launcherpid = 0;
 					worker->wi_launchtime = 0;
+#if defined(ADB_MONITOR_POOL)
+					dlist_push_head(&AdbMonitorShmem->am_freeWorkers,
+									&worker->wi_links);
+#endif
 					AdbMonitorShmem->am_startingWorker = NULL;
 					elog(WARNING, "worker took too long to start; canceled");
 				}
@@ -516,7 +539,7 @@ shutdown:
  * Determine the time to sleep, based on the jobs.
  */
 static void
-launcher_determine_sleep(struct timeval * nap)
+launcher_determine_sleep(bool canlaunch, struct timeval * nap)
 {
 	nap->tv_sec = adbmonitor_naptime;
 	nap->tv_usec = 0;
@@ -544,15 +567,37 @@ launch_worker(TimestampTz now)
 	WorkerInfo	worker;
 	AmlJob		amljob;
 
+#if defined(ADB_MONITOR_POOL)
+	/*
+	 * Check for free worker. 
+	 */
+	LWLockAcquire(AdbmonitorLock, LW_SHARED);
+	if (dlist_is_empty(&AdbMonitorShmem->am_freeWorkers))
+	{
+		LWLockRelease(AdbmonitorLock);
+		return ;
+	}
+	LWLockRelease(AdbmonitorLock);
+#endif
+
 	amljob = launcher_obtain_amljob();
 	if (amljob)
 	{
+#if defined(ADB_MONITOR_POOL)
+		dlist_node *wptr;
+#endif
 		AssertArg(OidIsValid(amljob->amj_id));
 
 		LWLockAcquire(AdbmonitorLock, LW_EXCLUSIVE);
 
+#if defined(ADB_MONITOR_POOL)
+		wptr = dlist_pop_head_node(&AdbMonitorShmem->av_freeWorkers);
+
+		worker = dlist_container(WorkerInfoData, wi_links, wptr);
+#else
 		worker = (WorkerInfo) ((char *) AdbMonitorShmem +
 								MAXALIGN(sizeof(AdbMonitorShmemStruct)));
+#endif
 		worker->wi_job = amljob->amj_id;
 		worker->wi_proc = NULL;
 		worker->wi_launchtime = GetCurrentTimestamp();
@@ -669,7 +714,12 @@ AdbMonitorShmemSize(void)
 	 */
 	size = sizeof(AdbMonitorShmemStruct);
 	size = MAXALIGN(size);
+#if defined(ADB_MONITOR_POOL)
+	size = add_size(size, mul_size(adbmonitor_max_workers,
+								   sizeof(WorkerInfoData)));
+#else
 	size = add_size(size, sizeof(WorkerInfoData));
+#endif
 	return size;
 }
 
@@ -690,18 +740,31 @@ AdbMonitorShmemInit(void)
 	if (!IsUnderPostmaster)
 	{
 		WorkerInfo	worker;
+#if defined(ADB_MONITOR_POOL)
+		int i;
+#endif
 
 		Assert(!found);
 
 		AdbMonitorShmem->am_launcherpid = 0;
+#if defined(ADB_MONITOR_POOL)
+		dlist_init(&AdbMonitorShmem->am_freeWorkers);
+#endif
 		AdbMonitorShmem->am_startingWorker = NULL;
 
 		worker = (WorkerInfo) ((char *) AdbMonitorShmem +
 							   MAXALIGN(sizeof(AdbMonitorShmemStruct)));
+#if defined(ADB_MONITOR_POOL)
+		/* initialize the WorkerInfo free list */
+		for (i = 0; i < adbmonitor_max_workers; i++)
+			dlist_push_head(&AdbMonitorShmem->am_freeWorkers,
+							&worker[i].wi_links);
+#else
 		worker->wi_job = 0;
 		worker->wi_proc = NULL;
 		worker->wi_launcherpid = 0;
 		worker->wi_launchtime = 0;
+#endif
 	}
 	else
 		Assert(found);
@@ -853,12 +916,17 @@ AdbMntWorkerMain(int argc, char *argv[])
 	 */
 	if (AdbMonitorShmem->am_startingWorker != NULL)
 	{
+#if defined(ADB_MONITOR_POOL)
+		MyWorkerInfo = AdbMonitorShmem->am_startingWorker;
+		jobid = MyWorkerInfo->wi_job;
+#else
 		WorkerInfo ShmemWorker = AdbMonitorShmem->am_startingWorker;
 		MyWorkerInfo = &MyWorkerInfoData;
 		MyWorkerInfo->wi_job = jobid = ShmemWorker->wi_job;
+		MyWorkerInfo->wi_launchtime = ShmemWorker->wi_launchtime;
+#endif
 		MyWorkerInfo->wi_proc = MyProc;
 		MyWorkerInfo->wi_launcherpid = AdbMonitorShmem->am_launcherpid;
-		MyWorkerInfo->wi_launchtime = ShmemWorker->wi_launchtime;
 
 		/*
 		 * remove from the "starting" pointer, so that the launcher can start
@@ -915,14 +983,30 @@ FreeWorkerInfo(int code, Datum arg)
 {
 	if (MyWorkerInfo != NULL)
 	{
+#if defined(ADB_MONITOR_POOL)
+		LWLockAcquire(AdbmonitorLock, LW_EXCLUSIVE);
+
+		AdbMonitorLauncherPid = AdbMonitorShmem->am_launcherpid;
+
+		dlist_delete(&MyWorkerInfo->wi_links);
+#else
 		AdbMonitorLauncherPid = MyWorkerInfo->wi_launcherpid;
+#endif
 
 		MyWorkerInfo->wi_job = InvalidOid;
 		MyWorkerInfo->wi_proc = NULL;
 		MyWorkerInfo->wi_launcherpid = 0;
 		MyWorkerInfo->wi_launchtime = 0;
+#if defined(ADB_MONITOR_POOL)
+		dlist_push_head(&AdbMonitorShmem->am_freeWorkers,
+						&MyWorkerInfo->wi_links);
+#endif
 		/* not mine anymore */
 		MyWorkerInfo = NULL;
+
+#if defined(ADB_MONITOR_POOL)
+		LWLockRelease(AdbmonitorLock);
+#endif
 	}
 }
 

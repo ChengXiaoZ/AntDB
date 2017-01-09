@@ -230,7 +230,7 @@ static char *config_enum_get_options(struct config_enum * record,
 						const char *prefix, const char *suffix,
 						const char *separator);
 #if defined(ADBMGRD)
-static bool check_adbmonitor_probable_workers(int *newval, void **extra, GucSource source);
+static bool check_adbmonitor_workers(int *newval, void **extra, GucSource source);
 #endif
 
 
@@ -2671,6 +2671,19 @@ static struct config_int ConfigureNamesInt[] =
 		check_autovacuum_max_workers, NULL, NULL
 	},
 #if defined(ADBMGRD)
+
+#if defined(ADB_MONITOR_POOL)
+	{
+		/* see max_connections */
+		{"adbmonitor_max_workers", PGC_POSTMASTER, ADBMONITOR,
+			gettext_noop("Sets the max number of simultaneously running adb monitor worker processes."),
+			NULL
+		},
+		&adbmonitor_max_workers,
+		10, 1, MAX_BACKENDS,
+		check_adbmonitor_workers, NULL, NULL
+	},
+#else /* ADB_MONITOR_POOL */
 	{
 		/* see max_connections */
 		{"adbmonitor_probable_workers", PGC_POSTMASTER, ADBMONITOR,
@@ -2679,9 +2692,11 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&adbmonitor_probable_workers,
 		10, 1, MAX_BACKENDS,
-		check_adbmonitor_probable_workers, NULL, NULL
+		check_adbmonitor_workers, NULL, NULL
 	},
-#endif
+#endif /* ADB_MONITOR_POOL */
+
+#endif /* ADBMGRD */
 #ifdef ADB
 	{
 		{"pool_time_out", PGC_BACKEND, CLIENT_CONN_OTHER,
@@ -9388,7 +9403,7 @@ check_autovacuum_max_workers(int *newval, void **extra, GucSource source)
 
 #if defined(ADBMGRD)
 static bool
-check_adbmonitor_probable_workers(int *newval, void **extra, GucSource source)
+check_adbmonitor_workers(int *newval, void **extra, GucSource source)
 {
 	if (MaxConnections + *newval + 1 + autovacuum_max_workers + 1 +
 		GetNumShmemAttachedBgworkers() > MAX_BACKENDS)
