@@ -114,6 +114,9 @@
 #include "pgxc/poolmgr.h"
 #endif
 #include "pgstat.h"
+#if defined(ADBMGRD)
+#include "postmaster/adbmonitor.h"
+#endif /* ADBMGRD */
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/fork_process.h"
@@ -148,11 +151,20 @@
  */
 #define BACKEND_TYPE_NORMAL		0x0001	/* normal backend */
 #define BACKEND_TYPE_AUTOVAC	0x0002	/* autovacuum worker process */
+#if defined(ADBMGRD)
+#define BACKEND_TYPE_ADBMNT		0x0004	/* adb monitor worker process */
+#define BACKEND_TYPE_WALSND		0x0008	/* walsender process */
+#define BACKEND_TYPE_BGWORKER	0x0010	/* bgworker process */
+#define BACKEND_TYPE_ALL		0x00FF	/* OR of all the above */
+
+#define BACKEND_TYPE_WORKER		(BACKEND_TYPE_AUTOVAC | BACKEND_TYPE_ADBMNT | BACKEND_TYPE_BGWORKER)
+#else
 #define BACKEND_TYPE_WALSND		0x0004	/* walsender process */
 #define BACKEND_TYPE_BGWORKER	0x0008	/* bgworker process */
 #define BACKEND_TYPE_ALL		0x000F	/* OR of all the above */
 
 #define BACKEND_TYPE_WORKER		(BACKEND_TYPE_AUTOVAC | BACKEND_TYPE_BGWORKER)
+#endif /* ADBMGRD */
 
 /*
  * List of active backends (or child processes anyway; we don't actually
@@ -287,6 +299,9 @@ static pid_t StartupPID = 0,
 #ifdef ADB
 			RemoteXactMgrPID = 0,
 #endif /* ADB */
+#if defined(ADBMGRD)
+			AdbMntPID = 0,
+#endif
 			BgWriterPID = 0,
 			CheckpointerPID = 0,
 			WalWriterPID = 0,
@@ -395,6 +410,14 @@ static volatile bool avlauncher_needs_signal = false;
 static volatile bool StartWorkerNeeded = true;
 static volatile bool HaveCrashedWorker = false;
 
+#if defined(ADBMGRD)
+/* received START_ADBMNT_LAUNCHER signal */
+static volatile sig_atomic_t start_adbmnt_launcher = false;
+
+/* the launcher needs to be signalled to communicate some condition */
+static volatile bool amlauncher_needs_signal = false;
+#endif /* ADBMGRD */
+
 /*
  * State for assigning random salts and cancel keys.
  * Also, the global MyCancelKey passes the cancel key assigned to a given
@@ -484,6 +507,10 @@ static void InitPostmasterDeathWatchHandle(void);
 #ifdef PGXC
 static void PGXC_StartChildProcess(void);
 #endif
+
+#if defined(ADBMGRD)
+static void StartAdbmonitorWorker(void);
+#endif /* ADBMGRD */
 
 #ifdef EXEC_BACKEND
 
@@ -1893,6 +1920,29 @@ ServerLoop(void)
 		if (IS_PGXC_COORDINATOR && RemoteXactMgrPID == 0 && pmState == PM_RUN)
 			RemoteXactMgrPID = StartRemoteXactMgr();
 #endif
+
+#if defined(ADBMGRD)
+		/*
+		 * If we have lost the adb monitor launcher, try to start a new one.
+		 */
+		if (AdbMntPID == 0 &&
+			(AdbMonitoringActive() || start_adbmnt_launcher) &&
+			pmState == PM_RUN)
+		{
+			AdbMntPID = StartAdbMntLauncher();
+			if (AdbMntPID != 0)
+				start_adbmnt_launcher = false; /* signal processed */
+		}
+
+		/* If we need to signal the adb monitor launcher, do so now */
+		if (amlauncher_needs_signal)
+		{
+			amlauncher_needs_signal = false;
+			if (AdbMntPID != 0)
+				kill(AdbMntPID, SIGUSR2);
+		}
+#endif /* ADBMGRD */
+
 		/* If we need to signal the autovacuum launcher, do so now */
 		if (avlauncher_needs_signal)
 		{
@@ -2600,6 +2650,10 @@ SIGHUP_handler(SIGNAL_ARGS)
 			signal_child(WalReceiverPID, SIGHUP);
 		if (AutoVacPID != 0)
 			signal_child(AutoVacPID, SIGHUP);
+#if defined(ADBMGRD)
+		if (AdbMntPID != 0)
+			signal_child(AdbMntPID, SIGHUP);
+#endif /* ADBMGRD */
 		if (PgArchPID != 0)
 			signal_child(PgArchPID, SIGHUP);
 		if (SysLoggerPID != 0)
@@ -2668,20 +2722,24 @@ pmdie(SIGNAL_ARGS)
 				/* and the autovac launcher too */
 				if (AutoVacPID != 0)
 					signal_child(AutoVacPID, SIGTERM);
+#if defined(ADBMGRD)
+				/* and the adb monitor launcher too */
+				if (AdbMntPID != 0)
+					signal_child(AdbMntPID, SIGTERM);
+#endif
 				/* and the bgwriter too */
 				if (BgWriterPID != 0)
 					signal_child(BgWriterPID, SIGTERM);
 				/* and the walwriter too */
 				if (WalWriterPID != 0)
 					signal_child(WalWriterPID, SIGTERM);
-
 #ifdef PGXC /* PGXC_COORD */
 				/* and the pool manager too */
 				if (IS_PGXC_COORDINATOR && PgPoolerPID != 0)
 					signal_child(PgPoolerPID, SIGTERM);
 #endif
-
 #ifdef ADB
+				/* and the remote xact manager too */
 				if (IS_PGXC_COORDINATOR && RemoteXactMgrPID != 0)
 					signal_child(RemoteXactMgrPID, SIGTERM);
 #endif
@@ -2753,6 +2811,11 @@ pmdie(SIGNAL_ARGS)
 				/* and the autovac launcher too */
 				if (AutoVacPID != 0)
 					signal_child(AutoVacPID, SIGTERM);
+#if defined(ADBMGRD)
+				/* and the adb monitor launcher too */
+				if (AdbMntPID != 0)
+					signal_child(AdbMntPID, SIGTERM);
+#endif /* ADBMGRD */
 				/* and the walwriter too */
 				if (WalWriterPID != 0)
 					signal_child(WalWriterPID, SIGTERM);
@@ -2807,6 +2870,10 @@ pmdie(SIGNAL_ARGS)
 				signal_child(WalReceiverPID, SIGQUIT);
 			if (AutoVacPID != 0)
 				signal_child(AutoVacPID, SIGQUIT);
+#if defined(ADBMGRD)
+			if (AdbMntPID != 0)
+				signal_child(AdbMntPID, SIGQUIT);
+#endif /* ADBMGRD */
 			if (PgArchPID != 0)
 				signal_child(PgArchPID, SIGQUIT);
 			if (PgStatPID != 0)
@@ -2918,6 +2985,7 @@ reaper(SIGNAL_ARGS)
 			 */
 			if (!IsBinaryUpgrade && AutoVacuumingActive() && AutoVacPID == 0)
 				AutoVacPID = StartAutoVacLauncher();
+
 			if (XLogArchivingActive() && PgArchPID == 0)
 				PgArchPID = pgarch_start();
 			if (PgStatPID == 0)
@@ -2930,6 +2998,11 @@ reaper(SIGNAL_ARGS)
 			if (IS_PGXC_COORDINATOR && RemoteXactMgrPID == 0)
 				RemoteXactMgrPID = StartRemoteXactMgr();
 #endif
+#if defined(ADBMGRD)
+			if (AdbMonitoringActive() && AdbMntPID == 0)
+				AdbMntPID = StartAdbMntLauncher();
+#endif /* ADBMGRD */
+
 
 			/* some workers may be scheduled to start now */
 			maybe_start_bgworker();
@@ -3053,6 +3126,23 @@ reaper(SIGNAL_ARGS)
 								 _("autovacuum launcher process"));
 			continue;
 		}
+
+#if defined(ADBMGRD)
+		/*
+		 * Was it the adb monitor launcher?	Normal exit can be ignored; we'll
+		 * start a new one at the next iteration of the postmaster's main
+		 * loop, if necessary.  Any other exit condition is treated as a
+		 * crash.
+		 */
+		if (pid == AdbMntPID)
+		{
+			AdbMntPID = 0;
+			if (!EXIT_STATUS_0(exitstatus))
+				HandleChildCrash(pid, exitstatus,
+								 _("adb monitor launcher process"));
+			continue;
+		}
+#endif /* ADBMGRD */
 
 		/*
 		 * Was it the archiver?  If so, just try to start a new one; no need
@@ -3520,6 +3610,20 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 		signal_child(AutoVacPID, (SendStop ? SIGSTOP : SIGQUIT));
 	}
 
+#if defined(ADBMGRD)
+	/* Take care of the adb monitor launcher too */
+	if (pid == AdbMntPID)
+		AdbMntPID = 0;
+	else if (AdbMntPID != 0 && !FatalError)
+	{
+		ereport(DEBUG2,
+				(errmsg_internal("sending %s to process %d",
+								 (SendStop ? "SIGSTOP" : "SIGQUIT"),
+								 (int) AdbMntPID)));
+		signal_child(AdbMntPID, (SendStop ? SIGSTOP : SIGQUIT));
+	}
+#endif /* ADBMGRD */
+
 #ifdef PGXC /* PGXC_COORD */
 	/* Take care of the pool manager too */
 	if (IS_PGXC_COORDINATOR)
@@ -3728,6 +3832,12 @@ PostmasterStateMachine(void)
 #ifdef PGXC /* PGXC_COORD */
 			PgPoolerPID == 0 &&
 #endif
+#ifdef ADB
+			RemoteXactMgrPID == 0 &&
+#endif
+#if defined(ADBMGRD)
+			AdbMntPID == 0 &&
+#endif
 			WalReceiverPID == 0 &&
 			BgWriterPID == 0 &&
 			(CheckpointerPID == 0 || !FatalError) &&
@@ -3825,6 +3935,12 @@ PostmasterStateMachine(void)
 			/* These other guys should be dead already */
 #ifdef PGXC /* PGXC_COORD */
 			Assert(PgPoolerPID == 0);
+#endif
+#ifdef ADB
+			Assert(RemoteXactMgrPID == 0);
+#endif
+#if defined(ADBMGRD)
+			Assert(AdbMntPID == 0);
 #endif
 			Assert(StartupPID == 0);
 			Assert(WalReceiverPID == 0);
@@ -5168,6 +5284,21 @@ sigusr1_handler(SIGNAL_ARGS)
 		StartAutovacuumWorker();
 	}
 
+#if defined(ADBMGRD)
+	if (CheckPostmasterSignal(PMSIGNAL_START_ADBMNT_LAUNCHER) &&
+		Shutdown == NoShutdown)
+	{
+		start_adbmnt_launcher = true;
+	}
+
+	if (CheckPostmasterSignal(PMSIGNAL_START_ADBMNT_WORKER) &&
+		Shutdown == NoShutdown)
+	{
+		/* The adb monitor launcher wants us to start a worker process. */
+		StartAdbmonitorWorker();
+	}
+#endif /* ADBMGRD */
+
 	if (CheckPostmasterSignal(PMSIGNAL_START_WALRECEIVER) &&
 		WalReceiverPID == 0 &&
 		(pmState == PM_STARTUP || pmState == PM_RECOVERY ||
@@ -5567,6 +5698,85 @@ StartAutovacuumWorker(void)
 	}
 }
 
+#if defined(ADBMGRD)
+/*
+ * StartAdbMonitorWorker
+ *		Start an adb monitor worker process.
+ *
+ * This function is here because it enters the resulting PID into the
+ * postmaster's private backends list.
+ *
+ * NB -- this code very roughly matches BackendStartup.
+ */
+static void
+StartAdbmonitorWorker(void)
+{
+	Backend    *bn;
+
+	/*
+	 * If not in condition to run a process, don't try, but handle it like a
+	 * fork failure.  This does not normally happen, since the signal is only
+	 * supposed to be sent by autovacuum launcher when it's OK to do it, but
+	 * we have to check to avoid race-condition problems during DB state
+	 * changes.
+	 */
+	if (canAcceptConnections() == CAC_OK)
+	{
+		bn = (Backend *) malloc(sizeof(Backend));
+		if (bn)
+		{
+			/*
+			 * Compute the cancel key that will be assigned to this session.
+			 * We probably don't need cancel keys for autovac workers, but
+			 * we'd better have something random in the field to prevent
+			 * unfriendly people from sending cancels to them.
+			 */
+			MyCancelKey = PostmasterRandom();
+			bn->cancel_key = MyCancelKey;
+
+			/* Autovac workers are not dead_end and need a child slot */
+			bn->dead_end = false;
+			bn->child_slot = MyPMChildSlot = AssignPostmasterChildSlot();
+
+			bn->pid = StartAdbMntWorker();
+			if (bn->pid > 0)
+			{
+				bn->bkend_type = BACKEND_TYPE_ADBMNT;
+				dlist_push_head(&BackendList, &bn->elem);
+				/* all OK */
+				return;
+			}
+
+			/*
+			 * fork failed, fall through to report -- actual error message was
+			 * logged by StartAutoVacWorker
+			 */
+			(void) ReleasePostmasterChildSlot(bn->child_slot);
+			free(bn);
+		}
+		else
+			ereport(LOG,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+	}
+
+	/*
+	 * Report the failure to the launcher, if it's running.  (If it's not, we
+	 * might not even be connected to shared memory, so don't try to call
+	 * AdbMntWorkerFailed.)  Note that we also need to signal it so that it
+	 * responds to the condition, but we don't do that here, instead waiting
+	 * for ServerLoop to do it.  This way we avoid a ping-pong signalling in
+	 * quick succession between the autovac launcher and postmaster in case
+	 * things get ugly.
+	 */
+	if (AdbMntPID != 0)
+	{
+		AdbMntWorkerFailed();
+		amlauncher_needs_signal = true;
+	}
+}
+
+#endif /* ADBMGRD */
 /*
  * Create the opts file
  */
@@ -5613,8 +5823,14 @@ CreateOptsFile(int argc, char *argv[], char *fullprogname)
 int
 MaxLivePostmasterChildren(void)
 {
+#if defined(ADBMGRD)
+	return 2 * (MaxConnections + adbmonitor_probable_workers + 1 +
+				autovacuum_max_workers + 1 +
+				GetNumRegisteredBackgroundWorkers(0));
+#else
 	return 2 * (MaxConnections + autovacuum_max_workers + 1 +
 				GetNumRegisteredBackgroundWorkers(0));
+#endif
 }
 
 /*
@@ -5642,8 +5858,14 @@ RegisterBackgroundWorker(BackgroundWorker *worker)
 
 	/* initialize upper limit on first call */
 	if (numworkers == 0)
+#if defined(ADBMGRD)
+		maxworkers = MAX_BACKENDS -
+			(MaxConnections + adbmonitor_probable_workers + 1 + 
+			 autovacuum_max_workers + 1);
+#else
 		maxworkers = MAX_BACKENDS -
 			(MaxConnections + autovacuum_max_workers + 1);
+#endif
 
 	if (!IsUnderPostmaster)
 		ereport(LOG,

@@ -70,6 +70,9 @@ typedef enum LWLockId
 	AddinShmemInitLock,
 	AutovacuumLock,
 	AutovacuumScheduleLock,
+#if defined(ADBMGRD)
+	AdbmonitorLock,
+#endif
 	SyncScanLock,
 #ifdef PGXC
 	BarrierLock,

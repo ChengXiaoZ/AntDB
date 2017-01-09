@@ -39,6 +39,9 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "miscadmin.h"
+#if defined(ADBMGRD)
+#include "postmaster/adbmonitor.h"
+#endif
 #include "postmaster/autovacuum.h"
 #ifdef PGXC
 #include "pgxc/pgxc.h"
@@ -239,13 +242,27 @@ InitProcGlobal(void)
 		 * linear search.   PGPROCs for prepared transactions are added to a
 		 * free list by TwoPhaseShmemInit().
 		 */
+#if defined(ADBMGRD)
+		/*
+		 * ADBQ:
+		 *     Keep adb monitor process in freeProcs. it may go wrong, but not
+		 * be found now.
+		 */
+		if (i < MaxConnections + adbmonitor_probable_workers + 1)
+#else
 		if (i < MaxConnections)
+#endif
 		{
 			/* PGPROC for normal backend, add to freeProcs list */
 			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->freeProcs;
 			ProcGlobal->freeProcs = &procs[i];
 		}
+#if defined(ADBMGRD)
+		else if (i < MaxConnections + adbmonitor_probable_workers + 1 +
+			autovacuum_max_workers + 1)
+#else
 		else if (i < MaxConnections + autovacuum_max_workers + 1)
+#endif
 		{
 			/* PGPROC for AV launcher/worker, add to autovacFreeProcs list */
 			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->autovacFreeProcs;
@@ -350,7 +367,13 @@ InitProcess(void)
 	 * cleaning up.  (XXX autovac launcher currently doesn't participate in
 	 * this; it probably should.)
 	 */
+#if defined(ADBMGRD)
+	if (IsUnderPostmaster &&
+		!IsAutoVacuumLauncherProcess() &&
+		!IsAdbMonitorLauncherProcess())
+#else
 	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess())
+#endif
 		MarkPostmasterChildActive();
 
 	/*
@@ -862,12 +885,24 @@ ProcKill(int code, Datum arg)
 	 * way, so tell the postmaster we've cleaned up acceptably well. (XXX
 	 * autovac launcher should be included here someday)
 	 */
+#if defined(ADBMGRD)
+	if (IsUnderPostmaster &&
+		!IsAutoVacuumLauncherProcess() &&
+		!IsAdbMonitorLauncherProcess())
+#else
 	if (IsUnderPostmaster && !IsAutoVacuumLauncherProcess())
+#endif
 		MarkPostmasterChildInactive();
 
 	/* wake autovac launcher if needed -- see comments in FreeWorkerInfo */
 	if (AutovacuumLauncherPid != 0)
 		kill(AutovacuumLauncherPid, SIGUSR2);
+
+#if defined(ADBMGRD)
+	/* wake adb monitor launcher if needed -- see comments in FreeWorkerInfo */
+	if (AdbMonitorLauncherPid != 0)
+		kill(AdbMonitorLauncherPid, SIGUSR2);
+#endif
 }
 
 /*

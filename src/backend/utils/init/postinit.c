@@ -35,6 +35,9 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#if defined(ADBMGRD)
+#include "postmaster/adbmonitor.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
 #include "replication/walsender.h"
@@ -279,7 +282,13 @@ CheckMyDatabase(const char *name, bool am_superuser)
 	 *
 	 * We do not enforce them for autovacuum worker processes either.
 	 */
+#if defined(ADBMGRD)
+	if (IsUnderPostmaster &&
+		!IsAutoVacuumWorkerProcess() &&
+		!IsAdbMonitorWorkerProcess())
+#else
 	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
+#endif
 	{
 		/*
 		 * Check that the database is currently allowing connections.
@@ -438,9 +447,16 @@ InitializeMaxBackends(void)
 {
 	Assert(MaxBackends == 0);
 
+#if defined(ADBMGRD)
+	/* the extra unit accounts for the autovacuum launcher and adb monitor launcher */
+	MaxBackends = MaxConnections + adbmonitor_probable_workers + 1 +
+		autovacuum_max_workers + 1 + 
+		GetNumShmemAttachedBgworkers();
+#else
 	/* the extra unit accounts for the autovacuum launcher */
 	MaxBackends = MaxConnections + autovacuum_max_workers + 1 +
 		GetNumShmemAttachedBgworkers();
+#endif
 
 	/* internal error because the values were all checked previously */
 	if (MaxBackends > MAX_BACKENDS)
@@ -604,6 +620,11 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* The autovacuum launcher is done here */
 	if (IsAutoVacuumLauncherProcess())
 		return;
+#if defined(ADBMGRD)
+	/* The adb monitor launcher is done here */
+	if (IsAdbMonitorLauncherProcess())
+		return;
+#endif
 
 	/*
 	 * Start a new transaction here before first access to db, and get a
@@ -637,7 +658,13 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * In standalone mode and in autovacuum worker processes, we use a fixed
 	 * ID, otherwise we figure it out from the authenticated user name.
 	 */
+#if defined(ADBMGRD)
+	if (bootstrap ||
+		IsAutoVacuumWorkerProcess() ||
+		IsAdbMonitorWorkerProcess())
+#else
 	if (bootstrap || IsAutoVacuumWorkerProcess())
+#endif
 	{
 		InitializeSessionUserIdStandalone();
 		am_superuser = true;

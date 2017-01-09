@@ -26,6 +26,9 @@
 #ifdef PGXC
 #include "pgxc/nodemgr.h"
 #endif
+#if defined(ADBMGRD)
+#include "postmaster/adbmonitor.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
@@ -134,6 +137,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 #ifdef PGXC
 		size = add_size(size, NodeTablesShmemSize());
 #endif
+
+#if defined(ADBMGRD)
+		size = add_size(size, AdbMonitorShmemSize());
+#endif /* ADBMGRD */
 
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
@@ -249,6 +256,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	NodeTablesShmemInit();
 #endif
 
+#if defined(ADBMGRD)
+	AdbMonitorShmemInit();
+#endif /* ADBMGRD */
 
 #ifdef EXEC_BACKEND
 

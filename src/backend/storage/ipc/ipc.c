@@ -127,6 +127,10 @@ proc_exit(int code)
 
 		if (IsAutoVacuumWorkerProcess())
 			snprintf(gprofDirName, 32, "gprof/avworker");
+#if defined(ADBMGRD)
+		else if (IsAdbMonitorWorkerProcess())
+			snprintf(gprofDirName, 32, "gprof/amworker");
+#endif
 		else
 			snprintf(gprofDirName, 32, "gprof/%d", (int) getpid());
 

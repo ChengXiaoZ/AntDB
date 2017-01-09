@@ -67,6 +67,9 @@
 #include "pgxc/pgxcnode.h"
 #include "pgxc/xc_maintenance_mode.h"
 #endif
+#if defined(ADBMGRD)
+#include "postmaster/adbmonitor.h"
+#endif /* ADBMGRD */
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/bgwriter.h"
@@ -226,6 +229,9 @@ static const char *show_log_file_mode(void);
 static char *config_enum_get_options(struct config_enum * record,
 						const char *prefix, const char *suffix,
 						const char *separator);
+#if defined(ADBMGRD)
+static bool check_adbmonitor_probable_workers(int *newval, void **extra, GucSource source);
+#endif
 
 
 /*
@@ -671,6 +677,10 @@ const char *const config_group_names[] =
 	gettext_noop("Statistics / Query and Index Statistics Collector"),
 	/* AUTOVACUUM */
 	gettext_noop("Autovacuum"),
+#if defined(ADBMGRD)
+	/* ADBMONITOR */
+	gettext_noop("Adb Monitor"),
+#endif
 	/* CLIENT_CONN */
 	gettext_noop("Client Connection Defaults"),
 	/* CLIENT_CONN_STATEMENT */
@@ -1237,6 +1247,18 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+
+#if defined(ADBMGRD)
+	{
+		{"adbmonitor", PGC_SIGHUP, ADBMONITOR,
+			gettext_noop("Starts the adb monitor subprocess."),
+			NULL
+		},
+		&adbmonitor_start_daemon,
+		true,
+		NULL, NULL, NULL
+	},
+#endif /* ADBMGRD */
 
 	{
 		{"trace_notify", PGC_USERSET, DEVELOPER_OPTIONS,
@@ -2566,6 +2588,19 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+#if defined(ADBMGRD)
+	{
+		{"adbmonitor_naptime", PGC_SIGHUP, ADBMONITOR,
+			gettext_noop("Time to sleep between adb monitor launcher runs."),
+			NULL,
+			GUC_UNIT_S
+		},
+		&adbmonitor_naptime,
+		60, 1, INT_MAX / 1000,
+		NULL, NULL, NULL
+	},
+#endif
+
 	{
 		{"autovacuum_naptime", PGC_SIGHUP, AUTOVACUUM,
 			gettext_noop("Time to sleep between autovacuum runs."),
@@ -2635,6 +2670,18 @@ static struct config_int ConfigureNamesInt[] =
 		3, 1, MAX_BACKENDS,
 		check_autovacuum_max_workers, NULL, NULL
 	},
+#if defined(ADBMGRD)
+	{
+		/* see max_connections */
+		{"adbmonitor_probable_workers", PGC_POSTMASTER, ADBMONITOR,
+			gettext_noop("Sets the probable number of simultaneously running adb monitor worker processes."),
+			NULL
+		},
+		&adbmonitor_probable_workers,
+		10, 1, MAX_BACKENDS,
+		check_adbmonitor_probable_workers, NULL, NULL
+	},
+#endif
 #ifdef ADB
 	{
 		{"pool_time_out", PGC_BACKEND, CLIENT_CONN_OTHER,
@@ -9319,8 +9366,13 @@ show_tcp_keepalives_count(void)
 static bool
 check_maxconnections(int *newval, void **extra, GucSource source)
 {
+#if defined(ADBMGRD)
+	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 +
+		adbmonitor_probable_workers + 1 > MAX_BACKENDS)
+#else
 	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 >
 		MAX_BACKENDS)
+#endif
 		return false;
 	return true;
 }
@@ -9333,6 +9385,17 @@ check_autovacuum_max_workers(int *newval, void **extra, GucSource source)
 		return false;
 	return true;
 }
+
+#if defined(ADBMGRD)
+static bool
+check_adbmonitor_probable_workers(int *newval, void **extra, GucSource source)
+{
+	if (MaxConnections + *newval + 1 + autovacuum_max_workers + 1 +
+		GetNumShmemAttachedBgworkers() > MAX_BACKENDS)
+		return false;
+	return true;
+}
+#endif
 
 static bool
 check_effective_io_concurrency(int *newval, void **extra, GucSource source)

@@ -5716,6 +5716,9 @@ IsPGXCNodeXactDatanodeDirect(void)
 		   (IsPostmasterEnvironment || !useLocalXid) &&
 		   IsNormalProcessingMode() &&
 		   !IsAutoVacuumLauncherProcess() &&
+#if defined(ADBMGRD)
+		   !IsAdbMonitorLauncherProcess() &&
+#endif
 		   !IsConnFromCoord();
 }
 #endif

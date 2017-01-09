@@ -62,6 +62,9 @@
 #ifdef PGXC
 #include "parser/parse_type.h"
 #endif /* PGXC */
+#if defined(ADBMGRD)
+#include "postmaster/adbmonitor.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
 #include "replication/walsender.h"
@@ -3381,6 +3384,12 @@ ProcessInterrupts(void)
 			ereport(FATAL,
 					(errcode(ERRCODE_ADMIN_SHUTDOWN),
 					 errmsg("terminating autovacuum process due to administrator command")));
+#if defined(ADBMGRD)
+		else if (IsAdbMonitorWorkerProcess())
+			ereport(FATAL,
+					(errcode(ERRCODE_ADMIN_SHUTDOWN),
+					 errmsg("terminating adb monitor process due to administrator command")));
+#endif
 		else if (RecoveryConflictPending && RecoveryConflictRetryable)
 		{
 			pgstat_report_recovery_conflict(RecoveryConflictReason);
@@ -3499,7 +3508,11 @@ ProcessInterrupts(void)
 					(errcode(ERRCODE_QUERY_CANCELED),
 					 errmsg("canceling statement due to statement timeout")));
 		}
+#if defined(ADBMGRD)
+		if (IsAutoVacuumWorkerProcess() || IsAdbMonitorWorkerProcess())
+#else
 		if (IsAutoVacuumWorkerProcess())
+#endif
 		{
 			ImmediateInterruptOK = false;		/* not idle anymore */
 			LockErrorCleanup();

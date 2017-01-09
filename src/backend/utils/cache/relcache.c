@@ -933,7 +933,11 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 #ifdef PGXC
 	if (IS_PGXC_COORDINATOR &&
 		relation->rd_id >= FirstNormalObjectId &&
-		!IsAutoVacuumWorkerProcess())
+		!IsAutoVacuumWorkerProcess()
+#if defined(ADBMGRD)
+		&& !IsAnyAdbMonitorProcess()
+#endif
+		)
 		RelationBuildLocator(relation);
 #endif
 	/*
