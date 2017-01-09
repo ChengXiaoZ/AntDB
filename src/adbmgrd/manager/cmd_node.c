@@ -8194,7 +8194,7 @@ static void mgr_manage_stop_func(StringInfo commandsql)
 	appendStringInfoString(commandsql, "mgr_stop_cn_master(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_dn_master(\"any\"), ");
 	appendStringInfoString(commandsql, "mgr_stop_dn_slave(\"any\"), ");
-	appendStringInfoString(commandsql, "mgr_stop_dn_extra(\"any\"), ");
+	appendStringInfoString(commandsql, "mgr_stop_dn_extra(\"any\") ");
 
 	return;
 }
@@ -8904,7 +8904,7 @@ static void mgr_check_command_valid(List *command_list)
 			strcmp(command_str, "deploy") == 0   ||
 			strcmp(command_str, "drop") == 0     ||
 			strcmp(command_str, "failover") == 0 ||
-            strcmp(command_str, "flush") == 0    ||
+			strcmp(command_str, "flush") == 0    ||
 			strcmp(command_str, "init") == 0     ||
 			strcmp(command_str, "list") == 0     ||
 			strcmp(command_str, "monitor") == 0  ||
@@ -9066,50 +9066,31 @@ static bool mgr_acl_flush(char *username)
 
 static bool mgr_acl_stop(char *username)
 {
-	bool f1,  f2,  f3,  f4,  f5,  f6,  f7,  f8,  f9,  f10;
-	bool f11, f12, f13, f14, f15, f16, f17, f18, f19, f20;
-	bool f21, f22, f23;
-
+	bool f1, f2, f3, f4, f5, f6, f7, f8, f9;
 	bool t1, t2, t3, t4, t5, t6, t7, t8, t9;
 
 	f1 = mgr_has_func_priv(username, "mgr_stop_agent_all()", "execute");
 	f2 = mgr_has_func_priv(username, "mgr_stop_agent_hostnamelist(text[])", "execute");
 	f3 = mgr_has_func_priv(username, "mgr_stop_gtm_master(\"any\")", "execute");
-	f4 = mgr_has_func_priv(username, "mgr_stop_gtm_master_f(\"any\")", "execute");
-	f5 = mgr_has_func_priv(username, "mgr_stop_gtm_master_i(\"any\")", "execute");
-	f6 = mgr_has_func_priv(username, "mgr_stop_gtm_slave(\"any\")", "execute");
-	f7 = mgr_has_func_priv(username, "mgr_stop_gtm_slave_f(\"any\")", "execute");
-	f8 = mgr_has_func_priv(username, "mgr_stop_gtm_slave_i(\"any\")", "execute");
-	f9 = mgr_has_func_priv(username, "mgr_stop_gtm_extra(\"any\")", "execute");
-	f10 = mgr_has_func_priv(username, "mgr_stop_gtm_extra_f(\"any\")", "execute");
-	f11 = mgr_has_func_priv(username, "mgr_stop_gtm_extra_i(\"any\")", "execute");
-	f12 = mgr_has_func_priv(username, "mgr_stop_cn_master(\"any\")", "execute");
-	f13 = mgr_has_func_priv(username, "mgr_stop_cn_master_f(\"any\")", "execute");
-	f14 = mgr_has_func_priv(username, "mgr_stop_cn_master_i(\"any\")", "execute");
-	f15 = mgr_has_func_priv(username, "mgr_stop_dn_master(\"any\")", "execute");
-	f16 = mgr_has_func_priv(username, "mgr_stop_dn_master_f(\"any\")", "execute");
-	f17 = mgr_has_func_priv(username, "mgr_stop_dn_master_i(\"any\")", "execute");
-	f18 = mgr_has_func_priv(username, "mgr_stop_dn_slave(\"any\")", "execute");
-	f19 = mgr_has_func_priv(username, "mgr_stop_dn_slave_f(\"any\")", "execute");
-	f20 = mgr_has_func_priv(username, "mgr_stop_dn_slave_i(\"any\")", "execute");
-	f21 = mgr_has_func_priv(username, "mgr_stop_dn_extra(\"any\")", "execute");
-	f22 = mgr_has_func_priv(username, "mgr_stop_dn_extra_f(\"any\")", "execute");
-	f23 = mgr_has_func_priv(username, "mgr_stop_dn_extra_i(\"any\")", "execute");
+	f4 = mgr_has_func_priv(username, "mgr_stop_gtm_slave(\"any\")", "execute");
+	f5 = mgr_has_func_priv(username, "mgr_stop_gtm_extra(\"any\")", "execute");
+	f6 = mgr_has_func_priv(username, "mgr_stop_cn_master(\"any\")", "execute");
+	f7 = mgr_has_func_priv(username, "mgr_stop_dn_master(\"any\")", "execute");
+	f8 = mgr_has_func_priv(username, "mgr_stop_dn_slave(\"any\")", "execute");
+	f9 = mgr_has_func_priv(username, "mgr_stop_dn_extra(\"any\")", "execute");
 
-	t1  = mgr_has_table_priv(username, "adbmgr.stop_gtm_all", "select");
-	t2  = mgr_has_table_priv(username, "adbmgr.stop_gtm_all_f", "select");
-	t3  = mgr_has_table_priv(username, "adbmgr.stop_gtm_all_i", "select");
-	t4  = mgr_has_table_priv(username, "adbmgr.stop_datanode_all", "select");
-	t5  = mgr_has_table_priv(username, "adbmgr.stop_datanode_all_f", "select");
-	t6  = mgr_has_table_priv(username, "adbmgr.stop_datanode_all_i", "select");
-	t7  = mgr_has_table_priv(username, "adbmgr.stopall", "select");
-	t8  = mgr_has_table_priv(username, "adbmgr.stopall_f", "select");
-	t9  = mgr_has_table_priv(username, "adbmgr.stopall_i", "select");
+	t1 = mgr_has_table_priv(username, "adbmgr.stop_gtm_all", "select");
+	t2 = mgr_has_table_priv(username, "adbmgr.stop_gtm_all_f", "select");
+	t3 = mgr_has_table_priv(username, "adbmgr.stop_gtm_all_i", "select");
+	t4 = mgr_has_table_priv(username, "adbmgr.stop_datanode_all", "select");
+	t5 = mgr_has_table_priv(username, "adbmgr.stop_datanode_all_f", "select");
+	t6 = mgr_has_table_priv(username, "adbmgr.stop_datanode_all_i", "select");
+	t7 = mgr_has_table_priv(username, "adbmgr.stopall", "select");
+	t8 = mgr_has_table_priv(username, "adbmgr.stopall_f", "select");
+	t9 = mgr_has_table_priv(username, "adbmgr.stopall_i", "select");
 
-	return (f1  && f2  && f3  && f4  && f5  && f6  && f7  && f8  && f9  && f10 &&
-			f11 && f12 && f13 && f14 && f15 && f16 && f17 && f18 && f19 && f20 &&
-			f21 && f22 && f23 &&
-			t1  && t2  && t3  && t4  && t5  && t6  && t7  && t8  && t9);
+	return (f1 && f2 && f3 && f4 && f5 && f6 && f7 && f8 && f9 &&
+			t1 && t2 && t3 && t4 && t5 && t6 && t7 && t8 && t9);
 }
 
 static bool mgr_acl_deploy(char *username)
@@ -9241,9 +9222,9 @@ static bool mgr_acl_start(char *username)
 	f8 = mgr_has_func_priv(username, "mgr_start_dn_slave(\"any\")", "execute");
 	f9 = mgr_has_func_priv(username, "mgr_start_dn_extra(\"any\")", "execute");
 
-	t1  = mgr_has_table_priv(username, "adbmgr.start_gtm_all", "select");
-	t2  = mgr_has_table_priv(username, "adbmgr.start_datanode_all", "select");
-	t3  = mgr_has_table_priv(username, "adbmgr.startall", "select");
+	t1 = mgr_has_table_priv(username, "adbmgr.start_gtm_all", "select");
+	t2 = mgr_has_table_priv(username, "adbmgr.start_datanode_all", "select");
+	t3 = mgr_has_table_priv(username, "adbmgr.startall", "select");
 
 	return (f1 && f2 && f3 && f4 && f5 && f6 && f7 && f8 && f9 && t1 && t2 && t3);
 }
@@ -9265,7 +9246,7 @@ static bool mgr_acl_monitor(char *username)
 	f5 = mgr_has_func_priv(username, "mgr_monitor_nodetype_namelist(bigint, \"any\")", "execute");
 	f6 = mgr_has_func_priv(username, "mgr_monitor_nodetype_all(bigint)", "execute");
 
-	t1  = mgr_has_table_priv(username, "adbmgr.monitor_all", "select");
+	t1 = mgr_has_table_priv(username, "adbmgr.monitor_all", "select");
 
 	return (f1 && f2 && f3 && f4 && f5 && f6 && t1);
 }
