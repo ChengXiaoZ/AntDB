@@ -208,7 +208,7 @@ $(agtm_inc_dir)/utils/probes.h: utils/probes.h
 	  $(LN_S) "$$prereqdir/$(notdir $<)" .
 
 
-utils/probes.o: utils/probes.d $(SUBDIROBJS)
+utils/probes.o: $(backend_src_dir)/utils/probes.d $(SUBDIROBJS)
 	$(DTRACE) $(DTRACEFLAGS) -C -G -s $(call expand_subsys,$^) -o $@
 
 
