@@ -76,10 +76,10 @@ libpgcommon_agtm.a: $(OBJS_AGTM)
 	$(CC) $(CFLAGS) $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
 
 %_mgr.o: %.c %.o
-	$(CC) $(subst -DPGXC,,$(subst -DADB,, $(CFLAGS))) -DADBMGRD $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
+	$(CC) $(patsubst -DPGXC,,$(patsubst -DADB,, $(CFLAGS))) -DADBMGRD $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
 
 %_agtm.o: %.c %.o
-	$(CC) $(subst -DPGXC,,$(subst -DADB,, $(CFLAGS))) -DAGTM $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
+	$(CC) $(patsubst -DPGXC,,$(patsubst -DADB,, $(CFLAGS))) -DAGTM $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
 
 $(OBJS_SRV) $(OBJS_MGR) $(OBJS_AGTM): | submake-errcodes
 

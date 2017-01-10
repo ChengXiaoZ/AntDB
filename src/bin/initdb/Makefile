@@ -40,10 +40,10 @@ initagtm: $(OBJS_AGTM) | submake-libpgport
 	$(CC) $(OBJS_AGTM) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) -o $@$(X)
 
 $(OBJS_MGR): %_mgr.o : %.c
-	$(CC) $(subst -DPGXC,, $(subst -DADB,, $(CFLAGS))) $(CPPFLAGS) -DINITMGR -c -o $@ $<
+	$(CC) $(patsubst -DPGXC,, $(patsubst -DADB,, $(CFLAGS))) $(CPPFLAGS) -DINITMGR -c -o $@ $<
 
 $(OBJS_AGTM): %_agtm.o : %.c
-	$(CC) $(subst -DPGXC,, $(subst -DADB,, $(CFLAGS))) $(CPPFLAGS) -DINITAGTM -c -o $@ $<
+	$(CC) $(patsubst -DPGXC,, $(patsubst -DADB,, $(CFLAGS))) $(CPPFLAGS) -DINITAGTM -c -o $@ $<
 
 # We used to pull in all of libpq to get encnames.c, but that
 # exposes us to risks of version skew if we link to a shared library.
