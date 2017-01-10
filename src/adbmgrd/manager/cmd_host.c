@@ -561,6 +561,7 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 	InitDeployInfo *info = NULL;
 	FuncCallContext *funcctx = NULL;
 	FILE volatile *tar = NULL;
+	char *str_path = NULL;
 	HeapTuple tuple;
 	HeapTuple out;
 	Form_mgr_host host;
@@ -621,8 +622,32 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 			, errmsg("column hostaddr is null")));
 	}
 	str_addr = TextDatumGetCString(datum);
-	if (success && !(host_is_localhost(str_addr)))
-		appendStringInfo(&buf, "success");
+
+	datum = heap_getattr(tuple, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isnull);
+	if(isnull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errmsg("column _hostpghome is null")));
+	}
+	str_path = TextDatumGetCString(datum);
+
+	if (success)
+	{
+		char pghome[MAXPGPATH];
+		get_pghome(pghome);
+
+		if (host_is_localhost(str_addr) && (strcmp(pghome, str_path) == 0))
+		{
+			resetStringInfo(&buf);
+			appendStringInfoString(&buf, "skip localhost");
+		}
+		else
+		{
+			resetStringInfo(&buf);
+			appendStringInfo(&buf, "success");
+		}
+	}
 
 	out = build_common_command_tuple(&host->hostname, success, buf.data);
 
@@ -635,6 +660,7 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx = NULL;
 	ListCell **lcp = NULL;
 	FILE volatile *tar = NULL;
+	char *str_path = NULL;
 	HeapTuple out;
 	Value *hostname;
 	bool success = false;
@@ -712,8 +738,32 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 			, errmsg("column hostaddr is null")));
 	}
 	str_addr = TextDatumGetCString(datum);
-	if (success && !(host_is_localhost(str_addr)))
-		appendStringInfo(&buf, "success");
+
+	datum = heap_getattr(tuple, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isnull);
+	if(isnull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errmsg("column _hostpghome is null")));
+	}
+	str_path = TextDatumGetCString(datum);
+
+	if (success)
+	{
+		char pghome[MAXPGPATH];
+		get_pghome(pghome);
+
+		if (host_is_localhost(str_addr) && (strcmp(pghome, str_path) == 0))
+		{
+			resetStringInfo(&buf);
+			appendStringInfoString(&buf, "skip localhost");
+		}
+		else
+		{
+			resetStringInfo(&buf);
+			appendStringInfo(&buf, "success");
+		}
+	}
 
 	out = build_common_command_tuple(&name, success, buf.data);
 
