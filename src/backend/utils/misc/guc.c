@@ -9382,12 +9382,19 @@ static bool
 check_maxconnections(int *newval, void **extra, GucSource source)
 {
 #if defined(ADBMGRD)
+
+#if defined(ADB_MONITOR_POOL)
+	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 +
+		adbmonitor_max_workers + 1 > MAX_BACKENDS)
+#else
 	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 +
 		adbmonitor_probable_workers + 1 > MAX_BACKENDS)
+#endif /* ADB_MONITOR_POOL */
+
 #else
 	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 >
 		MAX_BACKENDS)
-#endif
+#endif /* ADBMGRD */
 		return false;
 	return true;
 }

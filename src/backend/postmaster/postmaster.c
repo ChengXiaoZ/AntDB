@@ -5824,13 +5824,21 @@ int
 MaxLivePostmasterChildren(void)
 {
 #if defined(ADBMGRD)
-	return 2 * (MaxConnections + adbmonitor_probable_workers + 1 +
+
+#if defined(ADB_MONITOR_POOL)
+	return 2 * (MaxConnections + adbmonitor_max_workers + 1 +
 				autovacuum_max_workers + 1 +
 				GetNumRegisteredBackgroundWorkers(0));
 #else
+	return 2 * (MaxConnections + adbmonitor_probable_workers + 1 +
+				autovacuum_max_workers + 1 +
+				GetNumRegisteredBackgroundWorkers(0));
+#endif /* ADB_MONITOR_POOL */
+
+#else
 	return 2 * (MaxConnections + autovacuum_max_workers + 1 +
 				GetNumRegisteredBackgroundWorkers(0));
-#endif
+#endif /* ADBMGRD */
 }
 
 /*
@@ -5859,13 +5867,21 @@ RegisterBackgroundWorker(BackgroundWorker *worker)
 	/* initialize upper limit on first call */
 	if (numworkers == 0)
 #if defined(ADBMGRD)
+
+#if defined(ADB_MONITOR_POOL)
 		maxworkers = MAX_BACKENDS -
-			(MaxConnections + adbmonitor_probable_workers + 1 + 
+			(MaxConnections + adbmonitor_max_workers + 1 + 
 			 autovacuum_max_workers + 1);
 #else
 		maxworkers = MAX_BACKENDS -
+			(MaxConnections + adbmonitor_probable_workers + 1 + 
+			 autovacuum_max_workers + 1);
+#endif /* ADB_MONITOR_POOL */
+
+#else
+		maxworkers = MAX_BACKENDS -
 			(MaxConnections + autovacuum_max_workers + 1);
-#endif
+#endif /* ADBMGRD */
 
 	if (!IsUnderPostmaster)
 		ereport(LOG,

@@ -32,6 +32,7 @@
 #include <unistd.h>
 
 #include "access/xact.h"
+#include "lib/ilist.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
 #include "pgstat.h"
@@ -151,7 +152,9 @@ static MemoryContext AdbMntMemCxt;
 static AmlJobData CurrentAmlJobData = {0, 0};
 
 /* Pointer to my own WorkerInfo, valid on each worker */
+#if !defined(ADB_MONITOR_POOL)
 static WorkerInfoData MyWorkerInfoData = {InvalidOid, NULL, 0, 0};
+#endif
 static WorkerInfo MyWorkerInfo = NULL;
 
 /* PID of launcher, valid only in worker while shutting down */
@@ -591,7 +594,7 @@ launch_worker(TimestampTz now)
 		LWLockAcquire(AdbmonitorLock, LW_EXCLUSIVE);
 
 #if defined(ADB_MONITOR_POOL)
-		wptr = dlist_pop_head_node(&AdbMonitorShmem->av_freeWorkers);
+		wptr = dlist_pop_head_node(&AdbMonitorShmem->am_freeWorkers);
 
 		worker = dlist_container(WorkerInfoData, wi_links, wptr);
 #else
