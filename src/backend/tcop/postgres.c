@@ -3518,9 +3518,20 @@ ProcessInterrupts(void)
 			LockErrorCleanup();
 			DisableNotifyInterrupt();
 			DisableCatchupInterrupt();
+#if defined(ADBMGRD)
+			if (IsAutoVacuumWorkerProcess())
+				ereport(ERROR,
+						(errcode(ERRCODE_QUERY_CANCELED),
+						errmsg("canceling autovacuum task")));
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_QUERY_CANCELED),
+						errmsg("canceling adb monitor task")));
+#else
 			ereport(ERROR,
 					(errcode(ERRCODE_QUERY_CANCELED),
 					 errmsg("canceling autovacuum task")));
+#endif
 		}
 		if (RecoveryConflictPending)
 		{

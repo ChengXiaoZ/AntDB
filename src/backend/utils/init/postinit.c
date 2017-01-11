@@ -285,7 +285,7 @@ CheckMyDatabase(const char *name, bool am_superuser)
 #if defined(ADBMGRD)
 	if (IsUnderPostmaster &&
 		!IsAutoVacuumWorkerProcess() &&
-		!IsAdbMonitorWorkerProcess())
+		!IsAnyAdbMonitorProcess())
 #else
 	if (IsUnderPostmaster && !IsAutoVacuumWorkerProcess())
 #endif
@@ -629,10 +629,13 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	/* The autovacuum launcher is done here */
 	if (IsAutoVacuumLauncherProcess())
 		return;
+#if 0
+	/* The adb monitor launcher also need a valid database */
 #if defined(ADBMGRD)
 	/* The adb monitor launcher is done here */
 	if (IsAdbMonitorLauncherProcess())
 		return;
+#endif /* ADBMGRD */
 #endif
 
 	/*
@@ -670,7 +673,7 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 #if defined(ADBMGRD)
 	if (bootstrap ||
 		IsAutoVacuumWorkerProcess() ||
-		IsAdbMonitorWorkerProcess())
+		IsAnyAdbMonitorProcess())
 #else
 	if (bootstrap || IsAutoVacuumWorkerProcess())
 #endif

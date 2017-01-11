@@ -57,6 +57,9 @@
 #include "utils/timestamp.h"
 #include "utils/tqual.h"
 
+/* Default database */
+#define DEFAULT_DATABASE	"postgres"
+
 /*
  * GUC parameters
  */
@@ -218,6 +221,7 @@ NON_EXEC_STATIC void
 AdbMntLauncherMain(int argc, char *argv[])
 {
 	sigjmp_buf	local_sigjmp_buf;
+	const char *dbname = DEFAULT_DATABASE;
 
 	/* we are a postmaster subprocess now */
 	IsUnderPostmaster = true;
@@ -282,7 +286,7 @@ AdbMntLauncherMain(int argc, char *argv[])
 	InitProcess();
 #endif
 
-	InitPostgres(NULL, InvalidOid, NULL, NULL);
+	InitPostgres(dbname, InvalidOid, NULL, NULL);
 
 	SetProcessingMode(NormalProcessing);
 
@@ -359,6 +363,28 @@ AdbMntLauncherMain(int argc, char *argv[])
 
 	/* must unblock signals before calling rebuild_job_htab */
 	PG_SETMASK(&UnBlockSig);
+
+	/*
+	 * Force zero_damaged_pages OFF in the adb monitor process, even if it is set
+	 * in postgresql.conf.  We don't really want such a dangerous option being
+	 * applied non-interactively.
+	 */
+	SetConfigOption("zero_damaged_pages", "false", PGC_SUSET, PGC_S_OVERRIDE);
+
+	/*
+	 * Force statement_timeout and lock_timeout to zero to avoid letting these
+	 * settings prevent regular maintenance from being executed.
+	 */
+	SetConfigOption("statement_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
+	SetConfigOption("lock_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
+
+	/*
+	 * Force default_transaction_isolation to READ COMMITTED.  We don't want
+	 * to pay the overhead of serializable mode, nor add any risk of causing
+	 * deadlocks or delaying other transactions.
+	 */
+	SetConfigOption("default_transaction_isolation", "read committed",
+					PGC_SUSET, PGC_S_OVERRIDE);
 
 	if (!AdbMonitoringActive())
 		proc_exit(0);			/* done */
@@ -814,6 +840,7 @@ NON_EXEC_STATIC void
 AdbMntWorkerMain(int argc, char *argv[])
 {
 	sigjmp_buf	local_sigjmp_buf;
+	const char *dbname = DEFAULT_DATABASE;
 	Oid			jobid;
 
 	/* we are a postmaster subprocess now */
@@ -907,6 +934,37 @@ AdbMntWorkerMain(int argc, char *argv[])
 	PG_SETMASK(&UnBlockSig);
 
 	/*
+	 * Force zero_damaged_pages OFF in the adb monitor process, even if it is set
+	 * in postgresql.conf.  We don't really want such a dangerous option being
+	 * applied non-interactively.
+	 */
+	SetConfigOption("zero_damaged_pages", "false", PGC_SUSET, PGC_S_OVERRIDE);
+
+	/*
+	 * Force statement_timeout and lock_timeout to zero to avoid letting these
+	 * settings prevent regular maintenance from being executed.
+	 */
+	SetConfigOption("statement_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
+	SetConfigOption("lock_timeout", "0", PGC_SUSET, PGC_S_OVERRIDE);
+
+	/*
+	 * Force default_transaction_isolation to READ COMMITTED.  We don't want
+	 * to pay the overhead of serializable mode, nor add any risk of causing
+	 * deadlocks or delaying other transactions.
+	 */
+	SetConfigOption("default_transaction_isolation", "read committed",
+					PGC_SUSET, PGC_S_OVERRIDE);
+
+	/*
+	 * Force synchronous replication off to allow regular maintenance even if
+	 * we are waiting for standbys to connect. This is important to ensure we
+	 * aren't blocked from performing anti-wraparound tasks.
+	 */
+	if (synchronous_commit > SYNCHRONOUS_COMMIT_LOCAL_FLUSH)
+		SetConfigOption("synchronous_commit", "local",
+						PGC_SUSET, PGC_S_OVERRIDE);
+
+	/*
 	 * Get the info about the monitor job we're going to work on.
 	 */
 	LWLockAcquire(AdbmonitorLock, LW_EXCLUSIVE);
@@ -957,7 +1015,7 @@ AdbMntWorkerMain(int argc, char *argv[])
 		char jobstr[16] = {0};
 		snprintf(jobstr, sizeof(jobstr), "job %u", jobid);
 
-		InitPostgres(NULL, InvalidOid, NULL, NULL);
+		InitPostgres(dbname, InvalidOid, NULL, NULL);
 		SetProcessingMode(NormalProcessing);
 		set_ps_display(jobstr, false);
 		ereport(DEBUG1,

@@ -5717,7 +5717,7 @@ IsPGXCNodeXactDatanodeDirect(void)
 		   IsNormalProcessingMode() &&
 		   !IsAutoVacuumLauncherProcess() &&
 #if defined(ADBMGRD)
-		   !IsAdbMonitorLauncherProcess() &&
+		   !IsAnyAdbMonitorProcess() &&
 #endif
 		   !IsConnFromCoord();
 }

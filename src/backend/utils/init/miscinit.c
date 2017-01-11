@@ -506,7 +506,7 @@ InitializeSessionUserIdStandalone(void)
 #if defined(ADBMGRD)
 	AssertState(!IsUnderPostmaster ||
 				IsAutoVacuumWorkerProcess() ||
-				IsAdbMonitorWorkerProcess() ||
+				IsAnyAdbMonitorProcess() ||
 				IsBackgroundWorker);
 #else
 	AssertState(!IsUnderPostmaster || IsAutoVacuumWorkerProcess() || IsBackgroundWorker);
