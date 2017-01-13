@@ -951,8 +951,8 @@ standard_ProcessUtility(Node *parsetree,
 				 * vacuum() pops active snapshot and we can not send it to nodes
 				 */
 				if (IS_PGXC_COORDINATOR)
-				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, true, EXEC_ON_DATANODES, false);
-#endif
+					ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, true, EXEC_ON_DATANODES, false);
+#endif /* PGXC */
 				vacuum(stmt, InvalidOid, true, NULL, false, isTopLevel);
 			}
 			break;

@@ -2423,6 +2423,9 @@ CommitTransaction(void)
 	s->childXids = NULL;
 	s->nChildXids = 0;
 	s->maxChildXids = 0;
+#ifdef ADB
+	UnsetGlobalTransactionId();
+#endif
 
 #ifdef PGXC
 	s->isLocalParameterUsed = false;
@@ -2751,6 +2754,9 @@ PrepareTransaction(void)
 	s->childXids = NULL;
 	s->nChildXids = 0;
 	s->maxChildXids = 0;
+#ifdef ADB
+	UnsetGlobalTransactionId();
+#endif
 
 	/*
 	 * done with 1st phase commit processing, set current transaction state
@@ -3028,6 +3034,9 @@ CleanupTransaction(void)
 	s->childXids = NULL;
 	s->nChildXids = 0;
 	s->maxChildXids = 0;
+#ifdef ADB
+	UnsetGlobalTransactionId();
+#endif
 
 	/*
 	 * done with abort processing, set current transaction state back to

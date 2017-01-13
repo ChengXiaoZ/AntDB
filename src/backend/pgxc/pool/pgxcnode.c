@@ -2102,6 +2102,37 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 }
 
 /*
+ * Send the GXID down to the PGXC node
+ */
+int
+pgxc_node_send_gxid(PGXCNodeHandle *handle, GlobalTransactionId gxid)
+{
+	int			msglen = 8;
+	int			i32;
+
+	/* Invalid connection state, return error */
+	if (handle->state != DN_CONNECTION_STATE_IDLE)
+		return EOF;
+
+	/* msgType + msgLen */
+	if (ensure_out_buffer_capacity(handle->outEnd + 1 + msglen, handle) != 0)
+	{
+		add_error_message(handle, "out of memory");
+		return EOF;
+	}
+
+	handle->outBuffer[handle->outEnd++] = 'g';
+	msglen = htonl(msglen);
+	memcpy(handle->outBuffer + handle->outEnd, &msglen, sizeof(msglen));
+	handle->outEnd += sizeof(msglen);
+	i32 = htonl(gxid);
+	memcpy(handle->outBuffer + handle->outEnd, &i32, sizeof(i32));
+	handle->outEnd += sizeof(i32);
+
+	return 0;
+}
+
+/*
  * Send the Command ID down to the PGXC node
  */
 int

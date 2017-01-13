@@ -27,7 +27,21 @@
 
 #ifdef ADB
 #include "agtm/agtm.h"
-#endif
+#include "pgxc/pgxc.h"
+
+/*
+ * Parameters as below are used only in Datanode or NoMaster-Coordinator.
+ */
+/* ADBQ:
+ * How to obtain global xid under the situation sub transaction
+ * is involved. what about makeing gxid list?
+ */
+static GlobalTransactionId GlobalXid = InvalidGlobalTransactionId;
+static bool GlobalXidSetFromCOOR = false;
+
+/* Global xid force from AGTM to obtain  */
+static bool ForceObtainXidFromAGTM = false;
+#endif /* ADB */
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
@@ -60,6 +74,65 @@ AdjustTransactionId(TransactionId least_xid)
 #endif
 
 #ifdef ADB
+void
+SetGlobalTransactionId(GlobalTransactionId gxid)
+{
+	Assert(IS_PGXC_DATANODE || IsConnFromCoord());
+	GlobalXid = gxid;
+	GlobalXidSetFromCOOR = true;
+}
+
+void
+UnsetGlobalTransactionId(void)
+{
+	GlobalXid = InvalidGlobalTransactionId;
+	GlobalXidSetFromCOOR = false;
+	ForceObtainXidFromAGTM = false;
+}
+
+void
+SetForceObtainXidFromAGTM(bool val)
+{
+	ForceObtainXidFromAGTM = val;
+}
+
+static GlobalTransactionId
+ObtainGlobalTransactionId(bool isSubXact)
+{
+	GlobalTransactionId gxid = InvalidGlobalTransactionId;
+
+	/*
+	 * Master-Coordinator get xid from AGTM
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		gxid = agtm_GetGlobalTransactionId(isSubXact);
+		return gxid;
+	}
+
+	/*
+	 * Datanode or NoMaster-Coordinator get xid
+	 * from AGTM when
+	 * a. GlobalXid is invalid.
+	 * b. Current process is autovacuum process.
+	 * c. Xid force from AGTM to obtain.
+	 */
+	if (GlobalXid == InvalidGlobalTransactionId ||
+		GlobalXidSetFromCOOR == false ||
+		ForceObtainXidFromAGTM == true ||
+		IsAnyAutoVacuumProcess())
+	{
+		gxid = agtm_GetGlobalTransactionId(isSubXact);
+		return gxid;
+	}
+
+	/*
+	 * Datanode or NoMaster-Coordinator return GlobalXid got
+	 * from Master-Coordinator.
+	 */
+	return GlobalXid;
+}
+
 TransactionId
 GetNewGlobalTransactionId(bool isSubXact)
 {
@@ -157,12 +230,16 @@ GetNewGlobalTransactionId(bool isSubXact)
 		}
 	}
 
-	gxid = agtm_GetGlobalTransactionId(isSubXact);
+	gxid = ObtainGlobalTransactionId(isSubXact);
+
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
 	xid = gxid;
 	if (TransactionIdFollowsOrEquals(gxid, ShmemVariableCache->nextXid))
 		ShmemVariableCache->nextXid = gxid;
-	/* ADBQ: Will there be such a situation gxid < ShmemVariableCache->nextXid ? */
+	/*
+	 * ADBQ:
+	 * Will there be such a situation as gxid < ShmemVariableCache->nextXid?
+	 */
 
 	/*
 	 * If we are allocating the first XID of a new page of the commit log,
@@ -274,6 +351,13 @@ GetNewTransactionId(bool isSubXact)
 		MyPgXact->xid = BootstrapTransactionId;
 		return BootstrapTransactionId;
 	}
+
+#if defined(ADB)
+	/*
+	 * The new XID must be got from AGTM when processing mode is normal.
+	 */
+	Assert(!(IsUnderPostmaster && IsNormalProcessingMode()));
+#endif
 
 	/* safety check, we should never get this far in a HS slave */
 	if (RecoveryInProgress())

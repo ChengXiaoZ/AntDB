@@ -3885,11 +3885,25 @@ RemoveTempRelationsCallback(int code, Datum arg)
 		/* Need to ensure we have a usable transaction. */
 		AbortOutOfAnyTransaction();
 
+#ifdef PGXC
+		/*
+		 * When a backend closes, this insures that
+		 * transaction ID taken is unique in the cluster.
+		 */
+		if (IsConnFromCoord())
+			SetForceObtainXidFromAGTM(true);
+#endif
+
 		StartTransactionCommand();
 
 		RemoveTempRelations(myTempNamespace);
 
 		CommitTransactionCommand();
+
+#ifdef PGXC
+		if (IsConnFromCoord())
+			SetForceObtainXidFromAGTM(false);
+#endif
 	}
 }
 
@@ -3902,7 +3916,6 @@ ResetTempTableNamespace(void)
 	if (OidIsValid(myTempNamespace))
 		RemoveTempRelations(myTempNamespace);
 }
-
 
 /*
  * Routines for handling the GUC variable 'search_path'.

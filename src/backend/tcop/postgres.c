@@ -102,6 +102,7 @@
 #endif
 #ifdef ADB
 #include "access/rxact_mgr.h"
+#include "access/transam.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_client.h"
 #include "pgxc/poolutils.h"
@@ -552,13 +553,13 @@ SocketBackend(StringInfo inBuf)
 #ifdef PGXC /* PGXC_DATANODE */
 		case 'M':				/* Command ID */
 		case 'b':				/* Barrier */
+		case 'g':				/* gxid */
+		case 's':				/* snapshot */
 			break;
 #endif /* PGXC */
 #ifdef ADB
 		case 'L':				/* agtm backend listen port */
 		case 'I':				/* query server info */
-			break;
-		case 's':				/* snapshot */
 			break;
 #endif /* ADB */
 #ifdef AGTM
@@ -5092,6 +5093,19 @@ PostgresMain(int argc, char *argv[],
 					CommandId cid = (CommandId) pq_getmsgint(&input_message, 4);
 					elog(DEBUG1, "Received cmd id %u", cid);
 					SaveReceivedCommandId(cid);
+				}
+				break;
+
+			case 'g':			/* gxid */
+				{
+					/* Set the GXID got from Master-Coordinator */
+					GlobalTransactionId gxid = InvalidGlobalTransactionId;
+
+					Assert(IS_PGXC_DATANODE || IsConnFromCoord());
+					gxid = (GlobalTransactionId) pq_getmsgint(&input_message, 4);
+					elog(DEBUG1, "Received new global xid %u", gxid);
+					SetGlobalTransactionId(gxid);
+					pq_getmsgend(&input_message);
 				}
 				break;
 

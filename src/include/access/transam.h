@@ -162,6 +162,9 @@ extern XLogRecPtr TransactionIdGetCommitLSN(TransactionId xid);
 extern void AdjustTransactionId(TransactionId least_xid);
 #endif
 #ifdef ADB
+extern void SetGlobalTransactionId(GlobalTransactionId gxid);
+extern void UnsetGlobalTransactionId(void);
+extern void SetForceObtainXidFromAGTM(bool val);
 extern TransactionId GetNewGlobalTransactionId(bool isSubXact);
 #endif
 extern TransactionId GetNewTransactionId(bool isSubXact);

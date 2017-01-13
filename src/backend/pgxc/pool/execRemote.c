@@ -1687,12 +1687,18 @@ pgxc_node_begin(int conn_count,
 	int 				 new_count = 0;
 	int 				 con[conn_count];
 	int					 j = 0;
+	GlobalTransactionId	 gxid = InvalidGlobalTransactionId;
 
 	/*
 	 * If no remote connections, we don't have anything to do
 	 */
 	if (conn_count == 0)
 		return 0;
+
+	if (need_tran_block)
+		gxid = GetCurrentTransactionId();
+	else
+		gxid = GetCurrentTransactionIdIfAny();
 
 	for (i = 0; i < conn_count; i++)
 	{
@@ -1719,6 +1725,10 @@ pgxc_node_begin(int conn_count,
 		 */
 		if (connections[i]->state == DN_CONNECTION_STATE_QUERY)
 			BufferConnection(connections[i]);
+
+		/* Send GXID and check for errors */
+		if (GlobalTransactionIdIsValid(gxid) && pgxc_node_send_gxid(connections[i], gxid))
+			return EOF;
 
 		/* Send BEGIN */
 		if (need_tran_block)

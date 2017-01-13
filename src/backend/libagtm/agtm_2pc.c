@@ -191,7 +191,6 @@ agtm_generate_begin_command(void)
 	isolation_level = GetConfigOption("transaction_isolation", false, false);
 	if (strcmp(isolation_level, "default") == 0)
 		isolation_level = GetConfigOption("default_transaction_isolation", false, false);
-	
 
 	/* Get local new xid, also is minimum xid from AGTM absolutely */
 	xid = ReadNewTransactionId();
