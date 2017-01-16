@@ -181,6 +181,9 @@ InitProcGlobal(void)
 	ProcGlobal->spins_per_delay = DEFAULT_SPINS_PER_DELAY;
 	ProcGlobal->freeProcs = NULL;
 	ProcGlobal->autovacFreeProcs = NULL;
+#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+	ProcGlobal->adbmntFreeProcs = NULL;
+#endif
 	ProcGlobal->bgworkerFreeProcs = NULL;
 	ProcGlobal->startupProc = NULL;
 	ProcGlobal->startupProcPid = 0;
@@ -881,6 +884,13 @@ ProcKill(int code, Datum arg)
 		proc->links.next = (SHM_QUEUE *) procglobal->autovacFreeProcs;
 		procglobal->autovacFreeProcs = proc;
 	}
+#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+	else if (IsAnyAdbMonitorProcess())
+	{
+		proc->links.next = (SHM_QUEUE *) procglobal->adbmntFreeProcs;
+		procglobal->adbmntFreeProcs = proc;
+	}
+#endif
 	else if (IsBackgroundWorker)
 	{
 		proc->links.next = (SHM_QUEUE *) procglobal->bgworkerFreeProcs;
