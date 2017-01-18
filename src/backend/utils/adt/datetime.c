@@ -31,6 +31,9 @@
 #include "utils/memutils.h"
 #include "utils/tzparser.h"
 
+#ifdef ADB
+extern bool enable_zero_year;
+#endif
 
 static int DecodeNumber(int flen, char *field, bool haveTextMonth,
 			 int fmask, int *tmask,
@@ -331,6 +334,13 @@ j2date(int jd, int *year, int *month, int *day)
 	unsigned int extra;
 	int			y;
 
+#ifdef ADB
+	if (DATE_IS_ZERO_YEAR(jd) && enable_zero_year)
+	{
+		*year = *month = *day = 0;
+		return ;
+	}
+#endif
 	julian = jd;
 	julian += 32044;
 	quad = julian / 146097;
@@ -1401,6 +1411,14 @@ DecodeDateTime(char **field, int *ftype, int nf,
 			return DTERR_BAD_FORMAT;
 		fmask |= tmask;
 	}							/* end loop over fields */
+
+#ifdef ADB
+	if (tm->tm_year == 0 && !bc && enable_zero_year)
+	{
+		*dtype = DTK_ZERO_YEAR;
+		return 0;
+	}
+#endif
 
 	/* do final checking/adjustment of Y/M/D fields */
 	dterr = ValidateDate(fmask, isjulian, is2digits, bc, tm);
@@ -3885,6 +3903,9 @@ EncodeTimezone(char *str, int tz, int style)
 void
 EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 {
+#ifdef ADB
+	if (!enable_zero_year)
+#endif
 	Assert(tm->tm_mon >= 1 && tm->tm_mon <= MONTHS_PER_YEAR);
 
 	switch (style)
@@ -3892,6 +3913,11 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 		case USE_ISO_DATES:
 		case USE_XSD_DATES:
 			/* compatible with ISO date formats */
+#ifdef ADB
+			if (enable_zero_year && IsZeroPgDate(*tm))
+				sprintf(str, "0000-00-00");
+			else
+#endif
 			if (tm->tm_year > 0)
 				sprintf(str, "%04d-%02d-%02d",
 						tm->tm_year, tm->tm_mon, tm->tm_mday);
@@ -3906,6 +3932,11 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 				sprintf(str, "%02d/%02d", tm->tm_mday, tm->tm_mon);
 			else
 				sprintf(str, "%02d/%02d", tm->tm_mon, tm->tm_mday);
+#ifdef ADB
+			if (enable_zero_year && IsZeroPgDate(*tm))
+				sprintf(str + 5, "/0000");
+			else
+#endif
 			if (tm->tm_year > 0)
 				sprintf(str + 5, "/%04d", tm->tm_year);
 			else
@@ -3915,6 +3946,11 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 		case USE_GERMAN_DATES:
 			/* German-style date format */
 			sprintf(str, "%02d.%02d", tm->tm_mday, tm->tm_mon);
+#ifdef ADB
+			if (enable_zero_year && IsZeroPgDate(*tm))
+				sprintf(str + 5, ".0000");
+			else
+#endif
 			if (tm->tm_year > 0)
 				sprintf(str + 5, ".%04d", tm->tm_year);
 			else
@@ -3928,6 +3964,11 @@ EncodeDateOnly(struct pg_tm * tm, int style, char *str)
 				sprintf(str, "%02d-%02d", tm->tm_mday, tm->tm_mon);
 			else
 				sprintf(str, "%02d-%02d", tm->tm_mon, tm->tm_mday);
+#ifdef ADB
+			if (enable_zero_year && IsZeroPgDate(*tm))
+				sprintf(str + 5, "-0000");
+			else
+#endif
 			if (tm->tm_year > 0)
 				sprintf(str + 5, "-%04d", tm->tm_year);
 			else
@@ -3991,6 +4032,9 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 {
 	int			day;
 
+#ifdef ADB
+	if (!enable_zero_year)
+#endif
 	Assert(tm->tm_mon >= 1 && tm->tm_mon <= MONTHS_PER_YEAR);
 
 	/*
@@ -4008,6 +4052,17 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 			/* oracle date will ignore fractional second */
 			if (is_ora_date)
 				fsec = 0;
+
+			if (IsZeroPgTm(*tm) && enable_zero_year)
+			{
+				if (style == USE_ISO_DATES)
+					sprintf(str, "0000-00-00 00:00:00");
+				else
+					sprintf(str, "0000-00-00T00:00:00");
+				if (print_tz)
+					sprintf(str + strlen(str), " +00");
+ 			} else
+			{
 #endif
 			if (style == USE_ISO_DATES)
 				sprintf(str, "%04d-%02d-%02d %02d:%02d:",
@@ -4025,6 +4080,9 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			if (tm->tm_year <= 0)
 				sprintf(str + strlen(str), " BC");
+#ifdef ADB
+			}
+#endif
 			break;
 
 		case USE_SQL_DATES:
@@ -4035,6 +4093,15 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 			else
 				sprintf(str, "%02d/%02d", tm->tm_mon, tm->tm_mday);
 
+#ifdef ADB
+			if (IsZeroPgTm(*tm) && enable_zero_year)
+			{
+				sprintf(str + 5, "/0000 00:00:00");
+				if (print_tz)
+					sprintf(str + strlen(str), " +00");
+			} else
+			{
+#endif
 			sprintf(str + 5, "/%04d %02d:%02d:",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_hour, tm->tm_min);
@@ -4057,13 +4124,24 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			if (tm->tm_year <= 0)
 				sprintf(str + strlen(str), " BC");
+#ifdef ADB
+			}
+#endif
 			break;
 
 		case USE_GERMAN_DATES:
 			/* German variant on European style */
 
 			sprintf(str, "%02d.%02d", tm->tm_mday, tm->tm_mon);
-
+#ifdef ADB
+			if (IsZeroPgTm(*tm) && enable_zero_year)
+			{
+				sprintf(str + 5, ".0000 00:00:00");
+				if (print_tz)
+					sprintf(str + strlen(str), " +00");
+			} else
+			{
+#endif
 			sprintf(str + 5, ".%04d %02d:%02d:",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_hour, tm->tm_min);
@@ -4080,6 +4158,9 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			if (tm->tm_year <= 0)
 				sprintf(str + strlen(str), " BC");
+#ifdef ADB
+			}
+#endif
 			break;
 
 		case USE_POSTGRES_DATES:
@@ -4101,6 +4182,15 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
 
+#ifdef ADB
+			if (IsZeroPgTm(*tm)&& enable_zero_year)
+			{
+				sprintf(str + strlen(str), " 0000");
+				if (print_tz)
+					sprintf(str + strlen(str), " +00");
+			} else
+			{
+#endif
 			sprintf(str + strlen(str), " %04d",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));
 
@@ -4123,6 +4213,9 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			if (tm->tm_year <= 0)
 				sprintf(str + strlen(str), " BC");
+#ifdef ADB
+			}
+#endif
 			break;
 	}
 }

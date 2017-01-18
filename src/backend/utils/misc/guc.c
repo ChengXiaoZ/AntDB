@@ -527,6 +527,7 @@ bool		enable_stable_func_shipping;
 char		*AGtmHost;
 int			AGtmPort;
 int			pool_time_out;
+bool		enable_zero_year;
 #endif
 
 #ifdef AGTM
@@ -1749,6 +1750,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&log_parse_query,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_zero_year", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enables zero year of date."),
+			NULL
+		},
+		&enable_zero_year,
 		false,
 		NULL, NULL, NULL
 	},

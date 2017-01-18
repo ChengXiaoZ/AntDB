@@ -184,6 +184,7 @@ struct tzEntry;
 #ifdef ADB
 #define DTK_TZ_ABBR		38
 #define DTK_TZ_REGION	39
+#define DTK_ZERO_YEAR	40
 #endif
 
 #ifdef ADB

@@ -37,6 +37,10 @@
 #include "pgxc/pgxc.h"
 #endif
 
+#ifdef ADB
+extern bool enable_zero_year;
+#endif
+
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
  * expressions like timeval / SECS_PER_HOUR, where timeval is double.
@@ -200,6 +204,12 @@ timestamp_in(PG_FUNCTION_ARGS)
 			TIMESTAMP_NOBEGIN(result);
 			break;
 
+#ifdef ADB
+		case DTK_ZERO_YEAR:
+			TIMESTAMP_ZERO_YEAR(result);
+			break;
+#endif
+
 		case DTK_INVALID:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -234,6 +244,13 @@ timestamp_out(PG_FUNCTION_ARGS)
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		EncodeSpecialTimestamp(timestamp, buf);
+#ifdef ADB
+	else if (TIMESTAMP_IS_ZERO_YEAR(timestamp) && enable_zero_year)
+	{
+		MemSet(tm, 0, sizeof(struct pg_tm));
+		EncodeDateTime(tm, 0, false, 0, NULL, DateStyle, buf, false);
+	}
+#endif
 	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) == 0)
 #ifdef ADB
 		EncodeDateTime(tm, fsec, false, 0, NULL, DateStyle, buf, false);
@@ -263,6 +280,11 @@ ora_date_out(PG_FUNCTION_ARGS)
 
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		EncodeSpecialTimestamp(timestamp, buf);
+	else if (TIMESTAMP_IS_ZERO_YEAR(timestamp) && enable_zero_year)
+	{
+		MemSet(tm, 0, sizeof(struct pg_tm));
+		EncodeDateTime(tm, 0, false, 0, NULL, DateStyle, buf, false);
+	}
 	else if (timestamp2tm(timestamp, &tzp, tm, &fsec, NULL, NULL) == 0)
 		EncodeDateTime(tm, fsec, false, tzp, NULL, DateStyle, buf, true);
 	else
@@ -511,6 +533,12 @@ timestamptz_in(PG_FUNCTION_ARGS)
 			TIMESTAMP_NOBEGIN(result);
 			break;
 
+#ifdef ADB
+		case DTK_ZERO_YEAR:
+			TIMESTAMP_ZERO_YEAR(result);
+			break;
+#endif
+
 		case DTK_INVALID:
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -547,6 +575,13 @@ timestamptz_out(PG_FUNCTION_ARGS)
 
 	if (TIMESTAMP_NOT_FINITE(dt))
 		EncodeSpecialTimestamp(dt, buf);
+#ifdef ADB
+	else if (TIMESTAMP_IS_ZERO_YEAR(dt) && enable_zero_year)
+	{
+		MemSet(tm, 0, sizeof(struct pg_tm));
+		EncodeDateTime(tm, 0, true, 0, NULL, DateStyle, buf, false);
+	}
+#endif
 	else if (timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL) == 0)
 #ifdef ADB
 		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf, false);

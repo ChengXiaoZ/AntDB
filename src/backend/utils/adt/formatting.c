@@ -93,6 +93,8 @@
 #include "utils/pg_locale.h"
 
 #ifdef ADB
+extern bool enable_zero_year;
+
 #define RADIX			"."
 #endif
 /* ----------
@@ -3133,6 +3135,12 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YYYY:
 			case DCH_IYYY:
+#ifdef ADB
+				if (!tm->tm_year && enable_zero_year)
+					sprintf(s, "%0*d",
+						S_FM(n->suffix) ? 0 : 4, tm->tm_year);
+				else
+#endif
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 : 4,
 						(n->key->id == DCH_YYYY ?
@@ -3147,6 +3155,12 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YYY:
 			case DCH_IYY:
+#ifdef ADB
+				if (!tm->tm_year && enable_zero_year)
+					sprintf(s, "%0*d",
+						S_FM(n->suffix) ? 0 : 3, tm->tm_year);
+				else
+#endif
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 : 3,
 						(n->key->id == DCH_YYY ?
@@ -3161,6 +3175,12 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_YY:
 			case DCH_IY:
+#ifdef ADB
+				if (!tm->tm_year && enable_zero_year)
+					sprintf(s, "%0*d",
+						S_FM(n->suffix) ? 0 : 2, tm->tm_year);
+				else
+#endif
 				sprintf(s, "%0*d",
 						S_FM(n->suffix) ? 0 : 2,
 						(n->key->id == DCH_YY ?
@@ -3175,6 +3195,11 @@ DCH_to_char(FormatNode *node, bool is_interval, TmToChar *in, char *out, Oid col
 				break;
 			case DCH_Y:
 			case DCH_I:
+#ifdef ADB
+				if (!tm->tm_year && enable_zero_year)
+					sprintf(s, "%1d", tm->tm_year);
+				else
+#endif
 				sprintf(s, "%1d",
 						(n->key->id == DCH_Y ?
 						 ADJUST_YEAR(tm->tm_year, is_interval) :
@@ -3710,6 +3735,13 @@ timestamp_to_char(PG_FUNCTION_ARGS)
 	ZERO_tmtc(&tmtc);
 	tm = tmtcTm(&tmtc);
 
+#ifdef ADB
+	if (TIMESTAMP_IS_ZERO_YEAR(dt) && enable_zero_year)
+	{
+		MemSet(tm, 0, sizeof(struct pg_tm));
+	} else
+	{
+#endif
 	if (timestamp2tm(dt, NULL, tm, &tmtcFsec(&tmtc), NULL, NULL) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -3718,6 +3750,9 @@ timestamp_to_char(PG_FUNCTION_ARGS)
 	thisdate = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
 	tm->tm_wday = (thisdate + 1) % 7;
 	tm->tm_yday = thisdate - date2j(tm->tm_year, 1, 1) + 1;
+#ifdef ADB
+	}
+#endif
 
 	if (!(res = datetime_to_char_body(&tmtc, fmt, false, PG_GET_COLLATION())))
 		PG_RETURN_NULL();
@@ -3741,7 +3776,13 @@ timestamptz_to_char(PG_FUNCTION_ARGS)
 
 	ZERO_tmtc(&tmtc);
 	tm = tmtcTm(&tmtc);
-
+#ifdef ADB
+	if (TIMESTAMP_IS_ZERO_YEAR(dt) && enable_zero_year)
+	{
+		MemSet(tm, 0, sizeof(struct pg_tm));
+	} else
+	{
+#endif
 	if (timestamp2tm(dt, &tz, tm, &tmtcFsec(&tmtc), &tmtcTzn(&tmtc), NULL) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -3750,6 +3791,9 @@ timestamptz_to_char(PG_FUNCTION_ARGS)
 	thisdate = date2j(tm->tm_year, tm->tm_mon, tm->tm_mday);
 	tm->tm_wday = (thisdate + 1) % 7;
 	tm->tm_yday = thisdate - date2j(tm->tm_year, 1, 1) + 1;
+#ifdef ADB
+	}
+#endif
 
 	if (!(res = datetime_to_char_body(&tmtc, fmt, false, PG_GET_COLLATION())))
 		PG_RETURN_NULL();

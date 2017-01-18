@@ -37,6 +37,12 @@ struct pg_tm
 	const char *tm_zone;
 };
 
+#ifdef ADB
+#define IsZeroPgDate(tm)	(((tm).tm_year == 0) && ((tm).tm_mon == 0) && ((tm).tm_mday == 0))
+#define IsZeroPgTime(tm)	(((tm).tm_hour == 0) && ((tm).tm_min == 0) && ((tm).tm_sec == 0))
+#define IsZeroPgTm(tm)		(IsZeroPgDate((tm)) && IsZeroPgTime((tm)))
+#endif
+
 typedef struct pg_tz pg_tz;
 typedef struct pg_tzenum pg_tzenum;
 

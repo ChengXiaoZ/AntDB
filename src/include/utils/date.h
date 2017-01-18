@@ -47,6 +47,12 @@ typedef struct
 #define DATE_IS_NOEND(j)	((j) == DATEVAL_NOEND)
 #define DATE_NOT_FINITE(j)	(DATE_IS_NOBEGIN(j) || DATE_IS_NOEND(j))
 
+#ifdef ADB
+#define DATEVAL_ZERO_YEAR		((DateADT) (-730517))		/* date2j(0,0,0) - date2j(2000,1,1) */
+#define DATE_ZERO_YEAR(j)		((j) = DATEVAL_ZERO_YEAR)
+#define DATE_IS_ZERO_YEAR(j)	((j) == DATEVAL_ZERO_YEAR)
+#endif
+
 /*
  * Macros for fmgr-callable functions.
  *

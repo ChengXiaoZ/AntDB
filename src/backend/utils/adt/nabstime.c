@@ -267,6 +267,15 @@ abstimein(PG_FUNCTION_ARGS)
 			result = INVALID_ABSTIME;
 			break;
 
+#ifdef ADB
+		case DTK_ZERO_YEAR:
+			{
+				MemSet(tm, 0x00, sizeof(struct pg_tm));
+				result = tm2abstime(tm, 0);
+			}
+			break;
+#endif
+
 		default:
 			elog(ERROR, "unexpected dtype %d while parsing abstime \"%s\"",
 				 dtype, str);

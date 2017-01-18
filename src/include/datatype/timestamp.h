@@ -143,6 +143,16 @@ typedef struct
 
 #define TIMESTAMP_NOT_FINITE(j) (TIMESTAMP_IS_NOBEGIN(j) || TIMESTAMP_IS_NOEND(j))
 
+#ifdef ADB
+#ifdef HAVE_INT64_TIMESTAMP
+#define DT_ZERO_YEAR	(-INT64CONST(63116668800000000))	/* (date2j(0,0,0) - date2j(2000,1,1)) * USECS_PER_DAY */
+#else
+#define DT_ZERO_YEAR	((double)-63116668800)				/* (date2j(0,0,0) - date2j(2000,1,1)) * SECS_PER_DAY */
+#endif
+#define TIMESTAMP_ZERO_YEAR(j)	\
+	do {(j) = DT_ZERO_YEAR;} while (0)
+#define TIMESTAMP_IS_ZERO_YEAR(j)	((j) == DT_ZERO_YEAR)
+#endif
 
 /*
  * Julian date support.

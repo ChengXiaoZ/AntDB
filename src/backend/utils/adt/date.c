@@ -31,6 +31,10 @@
 #include "utils/nabstime.h"
 #include "utils/sortsupport.h"
 
+#ifdef ADB
+extern bool enable_zero_year;
+#endif
+
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
  * expressions like timeval / SECS_PER_HOUR, where timeval is double.
@@ -165,6 +169,12 @@ date_in(PG_FUNCTION_ARGS)
 			DATE_NOBEGIN(date);
 			PG_RETURN_DATEADT(date);
 
+#ifdef ADB
+		case DTK_ZERO_YEAR:
+			DATE_ZERO_YEAR(date);
+			PG_RETURN_DATEADT(date);
+#endif
+
 		default:
 			DateTimeParseError(DTERR_BAD_FORMAT, str, "date");
 			break;
@@ -194,6 +204,13 @@ date_out(PG_FUNCTION_ARGS)
 
 	if (DATE_NOT_FINITE(date))
 		EncodeSpecialDate(date, buf);
+#ifdef ADB
+	else if (DATE_IS_ZERO_YEAR(date) && enable_zero_year)
+	{
+		MemSet(tm, 0x00, sizeof(struct pg_tm));
+		EncodeDateOnly(tm, DateStyle, buf);
+	}
+#endif
 	else
 	{
 		j2date(date + POSTGRES_EPOCH_JDATE,
@@ -466,6 +483,10 @@ date2timestamptz(DateADT dateVal)
 		TIMESTAMP_NOBEGIN(result);
 	else if (DATE_IS_NOEND(dateVal))
 		TIMESTAMP_NOEND(result);
+#ifdef ADB
+	else if (DATE_IS_ZERO_YEAR(dateVal) && enable_zero_year)
+		TIMESTAMP_ZERO_YEAR(result);
+#endif
 	else
 	{
 		j2date(dateVal + POSTGRES_EPOCH_JDATE,
