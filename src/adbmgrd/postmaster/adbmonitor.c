@@ -400,7 +400,7 @@ AdbMntLauncherMain(int argc, char *argv[])
 		TimestampTz current_time = 0;
 		bool		can_launch;
 		int			rc;
-		AmlJob		amljobtmp;
+		AmlJob		amljob;
 
 		/*
 		 * This loop is a bit different from the normal use of WaitLatch,
@@ -411,12 +411,10 @@ AdbMntLauncherMain(int argc, char *argv[])
 		launcher_determine_sleep(!dlist_is_empty(&AdbMonitorShmem->am_freeWorkers),
 								 &nap);
 		LWLockAcquire(AdbmonitorLock, LW_EXCLUSIVE);
-		amljobtmp = launcher_obtain_amljob();
+		amljob = launcher_obtain_amljob();
 		LWLockRelease(AdbmonitorLock);
 		/* Allow singal catchup interrupts while sleeping */
 		EnableCatchupInterrupt();
-		if (!amljobtmp)
-			continue;
 		/*
 		 * Wait until naptime expires or we get some type of signal (all the
 		 * signal handlers will wake us by calling SetLatch).
@@ -427,7 +425,8 @@ AdbMntLauncherMain(int argc, char *argv[])
 		ResetLatch(&MyProc->procLatch);
 
 		DisableCatchupInterrupt();
-
+		if (!amljob)
+			continue;
 		/*
 		 * Emergency bailout if postmaster has died.  This is to avoid the
 		 * necessity for manual cleanup of all postmaster children.
@@ -542,7 +541,7 @@ AdbMntLauncherMain(int argc, char *argv[])
 		/*
 		 * We're OK to start a new worker
 		 */
-		launch_worker(current_time, amljobtmp);
+		launch_worker(current_time, amljob);
 	}
 
 	/* Normal exit from the adb monitor launcher is here */
