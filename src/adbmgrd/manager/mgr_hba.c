@@ -363,7 +363,8 @@ static void mgr_add_hba_one(char *coord_name, List *args_list, GetAgentCmdRst *e
 		if (!getAgentCmdRst.ret)
 		{
 			appendStringInfo(&err_msg->description,"add hba %s execute in agent failure\n",coord_name);
-			appendStringInfo(&err_msg->description, "%s\n",getAgentCmdRst.description.data);
+			appendStringInfo(&err_msg->description,"hba info sync error\n");
+//			appendStringInfo(&err_msg->description, "%s\n",getAgentCmdRst.description.data);
 			err_msg->ret = false;
 		}
 		else   

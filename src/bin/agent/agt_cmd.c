@@ -63,7 +63,7 @@ static HbaInfo *delete_pghba_info_from_list(HbaInfo *infohead, HbaInfo *checkinf
 static char *get_connect_type_str(HbaType connect_type);
 static bool check_pghba_exist_info(HbaInfo *checkinfo, HbaInfo *infohead);
 static char *pghba_info_parse(char *ptmp, HbaInfo *newinfo, StringInfo infoparastr);
-
+static bool check_hba_vaild(char * datapath, HbaInfo * info_head);
 
 void do_agent_command(StringInfo buf)
 {
@@ -306,25 +306,31 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 		ptmp = pghba_info_parse(ptmp, newinfo, &infoparastr);
 		infohead = cmd_refresh_pghba_confinfo(cmd_type, newinfo, infohead, &err_msg);
 	}
-	
-	/*use the new info list to refresh the pg_hba.conf*/
-	writehbafile(pgconffile.data, infohead);	
-	
-	/*send the result to the manager*/
-/*	if(err_msg.len == 0)
-	{
-*/
-		appendStringInfoString(&output, "success");
-/*		appendStringInfoCharMacro(&output, '\0'); */
-		agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
-/*	}
+	if(check_hba_vaild(datapath, infohead) == true)
+	{		
+		/*use the new info list to refresh the pg_hba.conf*/
+		writehbafile(pgconffile.data, infohead);			
+	}
 	else
 	{
-		appendStringInfoString(&output, err_msg.data);
-		appendStringInfoCharMacro(&output, '\0');
-		agt_put_msg(AGT_MSG_NOTICE, output.data, output.len);
+		appendStringInfoString(&err_msg, "add hba info failed in the agent");
 	}
+	/*send the result to the manager*/
+	if(err_msg.len == 0)
+	{
+
+		appendStringInfoString(&output, "success");
+		agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	}
+	else
+	{
+/*		appendStringInfoCharMacro(&output, AGT_MSG_RESULT);
+		appendStringInfoString(&output, err_msg.data);
+		agt_put_msg(AGT_MSG_ERROR, output.data, output.len);
 */
+		ereport(ERROR, (errmsg("%s", err_msg.data)));
+	}
+
 	agt_flush();
 	pfree(output.data);
 	pfree(err_msg.data);
@@ -363,14 +369,14 @@ static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *check
 		{			
 			infohead = delete_pghba_info_from_list(infohead, checkinfo);
 		}
-		else
+/*		else
 		{
 			appendStringInfo(err_msg,"\"%s %s %s %s %s\"does not exist in the pg_hba.conf.\n",strtype
 																						,checkinfo->database
 																						,checkinfo->user
 																						,checkinfo->addr
 																						,checkinfo->auth_method);
-		}		
+		}	*/	
 	}
 
 	pfree(strtype);
@@ -581,7 +587,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	ConfInfo *info,
 			*infohead;
 	FILE *create_recovery_file;
-
+	
 	MemoryContext pgconf_context;
 	MemoryContext oldcontext;
 
@@ -820,7 +826,35 @@ writefile(char *path, ConfInfo *info)
 		exit(1);
 	}
 }
+static bool check_hba_vaild(char * datapath, HbaInfo * info_head)
+{
+	FILE *fp;
+	char hba_temp_file[] = "temp.file";
+	bool is_valid = true;
+	char file_path[MAXPGPATH];
+	sprintf(file_path, "%s/%s",datapath, hba_temp_file);
 
+	if((fp = fopen(file_path, "w+")) == NULL)
+	{
+		is_valid = false;
+		fprintf(stderr, (": could not open file \"%s\" for writing: %s\n"),
+			file_path, strerror(errno));
+		return is_valid;
+	}
+	writehbafile(file_path, info_head);
+	PG_TRY();
+	{
+		parse_hba_file(file_path);
+	}PG_CATCH();
+	{
+		is_valid = false;
+		PG_RE_THROW();
+	}PG_END_TRY();
+	
+	fclose(fp);
+	remove(file_path);
+	return is_valid;
+}
 /*
 * use the struct list info to rewrite the file of path
 */
