@@ -390,6 +390,9 @@ DECLARE_UNIQUE_INDEX(monitor_user_oid_index, 4955, on monitor_user using btree(o
 DECLARE_UNIQUE_INDEX(mgr_updataparm_nodename_nodetype_key_index, 3847, on mgr_updateparm using btree(updateparmnodename name_ops, updateparmnodetype char_ops, updateparmkey name_ops));
 #define MgrUpdataparmNodenameNodetypeKeyIndexId 3847
 
+DECLARE_UNIQUE_INDEX(monitor_job_oid_index, 4919, on monitor_job using btree(oid oid_ops));
+#define MonitorJobOidIndexId 4919
+
 #endif /* ADBMGRD */
 
 #ifdef AGTM

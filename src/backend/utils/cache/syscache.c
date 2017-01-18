@@ -73,6 +73,7 @@
 #include "catalog/monitor_databasetps.h"
 #include "catalog/monitor_databaseitem.h"
 #include "catalog/monitor_slowlog.h"
+#include "catalog/monitor_job.h"
 #endif /* ADBMGRD */
 #include "utils/rel.h"
 #include "utils/catcache.h"
@@ -934,6 +935,17 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		32
 	}
+	,{MjobRelationId,		/* MONITORJOBOID */
+		MonitorJobOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		32
+	}
 #endif /* ADBMGRD */
 #ifdef AGTM
 	,{AgtmSequenceRelationId,		/* AGTMSEQUENCEOID */
@@ -947,7 +959,7 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		32
 	}
-    ,{AgtmSequenceRelationId,		/* AGTMSEQUENCEFIELDS */
+  ,{AgtmSequenceRelationId,		/* AGTMSEQUENCEFIELDS */
 		AgtmSequenceFieldsIndexId,
 		3,
 		{
@@ -957,7 +969,7 @@ static const struct cachedesc cacheinfo[] = {
 			0
 		},
 		32
-	}	
+	}
 #endif
 };
 
