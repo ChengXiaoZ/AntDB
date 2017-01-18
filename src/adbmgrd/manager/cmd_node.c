@@ -2025,6 +2025,7 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	char *host_addr;
+	char *user;
 	int ret;
 
 	if (SRF_IS_FIRSTCALL())
@@ -2063,9 +2064,10 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	Assert(mgr_node);
 
 	host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode(host_addr, port.data);
+	ret = pingNode_user(host_addr, port.data, user);
 
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
@@ -2090,6 +2092,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	char *host_addr;
+	char *user;
 	int ret;
 
 	if (SRF_IS_FIRSTCALL())
@@ -2124,9 +2127,10 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 		if (mgr_node->nodetype == 'd' || mgr_node->nodetype == 'b' || mgr_node->nodetype == 'n')
 		{
 			host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+			user = get_hostuser_from_hostoid(mgr_node->nodehost);
 			initStringInfo(&port);
 			appendStringInfo(&port, "%d", mgr_node->nodeport);
-			ret = pingNode(host_addr, port.data);
+			ret = pingNode_user(host_addr, port.data, user);
 
 			tup_result = build_common_command_tuple_for_monitor(
 						&(mgr_node->nodename)
@@ -2160,6 +2164,7 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	char *host_addr;
+	char *user;
 	int ret;
 
 	if (SRF_IS_FIRSTCALL())
@@ -2194,9 +2199,10 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 		if (mgr_node->nodetype == 'g' || mgr_node->nodetype == 'p' || mgr_node->nodetype == 'e')
 		{
 			host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+			user = get_hostuser_from_hostoid(mgr_node->nodehost);
 			initStringInfo(&port);
 			appendStringInfo(&port, "%d", mgr_node->nodeport);
-			ret = pingNode(host_addr, port.data);
+			ret = pingNode_user(host_addr, port.data, user);
 			
 			tup_result = build_common_command_tuple_for_monitor(
 						&(mgr_node->nodename)
@@ -2232,6 +2238,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	StringInfoData port;
 	char *host_addr;
 	char *nodename;
+	char *user;
 	int ret;
 	char nodetype;
 	
@@ -2313,9 +2320,10 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errmsg("node type is not right: %s", nodename)));
 
 	host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode(host_addr, port.data);
+	ret = pingNode_user(host_addr, port.data, user);
 
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
@@ -2342,6 +2350,7 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	ScanKeyData  key[1];
 	StringInfoData port;
 	char *host_addr;
+	char *user;
 	int ret;
 	char nodetype;
 
@@ -2356,7 +2365,7 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 
 		info = palloc(sizeof(*info));
 		info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-   
+
 		ScanKeyInit(&key[0]
 					,Anum_mgr_node_nodetype
 					,BTEqualStrategyNumber
@@ -2390,9 +2399,10 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	Assert(mgr_node);
 
 	host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode(host_addr, port.data);
+	ret = pingNode_user(host_addr, port.data, user);
 
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
