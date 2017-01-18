@@ -3214,7 +3214,7 @@ reaper(SIGNAL_ARGS)
 #ifdef ADB
 		if (IS_PGXC_COORDINATOR && pid == RemoteXactMgrPID)
 		{
-			RemoteXactMgrPID = StartRemoteXactMgr();
+			RemoteXactMgrPID = 0;
 			if (!EXIT_STATUS_0(exitstatus))
 				HandleChildCrash(pid, exitstatus,
 								 _("remote xact manager process"));
