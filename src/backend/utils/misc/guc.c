@@ -2682,8 +2682,6 @@ static struct config_int ConfigureNamesInt[] =
 		check_autovacuum_max_workers, NULL, NULL
 	},
 #if defined(ADBMGRD)
-
-#if defined(ADB_MONITOR_POOL)
 	{
 		/* see max_connections */
 		{"adbmonitor_max_workers", PGC_POSTMASTER, ADBMONITOR,
@@ -2694,19 +2692,6 @@ static struct config_int ConfigureNamesInt[] =
 		10, 1, MAX_BACKENDS,
 		check_adbmonitor_workers, NULL, NULL
 	},
-#else /* ADB_MONITOR_POOL */
-	{
-		/* see max_connections */
-		{"adbmonitor_probable_workers", PGC_POSTMASTER, ADBMONITOR,
-			gettext_noop("Sets the probable number of simultaneously running adb monitor worker processes."),
-			NULL
-		},
-		&adbmonitor_probable_workers,
-		10, 1, MAX_BACKENDS,
-		check_adbmonitor_workers, NULL, NULL
-	},
-#endif /* ADB_MONITOR_POOL */
-
 #endif /* ADBMGRD */
 #ifdef ADB
 	{
@@ -9393,15 +9378,8 @@ static bool
 check_maxconnections(int *newval, void **extra, GucSource source)
 {
 #if defined(ADBMGRD)
-
-#if defined(ADB_MONITOR_POOL)
 	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 +
 		adbmonitor_max_workers + 1 > MAX_BACKENDS)
-#else
-	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 +
-		adbmonitor_probable_workers + 1 > MAX_BACKENDS)
-#endif /* ADB_MONITOR_POOL */
-
 #else
 	if (*newval + GetNumShmemAttachedBgworkers() + autovacuum_max_workers + 1 >
 		MAX_BACKENDS)

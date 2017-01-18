@@ -448,19 +448,10 @@ InitializeMaxBackends(void)
 	Assert(MaxBackends == 0);
 
 #if defined(ADBMGRD)
-
-#if defined(ADB_MONITOR_POOL)
 	/* the extra unit accounts for the autovacuum launcher and adb monitor launcher */
 	MaxBackends = MaxConnections + autovacuum_max_workers + 1 +
 		adbmonitor_max_workers + 1 + 
 		GetNumShmemAttachedBgworkers();
-#else
-	/* the extra unit accounts for the autovacuum launcher and adb monitor launcher */
-	MaxBackends = MaxConnections + adbmonitor_probable_workers + 1 +
-		autovacuum_max_workers + 1 + 
-		GetNumShmemAttachedBgworkers();
-#endif /* ADB_MONITOR_POOL */
-
 #else
 	/* the extra unit accounts for the autovacuum launcher */
 	MaxBackends = MaxConnections + autovacuum_max_workers + 1 +

@@ -181,7 +181,7 @@ InitProcGlobal(void)
 	ProcGlobal->spins_per_delay = DEFAULT_SPINS_PER_DELAY;
 	ProcGlobal->freeProcs = NULL;
 	ProcGlobal->autovacFreeProcs = NULL;
-#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+#if defined(ADBMGRD)
 	ProcGlobal->adbmntFreeProcs = NULL;
 #endif
 	ProcGlobal->bgworkerFreeProcs = NULL;
@@ -245,33 +245,19 @@ InitProcGlobal(void)
 		 * linear search.   PGPROCs for prepared transactions are added to a
 		 * free list by TwoPhaseShmemInit().
 		 */
-#if defined(ADBMGRD) && !defined(ADB_MONITOR_POOL)
-		/*
-		 * ADBQ:
-		 *     Keep adb monitor process in freeProcs. it may go wrong, but not
-		 * be found now.
-		 */
-		if (i < MaxConnections + adbmonitor_probable_workers + 1)
-#else
 		if (i < MaxConnections)
-#endif
 		{
 			/* PGPROC for normal backend, add to freeProcs list */
 			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->freeProcs;
 			ProcGlobal->freeProcs = &procs[i];
 		}
-#if defined(ADBMGRD) && !defined(ADB_MONITOR_POOL)
-		else if (i < MaxConnections + adbmonitor_probable_workers + 1 +
-			autovacuum_max_workers + 1)
-#else
 		else if (i < MaxConnections + autovacuum_max_workers + 1)
-#endif
 		{
 			/* PGPROC for AV launcher/worker, add to autovacFreeProcs list */
 			procs[i].links.next = (SHM_QUEUE *) ProcGlobal->autovacFreeProcs;
 			ProcGlobal->autovacFreeProcs = &procs[i];
 		}
-#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+#if defined(ADBMGRD)
 		else if (i < MaxConnections + autovacuum_max_workers + 1 +
 					 adbmonitor_max_workers + 1)
 		{
@@ -343,7 +329,7 @@ InitProcess(void)
 
 	if (IsAnyAutoVacuumProcess())
 		MyProc = procglobal->autovacFreeProcs;
-#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+#if defined(ADBMGRD)
 	else if (IsAnyAdbMonitorProcess())
 		MyProc = procglobal->adbmntFreeProcs;
 #endif
@@ -356,7 +342,7 @@ InitProcess(void)
 	{
 		if (IsAnyAutoVacuumProcess())
 			procglobal->autovacFreeProcs = (PGPROC *) MyProc->links.next;
-#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+#if defined(ADBMGRD)
 		if (IsAnyAdbMonitorProcess())
 			procglobal->adbmntFreeProcs = (PGPROC *) MyProc->links.next;
 #endif
@@ -884,7 +870,7 @@ ProcKill(int code, Datum arg)
 		proc->links.next = (SHM_QUEUE *) procglobal->autovacFreeProcs;
 		procglobal->autovacFreeProcs = proc;
 	}
-#if defined(ADBMGRD) && defined(ADB_MONITOR_POOL)
+#if defined(ADBMGRD)
 	else if (IsAnyAdbMonitorProcess())
 	{
 		proc->links.next = (SHM_QUEUE *) procglobal->adbmntFreeProcs;

@@ -584,12 +584,9 @@
 # ADB MONITOR PARAMETERS
 #------------------------------------------------------------------------------
 
-#adbmonitor = on			# Enable adb monitor subprocess?
-#adbmonitor_probable_workers = 10		# probable number of adb monitor workers subprocesses
-					# (change requires restart)
-#adbmonitor_max_workers = 10		# max number of adb monitor workers subprocesses
-					# (valid when CFLAGS define ADB_MONITOR_POOL)
-					# (change requires restart, CFLAGS define ADB_MONITOR_POOL)
+#adbmonitor = on				# Enable adb monitor subprocess?
+#adbmonitor_max_workers = 10	# max number of adb monitor workers subprocesses
+								# (change requires restart)
 #adbmonitor_naptime = 1min		# time between adb monitor runs
 
 #------------------------------------------------------------------------------
