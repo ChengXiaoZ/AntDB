@@ -343,7 +343,7 @@ InitProcess(void)
 		if (IsAnyAutoVacuumProcess())
 			procglobal->autovacFreeProcs = (PGPROC *) MyProc->links.next;
 #if defined(ADBMGRD)
-		if (IsAnyAdbMonitorProcess())
+		else if (IsAnyAdbMonitorProcess())
 			procglobal->adbmntFreeProcs = (PGPROC *) MyProc->links.next;
 #endif
 		else if (IsBackgroundWorker)
