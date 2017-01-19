@@ -411,7 +411,7 @@ int ssh2_start_agent(const char *hostname,
 	rc = ssh_get_channel_exit_msg(session, channel, message, sock);
 	if(rc == 127 && message->len == 0)
 		appendStringInfo(message, _("%s: No such file"), commandline);
-	else
+	if(rc == 0)
 	{
 		resetStringInfo(message);
 		appendStringInfo(message, _("success"));
