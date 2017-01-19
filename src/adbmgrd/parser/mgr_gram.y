@@ -381,7 +381,6 @@ name: ColId     { $$ = $1; };
 
 ColId: IDENT     { $$ = $1; };
 
-
 CreateUserStmt:
 			CREATE USER RoleId OptRoleList
 				{
@@ -396,35 +395,36 @@ CreateUserStmt:
 OptRoleList:
 			OptRoleList CreateOptRoleElem     { $$ = lappend($1, $2); }
 			| /* EMPTY */                     { $$ = NIL; }
-		;
+			;
 
 AlterOptRoleList:
-			AlterOptRoleList AlterOptRoleElem  { $$ = lappend($1, $2); }
-			| /* EMPTY */                      { $$ = NIL; }
+			AlterOptRoleElem  { $$ = list_make1($1); }
 			;
 
 CreateOptRoleElem:
-			AlterOptRoleElem	{ $$ = $1; }
+			AlterOptRoleElem  { $$ = $1; }
+			;
 
 AlterOptRoleElem:
 			PASSWORD SConst
 				{
-					$$ = makeDefElem("password",
-									 (Node *)makeString($2));
+					$$ = makeDefElem("password", (Node *)makeString($2));
 				}
-			| IDENT
-				{
-					if (strcmp($1, "superuser") == 0)
-						$$ = makeDefElem("superuser", (Node *)makeInteger(TRUE));
-					else if (strcmp($1, "nosuperuser") == 0)
-						$$ = makeDefElem("superuser", (Node *)makeInteger(FALSE));
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("unrecognized role option \"%s\"", $1),
-									parser_errposition(@1)));
-				}
-			;
+				;
+
+/*			| IDENT
+ *				{
+ *					if (strcmp($1, "superuser") == 0)
+ *						$$ = makeDefElem("superuser", (Node *)makeInteger(TRUE));
+ *					else if (strcmp($1, "nosuperuser") == 0)
+ *						$$ = makeDefElem("superuser", (Node *)makeInteger(FALSE));
+ *					else
+ *						ereport(ERROR,
+ *								(errcode(ERRCODE_SYNTAX_ERROR),
+ *								 errmsg("unrecognized role option \"%s\"", $1),
+ *									parser_errposition(@1)));
+ *				}
+ */
 
 AppendNodeStmt:
 		APPEND DATANODE MASTER Ident
