@@ -93,6 +93,7 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg, bool 
 static bool is_auth_method_valid(char *method);
 static List *parse_hba_list(List *args_list);
 static void encode_hba_str(char *hbavalue, StringInfo infosendmsg);
+static bool is_digit_str(char *s_digit);
 /*--------------------------------------------------------------------*/
 
 Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS)
@@ -926,7 +927,15 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg, bool 
 	newinfo->addr = &(hba_info->data[hba_info->cursor]);
 	hba_info->cursor = hba_info->cursor + strlen(newinfo->addr) + 1;
 	/*mask*/
-	newinfo->addr_mark = atoi(&(hba_info->data[hba_info->cursor]));
+	if(is_digit_str(&(hba_info->data[hba_info->cursor])))
+		newinfo->addr_mark = atoi(&(hba_info->data[hba_info->cursor]));
+	else
+	{
+		is_valid = false;
+		if(true == record_err_msg)
+			appendStringInfoString(err_msg, "Error:\"the mask is invalid\"\n");
+		goto func_end;
+	}
 	hba_info->cursor = hba_info->cursor + strlen(&(hba_info->data[hba_info->cursor])) + 1;
 	/*method*/
 	newinfo->auth_method = &(hba_info->data[hba_info->cursor]);
@@ -937,36 +946,7 @@ static bool check_pghbainfo_vaild(StringInfo hba_info, StringInfo err_msg, bool 
 			appendStringInfoString(err_msg, "Error:\"the conntype is invalid\"\n");
 		goto func_end;
 	}
-	if(is_digit(newinfo->database[0]))
-	{
-		is_valid = false;
-		if(true == record_err_msg)
-			appendStringInfoString(err_msg, "Error:\"the database name cannot start with a number\"\n");
-		goto func_end;
-	}
-	if(newinfo->database[0] == '\'')
-	{
-		is_valid = false;
-		if(true == record_err_msg)
-			appendStringInfoString(err_msg, "Error:\"the database name cannot start with a single quotes\"\n");
-		goto func_end;
-	}
-	
-	if(is_digit(newinfo->user[0]))
-	{
-		is_valid = false;
-		if(true == record_err_msg)
-			appendStringInfoString(err_msg, "Error:\"the user name cannot start with a number\"\n");
-		goto func_end;
-	}	
-	if(newinfo->user[0] == '\'')
-	{
-		is_valid = false;
-		if(true == record_err_msg)
-			appendStringInfoString(err_msg, "Error:\"the user name cannot start with a single quotes\"\n");
-		goto func_end;
-	}
-	
+
 	if(inet_pton(AF_INET, newinfo->addr, &ipaddr) == 0)
 	{
 		is_valid = false;
@@ -1087,4 +1067,20 @@ static void encode_hba_str(char *hbavalue, StringInfo infosendmsg)
 			appendStringInfo(infosendmsg,"%s%c", str_elem, '\0');
 		}						
 	}	
+}
+
+static bool is_digit_str(char *s_digit)
+{
+	int length = 0;
+	int i = 0;
+	length = strlen(s_digit);
+	for(i = 0; i < length; ++i)
+	{
+		if(!isdigit(s_digit[i]))
+			break;
+	}
+	if(i < length)
+		return false;
+	else
+		return true;		
 }
