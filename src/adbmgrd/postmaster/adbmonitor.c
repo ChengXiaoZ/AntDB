@@ -31,6 +31,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "access/skey.h"
+#include "access/sysattr.h"
 #include "access/xact.h"
 #include "lib/ilist.h"
 #include "libpq/pqsignal.h"
@@ -140,6 +142,7 @@ typedef struct
 	sig_atomic_t am_signal[AdbMntNumSignals];
 	pid_t		am_launcherpid;
 	dlist_head	am_freeWorkers;
+	dlist_head	am_runningWorkers;
 	WorkerInfo	am_startingWorker;
 } AdbMonitorShmemStruct;
 
@@ -162,19 +165,18 @@ NON_EXEC_STATIC void AdbMntWorkerMain(int argc, char *argv[]) __attribute__((nor
 
 static void launcher_determine_sleep(bool canlaunch, struct timeval * nap);
 static AmlJob launcher_obtain_amljob(void);
-static void launch_worker(TimestampTz now, AmlJob amljob);
+static void launch_worker(TimestampTz now);
 static void rebuild_job_htab(void);
 static void aml_sighup_handler(SIGNAL_ARGS);
 static void aml_sigusr2_handler(SIGNAL_ARGS);
 static void aml_sigterm_handler(SIGNAL_ARGS);
 static void FreeWorkerInfo(int code, Datum arg);
 static void do_monitor_job(Oid jobid);
-static bool IsMonitorJobRunning(Oid jobid);
-static bool monitor_job_get_last_timetz(TimestampTz *time);
+static void update_next_work_time(Oid jobid);
+static bool monitor_job_running(Oid jobid);
+static bool get_latest_job_time(TimestampTz *tzstamp);
+static void print_work_job(void);
 static void print_workers(void);
-#ifdef DEBUG_ADB
-static void OutputMonitorJob(void);
-#endif
 
 /*
  * Main entry point for adb monitor launcher process, to be called from the
@@ -400,7 +402,6 @@ AdbMntLauncherMain(int argc, char *argv[])
 		TimestampTz current_time = 0;
 		bool		can_launch;
 		int			rc;
-		AmlJob		amljob;
 
 		/*
 		 * This loop is a bit different from the normal use of WaitLatch,
@@ -410,11 +411,10 @@ AdbMntLauncherMain(int argc, char *argv[])
 		 */
 		launcher_determine_sleep(!dlist_is_empty(&AdbMonitorShmem->am_freeWorkers),
 								 &nap);
-		LWLockAcquire(AdbmonitorLock, LW_EXCLUSIVE);
-		amljob = launcher_obtain_amljob();
-		LWLockRelease(AdbmonitorLock);
+
 		/* Allow singal catchup interrupts while sleeping */
 		EnableCatchupInterrupt();
+
 		/*
 		 * Wait until naptime expires or we get some type of signal (all the
 		 * signal handlers will wake us by calling SetLatch).
@@ -425,8 +425,7 @@ AdbMntLauncherMain(int argc, char *argv[])
 		ResetLatch(&MyProc->procLatch);
 
 		DisableCatchupInterrupt();
-		if (!amljob)
-			continue;
+
 		/*
 		 * Emergency bailout if postmaster has died.  This is to avoid the
 		 * necessity for manual cleanup of all postmaster children.
@@ -479,7 +478,6 @@ AdbMntLauncherMain(int argc, char *argv[])
 		}
 
 		current_time = GetCurrentTimestamp();
-
 		LWLockAcquire(AdbmonitorLock, LW_SHARED);
 
 		can_launch = !dlist_is_empty(&AdbMonitorShmem->am_freeWorkers);
@@ -487,6 +485,7 @@ AdbMntLauncherMain(int argc, char *argv[])
 		{
 			int			waittime;
 			WorkerInfo	worker = AdbMonitorShmem->am_startingWorker;
+
 			/*
 			 * We can't launch another worker when another one is still
 			 * starting up (or failed while doing so), so just sleep for a bit
@@ -524,7 +523,6 @@ AdbMntLauncherMain(int argc, char *argv[])
 					worker->wi_launchtime = 0;
 					dlist_push_head(&AdbMonitorShmem->am_freeWorkers,
 									&worker->wi_links);
-
 					AdbMonitorShmem->am_startingWorker = NULL;
 					elog(WARNING, "worker took too long to start; canceled");
 				}
@@ -541,7 +539,7 @@ AdbMntLauncherMain(int argc, char *argv[])
 		/*
 		 * We're OK to start a new worker
 		 */
-		launch_worker(current_time, amljob);
+		launch_worker(current_time);
 	}
 
 	/* Normal exit from the adb monitor launcher is here */
@@ -559,99 +557,89 @@ shutdown:
 static void
 launcher_determine_sleep(bool canlaunch, struct timeval * nap)
 {
-	print_workers();
+	TimestampTz	current_time = GetCurrentTimestamp();
+	TimestampTz	next_wakeup;
+	long		secs;
+	int			usecs;
+
+	nap->tv_sec = adbmonitor_naptime;
+	nap->tv_usec = 0;
 
 	if (!canlaunch)
+		return ;
+
+	if (get_latest_job_time(&next_wakeup))
 	{
-		nap->tv_sec = adbmonitor_naptime;
-		nap->tv_usec = 0;
+		TimestampDifference(current_time, next_wakeup, &secs, &usecs);
+		nap->tv_sec = secs;
+		nap->tv_usec = usecs;
 	}
-	/*
-	 * TODO:
-	 * find the job which next work time is the smallest.
-	 */
-	else if (!dlist_is_empty(&AdbMonitorShmem->am_freeWorkers))
-	{
-		long		secs;
-		int			usecs;
-		TimestampTz current_time = GetCurrentTimestamp();
-		TimestampTz next_wakeup = GetCurrentTimestamp();
-		if (monitor_job_get_last_timetz(&next_wakeup))
-		{
-			TimestampDifference(current_time, next_wakeup, &secs, &usecs);
-			nap->tv_sec = secs;
-			nap->tv_usec = usecs;
-		}
-		else
-		{
-			nap->tv_sec = adbmonitor_naptime;
-			nap->tv_usec = 0;
-		}
-	}
-	else
-	{
-		// job item is empty, sleep for whole adbmonitor_naptime seconds
-		nap->tv_sec = adbmonitor_naptime;
-		nap->tv_usec = 0;
-	}
+
+	return ;
 }
 
+/*
+ * Return an monitor job will be launched now or
+ * NULL if there is no appropriate job.
+ */
 static AmlJob
 launcher_obtain_amljob(void)
 {
-	/*
-	 * TODO:
-	 * Return an monitor job will be launched now or
-	 * NULL if there is no appropriate monitor job.
-	 */
-	Relation rel_node;
-	HeapScanDesc rel_scan;
-	HeapTuple tup;
-	Form_monitor_job monitor_job;
-	TimestampTz timetz;
-	TimestampTz current_time;
-	TimestampTz timetzMin = 0;
-	Oid amjobOid = InvalidOid;
+	Relation			rel_node;
+	HeapScanDesc		rel_scan;
+	HeapTuple 			tuple;
+	Form_monitor_job	monitor_job;
+	TimestampTz			timetz;
+	TimestampTz			current_time;
+	TimestampTz			timetzMin = 0;
+	Oid					amjobOid = InvalidOid;
+	ScanKeyData			entry[2];
 
 	print_workers();
+
 	StartTransactionCommand();
 	(void) GetTransactionSnapshot();
 
-	rel_node = heap_open(MjobRelationId, AccessExclusiveLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
-	while ((tup = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	rel_node = heap_open(MjobRelationId, AccessShareLock);
+	ScanKeyInit(&entry[0],
+				Anum_monitor_job_job_status,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
+	current_time = GetCurrentTimestamp();
+	ScanKeyInit(&entry[1],
+				Anum_monitor_job_job_status,
+				BTLessEqualStrategyNumber, F_TIMESTAMP_LE,
+				TimestampTzGetDatum(current_time));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, entry);
+	while ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		monitor_job = (Form_monitor_job) GETSTRUCT(tup);
+		monitor_job = (Form_monitor_job) GETSTRUCT(tuple);
 		Assert(monitor_job);
 
-		/* Job is invalid */
-		if (!monitor_job->job_status)
-			continue;
-		current_time = GetCurrentTimestamp();
-		/* Get the last time which need execute */
-		if (current_time < monitor_job->next_time)
-			continue;
 		/* The job is running? */
-		if (IsMonitorJobRunning(HeapTupleGetOid(tup)))
+		if (monitor_job_running(HeapTupleGetOid(tuple)))
 			continue;
+
 		/* Find the latest monitor job */
 		timetz = monitor_job->next_time;
 		if (!timetzMin)
 		{
 			timetzMin = timetz;
-			amjobOid = HeapTupleGetOid(tup);
+			amjobOid = HeapTupleGetOid(tuple);
 		} else if (timetz < timetzMin)
 		{
 			timetzMin = timetz;
-			amjobOid = HeapTupleGetOid(tup);
+			amjobOid = HeapTupleGetOid(tuple);
 		}
 	}
 	heap_endscan(rel_scan);
-	heap_close(rel_node, AccessExclusiveLock);
+	heap_close(rel_node, AccessShareLock);
 	CommitTransactionCommand();
 
 	if (OidIsValid(amjobOid))
 	{
+		elog(DEBUG1,
+			"adb monitor launcher obtain job %u", amjobOid);
 		CurrentAmlJobData.amj_id = amjobOid;
 		CurrentAmlJobData.amj_next_worker_tm = timetzMin;
 		return &CurrentAmlJobData;
@@ -661,9 +649,10 @@ launcher_obtain_amljob(void)
 }
 
 static void
-launch_worker(TimestampTz now, AmlJob amljob)
+launch_worker(TimestampTz now)
 {
 	WorkerInfo	worker;
+	AmlJob		amljob;
 
 	/*
 	 * Check for free worker.
@@ -676,6 +665,7 @@ launch_worker(TimestampTz now, AmlJob amljob)
 	}
 	LWLockRelease(AdbmonitorLock);
 
+	amljob = launcher_obtain_amljob();
 	if (amljob)
 	{
 		dlist_node *wptr;
@@ -786,7 +776,6 @@ IsAdbMonitorWorkerProcess(void)
 	return am_adbmonitor_worker;
 }
 
-
 /*
  * AdbMonitorShmemSize
  *		Compute space needed for adbmonitor-related shared memory
@@ -830,6 +819,7 @@ AdbMonitorShmemInit(void)
 
 		AdbMonitorShmem->am_launcherpid = 0;
 		dlist_init(&AdbMonitorShmem->am_freeWorkers);
+		dlist_init(&AdbMonitorShmem->am_runningWorkers);
 		AdbMonitorShmem->am_startingWorker = NULL;
 
 		workers = (WorkerInfo) ((char *) AdbMonitorShmem +
@@ -848,6 +838,89 @@ AdbMonitorShmemInit(void)
 	}
 	else
 		Assert(found);
+}
+
+/*
+ * Return true if the job is running
+ */
+static bool
+monitor_job_running(Oid jobid)
+{
+	WorkerInfo	worker;
+	dlist_iter	iter;
+	bool		ret = false;
+
+	LWLockAcquire(AdbmonitorLock, LW_SHARED);
+
+	/*
+	 * Check whether the job is being executed concurrently by another
+	 * worker.
+	 */
+	dlist_foreach(iter, &AdbMonitorShmem->am_runningWorkers)
+	{
+		worker = dlist_container(WorkerInfoData, wi_links, iter.cur);
+
+		if (worker->wi_job == jobid)
+		{
+			ret = true;
+			break;
+		}
+	}
+	LWLockRelease(AdbmonitorLock);
+
+	return ret;
+}
+
+/*
+ * Get the latest monitor job's work time
+ */
+static bool
+get_latest_job_time(TimestampTz *tzstamp)
+{
+	Relation			rel_node;
+	HeapScanDesc		rel_scan;
+	HeapTuple			tuple;
+	Form_monitor_job	monitor_job;
+	TimestampTz			latest_jobtime = 0;
+	ScanKeyData			entry[1];
+
+	StartTransactionCommand();
+	(void) GetTransactionSnapshot();
+
+	rel_node = heap_open(MjobRelationId, AccessShareLock);
+	ScanKeyInit(&entry[0],
+				Anum_monitor_job_job_status,
+				BTEqualStrategyNumber, F_BOOLEQ,
+				BoolGetDatum(true));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, entry);
+
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		monitor_job = (Form_monitor_job) GETSTRUCT(tuple);
+		Assert(monitor_job);
+
+		/* Ignore the running job  */
+		if (monitor_job_running(HeapTupleGetOid(tuple)))
+			continue;
+
+		/* Get the latest work time */
+		if (latest_jobtime == 0)
+			latest_jobtime = monitor_job->next_time;
+		else if(latest_jobtime > monitor_job->next_time)
+			latest_jobtime = monitor_job->next_time;
+	}
+
+	heap_endscan(rel_scan);
+	heap_close(rel_node, AccessShareLock);
+	CommitTransactionCommand();
+
+	if (latest_jobtime != 0)
+	{
+		*tzstamp = latest_jobtime;
+		return true;
+	}
+
+	return false;
 }
 
 /********************************************************************
@@ -968,6 +1041,11 @@ AdbMntWorkerMain(int argc, char *argv[])
 		/* Prevents interrupts while cleaning up */
 		HOLD_INTERRUPTS();
 
+		/*
+		 * Abort the current transaction in order to recover.
+		 */
+		AbortCurrentTransaction();
+
 		/* Report the error to the server log */
 		EmitErrorReport();
 
@@ -1033,6 +1111,10 @@ AdbMntWorkerMain(int argc, char *argv[])
 		MyWorkerInfo->wi_proc = MyProc;
 		MyWorkerInfo->wi_launcherpid = AdbMonitorShmem->am_launcherpid;
 
+		/* insert into the running list */
+		dlist_push_head(&AdbMonitorShmem->am_runningWorkers,
+						&MyWorkerInfo->wi_links);
+
 		/*
 		 * remove from the "starting" pointer, so that the launcher can start
 		 * a new worker if required
@@ -1093,7 +1175,6 @@ FreeWorkerInfo(int code, Datum arg)
 		AdbMonitorLauncherPid = AdbMonitorShmem->am_launcherpid;
 
 		dlist_delete(&MyWorkerInfo->wi_links);
-
 		MyWorkerInfo->wi_job = InvalidOid;
 		MyWorkerInfo->wi_proc = NULL;
 		MyWorkerInfo->wi_launcherpid = 0;
@@ -1110,74 +1191,81 @@ FreeWorkerInfo(int code, Datum arg)
 static void
 do_monitor_job(Oid jobid)
 {
-#ifdef DEBUG_ADB
-	OutputMonitorJob();
-#endif
+	StartTransactionCommand();
 
-	/*
-	 * TODO
-	 */
-	/*refresh next_time of job table*/
-	Relation rel_node;
-	HeapScanDesc rel_scan;
-	HeapTuple tup;
-	HeapTuple newtuple;
-	Datum datum[Natts_monitor_job];
-	bool isnull[Natts_monitor_job];
-	bool got[Natts_monitor_job];
-	TupleDesc tupledsc;
-	TimestampTz current_time;
-	TimestampTz next_time;
-	Form_monitor_job monitor_job;
+	print_work_job();
 
+	/* actual action */
 	pg_usleep(15 * 1000000L);
 
-	StartTransactionCommand();
-	(void) GetTransactionSnapshot();
-	rel_node = heap_open(MjobRelationId, AccessShareLock);
-	tupledsc = RelationGetDescr(rel_node);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
-	while((tup = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		if (HeapTupleGetOid(tup) != jobid)
-			continue;
+	/* update next work time of the job */
+	update_next_work_time(jobid);
 
-		monitor_job = (Form_monitor_job) GETSTRUCT(tup);
+	CommitTransactionCommand();
+}
+
+static void
+update_next_work_time(Oid jobid)
+{
+	Relation			rel_node;
+	HeapScanDesc		rel_scan;
+	HeapTuple 			tuple;
+	TupleDesc			tupledsc;
+	ScanKeyData			entry[1];
+
+	(void) GetTransactionSnapshot();
+
+	rel_node = heap_open(MjobRelationId, RowExclusiveLock);
+	tupledsc = RelationGetDescr(rel_node);
+	ScanKeyInit(&entry[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(jobid));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, entry);
+	tuple = heap_getnext(rel_scan, ForwardScanDirection);
+	if (HeapTupleIsValid(tuple))
+	{
+		HeapTuple			newtuple;
+		Form_monitor_job	monitor_job;
+		Datum				datum[Natts_monitor_job];
+		bool				isnull[Natts_monitor_job];
+		bool				got[Natts_monitor_job];
+		TimestampTz			next_time;
+
+		Assert(HeapTupleGetOid(tuple) == jobid);
+
+		monitor_job = (Form_monitor_job) GETSTRUCT(tuple);
 		Assert(monitor_job);
 		MemSet(datum, 0, sizeof(datum));
 		MemSet(isnull, 0, sizeof(isnull));
 		MemSet(got, 0, sizeof(got));
-		current_time = GetCurrentTimestamp();
-#ifdef HAVE_INT64_TIMESTAMP
-		next_time = current_time + (monitor_job->interval_time)*1000000L;
-#else
-		next_time = current_time + monitor_job->interval_time;
-#endif
-		datum[Anum_monitor_job_next_time-1] = TimestampTzGetDatum(next_time);
-		got[Anum_monitor_job_next_time-1] = true;
-		newtuple = heap_modify_tuple(tup, tupledsc, datum,isnull, got);
-		simple_heap_update(rel_node, &(tup->t_self), newtuple);
+		next_time = TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
+						(monitor_job->interval_time) * INT64CONST(1000));
+		datum[Anum_monitor_job_next_time - 1] = TimestampTzGetDatum(next_time);
+		got[Anum_monitor_job_next_time - 1] = true;
+		newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
+		simple_heap_update(rel_node, &(tuple->t_self), newtuple);
 		CatalogUpdateIndexes(rel_node, newtuple);
-
-		break;
 	}
 
 	heap_endscan(rel_scan);
-	heap_close(rel_node, AccessShareLock);
-	CommitTransactionCommand();
+	heap_close(rel_node, RowExclusiveLock);
 }
 
-#ifdef DEBUG_ADB
+/********************************************************************
+ *					  DEBUG CODE
+ ********************************************************************/
 static void
-OutputMonitorJob(void)
+print_work_job(void)
 {
+#ifdef DEBUG_ADB
 	if (MyWorkerInfo != NULL)
 	{
 		StringInfoData	buf;
 		Oid jobid = MyWorkerInfo->wi_job;
 
 		initStringInfo(&buf);
-		appendStringInfo(&buf, "Monitor job: %u", jobid);
+		appendStringInfo(&buf, "Worker job: %u", jobid);
 		appendStringInfo(&buf, " Launchtime: %s", timestamptz_to_str(MyWorkerInfo->wi_launchtime));
 
 		/*
@@ -1195,74 +1283,29 @@ OutputMonitorJob(void)
 
 		pfree(buf.data);
 	}
-}
 #endif
+}
 
-static bool IsMonitorJobRunning(Oid jobid)
+static void
+print_workers(void)
 {
+#ifdef DEBUG_ADB
 	WorkerInfo	workers;
 	int			i;
 
-	workers = (WorkerInfo) ((char *) AdbMonitorShmem +
-							   MAXALIGN(sizeof(AdbMonitorShmemStruct)));
-	for (i = 0; i < adbmonitor_max_workers; i++)
-	{
-		if (workers[i].wi_job == jobid)
-			return true;
-	}
-
-	return false;
-}
-
-/*get the last  tiem to run*/
-static bool monitor_job_get_last_timetz(TimestampTz *time)
-{
-	Relation rel_node;
-	HeapScanDesc rel_scan;
-	HeapTuple tup;
-	Form_monitor_job monitor_job;
-	TimestampTz current_time = GetCurrentTimestamp();
-	TimestampTz timetzMin = GetCurrentTimestamp()<<1;
-	TimestampTz timetz = current_time;
-	bool bget = false;
-
-	StartTransactionCommand();
-	(void) GetTransactionSnapshot();
-	rel_node = heap_open(MjobRelationId, RowExclusiveLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
-	while((tup = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		monitor_job = (Form_monitor_job)GETSTRUCT(tup);
-		Assert(monitor_job);
-		/*get the least time*/
-		if (!monitor_job->job_status)
-			continue;
-		if (IsMonitorJobRunning(HeapTupleGetOid(tup)))
-		{
-			continue;
-		}
-		if(current_time >= monitor_job->start_time)
-			timetz = monitor_job->next_time;
-		if (timetz < timetzMin)
-				timetzMin = timetz;
-		bget = true;
-	}
-	heap_endscan(rel_scan);
-	heap_close(rel_node, RowExclusiveLock);
-	CommitTransactionCommand();
-
-	if (bget)
-		*time = timetzMin;
-	return bget;
-}
-
-static void print_workers(void)
-{
-	WorkerInfo	workers;
-	int			i;
+	LWLockAcquire(AdbmonitorLock, LW_SHARED);
 
 	workers = (WorkerInfo) ((char *) AdbMonitorShmem +
 							MAXALIGN(sizeof(AdbMonitorShmemStruct)));
 	for (i = 0; i < adbmonitor_max_workers; i++)
-		elog(DEBUG1, "workers[%d] %d is running", i, workers[i].wi_job);
+	{
+		if (OidIsValid(workers[i].wi_job))
+		{
+			elog(LOG, "Launcher find workers[%d] %d is running",
+				i, workers[i].wi_job);
+		}
+	}
+
+	LWLockRelease(AdbmonitorLock);
+#endif
 }
