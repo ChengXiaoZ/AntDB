@@ -1405,12 +1405,40 @@ ListParmStmt:
 
 CleanAllStmt:
 		CLEAN ALL
-	{
+		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_all", NULL));
 			$$ = (Node*)stmt;
-	}
+		}
+	| CLEAN GTM opt_gtm_inner_type
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = lappend(args, makeStringConst("gtm", -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
+			$$ = (Node*)stmt;
+		}
+	| CLEAN COORDINATOR NodeConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst(CNDN_TYPE_COORDINATOR_MASTER, -1));
+			args = list_concat(args, $3);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
+			$$ = (Node*)stmt;
+		}
+	| CLEAN DATANODE opt_dn_inner_type NodeConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = list_concat(args, $4);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
+			$$ = (Node*)stmt;
+		}
+	;
 /*hba start*/
 
 AddHbaStmt:

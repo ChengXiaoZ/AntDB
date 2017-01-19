@@ -1043,16 +1043,18 @@ void cmd_clean_node_folder(StringInfo buf)
 {
 	const char *rec_msg_string;
 	StringInfoData output;
-	
-	rec_msg_string = agt_getmsgstring(buf);
+	StringInfoData exstrinfo;
+
 	initStringInfo(&output);
-	if (system(rec_msg_string) != 0)
-	{
-		appendStringInfo(&output, "do command fail: %s", rec_msg_string);
-		ereport(LOG, (errmsg("do command fail: %s", rec_msg_string)));
-	}
+	initStringInfo(&exstrinfo);
+	rec_msg_string = agt_getmsgstring(buf);
+	appendStringInfo(&exstrinfo, "%s", rec_msg_string);
+
+	if(exec_shell(exstrinfo.data, &output) != 0)
+		ereport(ERROR, (errmsg("%s", output.data)));
 	else
 		appendStringInfoString(&output, "success");
+	pfree(exstrinfo.data);
 	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
 	agt_flush();
 	pfree(output.data);

@@ -176,6 +176,7 @@ extern void mgr_rename_recovery_to_conf(char cmdtype, Oid hostOid, char* cndnpat
 extern HeapTuple mgr_get_tuple_node_from_name_type(Relation rel, char *nodename, char nodetype);
 extern char *mgr_nodetype_str(char nodetype);
 extern Datum mgr_clean_all(PG_FUNCTION_ARGS);
+extern Datum mgr_clean_node(PG_FUNCTION_ARGS);
 extern int mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bincluster);
 extern List* mgr_get_nodetype_namelist(char nodetype);
 /* mgr_common.c */

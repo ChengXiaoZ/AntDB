@@ -1410,7 +1410,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		pfree(nodetypestr);
 		return;
 	}
-	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype && !mgr_node->nodeinited)
+	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype &&
+		AGT_CMD_CLEAN_NODE != cmdtype && !mgr_node->nodeinited)
 	{
 		appendStringInfo(&(getAgentCmdRst->description), "%s \"%s\" has not been initialized", nodetypestr, cndnname);
 		getAgentCmdRst->ret = false;
@@ -1479,6 +1480,9 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		case AGT_CMD_AGTM_RESTART:
 			cmdmode = "restart";
 			zmode = "node";
+			break;
+		case AGT_CMD_CLEAN_NODE:
+			cmdmode = "rm -rf";
 			break;
 		default:
 			/*never come here*/
@@ -1596,6 +1600,10 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	{
 		appendStringInfo(&infosendmsg, " %s -D %s", cmdmode, cndnPath);
 		appendStringInfo(&infosendmsg, " -Z %s -m %s -o -i -w -c -l %s/logfile", zmode, shutdown_mode, cndnPath);
+	}
+	else if (AGT_CMD_CLEAN_NODE == cmdtype)
+	{
+		appendStringInfo(&infosendmsg, "rm -rf %s; mkdir -p %s; chmod 0700 %s", cndnPath, cndnPath, cndnPath);
 	}
 	else
 	{
@@ -6151,7 +6159,80 @@ Datum mgr_clean_all(PG_FUNCTION_ARGS)
 	/*clean gtm master/slave/extra, clean coordinator, clean datanode master/slave/extra*/
 	return mgr_prepare_clean_all(fcinfo);
 }
+/*
+* clean the given node: the command format: clean nodetype nodename
+* clean gtm master/slave/extra
+* clean coordinator nodename, ...
+* clean datanode master/slave/extra nodename, ...
+*/
 
+Datum mgr_clean_node(PG_FUNCTION_ARGS)
+{
+	char nodetype;
+	char *nodename;
+	NameData namedata;
+	List *nodenamelist = NIL;
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	ListCell   *cell;
+	Form_mgr_node mgr_node;
+	ScanKeyData key[2];
+
+	/*ndoe type*/
+	nodetype = PG_GETARG_CHAR(0);
+	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+	{
+		nodenamelist = mgr_get_nodetype_namelist(nodetype);
+	}
+	else
+	{
+#ifdef ADB
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
+#else
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+#endif
+	}
+	/*check the node not in the cluster*/
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	foreach(cell, nodenamelist)
+	{
+		nodename = (char *) lfirst(cell);
+		namestrcpy(&namedata, nodename);
+		ScanKeyInit(&key[0],
+			Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		ScanKeyInit(&key[1],
+			Anum_mgr_node_nodename
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,NameGetDatum(&namedata));
+		
+		rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+		if ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				 ,errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), nodename)));
+		}
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		if (mgr_node->nodeincluster)
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				 ,errmsg("%s \"%s\" already exists in cluster, cannot be cleaned", mgr_nodetype_str(nodetype), nodename)));
+		}
+		heap_endscan(rel_scan);
+	}
+	heap_close(rel_node, RowExclusiveLock);
+
+	return mgr_runmode_cndn(nodetype, AGT_CMD_CLEAN_NODE, nodenamelist, TAKEPLAPARM_N, fcinfo);
+	
+}
 /*clean the node folder*/
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst)
 {

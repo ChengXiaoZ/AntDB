@@ -5300,6 +5300,9 @@ DESCR("start agent all");
 DATA(insert OID = 4941 ( mgr_deploy_hostnamelist      PGNSP PGUID 12 10 400 0 0 f f f f f t s 2 0 2249 "2275 1009" "{19,16,25}" "{o,o,o}" "{hostname,status,description}" _null_ mgr_deploy_hostnamelist _null_ _null_ _null_ ));
 DESCR("start agent hostlist");
 
+DATA(insert OID = 4942 ( mgr_clean_node      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_clean_node _null_ _null_ _null_ ));
+DESCR("clean node");
+
 #endif
 
 /*
