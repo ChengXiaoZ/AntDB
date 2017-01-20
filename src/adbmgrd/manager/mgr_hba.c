@@ -121,11 +121,7 @@ Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS)
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		if(!PG_ARGISNULL(0))
 		{
-			#ifdef ADB
-				nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-			#else
-				nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-			#endif
+			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
 		}
 		*(info->lcp) = list_head(nodenamelist);
 		nodestrname = (char *) lfirst(*(info->lcp));
@@ -176,11 +172,7 @@ Datum mgr_add_hba(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errmsg("args is null")));
 	}
-	#ifdef ADB
-		args_list = get_fcinfo_namelist("", 0, fcinfo, NULL);
-	#else
-		args_list = get_fcinfo_namelist("", 0, fcinfo);
-	#endif
+	args_list = get_fcinfo_namelist("", 0, fcinfo);
 	if(args_list->length < 2)
 	{
 		ereport(ERROR, (errmsg("args is not enough")));
@@ -471,11 +463,7 @@ Datum mgr_drop_hba(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errmsg("args is null")));
 	}
-	#ifdef ADB
-		args_list = get_fcinfo_namelist("", 0, fcinfo, NULL);
-	#else
-		args_list = get_fcinfo_namelist("", 0, fcinfo);
-	#endif
+	args_list = get_fcinfo_namelist("", 0, fcinfo);
 	
 	if(args_list->length > 0)
 	{

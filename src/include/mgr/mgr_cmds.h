@@ -152,11 +152,7 @@ extern bool mgr_has_priv_set(void);
 extern bool mgr_has_priv_reset(void);
 
 extern void mgr_start_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple);
-extern List * get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo
-#ifdef ADB
-       , void (*check_value_func_ptr)(char*)
-#endif
-       );
+extern List *get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo);
 void check_dn_slave(char nodetype, List *nodenamelist, Relation rel_node, StringInfo infosendmsg);
 extern bool mgr_refresh_pgxc_node_tbl(char *cndnname, int32 cndnport, char *cndnaddress, bool isprimary, Oid cndnmasternameoid, GetAgentCmdRst *getAgentCmdRst);
 extern void mgr_send_conf_parameters(char filetype, char *datapath, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst);

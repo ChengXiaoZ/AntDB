@@ -790,13 +790,8 @@ mgr_init_cn_master(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_COORDINATOR_MASTER);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CNDN_CNDN_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo); 
 }
 
@@ -812,13 +807,8 @@ mgr_init_dn_master(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_MASTER);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_CNDN_CNDN_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
@@ -1109,48 +1099,21 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 * get the datanode/coordinator name list
 */
 List *
-get_fcinfo_namelist(const char *sepstr, int argidx,
-	FunctionCallInfo fcinfo
-#ifdef ADB
-	, void (*check_value_func_ptr)(char*)
-#endif
-	)
+get_fcinfo_namelist(const char *sepstr, int argidx, FunctionCallInfo fcinfo)
 {
-	StringInfoData str;
-	bool first_arg = true;
 	int i;
 	char *nodename;
-	List *nodenamelist =NIL;
-	
-	/* Normal case without explicit VARIADIC marker */
-	initStringInfo(&str);
+	List *nodenamelist = NIL;
 
 	for (i = argidx; i < PG_NARGS(); i++)
 	{
 		if (!PG_ARGISNULL(i))
 		{
-			Datum value = PG_GETARG_DATUM(i);
-			Oid valtype;
-			Oid typOutput;
-			bool typIsVarlena;
-			/* add separator if appropriate */
-			if (first_arg)
-				first_arg = false;
-			else
-				appendStringInfoString(&str, sepstr);
-
-			/* call the appropriate type output function*/
-			valtype = get_fn_expr_argtype(fcinfo->flinfo, i);
-			if (!OidIsValid(valtype))
-				ereport(ERROR,
-					(errmsg("could not determine data type of mgr_start_cn_master() input")));
-			getTypeOutputInfo(valtype, &typOutput, &typIsVarlena);
-			nodename = OidOutputFunctionCall(typOutput, value);
+			nodename = PG_GETARG_CSTRING(i);
 			nodenamelist = lappend(nodenamelist, nodename);
 		}
 	}
 
-	pfree(str.data);
 	return nodenamelist;
 }
 
@@ -1240,17 +1203,10 @@ Datum mgr_start_cn_master(PG_FUNCTION_ARGS)
 	List *nodenamelist = NIL;
 
 	if (PG_ARGISNULL(0))
-	{
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_COORDINATOR_MASTER);
-	}
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
@@ -1265,13 +1221,8 @@ Datum mgr_start_dn_master(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_MASTER);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 	
 }
@@ -1321,13 +1272,8 @@ Datum mgr_start_dn_slave(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_SLAVE);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
@@ -1342,13 +1288,8 @@ Datum mgr_start_dn_extra(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_EXTRA);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 0, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_START, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 
@@ -1830,13 +1771,8 @@ Datum mgr_stop_cn_master(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(1))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_COORDINATOR_MASTER);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_COORDINATOR_MASTER, AGT_CMD_CN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
@@ -1853,13 +1789,8 @@ Datum mgr_stop_dn_master(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(1))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_MASTER);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_MASTER, AGT_CMD_DN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
@@ -1909,13 +1840,8 @@ Datum mgr_stop_dn_slave(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(1))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_SLAVE);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_SLAVE, AGT_CMD_DN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
@@ -1932,13 +1858,8 @@ Datum mgr_stop_dn_extra(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(1))
 		nodenamelist = mgr_get_nodetype_namelist(CNDN_TYPE_DATANODE_EXTRA);
 	else
-	{
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-		#endif
-	}
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+
 	return mgr_runmode_cndn(CNDN_TYPE_DATANODE_EXTRA, AGT_CMD_DN_STOP, nodenamelist, stop_mode, fcinfo);
 }
 
@@ -1970,8 +1891,8 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, List* nodenamelist , char *s
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		nodenamelist_new = list_copy(nodenamelist);
-		*(info->lcp) = list_head(nodenamelist_new);
+		//nodenamelist_new = list_copy(nodenamelist);
+		*(info->lcp) = list_head(nodenamelist);
 		funcctx->user_fctx = info;
 		MemoryContextSwitchTo(oldcontext);
 	}
@@ -1983,6 +1904,7 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, List* nodenamelist , char *s
 	lcp = info->lcp;
 	if (*lcp == NULL)
 	{
+		list_free(nodenamelist);
 		heap_close(info->rel_node, RowExclusiveLock);
 		SRF_RETURN_DONE(funcctx);
 	}
@@ -2258,12 +2180,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		
-		#ifdef ADB
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
-		#else
-			nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-		#endif
+		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
 		
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
@@ -6182,17 +6099,10 @@ Datum mgr_clean_node(PG_FUNCTION_ARGS)
 	/*ndoe type*/
 	nodetype = PG_GETARG_CHAR(0);
 	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
-	{
 		nodenamelist = mgr_get_nodetype_namelist(nodetype);
-	}
 	else
-	{
-#ifdef ADB
-		nodenamelist = get_fcinfo_namelist("", 1, fcinfo, NULL);
-#else
 		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-#endif
-	}
+
 	/*check the node not in the cluster*/
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	foreach(cell, nodenamelist)
@@ -6936,7 +6846,7 @@ static void mgr_get_cmd_head_word(char cmdtype, char *str)
 		case AGT_CMD_GTM_CLEAN:
 		case AGT_CMD_RM:
 		case AGT_CMD_CLEAN_NODE:
-			strcpy(str, "rm -rf");
+			strcpy(str, "");
 			break;
 		case AGT_CMD_CNDN_CNDN_INIT:
 			strcpy(str, "initdb");
