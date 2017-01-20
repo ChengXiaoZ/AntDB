@@ -15,7 +15,7 @@ ADB documentation
     <refpurpose>clean all the data of the cluster</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-dropgtm">
+  <indexterm zone="mgr-cleanall">
     <primary>CLEAN ALL</primary>
   </indexterm>
 

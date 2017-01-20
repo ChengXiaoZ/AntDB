@@ -1,0 +1,44 @@
+<!--
+doc/src/sgml/ref/mgr_clean_coorinator.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-CLEANDATANODE">
+  <refmeta>
+    <refentrytitle>CLEAN DATANODE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CLEAN DATANODE</refname>
+    <refpurpose>clean all the data of the datanode in the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-cleandatanode">
+    <primary>CLEAN DATANODE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+CLEAN DATANODE { MASTER | SLAVE | EXTRA } { node_name [ , ... ] }
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>CLEAN DATANODE</command> clean all the data of the datanode in the cluster. If the datanode is running, it needs to be stopped first.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Clean the data of datanode_name1 and datanode_name2:
+<programlisting>
+CLEAN DATANODE SLAVE datanode_name1, datanode_name2;
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>

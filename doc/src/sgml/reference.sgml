@@ -283,6 +283,9 @@
    &mgrAppendDatanode;
    &mgrAppendGtm;
    &mgrCleanAll;
+   &mgrCleanCoordinator;
+   &mgrCleanDatanode;
+   &mgrCleanGtm;
    &mgrDeploy;
    &mgrDropCoordinator;
    &mgrDropDatanode;

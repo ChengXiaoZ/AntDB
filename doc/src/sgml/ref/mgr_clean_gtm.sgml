@@ -1,0 +1,44 @@
+<!--
+doc/src/sgml/ref/mgr_clean_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-CLEANGTM">
+  <refmeta>
+    <refentrytitle>CLEAN GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CLEAN GTM</refname>
+    <refpurpose>clean all the data of the gtm in the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-cleangtm">
+    <primary>CLEAN GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+CLEAN GTM { MASTER | SLAVE | EXTRA }
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>CLEAN DATANODE</command> clean all the data of the gtm in the cluster. If the gtm is running, it needs to be stopped first.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Clean the data of gtm_name1:
+<programlisting>
+CLEAN GTM MASTER;
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>
