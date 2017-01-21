@@ -1,0 +1,49 @@
+<!--
+doc/src/sgml/ref/mgr_grant_right.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-GRANT">
+  <refmeta>
+    <refentrytitle>GRANT</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>GRANT</refname>
+    <refpurpose>define access privileges, but the command only execute by Administrators</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-grant">
+    <primary>GRANT</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+GRANT {opt_priv [, ...]} TO {username [, ...]}
+GRANT ALL TO {username [, ...]}
+GRANT {opt_priv [, ...] } TO ALL
+<phrase>where <replaceable class="parameter">opt_priv</replaceable> must be the following:</phrase>
+
+    opt_prive is the ADB execute command which such as "stop", "add", "monitor"
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>GRANT</command> define access privileges, but the command only execute by Administrators.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+grant three privileges to all the role:
+<programlisting>
+GRANT init, add, drop TO ALL
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>

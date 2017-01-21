@@ -1,0 +1,46 @@
+<!--
+doc/src/sgml/ref/mgr_alter_user.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ALTERUSER">
+  <refmeta>
+    <refentrytitle>ALTER USER</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ALTER USER</refname>
+    <refpurpose>modify user password, but the command only execute by 
+Administrators</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-createuser">
+    <primary>ALTER USER</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+ALTER user username PASSWORD 'passwd'
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>ALTER USER</command> modify user password, but the command only execute by 
+Administrators.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Modify user_name1 with password 'h2ed':
+<programlisting>
+ALTER user user_name1 PASSWORD 'h2ed'
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>

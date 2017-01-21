@@ -279,6 +279,7 @@
    &mgrAlterDatanode;
    &mgrAlterGtm;
    &mgrAlterHost; 
+   &mgrAlterUser; 
    &mgrAppendCoordinator;
    &mgrAppendDatanode;
    &mgrAppendGtm;
@@ -286,15 +287,18 @@
    &mgrCleanCoordinator;
    &mgrCleanDatanode;
    &mgrCleanGtm;
+   &mgrCreateUser;
    &mgrDeploy;
    &mgrDropCoordinator;
    &mgrDropDatanode;
    &mgrDropGtm;
    &mgrDropHba;
    &mgrDropHost;
+   &mgrDropUser;
    &mgrFailoverDatanode;
    &mgrFailoverGtm;
    &mgrFlushHost;
+   &mgrGrant;
    &mgrInitAll;
    &mgrListHba;
    &mgrListHost;
@@ -308,6 +312,7 @@
    &mgrResetCoordinator;
    &mgrResetDatanode;
    &mgrResetGtm;
+   &mgrRevoke;
    &mgrSetCoordinator;
    &mgrSetDatanode;
    &mgrSetGtm;

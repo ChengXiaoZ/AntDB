@@ -1,0 +1,49 @@
+<!--
+doc/src/sgml/ref/mgr_revoke_right.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-REVOKE">
+  <refmeta>
+    <refentrytitle>REVOKE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>REVOKE</refname>
+    <refpurpose>remove access privileges, but the command only execute by Administrators</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-revoke">
+    <primary>REVOKE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+REVOKE {opt_priv [, ...]} TO {username [, ...]}
+REVOKE ALL TO {username [, ...]}
+REVOKE {opt_priv [, ...] } TO ALL
+<phrase>where <replaceable class="parameter">opt_priv</replaceable> must be the following:</phrase>
+
+    opt_prive is the ADB execute command which such as "stop", "add", "monitor"
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>REVOKE</command> remove access privileges, but the command only execute by Administrators.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+remove three privileges from all the role:
+<programlisting>
+REVOKE init, add, drop TO ALL
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>

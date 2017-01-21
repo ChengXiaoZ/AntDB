@@ -1,0 +1,46 @@
+<!--
+doc/src/sgml/ref/mgr_drop_user.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-DROPUSER">
+  <refmeta>
+    <refentrytitle>DROP USER</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>DROP USER</refname>
+    <refpurpose>remove a role from cluster, but the command only execute by 
+Administrators</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-dropuser">
+    <primary>DROP USER</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+DROP USER { username [, ...] }
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>DROP USER</command> remove a role from cluster, but the command only execute by 
+Administrators.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+remove a role which named user_name1:
+<programlisting>
+DROP USER user_name1
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>

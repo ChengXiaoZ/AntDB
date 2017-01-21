@@ -200,6 +200,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrAlterDatanode   SYSTEM "mgr_alter_datanode.sgml">
 <!ENTITY mgrAlterGtm        SYSTEM "mgr_alter_gtm.sgml">
 <!ENTITY mgrAlterHost       SYSTEM "mgr_alter_host.sgml">
+<!ENTITY mgrAlterUser       SYSTEM "mgr_alter_user.sgml">
 <!ENTITY mgrAppendCoordinator SYSTEM "mgr_append_coordinator.sgml">
 <!ENTITY mgrAppendDatanode  SYSTEM "mgr_append_datanode.sgml">
 <!ENTITY mgrAppendGtm       SYSTEM "mgr_append_gtm.sgml">
@@ -207,15 +208,18 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrCleanCoordinator SYSTEM "mgr_clean_coordinator.sgml">
 <!ENTITY mgrCleanDatanode   SYSTEM "mgr_clean_datanode.sgml">
 <!ENTITY mgrCleanGtm        SYSTEM "mgr_clean_gtm.sgml">
+<!ENTITY mgrCreateUser      SYSTEM "mgr_create_user.sgml">
 <!ENTITY mgrDeploy          SYSTEM "mgr_deploy.sgml">
 <!ENTITY mgrDropCoordinator SYSTEM "mgr_drop_coordinator.sgml">
 <!ENTITY mgrDropDatanode    SYSTEM "mgr_drop_datanode.sgml">
 <!ENTITY mgrDropGtm         SYSTEM "mgr_drop_gtm.sgml">
 <!ENTITY mgrDropHba         SYSTEM "mgr_drop_hba.sgml">
 <!ENTITY mgrDropHost        SYSTEM "mgr_drop_host.sgml">
+<!ENTITY mgrDropUser        SYSTEM "mgr_drop_user.sgml">
 <!ENTITY mgrFailoverDatanode SYSTEM "mgr_failover_datanode.sgml">
 <!ENTITY mgrFailoverGtm     SYSTEM "mgr_failover_gtm.sgml">
 <!ENTITY mgrFlushHost       SYSTEM "mgr_flush_host.sgml">
+<!ENTITY mgrGrant           SYSTEM "mgr_grant_right.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
 <!ENTITY mgrListHba        	SYSTEM "mgr_list_hba.sgml">
 <!ENTITY mgrListHost        SYSTEM "mgr_list_host.sgml">
@@ -229,6 +233,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrResetCoordinator SYSTEM "mgr_reset_coordinator.sgml">
 <!ENTITY mgrResetDatanode   SYSTEM "mgr_reset_datanode.sgml">
 <!ENTITY mgrResetGtm        SYSTEM "mgr_reset_gtm.sgml">
+<!ENTITY mgrRevoke          SYSTEM "mgr_revoke_right.sgml">
 <!ENTITY mgrSetCoordinator  SYSTEM "mgr_set_coordinator.sgml">
 <!ENTITY mgrSetDatanode     SYSTEM "mgr_set_datanode.sgml">
 <!ENTITY mgrSetGtm          SYSTEM "mgr_set_gtm.sgml">

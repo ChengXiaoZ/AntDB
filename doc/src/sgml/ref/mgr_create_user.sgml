@@ -1,0 +1,46 @@
+<!--
+doc/src/sgml/ref/mgr_create_user.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-CREATEUSER">
+  <refmeta>
+    <refentrytitle>CREATE USER</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CREATE USER</refname>
+    <refpurpose>create a user to manager the ADB cluster, but the command only execute by 
+Administrators</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-createuser">
+    <primary>CREATE USER</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+CREATE USER username PASSWORD 'passwd'
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>CREATE USER</command> create a user to manager the ADB cluster, but the command only execute by 
+Administrators.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Create user user_name1 with password 'h2ed':
+<programlisting>
+CREATE USER user_name1 PASSWORD 'h2ed'
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>
