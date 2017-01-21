@@ -2273,10 +2273,8 @@ ShowStmt:
 FlushHost:
 	FLUSH HOST
 	{
-		SelectStmt *stmt = makeNode(SelectStmt);
-		stmt->targetList = list_make1(make_star_target(-1));
-		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_flush_host", NULL));
-		$$ = (Node*)stmt;
+		MGRFlushHost *node = makeNode(MGRFlushHost);
+		$$ = (Node*)node;
 	}
 	;
 unreserved_keyword:

@@ -240,6 +240,7 @@ extern void mgr_parmr_update_tuple_nodename_nodetype(Relation noderel, Name node
 extern void mgr_update_parm_after_dn_failover(Name oldmastername, char oldmastertype, Name oldslavename, char oldslavetype);
 extern void mgr_parm_after_gtm_failover_handle(Name mastername, char mastertype, Name slavename, char slavetype);
 extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, char nodetype);
+extern void mgr_flushhost(MGRFlushHost *node, ParamListInfo params, DestReceiver *dest);
 extern  Datum mgr_flush_host(PG_FUNCTION_ARGS);
 extern Datum mgr_show_var_param(PG_FUNCTION_ARGS);
 

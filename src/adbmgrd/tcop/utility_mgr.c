@@ -41,6 +41,9 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRStartAgent:
 		tag = "START AGENT";
 		break;
+	case T_MGRFlushHost:
+		tag = "FLUSH HOST";
+		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
 		tag = "???";
@@ -81,6 +84,9 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 	case T_MGRUpdateparmReset:
 		mgr_reset_updateparm((MGRUpdateparmReset*)parsetree, params, dest);
 		break;
+	case T_MGRFlushHost:
+		mgr_flushhost((MGRFlushHost*)parsetree, params, dest);
+		break;	
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			,errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));

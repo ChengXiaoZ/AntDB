@@ -1877,7 +1877,6 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, List* nodenamelist , char *s
 	char *nodestrname;
 	NameData nodenamedata;
 	Form_mgr_node mgr_node;
-	List* nodenamelist_new;
 
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
@@ -1891,7 +1890,6 @@ Datum mgr_runmode_cndn(char nodetype, char cmdtype, List* nodenamelist , char *s
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		//nodenamelist_new = list_copy(nodenamelist);
 		*(info->lcp) = list_head(nodenamelist);
 		funcctx->user_fctx = info;
 		MemoryContextSwitchTo(oldcontext);
@@ -7640,6 +7638,20 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 * 5. refresh all pgxc_node of all coordinators
 * 6. refresh recovery.conf of all slave and extra, then restart 
 */
+void mgr_flushhost(MGRFlushHost *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_add())
+	{
+		DirectFunctionCall1(mgr_flush_host, (Datum)0);
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
 Datum mgr_flush_host(PG_FUNCTION_ARGS)
 {
 	ScanKeyData key[1];

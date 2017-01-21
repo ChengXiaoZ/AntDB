@@ -480,6 +480,7 @@ typedef enum NodeTag
 	,T_MGRUpdateparmReset
 	,T_MGRShowParam
 	,T_MGRStartAgent
+	,T_MGRFlushHost
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor

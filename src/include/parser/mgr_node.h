@@ -114,4 +114,9 @@ typedef struct MGRStopAgent
 	List		*hosts;		/* list of Value(String), NIL for ALL */
 }MGRStopAgent;
 
+typedef struct MGRFlushHost
+{
+	NodeTag		type;
+}MGRFlushHost;
+
 #endif /* MGR_NODE_H */

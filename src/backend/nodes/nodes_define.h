@@ -4148,4 +4148,9 @@ BEGIN_NODE(MGRStartAgent)
 END_NODE(MGRStartAgent)
 #endif /* NO_NODE_MGRStartAgent */
 
+#ifndef NO_NODE_MGRFlushHost
+BEGIN_NODE(MGRFlushHost)
+END_NODE(MGRFlushHost)
+#endif /* NO_NODE_MGRFlushHost */
+
 #endif /* ADBMGRD */
