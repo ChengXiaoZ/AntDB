@@ -6097,7 +6097,12 @@ Datum mgr_clean_node(PG_FUNCTION_ARGS)
 	/*ndoe type*/
 	nodetype = PG_GETARG_CHAR(0);
 	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+	{
 		nodenamelist = mgr_get_nodetype_namelist(nodetype);
+		if (NIL == nodenamelist)
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("%s does not exist", mgr_nodetype_str(nodetype))));
+	}
 	else
 		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
 
