@@ -393,6 +393,9 @@ DECLARE_UNIQUE_INDEX(mgr_updataparm_nodename_nodetype_key_index, 3847, on mgr_up
 DECLARE_UNIQUE_INDEX(monitor_job_oid_index, 4919, on monitor_job using btree(oid oid_ops));
 #define MonitorJobOidIndexId 4919
 
+DECLARE_UNIQUE_INDEX(monitor_jobitem_name_index, 4930, on monitor_jobitem using btree(jobitem_itemname name_ops));
+#define MonitorJobitemItemnameIndexId 4930
+
 #endif /* ADBMGRD */
 
 #ifdef AGTM
@@ -401,6 +404,7 @@ DECLARE_UNIQUE_INDEX(agtm_sequence_oid_index, 4054, on agtm_sequence using btree
 
 DECLARE_UNIQUE_INDEX(agtm_sequence_fields_index, 4055, on agtm_sequence using btree(database name_ops,schema name_ops,sequence name_ops));
 #define AgtmSequenceFieldsIndexId 4055
+
 #endif
 
 /* last step of initialization script: build the indexes declared above */

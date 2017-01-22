@@ -119,4 +119,26 @@ typedef struct MGRFlushHost
 	NodeTag		type;
 }MGRFlushHost;
 
+typedef struct MonitorJobitemAdd
+{
+	NodeTag		type;
+	bool			if_not_exists;
+	char			*name;
+	List		*options;
+}MonitorJobitemAdd;
+
+typedef struct MonitorJobitemAlter
+{
+	NodeTag		type;
+	char			*name;
+	List			*options;
+}MonitorJobitemAlter;
+
+typedef struct MonitorJobitemDrop
+{
+	NodeTag		type;
+	bool			if_exists;
+	List			*namelist;
+}MonitorJobitemDrop;
+
 #endif /* MGR_NODE_H */

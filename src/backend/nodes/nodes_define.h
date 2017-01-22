@@ -4153,4 +4153,27 @@ BEGIN_NODE(MGRFlushHost)
 END_NODE(MGRFlushHost)
 #endif /* NO_NODE_MGRFlushHost */
 
+#ifndef NO_NODE_MonitorJobitemAdd
+BEGIN_NODE(MonitorJobitemAdd)
+	NODE_SCALAR(bool, if_not_exists)
+	NODE_STRING(name)
+	NODE_NODE(List, options)
+END_NODE(MonitorJobitemAdd)
+#endif /* NO_NODE_MonitorJobitemAdd */
+
+#ifndef NO_NODE_MonitorJobitemAlter
+BEGIN_NODE(MonitorJobitemAlter)
+	NODE_STRING(name)
+	NODE_NODE(List, options)
+END_NODE(MonitorJobitemAlter)
+#endif /* NO_NODE_MonitorJobitemAlter */
+
+#ifndef NO_NODE_MonitorJobitemDrop
+BEGIN_NODE(MonitorJobitemDrop)
+	NODE_SCALAR(bool, if_exists)
+	NODE_NODE(List, namelist)
+END_NODE(MonitorJobitemDrop)
+#endif /* NO_NODE_MonitorJobitemDrop */
+
+
 #endif /* ADBMGRD */

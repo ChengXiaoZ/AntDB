@@ -249,4 +249,12 @@ extern Datum mgr_show_var_param(PG_FUNCTION_ARGS);
 extern Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS);
 extern Datum mgr_drop_hba(PG_FUNCTION_ARGS);
 extern Datum mgr_add_hba(PG_FUNCTION_ARGS);
+/*monitor_jobitem.c*/
+extern void monitor_jobitem_add(MonitorJobitemAdd *node, ParamListInfo params, DestReceiver *dest);
+extern void monitor_jobitem_alter(MonitorJobitemAlter *node, ParamListInfo params, DestReceiver *dest);
+extern void monitor_jobitem_drop(MonitorJobitemDrop *node, ParamListInfo params, DestReceiver *dest);
+extern Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS);
+extern Datum monitor_jobitem_alter_func(PG_FUNCTION_ARGS);
+extern Datum monitor_jobitem_drop_func(PG_FUNCTION_ARGS);
+
 #endif /* MGR_CMDS_H */

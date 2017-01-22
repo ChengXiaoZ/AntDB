@@ -149,7 +149,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
-				AlterUserStmt
+				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -183,7 +183,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
-%token<keyword> GRANT REVOKE FROM
+%token<keyword> GRANT REVOKE FROM ITEM
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -261,6 +261,9 @@ stmt :
 	| AddHbaStmt
 	| DropHbaStmt
 	| ListHbaStmt
+	|	AddJobitemStmt
+	|	AlterJobitemStmt
+	|	DropJobitemStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2271,12 +2274,59 @@ ShowStmt:
 	;
 
 FlushHost:
-	FLUSH HOST
+FLUSH HOST
 	{
 		MGRFlushHost *node = makeNode(MGRFlushHost);
 		$$ = (Node*)node;
 	}
 	;
+AddJobitemStmt:
+	ADD_P ITEM Ident opt_general_options
+	{
+			MonitorJobitemAdd *node = makeNode(MonitorJobitemAdd);
+			node->if_not_exists = false;
+			node->name = $3;
+			node->options = $4;
+			$$ = (Node*)node;
+	}
+	| ADD_P ITEM IF_P NOT EXISTS Ident opt_general_options
+	{
+			MonitorJobitemAdd *node = makeNode(MonitorJobitemAdd);
+			node->if_not_exists = true;
+			node->name = $6;
+			node->options = $7;
+			$$ = (Node*)node;
+	}
+	;
+
+AlterJobitemStmt:
+	ALTER ITEM Ident opt_general_options
+	{
+		MonitorJobitemAlter *node = makeNode(MonitorJobitemAlter);
+		node->name = $3;
+		node->options = $4;
+		$$ = (Node*)node;
+	}
+	;
+
+DropJobitemStmt:
+	DROP ITEM ObjList
+	{
+		MonitorJobitemDrop *node = makeNode(MonitorJobitemDrop);
+		node->if_exists = false;
+		node->namelist = $3;
+		$$ = (Node*)node;
+	}
+	|	DROP ITEM IF_P EXISTS ObjList
+	{
+		MonitorJobitemDrop *node = makeNode(MonitorJobitemDrop);
+		node->if_exists = true;
+		node->namelist = $5;
+		$$ = (Node*)node;
+	}
+	;
+
+
 unreserved_keyword:
 	  ACL
 	| ADD_P
@@ -2327,6 +2377,7 @@ unreserved_keyword:
 	| IF_P
 	| IMMEDIATE
 	| INIT
+	| ITEM
 	| LIST
 	| MASTER
 	| MODE

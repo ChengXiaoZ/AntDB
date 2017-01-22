@@ -44,6 +44,15 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MGRFlushHost:
 		tag = "FLUSH HOST";
 		break;
+	case T_MonitorJobitemAdd:
+		tag = "ADD ITEM";
+		break;
+	case T_MonitorJobitemAlter:
+		tag = "ALTER ITEM";
+		break;
+	case T_MonitorJobitemDrop:
+		tag = "DROP ITEM";
+		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
 		tag = "???";
@@ -86,7 +95,16 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MGRFlushHost:
 		mgr_flushhost((MGRFlushHost*)parsetree, params, dest);
-		break;	
+		break;
+	case T_MonitorJobitemAdd:
+		monitor_jobitem_add((MonitorJobitemAdd*)parsetree, params, dest);
+		break;
+	case T_MonitorJobitemAlter:
+		monitor_jobitem_alter((MonitorJobitemAlter*)parsetree, params, dest);
+		break;
+	case T_MonitorJobitemDrop:
+		monitor_jobitem_drop((MonitorJobitemDrop*)parsetree, params, dest);
+		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			,errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));

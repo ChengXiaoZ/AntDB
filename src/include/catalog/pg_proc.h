@@ -5303,6 +5303,15 @@ DESCR("start agent hostlist");
 DATA(insert OID = 4942 ( mgr_clean_node      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_clean_node _null_ _null_ _null_ ));
 DESCR("clean node");
 
+DATA(insert OID = 4931 ( monitor_jobitem_add_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "16 2275 2276" _null_ _null_ _null_ _null_ monitor_jobitem_add_func _null_ _null_ _null_ ));
+DESCR("add item");
+
+DATA(insert OID = 4943 (  monitor_jobitem_alter_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 16 "2275 2276" _null_ _null_ _null_ _null_ monitor_jobitem_alter_func _null_ _null_ _null_ ));
+DESCR("alter item");
+
+DATA(insert OID = 4944 (  monitor_jobitem_drop_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 16 "16 2276" _null_ _null_ _null_ _null_ monitor_jobitem_drop_func _null_ _null_ _null_ ));
+DESCR("drop item");
+
 #endif
 
 /*

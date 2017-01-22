@@ -481,6 +481,9 @@ typedef enum NodeTag
 	,T_MGRShowParam
 	,T_MGRStartAgent
 	,T_MGRFlushHost
+	,T_MonitorJobitemAdd
+	,T_MonitorJobitemAlter
+	,T_MonitorJobitemDrop
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor
