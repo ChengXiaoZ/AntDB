@@ -10,6 +10,7 @@
 #define timestamptz int
 #endif /* BUILD_BKI */
 
+
 #define MjobRelationId 4918
 CATALOG(monitor_job,4918)
 {

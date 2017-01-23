@@ -7,7 +7,6 @@
 #else /* BUILD_BKI */
 #include "catalog/genbki.h"
 #include "utils/timestamp.h"
-#define timestamptz int
 #endif /* BUILD_BKI */
 
 #define MjobitemRelationId 4920

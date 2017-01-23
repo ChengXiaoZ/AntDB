@@ -68,6 +68,7 @@
 #include "mgr/mgr_msg_type.h"
 #include "utils/builtins.h"
 #include "mgr/mgr_cmds.h"
+#include "executor/spi.h"
 
 /* Default database */
 #define DEFAULT_DATABASE	"postgres"
@@ -416,7 +417,6 @@ AdbMntLauncherMain(int argc, char *argv[])
 		 */
 		launcher_determine_sleep(!dlist_is_empty(&AdbMonitorShmem->am_freeWorkers),
 								 &nap);
-
 		/* Allow singal catchup interrupts while sleeping */
 		EnableCatchupInterrupt();
 
@@ -1216,6 +1216,11 @@ update_next_work_time(Oid jobid)
 	HeapTuple 			tuple;
 	TupleDesc			tupledsc;
 	ScanKeyData			entry[1];
+	int ret;
+	int exec_ret;
+	bool beNull = false;
+	Datum commanddatum;
+	StringInfoData commandsql;
 
 	(void) GetTransactionSnapshot();
 
@@ -1243,6 +1248,18 @@ update_next_work_time(Oid jobid)
 		MemSet(datum, 0, sizeof(datum));
 		MemSet(isnull, 0, sizeof(isnull));
 		MemSet(got, 0, sizeof(got));
+		/*get command sql*/
+		commanddatum = heap_getattr(tuple, Anum_monitor_job_command, tupledsc, &beNull);
+		if (beNull)
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "monitor_jobitem")
+				, errmsg("column command is null")));
+		}
+		initStringInfo(&commandsql);
+		appendStringInfo(&commandsql, "%s", TextDatumGetCString(commanddatum));
 		next_time = TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
 						(monitor_job->interval) * INT64CONST(1000));
 		datum[Anum_monitor_job_nexttime - 1] = TimestampTzGetDatum(next_time);
@@ -1254,6 +1271,17 @@ update_next_work_time(Oid jobid)
 
 	heap_endscan(rel_scan);
 	heap_close(rel_node, RowExclusiveLock);
+ 	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("execute monitor item fail: SPI_connect failed: error code %d", ret)));
+	if (commandsql.data != NULL)
+	{		
+		exec_ret = SPI_execute(commandsql.data, false, 0);
+		if (exec_ret != SPI_OK_INSERT)
+			ereport(ERROR, (errmsg("execute monitor item fail: SPI_execute failed: error code %d", exec_ret)));
+		pfree(commandsql.data);
+	}
+	SPI_finish();
+	
 }
 
 /*
