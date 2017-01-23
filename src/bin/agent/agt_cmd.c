@@ -64,6 +64,7 @@ static char *get_connect_type_str(HbaType connect_type);
 static bool check_pghba_exist_info(HbaInfo *checkinfo, HbaInfo *infohead);
 static char *pghba_info_parse(char *ptmp, HbaInfo *newinfo, StringInfo infoparastr);
 static bool check_hba_vaild(char * datapath, HbaInfo * info_head);
+static void cmd_get_batch_job_result(int cmd_type, StringInfo buf);
 
 void do_agent_command(StringInfo buf)
 {
@@ -157,6 +158,9 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_GET_SQL_STRINGVALUES:
 	case AGT_CMD_GET_EXPLAIN_STRINGVALUES:
 		cmd_get_sqlstring_stringvalues(cmd_type, buf);
+		break;
+	case AGT_CMD_GET_BATCH_JOB:
+		cmd_get_batch_job_result(cmd_type, buf);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
@@ -1339,6 +1343,56 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 	PQclear(res);
 	PQfinish(conn);
 	pfree(constr.data);
+}
+
+/*
+* get monitor job result, the job type is batch 
+*/
+static void cmd_get_batch_job_result(int cmd_type, StringInfo buf)
+{
+	const char *rec_msg_string;
+	StringInfoData output;
+	StringInfoData exec;
+	char *userpath;
+	char scriptpath[256];
+	char inputargs[1024];
+	
+	userpath = getenv("HOME");
+  if (NULL != userpath)
+		chdir(userpath);
+	initStringInfo(&exec);
+	rec_msg_string = agt_getmsgstring(buf);
+	/*script path*/
+	strcpy(scriptpath, rec_msg_string);
+	scriptpath[strlen(scriptpath)] = '\0';
+	strcpy(inputargs, rec_msg_string + strlen(scriptpath)+1);
+	inputargs[strlen(inputargs)] = '\0';
+	appendStringInfo(&exec, "%s", scriptpath);
+	appendStringInfo(&exec, " %s ", inputargs);
+	initStringInfo(&output);
+	appendStringInfo(&output, "%s", "{\"result\":\"");
+	/*check file exist*/
+	if (access(scriptpath, F_OK) != 0)
+	{
+		pfree(output.data);
+		pfree(exec.data);
+		ereport(ERROR, (errmsg("\"%s\": No such file", scriptpath)));
+	}
+	if(exec_shell(exec.data, &output) != 0)
+	{
+		pfree(output.data);
+		ereport(ERROR, (errmsg("\"%s %s\" execute fail %s", scriptpath, inputargs, exec.data)));
+	}
+	/*json format*/
+	if ('\n' == output.data[output.len-2])
+		output.len = output.len -2;
+	appendStringInfo(&output, "%s", "\"}");
+	appendStringInfoCharMacro(&output, '\0');
+	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	agt_flush();
+	pfree(exec.data);
+	pfree(output.data);
+	
 }
 
 

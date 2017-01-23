@@ -60,9 +60,14 @@
 #include "utils/tqual.h"
 #include "access/heapam.h"
 #include "catalog/monitor_job.h"
+#include "catalog/monitor_jobitem.h"
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
 #include "storage/spin.h"
+#include "mgr/mgr_agent.h"
+#include "mgr/mgr_msg_type.h"
+#include "utils/builtins.h"
+#include "mgr/mgr_cmds.h"
 
 /* Default database */
 #define DEFAULT_DATABASE	"postgres"
@@ -1192,7 +1197,6 @@ static void
 do_monitor_job(Oid jobid)
 {
 	StartTransactionCommand();
-
 	print_work_job();
 
 	/* actual action */
@@ -1250,6 +1254,103 @@ update_next_work_time(Oid jobid)
 
 	heap_endscan(rel_scan);
 	heap_close(rel_node, RowExclusiveLock);
+}
+
+/*
+* input: hostname, monitor_item
+*/
+Datum 
+adbmonitor_job(PG_FUNCTION_ARGS)
+{
+	char		  *scriptpath = NULL;
+	bool			isNull = false;
+	NameData  hostname;
+	NameData	itemname;
+	Oid				hostoid;
+	HeapTuple	hosttuple;
+	HeapTuple	tuple;
+	StringInfoData buf;
+	StringInfoData infosendmsg;
+	ManagerAgent *ma;
+	StringInfoData resultstrinfo;
+	Relation rel_jobitem;
+	ScanKeyData key[1];
+	HeapScanDesc rel_scan;
+	Datum	datumpath;
+	Form_monitor_job	monitor_job;
+
+	/*get input*/
+	namestrcpy(&hostname, PG_GETARG_CSTRING(0));
+	namestrcpy(&itemname, PG_GETARG_CSTRING(1));
+
+	/*get host oid*/
+	hosttuple = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(&hostname));
+	if(!HeapTupleIsValid(hosttuple))
+	{
+		ereport(ERROR,  (errcode(ERRCODE_UNDEFINED_OBJECT),
+			errmsg("host \"%s\" dose not exist", hostname.data)));
+	}
+	hostoid = HeapTupleGetOid(hosttuple);
+	ReleaseSysCache(hosttuple);
+	/*get batch path*/
+	rel_jobitem = heap_open(MjobitemRelationId, AccessShareLock);
+	ScanKeyInit(&key[0],
+					Anum_monitor_jobitem_itemname
+					,BTEqualStrategyNumber
+					,F_NAMEEQ
+					,NameGetDatum(&itemname));
+	rel_scan = heap_beginscan(rel_jobitem, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		monitor_job = (Form_monitor_job)GETSTRUCT(tuple);
+		Assert(monitor_job);
+		datumpath = heap_getattr(tuple, Anum_monitor_jobitem_path, RelationGetDescr(rel_jobitem), &isNull);
+		break;
+	}
+	heap_endscan(rel_scan);
+	heap_close(rel_jobitem, AccessShareLock);
+	if(isNull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "monitor_jobitem")
+			, errmsg("column path is null")));
+	}
+	scriptpath = TextDatumGetCString(datumpath);
+	
+	/*connect to agent*/
+	ma = ma_connect_hostoid(hostoid);
+	if (!ma_isconnected(ma))
+	{
+		/* report error message */
+		ereport(ERROR, (errmsg("%s", ma_last_error_msg(ma))));
+	}
+	initStringInfo(&buf);
+	initStringInfo(&infosendmsg);
+	/*script path*/
+	appendStringInfoString(&infosendmsg, scriptpath);
+	appendStringInfoCharMacro(&infosendmsg, '\0');
+
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_GET_BATCH_JOB);
+	mgr_append_infostr_infostr(&buf, &infosendmsg);
+	ma_endmessage(&buf, ma);
+	pfree(infosendmsg.data);
+	if (! ma_flush(ma, true))
+	{
+		ma_close(ma);
+		ereport(ERROR, (errmsg("send command to agent fail, %s", ma_last_error_msg(ma))));
+	}
+	/*check the receive msg*/
+	initStringInfo(&resultstrinfo);
+	mgr_recv_sql_stringvalues_msg(ma, &resultstrinfo);
+	ma_close(ma);
+	if (resultstrinfo.data == NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+			,errmsg("get result fail")));
+	}
+
+	PG_RETURN_TEXT_P(cstring_to_text(resultstrinfo.data));
 }
 
 /********************************************************************

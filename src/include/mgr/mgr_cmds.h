@@ -189,7 +189,7 @@ List * DecodeTextArrayToValueList(Datum textarray);
 void check_nodename_isvalid(char *nodename);
 bool mgr_has_function_privilege_name(char *funcname, char *priv_type);
 bool mgr_has_table_privilege_name(char *tablename, char *priv_type);
-
+extern void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata);
 /* get the host address */
 char *get_hostaddress_from_hostoid(Oid hostOid);
 char *get_hostname_from_hostoid(Oid hostOid);
@@ -263,5 +263,5 @@ extern void monitor_job_drop(MonitorJobDrop *node, ParamListInfo params, DestRec
 extern Datum monitor_job_add_func(PG_FUNCTION_ARGS);
 extern Datum monitor_job_alter_func(PG_FUNCTION_ARGS);
 extern Datum monitor_job_drop_func(PG_FUNCTION_ARGS);
-
+extern Datum adbmonitor_job(PG_FUNCTION_ARGS);
 #endif /* MGR_CMDS_H */

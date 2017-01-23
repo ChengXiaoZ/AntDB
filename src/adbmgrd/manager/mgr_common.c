@@ -652,3 +652,41 @@ bool mgr_has_table_privilege_name(char *tablename, char *priv_type)
 	return DatumGetBool(aclresult);
 }
 
+/*
+* get msg from agent
+*/
+void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
+{
+	char			msg_type;
+	StringInfoData recvbuf;
+	initStringInfo(&recvbuf);
+	for(;;)
+	{
+		msg_type = ma_get_message(ma, &recvbuf);
+		if(msg_type == AGT_MSG_IDLE)
+		{
+			/* message end */
+			break;
+		}else if(msg_type == '\0')
+		{
+			/* has an error */
+			break;
+		}else if(msg_type == AGT_MSG_ERROR)
+		{
+			/* error message */
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			break;
+		}else if(msg_type == AGT_MSG_NOTICE)
+		{
+			/* ignore notice message */
+			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+		}
+		else if(msg_type == AGT_MSG_RESULT)
+		{
+			appendBinaryStringInfo(resultstrdata, recvbuf.data, recvbuf.len);
+			ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
+			break;
+		}
+	}
+	pfree(recvbuf.data);
+}

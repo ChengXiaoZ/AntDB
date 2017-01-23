@@ -10,12 +10,6 @@
 #define timestamptz int
 #endif /* BUILD_BKI */
 
-/* #ifdef HAVE_INT64_TIMESTAMP
-#define timestamptz int64
-#else
-#define timestamptz int32
-#endif */
-
 #define MjobRelationId 4918
 CATALOG(monitor_job,4918)
 {

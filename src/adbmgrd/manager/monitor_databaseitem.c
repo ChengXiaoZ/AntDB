@@ -39,7 +39,6 @@
 #include "utils/date.h"
 
 static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len);
-static void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata);
 
 #define DEFAULT_DB "postgres"
 
@@ -680,43 +679,4 @@ void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *u
 			,errmsg("get sqlstr:%s \n\tresult fail", sqlstr)));
 		return;
 	}
-}
-
-/*
-* get msg from agent
-*/
-static void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
-{
-	char			msg_type;
-	StringInfoData recvbuf;
-	initStringInfo(&recvbuf);
-	for(;;)
-	{
-		msg_type = ma_get_message(ma, &recvbuf);
-		if(msg_type == AGT_MSG_IDLE)
-		{
-			/* message end */
-			break;
-		}else if(msg_type == '\0')
-		{
-			/* has an error */
-			break;
-		}else if(msg_type == AGT_MSG_ERROR)
-		{
-			/* error message */
-			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
-			break;
-		}else if(msg_type == AGT_MSG_NOTICE)
-		{
-			/* ignore notice message */
-			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
-		}
-		else if(msg_type == AGT_MSG_RESULT)
-		{
-			appendBinaryStringInfo(resultstrdata, recvbuf.data, recvbuf.len);
-			ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
-			break;
-		}
-	}
-	pfree(recvbuf.data);
 }
