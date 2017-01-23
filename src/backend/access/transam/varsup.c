@@ -233,13 +233,28 @@ GetNewGlobalTransactionId(bool isSubXact)
 	gxid = ObtainGlobalTransactionId(isSubXact);
 
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
-	xid = gxid;
+
 	if (TransactionIdFollowsOrEquals(gxid, ShmemVariableCache->nextXid))
+	{
 		ShmemVariableCache->nextXid = gxid;
-	/*
-	 * ADBQ:
-	 * Will there be such a situation as gxid < ShmemVariableCache->nextXid?
-	 */
+	} else
+	{
+		/*
+		 * Sometime, the global XID got from the AGTM may be used locally.
+		 * It may lead to conflict of XidStatus of XID. For example, when
+		 * we failover the AGTM master, the next XID of the AGTM slave may
+		 * be less than the AGTM master.(It is possiable as XLOG has not
+		 * been synchronized.)
+		 *
+		 * It is a fatal situation that global XID is less than
+		 * ShmemVariableCache->nextXid.
+		 */
+		LWLockRelease(XidGenLock);
+		ereport(ERROR,
+				(errmsg("Global XID %u is already in use, please try again!", gxid)));
+	}
+
+	xid = gxid;
 
 	/*
 	 * If we are allocating the first XID of a new page of the commit log,
