@@ -257,4 +257,11 @@ extern Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS);
 extern Datum monitor_jobitem_alter_func(PG_FUNCTION_ARGS);
 extern Datum monitor_jobitem_drop_func(PG_FUNCTION_ARGS);
 
+extern void monitor_job_add(MonitorJobAdd *node, ParamListInfo params, DestReceiver *dest);
+extern void monitor_job_alter(MonitorJobAlter *node, ParamListInfo params, DestReceiver *dest);
+extern void monitor_job_drop(MonitorJobDrop *node, ParamListInfo params, DestReceiver *dest);
+extern Datum monitor_job_add_func(PG_FUNCTION_ARGS);
+extern Datum monitor_job_alter_func(PG_FUNCTION_ARGS);
+extern Datum monitor_job_drop_func(PG_FUNCTION_ARGS);
+
 #endif /* MGR_CMDS_H */

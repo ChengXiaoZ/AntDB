@@ -7,15 +7,15 @@
 #else /* BUILD_BKI */
 #include "catalog/genbki.h"
 #include "utils/timestamp.h"
-#define timestamptz int64
+#define timestamptz int
 #endif /* BUILD_BKI */
 
-#ifdef HAVE_INT64_TIMESTAMP
+/*#ifdef HAVE_INT64_TIMESTAMP
 #define timestamptz int64
 #else
 #define timestamptz int32
 #endif
-
+*/
 #define MjobitemRelationId 4920
 CATALOG(monitor_jobitem,4920) BKI_WITHOUT_OIDS
 {

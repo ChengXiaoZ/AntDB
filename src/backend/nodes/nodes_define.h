@@ -4175,5 +4175,26 @@ BEGIN_NODE(MonitorJobitemDrop)
 END_NODE(MonitorJobitemDrop)
 #endif /* NO_NODE_MonitorJobitemDrop */
 
+#ifndef NO_NODE_MonitorJobAdd
+BEGIN_NODE(MonitorJobAdd)
+	NODE_SCALAR(bool, if_not_exists)
+	NODE_STRING(name)
+	NODE_NODE(List, options)
+END_NODE(MonitorJobAdd)
+#endif /* NO_NODE_MonitorJobAdd */
+
+#ifndef NO_NODE_MonitorJobAlter
+BEGIN_NODE(MonitorJobAlter)
+	NODE_STRING(name)
+	NODE_NODE(List, options)
+END_NODE(MonitorJobAlter)
+#endif /* NO_NODE_MonitorJobAlter */
+
+#ifndef NO_NODE_MonitorJobDrop
+BEGIN_NODE(MonitorJobDrop)
+	NODE_SCALAR(bool, if_exists)
+	NODE_NODE(List, namelist)
+END_NODE(MonitorJobDrop)
+#endif /* NO_NODE_MonitorJobDrop */
 
 #endif /* ADBMGRD */

@@ -183,7 +183,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
-%token<keyword> GRANT REVOKE FROM ITEM
+%token<keyword> GRANT REVOKE FROM ITEM JOB
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -2297,12 +2297,35 @@ AddJobitemStmt:
 			node->options = $7;
 			$$ = (Node*)node;
 	}
+	| ADD_P JOB Ident opt_general_options
+	{
+			MonitorJobAdd *node = makeNode(MonitorJobAdd);
+			node->if_not_exists = false;
+			node->name = $3;
+			node->options = $4;
+			$$ = (Node*)node;
+	}
+	| ADD_P JOB IF_P NOT EXISTS Ident opt_general_options
+	{
+			MonitorJobAdd *node = makeNode(MonitorJobAdd);
+			node->if_not_exists = true;
+			node->name = $6;
+			node->options = $7;
+			$$ = (Node*)node;
+	}
 	;
 
 AlterJobitemStmt:
 	ALTER ITEM Ident opt_general_options
 	{
 		MonitorJobitemAlter *node = makeNode(MonitorJobitemAlter);
+		node->name = $3;
+		node->options = $4;
+		$$ = (Node*)node;
+	}
+	| ALTER JOB Ident opt_general_options
+	{
+		MonitorJobAlter *node = makeNode(MonitorJobAlter);
 		node->name = $3;
 		node->options = $4;
 		$$ = (Node*)node;
@@ -2320,6 +2343,20 @@ DropJobitemStmt:
 	|	DROP ITEM IF_P EXISTS ObjList
 	{
 		MonitorJobitemDrop *node = makeNode(MonitorJobitemDrop);
+		node->if_exists = true;
+		node->namelist = $5;
+		$$ = (Node*)node;
+	}
+	| DROP JOB ObjList
+	{
+		MonitorJobDrop *node = makeNode(MonitorJobDrop);
+		node->if_exists = false;
+		node->namelist = $3;
+		$$ = (Node*)node;
+	}
+	| DROP JOB IF_P EXISTS ObjList
+	{
+		MonitorJobDrop *node = makeNode(MonitorJobDrop);
 		node->if_exists = true;
 		node->namelist = $5;
 		$$ = (Node*)node;
@@ -2373,6 +2410,7 @@ unreserved_keyword:
 	| GTM
 	| HBA
 	| HOST
+	| JOB
 	| I
 	| IF_P
 	| IMMEDIATE

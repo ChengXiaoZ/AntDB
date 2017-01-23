@@ -602,12 +602,12 @@ launcher_obtain_amljob(void)
 
 	rel_node = heap_open(MjobRelationId, AccessShareLock);
 	ScanKeyInit(&entry[0],
-				Anum_monitor_job_job_status,
+				Anum_monitor_job_status,
 				BTEqualStrategyNumber, F_BOOLEQ,
 				BoolGetDatum(true));
 	current_time = GetCurrentTimestamp();
 	ScanKeyInit(&entry[1],
-				Anum_monitor_job_job_status,
+				Anum_monitor_job_status,
 				BTLessEqualStrategyNumber, F_TIMESTAMP_LE,
 				TimestampTzGetDatum(current_time));
 	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, entry);
@@ -889,7 +889,7 @@ get_latest_job_time(TimestampTz *tzstamp)
 
 	rel_node = heap_open(MjobRelationId, AccessShareLock);
 	ScanKeyInit(&entry[0],
-				Anum_monitor_job_job_status,
+				Anum_monitor_job_status,
 				BTEqualStrategyNumber, F_BOOLEQ,
 				BoolGetDatum(true));
 	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, entry);
@@ -1240,9 +1240,9 @@ update_next_work_time(Oid jobid)
 		MemSet(isnull, 0, sizeof(isnull));
 		MemSet(got, 0, sizeof(got));
 		next_time = TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
-						(monitor_job->interval_time) * INT64CONST(1000));
-		datum[Anum_monitor_job_next_time - 1] = TimestampTzGetDatum(next_time);
-		got[Anum_monitor_job_next_time - 1] = true;
+						(monitor_job->interval) * INT64CONST(1000));
+		datum[Anum_monitor_job_nexttime - 1] = TimestampTzGetDatum(next_time);
+		got[Anum_monitor_job_nexttime - 1] = true;
 		newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
 		simple_heap_update(rel_node, &(tuple->t_self), newtuple);
 		CatalogUpdateIndexes(rel_node, newtuple);

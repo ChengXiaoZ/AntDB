@@ -141,4 +141,27 @@ typedef struct MonitorJobitemDrop
 	List			*namelist;
 }MonitorJobitemDrop;
 
+typedef struct MonitorJobAdd
+{
+	NodeTag		type;
+	bool			if_not_exists;
+	char			*name;
+	List			*options;
+}MonitorJobAdd;
+
+typedef struct MonitorJobAlter
+{
+	NodeTag		type;
+	char			*name;
+	List			*options;
+}MonitorJobAlter;
+
+typedef struct MonitorJobDrop
+{
+	NodeTag		type;
+	bool			if_exists;
+	List			*namelist;
+}MonitorJobDrop;
+
+
 #endif /* MGR_NODE_H */

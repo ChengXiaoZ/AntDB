@@ -5312,6 +5312,14 @@ DESCR("alter item");
 DATA(insert OID = 4944 (  monitor_jobitem_drop_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 16 "16 2276" _null_ _null_ _null_ _null_ monitor_jobitem_drop_func _null_ _null_ _null_ ));
 DESCR("drop item");
 
+DATA(insert OID = 4945 ( monitor_job_add_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "16 2275 2276" _null_ _null_ _null_ _null_ monitor_job_add_func _null_ _null_ _null_ ));
+DESCR("add job");
+
+DATA(insert OID = 4946 (  monitor_job_alter_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 16 "2275 2276" _null_ _null_ _null_ _null_ monitor_job_alter_func _null_ _null_ _null_ ));
+DESCR("alter job");
+
+DATA(insert OID = 4947 (  monitor_job_drop_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 16 "16 2276" _null_ _null_ _null_ _null_ monitor_job_drop_func _null_ _null_ _null_ ));
+DESCR("drop job");
 #endif
 
 /*

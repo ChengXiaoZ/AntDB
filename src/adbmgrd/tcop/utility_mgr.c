@@ -53,6 +53,15 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MonitorJobitemDrop:
 		tag = "DROP ITEM";
 		break;
+	case T_MonitorJobAdd:
+		tag = "ADD JOB";
+		break;
+	case T_MonitorJobAlter:
+		tag = "ALTER JOB";
+		break;
+	case T_MonitorJobDrop:
+		tag = "DROP JOB";
+		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
 		tag = "???";
@@ -104,6 +113,15 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MonitorJobitemDrop:
 		monitor_jobitem_drop((MonitorJobitemDrop*)parsetree, params, dest);
+		break;
+	case T_MonitorJobAdd:
+		monitor_job_add((MonitorJobAdd*)parsetree, params, dest);
+		break;
+	case T_MonitorJobAlter:
+		monitor_job_alter((MonitorJobAlter*)parsetree, params, dest);
+		break;
+	case T_MonitorJobDrop:
+		monitor_job_drop((MonitorJobDrop*)parsetree, params, dest);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
