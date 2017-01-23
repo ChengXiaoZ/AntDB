@@ -8735,13 +8735,15 @@ static void mgr_manage_clean(char command_type, char *user_list_str)
 	{
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_clean_all() ");
+		appendStringInfoString(&commandsql, "mgr_clean_all(), ");
+		appendStringInfoString(&commandsql, "mgr_clean_node(\"any\") ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_clean_all() ");
+		appendStringInfoString(&commandsql, "mgr_clean_all(), ");
+		appendStringInfoString(&commandsql, "mgr_clean_node(\"any\") ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -9322,7 +9324,12 @@ static bool mgr_acl_failover(char *username)
 
 static bool mgr_acl_clean(char *username)
 {
-	return mgr_has_func_priv(username, "mgr_clean_all()", "execute");
+	bool f1, f2;
+
+	f1 = mgr_has_func_priv(username, "mgr_clean_all()", "execute");
+	f2 = mgr_has_func_priv(username, "mgr_clean_node (\"any\")", "execute");
+
+	return (f1 && f2);
 }
 
 static bool mgr_acl_init(char *username)
