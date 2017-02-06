@@ -7,7 +7,7 @@
 #else /* BUILD_BKI */
 #include "catalog/genbki.h"
 #include "utils/timestamp.h"
-#define timestamptz int
+#define timestamptz int64
 #endif /* BUILD_BKI */
 
 

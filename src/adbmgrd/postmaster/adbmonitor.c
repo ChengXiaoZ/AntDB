@@ -612,7 +612,7 @@ launcher_obtain_amljob(void)
 				BoolGetDatum(true));
 	current_time = GetCurrentTimestamp();
 	ScanKeyInit(&entry[1],
-				Anum_monitor_job_status,
+				Anum_monitor_job_nexttime,
 				BTLessEqualStrategyNumber, F_TIMESTAMP_LE,
 				TimestampTzGetDatum(current_time));
 	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, entry);
@@ -1200,7 +1200,6 @@ do_monitor_job(Oid jobid)
 	print_work_job();
 
 	/* actual action */
-	pg_usleep(15 * 1000000L);
 
 	/* update next work time of the job */
 	update_next_work_time(jobid);
