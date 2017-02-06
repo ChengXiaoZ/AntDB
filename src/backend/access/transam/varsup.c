@@ -234,6 +234,18 @@ GetNewGlobalTransactionId(bool isSubXact)
 
 	LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
 
+	/*
+	 * If we are allocating the first XID of a new page of the commit log,
+	 * zero out that commit-log page before returning. We must do this while
+	 * holding XidGenLock, else another xact could acquire and commit a later
+	 * XID before we zero the page.  Fortunately, a page of the commit log
+	 * holds 32K or more transactions, so we don't have to do this very often.
+	 *
+	 * Extend pg_subtrans too.
+	 */
+	ExtendCLOG(gxid);
+	ExtendSUBTRANS(gxid);
+
 	if (TransactionIdFollowsOrEquals(gxid, ShmemVariableCache->nextXid))
 	{
 		ShmemVariableCache->nextXid = gxid;
@@ -256,20 +268,6 @@ GetNewGlobalTransactionId(bool isSubXact)
 				(errmsg("Global XID %u is already in use, please try again!", gxid)));
 		}
 	}
-
-	xid = gxid;
-
-	/*
-	 * If we are allocating the first XID of a new page of the commit log,
-	 * zero out that commit-log page before returning. We must do this while
-	 * holding XidGenLock, else another xact could acquire and commit a later
-	 * XID before we zero the page.  Fortunately, a page of the commit log
-	 * holds 32K or more transactions, so we don't have to do this very often.
-	 *
-	 * Extend pg_subtrans too.
-	 */
-	ExtendCLOG(xid);
-	ExtendSUBTRANS(xid);
 
 	/*
 	 * Now advance the nextXid counter.  This must not happen until after we
@@ -322,14 +320,14 @@ GetNewGlobalTransactionId(bool isSubXact)
 		volatile PGXACT *mypgxact = MyPgXact;
 
 		if (!isSubXact)
-			mypgxact->xid = xid;
+			mypgxact->xid = gxid;
 		else
 		{
 			int			nxids = mypgxact->nxids;
 
 			if (nxids < PGPROC_MAX_CACHED_SUBXIDS)
 			{
-				myproc->subxids.xids[nxids] = xid;
+				myproc->subxids.xids[nxids] = gxid;
 				mypgxact->nxids = nxids + 1;
 			}
 			else
@@ -339,8 +337,8 @@ GetNewGlobalTransactionId(bool isSubXact)
 
 	LWLockRelease(XidGenLock);
 
-	elog(DEBUG1, "Return new global xid: %u", xid);
-	return xid;
+	elog(DEBUG1, "Return new global xid: %u", gxid);
+	return gxid;
 }
 #endif
 
