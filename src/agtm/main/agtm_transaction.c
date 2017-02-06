@@ -117,7 +117,8 @@ StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 	return output;
 }
 
-StringInfo ProcessGetXactStatus(StringInfo message, StringInfo output)
+StringInfo
+ProcessGetXactStatus(StringInfo message, StringInfo output)
 {
 	TransactionId	xid;
 	XidStatus		xid_status;
@@ -132,6 +133,20 @@ StringInfo ProcessGetXactStatus(StringInfo message, StringInfo output)
 	pq_sendint(output, AGTM_GET_XACT_STATUS_RESULT, 4);
 	pq_sendbytes(output, (char *)&xid_status, sizeof(XidStatus));
 	pq_sendbytes(output, (char *)&xid_lsn, sizeof(XLogRecPtr));
+
+	return output;
+}
+
+StringInfo
+ProcessSyncXID(StringInfo message, StringInfo output)
+{
+	TransactionId	xid;
+
+	xid = pq_getmsgint(message, sizeof(xid));
+	pq_getmsgend(message);
+
+	AdjustTransactionId(xid);
+	pq_sendint(output, AGTM_SYNC_XID_RESULT, 4);
 
 	return output;
 }

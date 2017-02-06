@@ -26,6 +26,8 @@ StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output);
 
 StringInfo ProcessGetXactStatus(StringInfo message, StringInfo output);
 
+StringInfo ProcessSyncXID(StringInfo message, StringInfo output);
+
 StringInfo ProcessSequenceInit(StringInfo message, StringInfo output);
 
 StringInfo ProcessSequenceAlter(StringInfo message, StringInfo output);

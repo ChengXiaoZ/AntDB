@@ -14,9 +14,12 @@
 #include "libpq/pqformat.h"
 #include "pgxc/pgxc.h"
 #include "storage/procarray.h"
+#include "utils/guc.h"
 #include "utils/snapmgr.h"
 
 #include <unistd.h>
+
+static bool	agtm_params_change = false;
 
 static AGTM_Sequence agtm_DealSequence(const char *seqname, const char * database,
 								const char * schema, AGTM_MessageType type, AGTM_ResultType rtype);
@@ -339,6 +342,54 @@ agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 	agtm_use_result_end(&buf);
 	PQclear(res);
 	return xid_status;
+}
+
+void
+agtm_SyncTransactionId(void)
+{
+	PGresult		*res;
+	StringInfoData	buf;
+	TransactionId	xid;
+
+	if (!IsPostmasterEnvironment)
+		return ;
+
+	if (!agtm_params_change)
+		return ;
+
+	PG_TRY();
+	{
+		xid = ReadNewTransactionId();
+		agtm_send_message(AGTM_MSG_SYNC_XID, "%d%d", (int)xid, (int)sizeof(xid));
+		res = agtm_get_result(AGTM_MSG_SYNC_XID);
+		Assert(res);
+		agtm_use_result_type(res, &buf, AGTM_SYNC_XID_RESULT);
+
+		ereport(DEBUG1,
+			(errmsg("Sync XID %d OK", xid)));
+
+		agtm_use_result_end(&buf);
+		PQclear(res);
+	} PG_CATCH();
+	{
+		agtm_Close();
+		agtm_params_change = false;
+		PG_RE_THROW();
+	} PG_END_TRY();
+	agtm_Close();
+	agtm_params_change = false;
+}
+
+void
+assign_agtm_host(const char *newval, void *extra)
+{
+	agtm_params_change = true;
+}
+
+void
+assign_agtm_port(int newval, void *extra)
+{
+	agtm_params_change = true;
 }
 
 static AGTM_Sequence 

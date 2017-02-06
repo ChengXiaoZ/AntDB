@@ -33,8 +33,10 @@ static bool				IsDefaultAGtmPortSave = false;
 #define SaveDefaultAGtmPort(port)			\
 	do {									\
 		if (!IsDefaultAGtmPortSave)			\
+		{									\
 			save_DefaultAGtmPort = (port);	\
-		IsDefaultAGtmPortSave = true;		\
+			IsDefaultAGtmPortSave = true;	\
+		}									\
 	} while(0)
 
 static void agtm_Connect(void);
@@ -45,9 +47,6 @@ agtm_Connect(void)
 	PGconn volatile	*pg_conn;
 	StringInfoData 	 agtmOption;
 	char			 port_buf[10];
-
-	if (!IsUnderAGTM())
-		return ;
 
 	agtm_Close();
 
@@ -233,7 +232,8 @@ getAgtmConnection(void)
 	if (agtm_conn == NULL)
 	{
 		agtm_Connect();
-		return agtm_conn->pg_Conn;
+		
+		return agtm_conn ? agtm_conn->pg_Conn : NULL;
 	}
 
 	status = PQstatus(agtm_conn->pg_Conn);

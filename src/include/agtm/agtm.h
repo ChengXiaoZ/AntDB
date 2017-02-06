@@ -51,6 +51,11 @@ extern Snapshot agtm_GetGlobalSnapShot(Snapshot snapshot);
 extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn);
 
 /*
+ * synchronize transaction ID with AGTM.
+ */
+extern void agtm_SyncTransactionId(void);
+
+/*
  * create sequence on agtm
  */
  extern void agtm_CreateSequence(const char * seqName, const char * database,
