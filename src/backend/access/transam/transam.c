@@ -32,10 +32,6 @@
 #include "utils/builtins.h"
 #endif
 
-#ifdef ADB
-#include "agtm/agtm.h"
-#endif
-
 /*
  * Single-item cache for results of TransactionLogFetch.  It's worth having
  * such a cache because we frequently find ourselves repeatedly checking the
@@ -46,8 +42,10 @@ static TransactionId cachedFetchXid = InvalidTransactionId;
 static XidStatus cachedFetchXidStatus;
 static XLogRecPtr cachedCommitLSN;
 
+#ifndef ADB
 /* Local functions */
 static XidStatus TransactionLogFetch(TransactionId transactionId);
+#endif
 
 #ifdef PGXC
 /* It is not really necessary to make it appear in header file */
@@ -64,8 +62,13 @@ Datum pgxc_is_committed(PG_FUNCTION_ARGS);
 /*
  * TransactionLogFetch --- fetch commit status of specified transaction id
  */
+#ifdef ADB
+XidStatus
+TransactionLogFetch(TransactionId transactionId)
+#else
 static XidStatus
 TransactionLogFetch(TransactionId transactionId)
+#endif
 {
 	XidStatus	xidstatus;
 	XLogRecPtr	xidlsn;
@@ -92,13 +95,6 @@ TransactionLogFetch(TransactionId transactionId)
 	/*
 	 * Get the transaction status.
 	 */
-/*
-#ifdef ADB
-	if (IsUnderAGTM())
-		xidstatus = agtm_TransactionIdGetStatus(transactionId, &xidlsn);
-	else
-#endif
-*/
 	xidstatus = TransactionIdGetStatus(transactionId, &xidlsn);
 
 	/*
@@ -453,15 +449,8 @@ TransactionIdGetCommitLSN(TransactionId xid)
 	 * checking TransactionLogFetch's cache will usually succeed and avoid an
 	 * extra trip to shared memory.
 	 */
-/*
-#ifdef ADB
-	if (!IsUnderAGTM() && TransactionIdEquals(xid, cachedFetchXid))
-		return cachedCommitLSN;
-#else
-*/
 	if (TransactionIdEquals(xid, cachedFetchXid))
 		return cachedCommitLSN;
-/*#endif*/
 
 	/* Special XIDs are always known committed */
 	if (!TransactionIdIsNormal(xid))

@@ -249,9 +249,12 @@ GetNewGlobalTransactionId(bool isSubXact)
 		 * It is a fatal situation that global XID is less than
 		 * ShmemVariableCache->nextXid.
 		 */
-		LWLockRelease(XidGenLock);
-		ereport(ERROR,
+		if (TransactionLogFetch(gxid) != TRANSACTION_STATUS_IN_PROGRESS)
+		{
+			LWLockRelease(XidGenLock);
+			ereport(ERROR,
 				(errmsg("Global XID %u is already in use, please try again!", gxid)));
+		}
 	}
 
 	xid = gxid;
