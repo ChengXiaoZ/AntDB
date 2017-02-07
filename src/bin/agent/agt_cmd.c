@@ -1356,6 +1356,7 @@ static void cmd_get_batch_job_result(int cmd_type, StringInfo buf)
 	char *userpath;
 	char scriptpath[256];
 	char inputargs[1024];
+	char *resultHeadP = "{\"result\":\"";
 	
 	userpath = getenv("HOME");
   if (NULL != userpath)
@@ -1370,18 +1371,12 @@ static void cmd_get_batch_job_result(int cmd_type, StringInfo buf)
 	appendStringInfo(&exec, "%s", scriptpath);
 	appendStringInfo(&exec, " %s ", inputargs);
 	initStringInfo(&output);
-	appendStringInfo(&output, "%s", "{\"result\":\"");
-	/*check file exist*/
-	if (access(scriptpath, F_OK) != 0)
-	{
-		pfree(output.data);
-		pfree(exec.data);
-		ereport(ERROR, (errmsg("\"%s\": No such file", scriptpath)));
-	}
+	appendStringInfo(&output, "%s", resultHeadP);
+
 	if(exec_shell(exec.data, &output) != 0)
 	{
-		pfree(output.data);
-		ereport(ERROR, (errmsg("\"%s %s\" execute fail %s", scriptpath, inputargs, exec.data)));
+		pfree(exec.data);
+		ereport(ERROR, (errmsg("execute fail, %s", output.data + strlen(resultHeadP))));
 	}
 	/*json format*/
 	if ('\n' == output.data[output.len-2])

@@ -67,6 +67,24 @@ CREATE VIEW adbmgr.node AS
   FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid LEFT JOIN pg_catalog.mgr_node AS node_alise
   ON node_alise.oid = mgrnode.nodemasternameoid order by 1,3;
 
+CREATE VIEW adbmgr.job AS
+  SELECT
+		oid AS joboid,
+    name,
+    next_time AS nexttime,
+    interval,
+    status,
+		command,
+		description
+  FROM pg_catalog.monitor_job order by 1;
+
+CREATE VIEW adbmgr.jobitem AS
+  SELECT
+		jobitem_itemname AS item,
+    jobitem_path AS path,
+    jobitem_desc AS description
+  FROM pg_catalog.monitor_jobitem order by 1;
+
 --monitor all
 CREATE VIEW adbmgr.monitor_all AS
         select * from mgr_monitor_all() order by 1,2;

@@ -674,17 +674,17 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 		}else if(msg_type == AGT_MSG_ERROR)
 		{
 			/* error message */
-			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			ereport(LOG, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 			break;
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+			ereport(LOG, (errmsg("%s", recvbuf.data)));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{
 			appendBinaryStringInfo(resultstrdata, recvbuf.data, recvbuf.len);
-			ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
+			ereport(DEBUG1, (errmsg("%s", recvbuf.data)));
 			break;
 		}
 	}

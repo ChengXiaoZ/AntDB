@@ -20,7 +20,7 @@ CATALOG(monitor_job,4918)
 	bool						status;
 #ifdef CATALOG_VARLEN
 	text						command;
-	text						desc;
+	text						description;
 #endif
 } FormData_monitor_job;
 

@@ -183,6 +183,7 @@ static bool monitor_job_running(Oid jobid);
 static bool get_latest_job_time(TimestampTz *tzstamp);
 static void print_work_job(void);
 static void print_workers(void);
+static void adbmonitor_exec_job(Oid jobid);
 
 /*
  * Main entry point for adb monitor launcher process, to be called from the
@@ -1198,38 +1199,85 @@ do_monitor_job(Oid jobid)
 {
 	StartTransactionCommand();
 	print_work_job();
-
-	/* actual action */
-
 	/* update next work time of the job */
 	update_next_work_time(jobid);
-
 	CommitTransactionCommand();
+
+	StartTransactionCommand();
+	/* actual action */
+	adbmonitor_exec_job(jobid);
+	CommitTransactionCommand();
+}
+
+static void
+adbmonitor_exec_job(Oid jobid)
+{
+	HeapTuple 			tuple;
+	Relation			rel_job;
+	TupleDesc			tupledsc;
+	Datum commanddatum;
+	bool beNull = false;
+	StringInfoData commandsql;
+	int ret;
+	int exec_ret;
+
+	tuple = SearchSysCache1(MONITORJOBOID, ObjectIdGetDatum(jobid));
+	if(!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			,errmsg("adbmonitor job oid \"%u\" dose not exist", jobid)));
+	}
+	rel_job = heap_open(MjobRelationId, AccessShareLock);
+	tupledsc = RelationGetDescr(rel_job);
+	commanddatum = heap_getattr(tuple, Anum_monitor_job_command, tupledsc, &beNull);
+	if (beNull)
+	{
+		ReleaseSysCache(tuple);
+		heap_close(rel_job, AccessShareLock);
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "monitor_job")
+			, errmsg("column command is null")));
+	}
+	initStringInfo(&commandsql);
+	appendStringInfo(&commandsql, "%s", TextDatumGetCString(commanddatum));	
+	ReleaseSysCache(tuple);
+	heap_close(rel_job, AccessShareLock);
+	if ((ret = SPI_connect()) < 0)
+	{
+		pfree(commandsql.data);
+		ereport(ERROR, (errmsg("execute monitor item fail: SPI_connect failed: error code %d", ret)));
+	}
+	if (commandsql.data != NULL)
+	{
+		exec_ret = SPI_execute(commandsql.data, false, 0);
+		if (exec_ret != SPI_OK_INSERT)
+		{
+			pfree(commandsql.data);
+			ereport(ERROR, (errmsg("execute monitor item fail: SPI_execute failed: error code %d", exec_ret)));
+		}
+	}
+	pfree(commandsql.data);
+	SPI_finish();
 }
 
 static void
 update_next_work_time(Oid jobid)
 {
-	Relation			rel_node;
+	Relation			rel_job;
 	HeapScanDesc		rel_scan;
 	HeapTuple 			tuple;
 	TupleDesc			tupledsc;
 	ScanKeyData			entry[1];
-	int ret;
-	int exec_ret;
-	bool beNull = false;
-	Datum commanddatum;
-	StringInfoData commandsql;
 
 	(void) GetTransactionSnapshot();
 
-	rel_node = heap_open(MjobRelationId, RowExclusiveLock);
-	tupledsc = RelationGetDescr(rel_node);
+	rel_job = heap_open(MjobRelationId, RowExclusiveLock);
+	tupledsc = RelationGetDescr(rel_job);
 	ScanKeyInit(&entry[0],
 				ObjectIdAttributeNumber,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(jobid));
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, entry);
+	rel_scan = heap_beginscan(rel_job, SnapshotNow, 1, entry);
 	tuple = heap_getnext(rel_scan, ForwardScanDirection);
 	if (HeapTupleIsValid(tuple))
 	{
@@ -1247,39 +1295,17 @@ update_next_work_time(Oid jobid)
 		MemSet(datum, 0, sizeof(datum));
 		MemSet(isnull, 0, sizeof(isnull));
 		MemSet(got, 0, sizeof(got));
-		/*get command sql*/
-		commanddatum = heap_getattr(tuple, Anum_monitor_job_command, tupledsc, &beNull);
-		if (beNull)
-		{
-			heap_endscan(rel_scan);
-			heap_close(rel_node, RowExclusiveLock);
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				, err_generic_string(PG_DIAG_TABLE_NAME, "monitor_jobitem")
-				, errmsg("column command is null")));
-		}
-		initStringInfo(&commandsql);
-		appendStringInfo(&commandsql, "%s", TextDatumGetCString(commanddatum));
 		next_time = TimestampTzPlusMilliseconds(GetCurrentTimestamp(),
 						(monitor_job->interval) * INT64CONST(1000));
 		datum[Anum_monitor_job_nexttime - 1] = TimestampTzGetDatum(next_time);
 		got[Anum_monitor_job_nexttime - 1] = true;
 		newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
-		simple_heap_update(rel_node, &(tuple->t_self), newtuple);
-		CatalogUpdateIndexes(rel_node, newtuple);
+		simple_heap_update(rel_job, &(tuple->t_self), newtuple);
+		CatalogUpdateIndexes(rel_job, newtuple);
 	}
 
 	heap_endscan(rel_scan);
-	heap_close(rel_node, RowExclusiveLock);
- 	if ((ret = SPI_connect()) < 0)
-		ereport(ERROR, (errmsg("execute monitor item fail: SPI_connect failed: error code %d", ret)));
-	if (commandsql.data != NULL)
-	{		
-		exec_ret = SPI_execute(commandsql.data, false, 0);
-		if (exec_ret != SPI_OK_INSERT)
-			ereport(ERROR, (errmsg("execute monitor item fail: SPI_execute failed: error code %d", exec_ret)));
-		pfree(commandsql.data);
-	}
-	SPI_finish();
+	heap_close(rel_job, RowExclusiveLock);
 	
 }
 

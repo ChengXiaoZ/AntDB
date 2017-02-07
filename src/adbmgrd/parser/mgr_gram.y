@@ -149,7 +149,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
-				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt
+				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt ListJobStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -264,6 +264,7 @@ stmt :
 	|	AddJobitemStmt
 	|	AlterJobitemStmt
 	|	DropJobitemStmt
+	|	ListJobStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2363,6 +2364,22 @@ DropJobitemStmt:
 	}
 	;
 
+ListJobStmt:
+	  LIST JOB
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("job"), -1));
+			$$ = (Node*)stmt;
+		}
+	| LIST ITEM
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("jobitem"), -1));
+			$$ = (Node*)stmt;
+		}
+		;
 
 unreserved_keyword:
 	  ACL
