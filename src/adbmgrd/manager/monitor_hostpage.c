@@ -140,7 +140,6 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     bool ret;
     StringInfoData agentRstStr;
     ManagerAgent *ma;
-    bool execok = false;
     Oid host_oid;
     Datum datum;
     bool isNull;
@@ -235,8 +234,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     }
 
     /*check the receive msg*/
-    execok = mgr_recv_msg_for_monitor(ma, &ret, &agentRstStr);
-    Assert(execok == ret);
+    mgr_recv_msg_for_monitor(ma, &ret, &agentRstStr);
 
     agentRstStr.cursor = 0;
     tup_result = build_common_command_tuple(

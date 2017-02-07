@@ -299,9 +299,10 @@ Datum monitor_jobitem_drop_func(PG_FUNCTION_ARGS)
 	bool got[Natts_monitor_jobitem];
 	bool if_exists = false;
 	MemoryContext context, old_context;
+	List *name_list;
 
 	if_exists = PG_GETARG_BOOL(0);
-	List *name_list = (List *)PG_GETARG_POINTER(1);
+	name_list = (List *)PG_GETARG_POINTER(1);
 	Assert(name_list);
 	context = AllocSetContextCreate(CurrentMemoryContext
 			,"DROP ITEM"

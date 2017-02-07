@@ -797,8 +797,7 @@ static bool check_hba_tuple_exist(char *coord_name, char *values)
 	Relation rel;		
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
-	ScanKeyData scankey[2];	
-	Form_mgr_hba mgr_hba;
+	ScanKeyData scankey[2];
 	bool ret = false;
 	bool is_check_value = true;
 	Assert(coord_name);
@@ -834,8 +833,6 @@ static bool check_hba_tuple_exist(char *coord_name, char *values)
 	
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		mgr_hba = (Form_mgr_hba)GETSTRUCT(tuple);
-		Assert(mgr_hba);
 		ret = true;
 	}
 	heap_endscan(rel_scan);

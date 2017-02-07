@@ -165,7 +165,7 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			status = defGetBoolean(def);
-			datum[Anum_monitor_job_status-1] = BoolGetDatum(interval);
+			datum[Anum_monitor_job_status-1] = BoolGetDatum(status);
 			got[Anum_monitor_job_status-1] = true;
 		}
 		else if (strcmp(def->defname, "command") == 0)
@@ -293,7 +293,7 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			status = defGetBoolean(def);
-			datum[Anum_monitor_job_status-1] = BoolGetDatum(interval);
+			datum[Anum_monitor_job_status-1] = BoolGetDatum(status);
 			got[Anum_monitor_job_status-1] = true;
 		}
 		else if (strcmp(def->defname, "command") == 0)
@@ -362,9 +362,10 @@ Datum monitor_job_drop_func(PG_FUNCTION_ARGS)
 	bool got[Natts_monitor_job];
 	bool if_exists = false;
 	MemoryContext context, old_context;
+	List *name_list;
 
 	if_exists = PG_GETARG_BOOL(0);
-	List *name_list = (List *)PG_GETARG_POINTER(1);
+	name_list = (List *)PG_GETARG_POINTER(1);
 	Assert(name_list);
 	context = AllocSetContextCreate(CurrentMemoryContext
 			,"DROP JOB"

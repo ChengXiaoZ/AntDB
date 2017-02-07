@@ -236,7 +236,6 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 {
 	int coordport;
-	int dbnum = 0;
 	int agentport = 0;
 	char *address = NULL;
 	char *user = NULL;
@@ -292,8 +291,6 @@ Datum monitor_slowlog_insert_data(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 					,errmsg("get database namelist error")));
 			}
-			dbnum = list_length(dbnamelist);
-			Assert(dbnum > 0);
 		}
 		Assert(address != NULL);
 		Assert(user != NULL);

@@ -1304,7 +1304,6 @@ adbmonitor_job(PG_FUNCTION_ARGS)
 	ScanKeyData key[1];
 	HeapScanDesc rel_scan;
 	Datum	datumpath;
-	Form_monitor_job	monitor_job;
 
 	/*get input*/
 	namestrcpy(&hostname, PG_GETARG_CSTRING(0));
@@ -1329,8 +1328,6 @@ adbmonitor_job(PG_FUNCTION_ARGS)
 	rel_scan = heap_beginscan(rel_jobitem, SnapshotNow, 1, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		monitor_job = (Form_monitor_job)GETSTRUCT(tuple);
-		Assert(monitor_job);
 		datumpath = heap_getattr(tuple, Anum_monitor_jobitem_path, RelationGetDescr(rel_jobitem), &isNull);
 		break;
 	}

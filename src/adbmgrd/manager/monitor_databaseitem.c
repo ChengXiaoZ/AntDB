@@ -171,7 +171,6 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	char *hostaddress = NULL;
 	char *dbname;
 	int coordport = 0;
-	int dbnum = 0;
 	int dbsize = 0;
 	int heaphit = 0;
 	int heapread = 0;
@@ -226,8 +225,6 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 			,errmsg("get database namelist error")));
 	}
-	dbnum = list_length(dbnamelist);
-	Assert(dbnum > 0);
 	time = GetCurrentTimestamp();
 	/*get long transaction min time from table: MonitorHostThresholdRelationId*/
 	get_threshold(LONGTRANS_MINTIME, &monitor_threshold);
