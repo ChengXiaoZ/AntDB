@@ -327,6 +327,14 @@
    &mgrStopCoordinator;
    &mgrStopDatanode;
    &mgrStopGtm;
+   &monitorAddJob;
+   &monitorAddJobItem;
+   &monitorAlterJob;
+   &monitorAlterJobItem;
+   &monitorDropJob;
+   &monitorDropJobItem;
+   &monitorListJob;
+   &monitorListJobItem;
 
 </reference>
 

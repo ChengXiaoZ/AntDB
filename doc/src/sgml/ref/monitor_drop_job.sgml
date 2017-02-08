@@ -1,0 +1,74 @@
+<!--
+doc/src/sgml/ref/monitor_drop_job.sgml
+ADB documentation
+-->
+
+<refentry id="MONITOR-DROPJOB">
+  <refmeta>
+    <refentrytitle>DROP JOB</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>DROP JOB</refname>
+    <refpurpose>drop the specifed job information in the job table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="monitor-dropjob">
+    <primary>DROP JOB</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+DROP JOB [ IF EXISTS ] <replaceable class="parameter">job_name</replaceable> [, ...] 
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term>
+     <replaceable class="parameter">job_name</replaceable>
+    </term>
+    <listitem>
+     <para>
+      Job name.
+     </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+   <command>DROP JOB</command> drop the specifed job information in the job table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+<para>
+Drop job_name in the job table:
+<programlisting>
+DROP JOB job_name;
+</programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="monitor-addjob"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>

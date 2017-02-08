@@ -1,0 +1,75 @@
+<!--
+doc/src/sgml/ref/monitor_list_jobitem.sgml
+ADB documentation
+-->
+
+<refentry id="MONITOR-LISTJOBITEM">
+  <refmeta>
+    <refentrytitle>LIST ITEM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>LIST ITEM</refname>
+    <refpurpose>show the content of the item table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="monitor-listjobitem">
+    <primary>LIST ITEM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+LIST ITEM [ <replaceable class="parameter">item_name</replaceable> [, ...] ]
+
+</synopsis>
+</refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+   <command>LIST ITEM</command> show the content of the item table.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+    <variablelist>
+
+   <varlistentry>
+    <term>
+     <replaceable class="parameter">item_name</replaceable>
+    </term>
+    <listitem>
+     <para>
+      Job item name.
+     </para>
+    </listitem>
+   </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+  <para>
+   List all content of the item table:
+<programlisting>
+LIST ITEM;
+</programlisting>
+  </para>
+  <para>
+   List the content of item_name:
+<programlisting>
+LIST ITEM item_name;
+</programlisting>
+  </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="monitor-addjobitem"></member>
+      <member><xref linkend="monitor-alterjobitem"></member>
+      <member><xref linkend="monitor-dropjobitem"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

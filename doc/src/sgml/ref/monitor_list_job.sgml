@@ -1,0 +1,75 @@
+<!--
+doc/src/sgml/ref/monitor_list_job.sgml
+ADB documentation
+-->
+
+<refentry id="MONITOR-LISTJOB">
+  <refmeta>
+    <refentrytitle>LIST JOB</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>LIST JOB</refname>
+    <refpurpose>show the content of the job table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="monitor-listjob">
+    <primary>LIST JOB</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+LIST JOB [ <replaceable class="parameter">job_name</replaceable> [, ...] ]
+
+</synopsis>
+</refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+   <command>LIST JOB</command> show the content of the job table.
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+    <variablelist>
+
+   <varlistentry>
+    <term>
+     <replaceable class="parameter">job_name</replaceable>
+    </term>
+    <listitem>
+     <para>
+      Job name.
+     </para>
+    </listitem>
+   </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+  <para>
+   List all content of the job table:
+<programlisting>
+LIST JOB;
+</programlisting>
+  </para>
+  <para>
+   List the content of job_name:
+<programlisting>
+LIST JOB job_name;
+</programlisting>
+  </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="monitor-addjob"></member>
+      <member><xref linkend="monitor-alterjob"></member>
+      <member><xref linkend="monitor-dropjob"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

@@ -248,6 +248,11 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrStopCoordinator SYSTEM "mgr_stop_coordinator.sgml">
 <!ENTITY mgrStopDatanode    SYSTEM "mgr_stop_datanode.sgml">
 <!ENTITY mgrStopGtm         SYSTEM "mgr_stop_gtm.sgml">
-
-
-
+<!ENTITY monitorAddJob      SYSTEM "monitor_add_job.sgml">
+<!ENTITY monitorAddJobItem  SYSTEM "monitor_add_jobitem.sgml">
+<!ENTITY monitorAlterJob    SYSTEM "monitor_alter_job.sgml">
+<!ENTITY monitorAlterJobItem   SYSTEM "monitor_alter_jobitem.sgml">
+<!ENTITY monitorDropJob    SYSTEM "monitor_drop_job.sgml">
+<!ENTITY monitorDropJobItem   SYSTEM "monitor_drop_jobitem.sgml">
+<!ENTITY monitorListJob    SYSTEM "monitor_list_job.sgml">
+<!ENTITY monitorListJobItem   SYSTEM "monitor_list_jobitem.sgml">

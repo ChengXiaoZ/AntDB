@@ -1,0 +1,89 @@
+<!--
+doc/src/sgml/ref/monitor_alter_jobitem.sgml
+ADB documentation
+-->
+
+<refentry id="MONITOR-ALTERJOBITEM">
+  <refmeta>
+    <refentrytitle>ALTER ITEM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ALTER ITEM</refname>
+    <refpurpose>alter one row job item information in the item table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="monitor-alterjobitem">
+    <primary>ALTER ITEM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ALTER ITEM [IF NOT EXISTS] <replaceable class="parameter">item_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    PATH = <replaceable class="parameter">absolute_path</replaceable>,
+    DESC = <replaceable class="parameter">description</replaceable></synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>ALTER ITEM</command> alter one row job item information in the item table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">absolute_path</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Absolute path of bash file.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">description</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Description of the job item.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+Alter job item1'description in item table:
+      <programlisting>
+ALTER ITEM item1 (desc =  'item1' );
+</programlisting>
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="monitor-dropjobitem"></member>
+    </simplelist>
+  </refsect1>
+
+
+</refentry>
