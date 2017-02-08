@@ -2857,7 +2857,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&AGtmPort,
 		6666, 1, 65535,
-		check_agtm_port, assign_agtm_port, NULL
+		check_agtm_port, NULL, NULL
 	},
 
 	{
@@ -3589,7 +3589,7 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&AGtmHost,
 		"localhost",
-		check_agtm_host, assign_agtm_host, NULL
+		check_agtm_host, NULL, NULL
 	},
 
 	{

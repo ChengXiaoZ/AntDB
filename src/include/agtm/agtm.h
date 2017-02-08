@@ -3,6 +3,7 @@
 
 #include "postgres.h"
 #include "miscadmin.h"
+#include "fmgr.h"
 
 #include "access/clog.h"
 #include "agtm/agtm_msg.h"
@@ -53,7 +54,7 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 /*
  * synchronize transaction ID with AGTM.
  */
-extern void agtm_SyncTransactionId(void);
+extern Datum sync_agtm_xid(PG_FUNCTION_ARGS);
 
 /*
  * create sequence on agtm

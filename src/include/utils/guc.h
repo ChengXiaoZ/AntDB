@@ -390,9 +390,7 @@ extern void assign_xlog_sync_method(int new_sync_method, void *extra);
 
 #ifdef ADB
 extern bool check_agtm_host(char **newval, void **extra, GucSource source);
-extern void assign_agtm_host(const char *newval, void *extra);
 extern bool check_agtm_port(int *newval, void **extra, GucSource source);
-extern void assign_agtm_port(int newval, void *extra);
 #endif
 
 #endif   /* GUC_H */

@@ -5090,6 +5090,9 @@ DATA(insert OID = 5302 ( ora_date_mi_interval ORANSP PGUID 12 1 0 0 0 f f f f t 
 DATA(insert OID = 5303 (  pool_close_idle_conn		PGNSP PGUID 12 1 0 0 0 f f f f f f v 0 0 16 "" _null_ _null_ _null_ _null_ pool_close_idle_conn _null_ _null_ _null_ ));
 DESCR("close pool connection in  idle_slot");
 
+DATA(insert OID = 5304 ( sync_agtm_xid	PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ sync_agtm_xid _null_ _null_ _null_ ));
+DESCR("synchronize the next XID with AGTM");
+
 #endif
 
 #ifdef ADBMGRD

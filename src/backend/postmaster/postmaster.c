@@ -143,10 +143,6 @@
 #include "storage/spin.h"
 #endif
 
-#ifdef ADB
-#include "agtm/agtm.h"
-#endif
-
 /*
  * Possible types of a backend. Beyond being the possible bkend_type values in
  * struct bkend, these are OR-able request flag bits for SignalSomeChildren()
@@ -2682,10 +2678,6 @@ SIGHUP_handler(SIGNAL_ARGS)
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
-
-#ifdef ADB
-	agtm_SyncTransactionId();
-#endif
 }
 
 
