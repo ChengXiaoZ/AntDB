@@ -106,8 +106,6 @@ typedef struct GlobalTransactionInfo
 	bool failed;			/* backend do it failed ? */
 }GlobalTransactionInfo;
 
-typedef bool (*rxact_log_worker)(void *data, const char *file_name);
-
 extern char	*AGtmHost;
 extern int	AGtmPort;
 extern int MaxBackends;
@@ -1436,7 +1434,7 @@ static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, b
 		resetStringInfo(&rxlf_xlog_buf);
 		appendStringInfoChar(&rxlf_xlog_buf, (char)type);
 		appendStringInfoString(&rxlf_xlog_buf, gid);
-		rxact_xlog_insert(rxlf_xlog_buf.data, rxlf_xlog_buf.len+1, RXACT_MSG_SUCCESS, true);
+		rxact_xlog_insert(rxlf_xlog_buf.data, rxlf_xlog_buf.len+1, RXACT_MSG_SUCCESS, false);
 	}
 
 	ginfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
