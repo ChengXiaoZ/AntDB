@@ -479,6 +479,8 @@ CREATE FUNCTION oracle.to_char(interval, text)
  * Parameter Type: (float4, text)
  * Parameter Type: (float8)
  * Parameter Type: (float8, text)
+ * Parameter Type: (numeric)
+ * Parameter Type: (numeric, text)
  */
 CREATE OR REPLACE FUNCTION oracle.to_number(text)
     RETURNS numeric
@@ -514,6 +516,18 @@ CREATE OR REPLACE FUNCTION oracle.to_number(float8, text)
     RETURNS numeric
     AS 'float8_tonumber'
     LANGUAGE INTERNAL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+CREATE OR REPLACE FUNCTION oracle.to_number(numeric)
+    RETURNS numeric
+    AS 'select $1'
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+CREATE OR REPLACE FUNCTION oracle.to_number(numeric, text)
+    RETURNS numeric
+    AS 'select oracle.to_number($1::text, $2)'
+    LANGUAGE SQL
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
