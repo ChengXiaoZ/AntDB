@@ -165,8 +165,9 @@ static bool mgr_has_func_priv(char *rolename, char *funcname, char *priv_type);
 static List *get_username_list(void);
 static Oid mgr_get_role_oid_or_public(const char *rolname);
 static void mgr_priv_all(char command_type, char *username_list_str);
-
+static void mgr_send_sql_cmd(Oid hostoid, char cmdtype, char *cmdstr);
 extern void mgr_clean_hba_table(void);
+
 #if (Natts_mgr_node != 9)
 #error "need change code"
 #endif
@@ -5702,6 +5703,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath)
 {
 	StringInfoData infosendmsg;
+	StringInfoData infosendsyncmsg;
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
 	Form_mgr_node mgr_nodetmp;
@@ -5717,6 +5719,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	char *cndnPathtmp;
 	NameData cndnname;
 	char *strlabel;
+	char *user;
 	char aimtuplenodetype;
 	char nodetype;
 	ScanKeyData key[2];
@@ -5746,15 +5749,21 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	resetStringInfo(&infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("agtm_host", hostaddress, &infosendmsg);
 	mgr_append_pgconf_paras_str_int("agtm_port", cndnport, &infosendmsg);
+	initStringInfo(&infosendsyncmsg);
 	/*get all datanode master/slave/extra, coordinator path and hostoid to refresh postgresql.conf: agtm_port, agtm_host*/
-	rel_scan = heap_beginscan(noderel, SnapshotNow, 0, NULL);
+	/*datanode master/slave/extra reload agtm_port, agtm_host*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
-		if(mgr_nodetmp->nodeincluster && (mgr_nodetmp->nodetype == CNDN_TYPE_COORDINATOR_MASTER || 
-		mgr_nodetmp->nodetype == CNDN_TYPE_DATANODE_MASTER || mgr_nodetmp->nodetype == 
-		CNDN_TYPE_DATANODE_SLAVE || mgr_nodetmp->nodetype == CNDN_TYPE_DATANODE_EXTRA))
+		if (mgr_nodetmp->nodetype == CNDN_TYPE_DATANODE_MASTER || mgr_nodetmp->nodetype == 
+		CNDN_TYPE_DATANODE_SLAVE || mgr_nodetmp->nodetype == CNDN_TYPE_DATANODE_EXTRA)
 		{
 			hostOidtmp = mgr_nodetmp->nodehost;
 			datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
@@ -5766,9 +5775,64 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 			}
 			cndnPathtmp = TextDatumGetCString(datumPath);
 			resetStringInfo(&(getAgentCmdRst->description));		
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);	
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);
+			/*send sync agtm xid*/
+			user = get_hostuser_from_hostoid(mgr_nodetmp->nodehost);
+			if (CNDN_TYPE_DATANODE_MASTER == mgr_nodetmp->nodetype)
+			{
+				resetStringInfo(&infosendsyncmsg);
+				appendStringInfo(&infosendsyncmsg, " -h %s -p %u -d %s -U %s -a -c \""
+					,"127.0.0.1"
+					,mgr_nodetmp->nodeport
+					,DEFAULT_DB
+					,user);
+				pfree(user);
+				appendStringInfo(&infosendsyncmsg, " %s\"", "select sync_agtm_xid()");
+				mgr_send_sql_cmd(mgr_nodetmp->nodehost, AGT_CMD_PSQL_CMD, infosendsyncmsg.data);
+			}
 		}
 	}
+	heap_endscan(rel_scan);
+	/*coordinator reload agtm_port, agtm_host*/
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	ScanKeyInit(&key[1],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_nodetmp);
+		hostOidtmp = mgr_nodetmp->nodehost;
+		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_nodetmp")
+				, errmsg("column cndnpath is null")));
+		}
+		cndnPathtmp = TextDatumGetCString(datumPath);
+		resetStringInfo(&(getAgentCmdRst->description));		
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);
+		/*send sync agtm xid*/
+		resetStringInfo(&infosendsyncmsg);
+		user = get_hostuser_from_hostoid(mgr_nodetmp->nodehost);
+		appendStringInfo(&infosendsyncmsg, " -h %s -p %u -d %s -U %s -a -c \""
+			,"127.0.0.1"
+			,mgr_nodetmp->nodeport
+			,DEFAULT_DB
+			,user);
+		pfree(user);
+		appendStringInfo(&infosendsyncmsg, " %s\"", "select sync_agtm_xid()");
+		mgr_send_sql_cmd(mgr_nodetmp->nodehost, AGT_CMD_PSQL_CMD, infosendsyncmsg.data);
+	}
+	pfree(infosendsyncmsg.data);
 	heap_endscan(rel_scan);
 	/*3.delete old master record in node systbl*/
 	simple_heap_delete(noderel, &mastertuple->t_self);
@@ -9426,4 +9490,47 @@ List* mgr_get_nodetype_namelist(char nodetype)
 	heap_endscan(rel_scan);
 	heap_close(rel_node, AccessShareLock);
 	return nodenamelist;
+}
+
+/*
+* given the command type and command string, send command to agent and execute it then return result
+*/
+static void mgr_send_sql_cmd(Oid hostoid, char cmdtype, char *cmdstr)
+{
+	ManagerAgent *ma;
+	StringInfoData sendstrmsg;
+	StringInfoData buf;
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&sendstrmsg);
+	appendStringInfoString(&sendstrmsg, cmdstr);
+	ma = ma_connect_hostoid(hostoid);
+	if(!ma_isconnected(ma))
+	{
+		/* report error message */
+		getAgentCmdRst.ret = false;
+		ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));
+		ma_close(ma);
+		return;
+	}
+	getAgentCmdRst.ret = false;
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, cmdtype);
+	mgr_append_infostr_infostr(&buf, &sendstrmsg);
+	pfree(sendstrmsg.data);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
+	{
+		getAgentCmdRst.ret = false;
+		ereport(WARNING, (errmsg("%s", ma_last_error_msg(ma))));
+		ma_close(ma);
+		return;
+	}
+	/*check the receive msg*/
+	initStringInfo(&(getAgentCmdRst.description));
+	mgr_recv_msg(ma, &getAgentCmdRst);
+	if (! getAgentCmdRst.ret)
+		ereport(WARNING, (errmsg("sync agtm xid fail, %s", getAgentCmdRst.description.data)));
+	pfree(getAgentCmdRst.description.data);
+	ma_close(ma);
 }
