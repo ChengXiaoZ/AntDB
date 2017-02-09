@@ -147,6 +147,7 @@ ProcessSyncXID(StringInfo message, StringInfo output)
 
 	AdjustTransactionId(xid);
 	pq_sendint(output, AGTM_SYNC_XID_RESULT, 4);
+	pq_sendint(output, ReadNewTransactionId(), 4);
 
 	return output;
 }

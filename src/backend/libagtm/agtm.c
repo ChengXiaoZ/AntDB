@@ -1,13 +1,17 @@
 #include "postgres.h"
 
+#include "access/htup_details.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
+#include "access/tupdesc.h"
 #include "access/xact.h"
 #include "agtm/agtm.h"
 #include "agtm/agtm_msg.h"
 #include "agtm/agtm_utils.h"
 #include "agtm/agtm_client.h"
 #include "agtm/agtm_transaction.h"
+#include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "nodes/parsenodes.h"
 #include "libpq/libpq-fe.h"
 #include "libpq/libpq-int.h"
@@ -15,8 +19,6 @@
 #include "pgxc/pgxc.h"
 #include "storage/procarray.h"
 #include "utils/snapmgr.h"
-
-#include <unistd.h>
 
 static AGTM_Sequence agtm_DealSequence(const char *seqname, const char * database,
 								const char * schema, AGTM_MessageType type, AGTM_ResultType rtype);
@@ -345,18 +347,24 @@ Datum sync_agtm_xid(PG_FUNCTION_ARGS)
 {
 	PGresult		*res = NULL;
 	StringInfoData	buf;
-	TransactionId	xid;
+	TransactionId	lxid,	/* local xid */
+					axid;	/* agtm xid */
+	TupleDesc		tupdesc;
+	Datum			values[3];
+	bool			isnull[3];
+	NameData		nodename;
 
 	PG_TRY();
 	{
-		xid = ReadNewTransactionId();
-		agtm_send_message(AGTM_MSG_SYNC_XID, "%d%d", (int)xid, (int)sizeof(xid));
+		lxid = ReadNewTransactionId();
+		agtm_send_message(AGTM_MSG_SYNC_XID, "%d%d", (int)lxid, (int)sizeof(lxid));
 		res = agtm_get_result(AGTM_MSG_SYNC_XID);
 		Assert(res);
 		agtm_use_result_type(res, &buf, AGTM_SYNC_XID_RESULT);
+		axid = (TransactionId) pq_getmsgint(&buf, 4);
 
 		ereport(DEBUG1,
-			(errmsg("Sync XID %d with AGTM OK", xid)));
+			(errmsg("Sync local xid %u with AGTM xid %u OK", lxid, axid)));
 
 		agtm_use_result_end(&buf);
 		PQclear(res);
@@ -366,7 +374,31 @@ Datum sync_agtm_xid(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	} PG_END_TRY();
 
-	PG_RETURN_BOOL(true);
+	tupdesc = CreateTemplateTupleDesc(3, false);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "node",
+					   NAMEOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "local",
+					   XIDOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 3, "agtm",
+					   XIDOID, -1, 0);
+
+	BlessTupleDesc(tupdesc);
+
+	memset(isnull, 0, sizeof(isnull));
+
+	if (PGXCNodeName && PGXCNodeName[0])
+	{
+		namestrcpy(&nodename, PGXCNodeName);
+		values[0] = NameGetDatum(&nodename);
+	} else
+	{
+		isnull[0] = true;
+	}
+
+	values[1] = TransactionIdGetDatum(lxid);
+	values[2] = TransactionIdGetDatum(axid);
+
+	return HeapTupleGetDatum(heap_form_tuple(tupdesc, values, isnull));
 }
 
 static AGTM_Sequence 
