@@ -1,4 +1,4 @@
-/*
+﻿/*
  * monitor_jobitem.c
  *
  * ADB Integrated Monitor Daemon
@@ -98,6 +98,7 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 	bool if_not_exists = false;
 	char *str;
 	char *itemname;
+	StringInfoData filepathstrdata;
 	List *options;
 
 	if_not_exists = PG_GETARG_BOOL(0);
@@ -139,10 +140,20 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			if(str[0] != '/' || str[0] == '\0')
+			if((strlen(str) >2 && str[0] == '\'' && str[1] != '/') || (str[0] != '\'' && str[0] != '/') || str[0] == '\0')
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
-			datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(str));
+			/*check whether space in str*/
+			if (strchr(str, ' ') == NULL || str[0] == '\'')
+				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(str));
+			else
+			{
+				/*add single quota*/
+				initStringInfo(&filepathstrdata);
+				appendStringInfo(&filepathstrdata, "'%s'", str);
+				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(filepathstrdata.data));
+				pfree(filepathstrdata.data);
+			}
 			got[Anum_monitor_jobitem_path-1] = true;
 		}
 		else if (strcmp(def->defname, "desc") == 0)
@@ -204,6 +215,7 @@ Datum monitor_jobitem_alter_func(PG_FUNCTION_ARGS)
 	char *itemname;
 	List *options;
 	TupleDesc jobitem_dsc;
+	StringInfoData filepathstrdata;
 
 	itemname = PG_GETARG_CSTRING(0);
 	options = (List *)PG_GETARG_POINTER(1);
@@ -236,10 +248,19 @@ Datum monitor_jobitem_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			if(str[0] != '/' || str[0] == '\0')
+			if((strlen(str) >2 && str[0] == '\'' && str[1] != '/') || (str[0] != '\'' && str[0] != '/') || str[0] == '\0')
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
-			datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(str));
+			if (strchr(str, ' ') == NULL || str[0] == '\'')
+				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(str));
+			else
+			{
+				/*add single quota*/
+				initStringInfo(&filepathstrdata);
+				appendStringInfo(&filepathstrdata, "'%s'", str);
+				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(filepathstrdata.data));
+				pfree(filepathstrdata.data);
+			}
 			got[Anum_monitor_jobitem_path-1] = true;
 		}
 		else if (strcmp(def->defname, "desc") == 0)

@@ -76,7 +76,7 @@ CREATE VIEW adbmgr.job AS
     status,
 		command,
 		description
-  FROM pg_catalog.monitor_job order by 1;
+  FROM pg_catalog.monitor_job order by 2;
 
 CREATE VIEW adbmgr.jobitem AS
   SELECT
