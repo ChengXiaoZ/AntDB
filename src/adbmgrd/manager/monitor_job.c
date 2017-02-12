@@ -156,6 +156,9 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			interval = defGetInt32(def);
+			if (interval <= 0)
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("interval is out of range 1 ~ %d", INT_MAX)));
 			datum[Anum_monitor_job_interval-1] = Int32GetDatum(interval);
 			got[Anum_monitor_job_interval-1] = true;
 		}
@@ -284,6 +287,9 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			interval = defGetInt32(def);
+			if (interval <= 0)
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("interval is out of range 1 ~ %d", INT_MAX)));
 			datum[Anum_monitor_job_interval-1] = Int32GetDatum(interval);
 			got[Anum_monitor_job_interval-1] = true;
 		}

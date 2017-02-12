@@ -568,7 +568,10 @@ launcher_determine_sleep(bool canlaunch, struct timeval * nap)
 	long		secs;
 	int			usecs;
 
-	nap->tv_sec = adbmonitor_naptime;
+	if (adbmonitor_naptime >= INT_MAX/1000)
+		nap->tv_sec = INT_MAX/10000;
+	else
+		nap->tv_sec = adbmonitor_naptime;
 	nap->tv_usec = 0;
 
 	if (!canlaunch)
@@ -577,8 +580,15 @@ launcher_determine_sleep(bool canlaunch, struct timeval * nap)
 	if (get_latest_job_time(&next_wakeup))
 	{
 		TimestampDifference(current_time, next_wakeup, &secs, &usecs);
-		nap->tv_sec = secs;
-		nap->tv_usec = usecs;
+		if (secs >= INT_MAX/1000)
+		{
+			return;
+		}
+		else
+		{
+			nap->tv_sec = secs;
+			nap->tv_usec = usecs;
+		}
 	}
 
 	return ;
