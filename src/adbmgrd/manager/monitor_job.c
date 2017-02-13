@@ -15,7 +15,7 @@
  * IDENTIFICATION
  *	  src/adbmgrd/manager/monitor_job.c
  */
- 
+
 #include "postgres.h"
 
 #include <signal.h>
@@ -61,9 +61,15 @@
 #include "utils/builtins.h"
 #include "commands/defrem.h"
 #include "utils/formatting.h"
+#include "postmaster/adbmonitor.h"
+
+/*
+* GUC parameters
+*/
+int	adbmonitor_naptime;
 
 static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname);
-
+static char* monitor_strlwr(char *str);
 
 /*
 * ADD ITEM jobname(jobname, filepath, desc)
@@ -103,6 +109,8 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 	int32 interval;
 	bool status;
 	Datum datumtime;
+	TimestampTz current_time = 0;
+	StringInfoData cmdstrdata;
 
 	if_not_exists = PG_GETARG_BOOL(0);
 	jobname = PG_GETARG_CSTRING(1);
@@ -110,7 +118,7 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 
 	Assert(jobname);
 	namestrcpy(&jobnamedata, jobname);
-	rel = heap_open(MjobRelationId, RowExclusiveLock);
+	rel = heap_open(MjobRelationId, AccessShareLock);
 	/* check exists */
 	checktuple = montiot_job_get_item_tuple(rel, &jobnamedata);
 	if (HeapTupleIsValid(checktuple))
@@ -122,10 +130,11 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 				errmsg("\"%s\" already exists, skipping", jobname)));
 			PG_RETURN_BOOL(false);
 		}
-		heap_close(rel, RowExclusiveLock);
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
 				, errmsg("\"%s\" already exists", jobname)));
 	}
+	heap_close(rel, AccessShareLock);
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	memset(got, 0, sizeof(got));
@@ -157,7 +166,7 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 					,errmsg("conflicting or redundant options")));
 			interval = defGetInt32(def);
 			if (interval <= 0)
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+				ereport(ERROR, (errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE)
 					,errmsg("interval is out of range 1 ~ %d", INT_MAX)));
 			datum[Anum_monitor_job_interval-1] = Int32GetDatum(interval);
 			got[Anum_monitor_job_interval-1] = true;
@@ -177,6 +186,18 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
+			initStringInfo(&cmdstrdata);
+			appendStringInfo(&cmdstrdata, "%s", str);
+			monitor_strlwr(cmdstrdata.data);
+			if (strlen(str) < 1 || strstr(cmdstrdata.data, "insert") == NULL || strstr(cmdstrdata.data, "into") == NULL ||
+				strstr(cmdstrdata.data, "select") == NULL || strstr(cmdstrdata.data, "adbmonitor_job") == NULL)
+			{
+				pfree(cmdstrdata.data);
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("the \"command\" format is not right")
+					,errhint("Try \"\\h add job\" for more information.")));
+			}
+			pfree(cmdstrdata.data);
 			datum[Anum_monitor_job_command-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_monitor_job_command-1] = true;
 		}
@@ -196,7 +217,31 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 				,errhint("option is nexttime, interval, status, command, desc")));
 		}
 	}
+	/* if not give, set to default */
+	if (false == got[Anum_monitor_job_nexttime-1])
+	{
+		current_time = GetCurrentTimestamp();
+		datum[Anum_monitor_job_nexttime-1] = TimestampTzGetDatum(current_time);;
+	}
+	if (false == got[Anum_monitor_job_interval-1])
+	{
+		datum[Anum_monitor_job_interval-1] = Int32GetDatum(adbmonitor_naptime);
+	}
+	if (false == got[Anum_monitor_job_status-1])
+	{
+		datum[Anum_monitor_job_status-1] = BoolGetDatum(true);
+	}
+	if (false == got[Anum_monitor_job_command-1])
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			, errmsg("option \"command\" must be given")));
+	}
+	if (false == got[Anum_monitor_job_desc-1])
+	{
+		datum[Anum_monitor_job_desc-1] = PointerGetDatum(cstring_to_text(""));
+	}
 	/* now, we can insert record */
+	rel = heap_open(MjobRelationId, RowExclusiveLock);
 	newtuple = heap_form_tuple(RelationGetDescr(rel), datum, isnull);
 	simple_heap_insert(rel, newtuple);
 	CatalogUpdateIndexes(rel, newtuple);
@@ -242,6 +287,7 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 	int32 interval;
 	bool status;
 	Datum datumtime;
+	StringInfoData cmdstrdata;
 
 	jobname = PG_GETARG_CSTRING(0);
 	options = (List *)PG_GETARG_POINTER(1);
@@ -308,6 +354,18 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
+			initStringInfo(&cmdstrdata);
+			appendStringInfo(&cmdstrdata, "%s", str);
+			monitor_strlwr(cmdstrdata.data);
+			if (strlen(str) < 1 || strstr(cmdstrdata.data, "insert") == NULL || strstr(cmdstrdata.data, "into") == NULL ||
+				strstr(cmdstrdata.data, "select") == NULL || strstr(cmdstrdata.data, "adbmonitor_job") == NULL)
+			{
+				pfree(cmdstrdata.data);
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("the \"command\" format is not right")
+					,errhint("Try \"\\h add job\" for more information.")));
+			}
+			pfree(cmdstrdata.data);
 			datum[Anum_monitor_job_command-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_monitor_job_command-1] = true;
 		}
@@ -452,4 +510,19 @@ static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname)
 	heap_endscan(rel_scan);
 
 	return tupleret;
+}
+
+static char* monitor_strlwr(char *str)
+{
+	if(str == NULL)
+			return NULL;
+			 
+	char *p = str;
+	while (*p != '\0')
+	{
+			if(*p >= 'A' && *p <= 'Z')
+					*p = (*p) + 0x20;
+			p++;
+	}
+	return str;
 }

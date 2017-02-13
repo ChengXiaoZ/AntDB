@@ -674,12 +674,12 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 		}else if(msg_type == AGT_MSG_ERROR)
 		{
 			/* error message */
-			ereport(LOG, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			ereport(WARNING, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 			break;
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(LOG, (errmsg("%s", recvbuf.data)));
+			ereport(NOTICE, (errmsg("%s", recvbuf.data)));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{

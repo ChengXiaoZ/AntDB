@@ -1228,7 +1228,6 @@ adbmonitor_exec_job(Oid jobid)
 	Datum commanddatum;
 	bool beNull = false;
 	StringInfoData commandsql;
-	int ret;
 	int exec_ret;
 
 	tuple = SearchSysCache1(MONITORJOBOID, ObjectIdGetDatum(jobid));
@@ -1252,18 +1251,18 @@ adbmonitor_exec_job(Oid jobid)
 	appendStringInfo(&commandsql, "%s", TextDatumGetCString(commanddatum));	
 	ReleaseSysCache(tuple);
 	heap_close(rel_job, AccessShareLock);
-	if ((ret = SPI_connect()) < 0)
+	if (SPI_connect() < 0)
 	{
-		pfree(commandsql.data);
-		ereport(ERROR, (errmsg("execute monitor item fail: SPI_connect failed: error code %d", ret)));
+		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
+		(errmsg("execute monitor item fail, jobid=%u %s: SPI_connect failed", jobid, commandsql.data))));
 	}
 	if (commandsql.data != NULL)
 	{
 		exec_ret = SPI_execute(commandsql.data, false, 0);
 		if (exec_ret != SPI_OK_INSERT)
 		{
-			pfree(commandsql.data);
-			ereport(ERROR, (errmsg("execute monitor item fail: SPI_execute failed: error code %d", exec_ret)));
+			ereport(ERROR, (errcode(ERRCODE_E_R_I_E_INVALID_SQLSTATE_RETURNED),
+			(errmsg("execute monitor item fail, jobid=%u %s: SPI_execute failed", jobid, commandsql.data))));
 		}
 	}
 	pfree(commandsql.data);

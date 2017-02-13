@@ -15,7 +15,7 @@
  * IDENTIFICATION
  *	  src/adbmgrd/manager/monitor_jobitem.c
  */
- 
+
 #include "postgres.h"
 
 #include <signal.h>
@@ -107,7 +107,7 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 
 	Assert(itemname);
 	namestrcpy(&itemnamedata, itemname);
-	rel = heap_open(MjobitemRelationId, RowExclusiveLock);
+	rel = heap_open(MjobitemRelationId, AccessShareLock);
 	/* check exists */
 	checktuple = montiot_jobitem_get_item_tuple(rel, &itemnamedata);
 	if (HeapTupleIsValid(checktuple))
@@ -119,10 +119,11 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 				errmsg("\"%s\" already exists, skipping", itemname)));
 			PG_RETURN_BOOL(false);
 		}
-		heap_close(rel, RowExclusiveLock);
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_DUPLICATE_OBJECT)
 				, errmsg("\"%s\" already exists", itemname)));
 	}
+	heap_close(rel, AccessShareLock);
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
 	memset(got, 0, sizeof(got));
@@ -172,7 +173,18 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 				,errhint("option is path, desc")));
 		}
 	}
+	/* if not give, set to default */
+	if (false == datum[Anum_monitor_jobitem_path-1])
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			, errmsg("option \"path\" must be given")));
+	}
+	if (false == got[Anum_monitor_jobitem_desc-1])
+	{
+		datum[Anum_monitor_jobitem_desc-1] = PointerGetDatum(cstring_to_text(""));
+	}
 	/* now, we can insert record */
+	rel = heap_open(MjobitemRelationId, RowExclusiveLock);
 	newtuple = heap_form_tuple(RelationGetDescr(rel), datum, isnull);
 	simple_heap_insert(rel, newtuple);
 	CatalogUpdateIndexes(rel, newtuple);
@@ -282,7 +294,7 @@ Datum monitor_jobitem_alter_func(PG_FUNCTION_ARGS)
 	jobitem_dsc = RelationGetDescr(rel);
 	newtuple = heap_modify_tuple(checktuple, jobitem_dsc, datum,isnull, got);
 	simple_heap_update(rel, &checktuple->t_self, newtuple);
-	CatalogUpdateIndexes(rel, newtuple);	
+	CatalogUpdateIndexes(rel, newtuple);
 		
 	heap_freetuple(checktuple);
 	/* at end, close relation */
