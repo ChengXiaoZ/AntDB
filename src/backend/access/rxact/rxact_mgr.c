@@ -1838,23 +1838,40 @@ static void rxact_build_2pc_cmd(StringInfo cmd, const char *gid, RemoteXactType 
 	appendStringInfoChar(cmd, '\'');
 }
 
+/*
+ * close idle timeout connection node
+ * and remove one closed connection(not include AGTM)
+ */
 static void rxact_close_timeout_remote_conn(time_t cur_time)
 {
 	NodeConn *node_conn;
 	HASH_SEQ_STATUS seq_status;
+	DbAndNodeOid key;
+	bool hint;
 
+	hint = false;
 	hash_seq_init(&seq_status, htab_node_conn);
 	while((node_conn = hash_seq_search(&seq_status)) != NULL)
 	{
-		if(node_conn->conn == NULL)
-			continue;
-
-		if(PQstatus(node_conn->conn) == CONNECTION_OK
+		if(node_conn->conn != NULL
+			&& PQstatus(node_conn->conn) == CONNECTION_OK
 			&& node_conn->doing_gid[0] == '\0'
 			&& cur_time - node_conn->last_use >= REMOTE_IDLE_TIMEOUT)
 		{
 			rxact_finish_node_conn(node_conn);
 		}
+		if(hint == false
+			&& node_conn->conn == NULL
+			&& node_conn->oids.node_oid != AGTM_OID)
+		{
+			key = node_conn->oids;
+			hint = true;
+		}
+	}
+	if(hint)
+	{
+		Assert(key.node_oid != AGTM_OID);
+		hash_search(htab_node_conn, &key, HASH_REMOVE, NULL);
 	}
 }
 
