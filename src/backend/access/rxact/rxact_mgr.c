@@ -93,6 +93,7 @@ typedef struct NodeConn
 						 * when conn == NULL: next connect time */
 	PostgresPollingStatusType
 			status;
+	char doing_gid[NAMEDATALEN];
 }NodeConn;
 
 typedef struct GlobalTransactionInfo
@@ -115,7 +116,6 @@ static HTAB *htab_remote_node = NULL;	/* RemoteNode */
 static HTAB *htab_db_node = NULL;		/* DatabaseNode */
 static HTAB *htab_node_conn = NULL;		/* NodeConn */
 static HTAB *htab_rxid = NULL;			/* GlobalTransactionInfo */
-static NodeConn agtm_conn = {{0,AGTM_OID}, NULL, 0, PGRES_POLLING_FAILED};
 
 /* remote xact log files */
 static File rxlf_remote_node = -1;
@@ -187,6 +187,7 @@ static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool i
 
 /* 2pc redo functions */
 static void rxact_2pc_do(void);
+static void rxact_2pc_result(NodeConn *conn);
 static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time);
 static bool rxact_check_node_conn(NodeConn *conn);
 static void rxact_finish_node_conn(NodeConn *conn);
@@ -233,6 +234,7 @@ CreateRxactAgent(pgsocket agent_fd)
 #endif
 
 	agent->sock = agent_fd;
+	pg_set_noblock(agent_fd);
 	indexRxactAgent[agentCount++] = agent->index;
 	resetStringInfo(&(agent->in_buf));
 	resetStringInfo(&(agent->out_buf));
@@ -306,7 +308,7 @@ static void RxactLoop(void)
 				pollfds[i+1].events = POLLIN;
 		}
 
-		/* append connecting node sockets */
+		/* append node sockets */
 		hash_seq_init(&seq_status, htab_node_conn);
 		poll_count = agentCount+1;
 		while((pconn = hash_seq_search(&seq_status)) != NULL)
@@ -314,23 +316,23 @@ static void RxactLoop(void)
 			bool wait_write;
 			if(pconn->conn == NULL)
 				continue;
-			switch(PQstatus(pconn->conn))
+			if(PQstatus(pconn->conn) == CONNECTION_BAD)
 			{
-			case CONNECTION_BAD:
 				rxact_finish_node_conn(pconn);
 				continue;
-			case CONNECTION_OK:
-				continue;
-			default:
-				break;
 			}
 
 			switch(pconn->status)
 			{
 			case PGRES_POLLING_ACTIVE:
 			case PGRES_POLLING_FAILED:
-			case PGRES_POLLING_OK:
+				rxact_finish_node_conn(pconn);
 				continue;
+			case PGRES_POLLING_OK:
+				if(pconn->doing_gid[0] == '\0')
+					continue;
+				wait_write = false;
+				break;
 			case PGRES_POLLING_WRITING:
 				wait_write = true;
 				break;
@@ -358,13 +360,19 @@ static void RxactLoop(void)
 re_poll_:
 		if(got_SIGHUP)
 		{
-			got_SIGHUP = false;
+			DbAndNodeOid key;
+
+			key.db_oid = InvalidOid;
+			key.node_oid = AGTM_OID;
+			pconn = hash_search(htab_node_conn, &key, HASH_FIND, NULL);
+			Assert(pconn != NULL);
 			ProcessConfigFile(PGC_SIGHUP);
-			if(agtm_conn.conn != NULL
-				&& (strcmp(PQhost(agtm_conn.conn), AGtmHost) != 0
-					|| atoi(PQport(agtm_conn.conn)) != AGtmPort))
+			got_SIGHUP = false;
+			if(pconn->conn != NULL
+				&& (strcmp(PQhost(pconn->conn), AGtmHost) != 0
+					|| atoi(PQport(pconn->conn)) != AGtmPort))
 			{
-				rxact_finish_node_conn(&agtm_conn);
+				rxact_finish_node_conn(pconn);
 				continue;
 			}
 		}
@@ -396,11 +404,21 @@ re_poll_:
 				if(tmpfd->fd != PQsocket(pconn->conn))
 					continue;
 
-				pconn->status = PQconnectPoll(pconn->conn);
-
 				++count;
 				hash_seq_term(&seq_status);
 				break;
+			}
+			Assert(pconn != NULL);
+
+			if(pconn->status != PGRES_POLLING_OK)
+			{
+				pconn->status = PQconnectPoll(pconn->conn);
+				if(pconn->status == PGRES_POLLING_FAILED)
+					rxact_finish_node_conn(pconn);
+			}else
+			{
+				Assert(pconn->doing_gid[0] != '\0');
+				rxact_2pc_result(pconn);
 			}
 		}
 
@@ -444,14 +462,11 @@ re_poll_:
 			}
 		}
 
+		rxact_2pc_do();
+
 		cur_time = time(NULL);
 		if(last_time != cur_time)
 		{
-			rxact_2pc_do();
-			/* get current time again
-			 * because rxact_2pc_do() maybe run one more second times
-			 */
-			cur_time = time(NULL);
 			rxact_close_timeout_remote_conn(cur_time);
 			last_time = cur_time;
 		}
@@ -533,6 +548,8 @@ static void RemoteXactMgrInit(void)
 static void RemoteXactHtabInit(void)
 {
 	HASHCTL hctl;
+	DbAndNodeOid key;
+	NodeConn *pconn;
 	START_CRIT_SECTION();
 	/* create HTAB for RemoteNode */
 	Assert(htab_remote_node == NULL);
@@ -566,6 +583,14 @@ static void RemoteXactHtabInit(void)
 	htab_node_conn = hash_create("DatabaseNode"
 		, 64
 		, &hctl, HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
+	/* insert AGTM node */
+	key.db_oid = InvalidOid;
+	key.node_oid = AGTM_OID;
+	pconn =  hash_search(htab_node_conn, &key, HASH_ENTER, NULL);
+	Assert(pconn != NULL);
+	pconn->conn = NULL;
+	pconn->status = PGRES_POLLING_FAILED;
+	pconn->doing_gid[0] = '\0';
 
 	/* create HTAB for GlobalTransactionInfo */
 	Assert(htab_rxid == NULL);
@@ -850,8 +875,19 @@ static void rxact_agent_end_msg(RxactAgent *agent, StringInfo msg)
 	AssertArg(agent && msg);
 	if(agent->sock != PGINVALID_SOCKET)
 	{
+		bool need_try;
+		if(agent->out_buf.len > agent->out_buf.cursor)
+		{
+			need_try = false;
+		}else
+		{
+			need_try = true;
+			resetStringInfo(&(agent->out_buf));
+		}
 		rxact_put_finsh(msg);
 		appendBinaryStringInfo(&(agent->out_buf), msg->data, msg->len);
+		if(need_try)
+			rxact_agent_output(agent);
 	}
 	pfree(msg->data);
 }
@@ -863,12 +899,25 @@ static void rxact_agent_simple_msg(RxactAgent *agent, char msg_type)
 		int len;
 		char str[5];
 	}msg;
+	bool need_try;
 	AssertArg(agent);
 
+	if(agent->sock == PGINVALID_SOCKET)
+		return;
+	if(agent->out_buf.len > agent->out_buf.cursor)
+	{
+		need_try = false;
+	}else
+	{
+		need_try = true;
+		resetStringInfo(&(agent->out_buf));
+	}
 	enlargeStringInfo(&(agent->out_buf), 5);
 	msg.len = 5;
 	msg.str[4] = msg_type;
 	appendBinaryStringInfo(&(agent->out_buf), msg.str, 5);
+	if(need_try)
+		rxact_agent_output(agent);
 }
 
 /* true for recv some data, false for closed by remote */
@@ -1082,7 +1131,12 @@ static void rxact_agent_output(RxactAgent *agent)
 re_send_:
 	send_res = send(agent->sock
 		, agent->out_buf.data + agent->out_buf.cursor
-		, agent->out_buf.len - agent->out_buf.cursor, 0);
+		, agent->out_buf.len - agent->out_buf.cursor
+#ifdef MSG_DONTWAIT
+		, MSG_DONTWAIT);
+#else
+		, 0);
+#endif
 	CHECK_FOR_INTERRUPTS();
 
 	if(send_res == 0)
@@ -1097,9 +1151,16 @@ re_send_:
 	{
 		if(IS_ERR_INTR())
 			goto re_send_;
-		ereport(WARNING, (errcode_for_socket_access()
-			, errmsg("Can not send message to RXACT client:%m")));
-		rxact_agent_destroy(agent);
+		if(errno != EAGAIN
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+			&& errno != EWOULDBLOCK
+#endif
+			)
+		{
+			ereport(WARNING, (errcode_for_socket_access()
+				, errmsg("Can not send message to RXACT client:%m")));
+			rxact_agent_destroy(agent);
+		}
 	}
 }
 
@@ -1525,18 +1586,14 @@ static void rxact_2pc_do(void)
 {
 	GlobalTransactionInfo *ginfo;
 	NodeConn *node_conn;
-	PGresult *pg_res;
 	HASH_SEQ_STATUS hstatus;
-	time_t start_time,cur_time;
 	StringInfoData buf;
 	int i;
-	/*bool all_finish;*/
-	bool gid_finish;
 	bool cmd_is_ok;
+	bool node_is_ok;	/* except AGTM nodes is ok? */
 
 	hash_seq_init(&hstatus, htab_rxid);
 	buf.data = NULL;
-	start_time = cur_time = time(NULL);
 	/*all_finish = true;*/
 	while((ginfo = hash_seq_search(&hstatus)) != NULL)
 	{
@@ -1544,21 +1601,32 @@ static void rxact_2pc_do(void)
 		if(ginfo->failed == false)
 			continue;
 
+		node_is_ok = true;
+		for(i=0;i<ginfo->count_nodes;++i)
+		{
+			if(ginfo->remote_success[i] == false
+				&& ginfo->remote_nodes[i] != AGTM_OID)
+			{
+				node_is_ok = false;
+				break;
+			}
+		}
+
 		cmd_is_ok = false;
-		gid_finish = true;
 		for(i=0;i<ginfo->count_nodes;++i)
 		{
 			/* skip successed node */
 			if(ginfo->remote_success[i])
 				continue;
 
+			/* we first finish except AGTM nodes */
+			if(ginfo->remote_nodes[i] == AGTM_OID && node_is_ok == false)
+				continue;
+
 			/* get node connection, skip if not connectiond */
 			node_conn = rxact_get_node_conn(ginfo->db_oid, ginfo->remote_nodes[i], time(NULL));
-			if(node_conn == NULL || node_conn->conn == NULL)
-			{
-				gid_finish = false;
+			if(node_conn == NULL || node_conn->conn == NULL || node_conn->doing_gid[0] != '\0')
 				continue;
-			}
 
 			/* when SQL not maked, make it */
 			if(cmd_is_ok == false)
@@ -1567,45 +1635,14 @@ static void rxact_2pc_do(void)
 				cmd_is_ok = true;
 			}
 
-			pg_res = PQexec(node_conn->conn, buf.data);
-			if(PQresultStatus(pg_res) != PGRES_COMMAND_OK)
-				gid_finish = false;
-			else
-				ginfo->remote_success[i] = true;
-			PQclear(pg_res);
-
-			/* do not run one more second */
-			node_conn->last_use = cur_time = time(NULL);
-			if(cur_time != start_time)
+			if(PQsendQuery(node_conn->conn, buf.data))
 			{
-				for(i++;gid_finish && i<ginfo->count_nodes;++i)
-				{
-					if(ginfo->remote_success[i] == false)
-					{
-						gid_finish = false;
-						break;
-					}
-				}
-				break;
+				strcpy(node_conn->doing_gid, ginfo->gid);
+				node_conn->last_use = time(NULL);
+			}else
+			{
+				rxact_finish_node_conn(node_conn);
 			}
-		}
-
-		if(gid_finish)
-		{
-#ifdef USE_ASSERT_CHECKING
-			for(i=0;i<ginfo->count_nodes;++i)
-				Assert(ginfo->remote_success[i] == true);
-#endif /* USE_ASSERT_CHECKING */
-			rxact_mark_gid(ginfo->gid, ginfo->type, true, false);
-		}/*else
-		{
-			all_finish = false;
-		}*/
-
-		if(cur_time != start_time)
-		{
-			hash_seq_term(&hstatus);
-			break;
 		}
 	}
 
@@ -1615,30 +1652,78 @@ static void rxact_2pc_do(void)
 		pfree(buf.data);
 }
 
+static void rxact_2pc_result(NodeConn *conn)
+{
+	GlobalTransactionInfo *ginfo;
+	PGresult *res;
+	ExecStatusType status;
+	int i;
+	bool finish;
+	Assert(conn->doing_gid[0] != '\0');
+
+	res = PQgetResult(conn->conn);
+	status = PQresultStatus(res);
+	PQclear(res);
+	if(status != PGRES_COMMAND_OK)
+		return;
+	ginfo = hash_search(htab_rxid, conn->doing_gid, HASH_FIND, NULL);
+	Assert(ginfo != NULL && ginfo->failed == true);
+	Assert(conn->oids.node_oid == AGTM_OID || conn->oids.db_oid == ginfo->db_oid);
+	conn->last_use = time(NULL);
+	conn->doing_gid[0] = '\0';
+
+	finish = true;
+	for(i=0;i<ginfo->count_nodes;++i)
+	{
+		if(ginfo->remote_nodes[i] == conn->oids.node_oid)
+		{
+			Assert(ginfo->remote_success[i] == false);
+			ginfo->remote_success[i] = true;
+			break;
+		}
+		if(ginfo->remote_success[i] == false)
+			finish = false;
+	}
+	Assert(i < ginfo->count_nodes);
+
+	if(finish)
+	{
+		for(++i;i<ginfo->count_nodes;++i)
+		{
+			if(ginfo->remote_success[i] == false)
+			{
+				finish = false;
+				break;
+			}
+		}
+		if(finish)
+			rxact_mark_gid(ginfo->gid, ginfo->type, true, false);
+	}
+}
+
 static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 {
 	NodeConn *conn;
+	DbAndNodeOid key;
+	bool found;
 
+	key.node_oid = node_oid;
 	if(node_oid == AGTM_OID)
-	{
-		conn = &agtm_conn;
-	}else
-	{
-		DbAndNodeOid key;
-		bool found;
-
+		key.db_oid = InvalidOid;
+	else
 		key.db_oid = db_oid;
-		key.node_oid = node_oid;
-		conn = hash_search(htab_node_conn, &key, HASH_ENTER, &found);
-		if(!found)
-		{
-			conn->conn = NULL;
-			conn->last_use = cur_time;
-			conn->status = PGRES_POLLING_FAILED;
-		}
 
-		Assert(conn && conn->oids.db_oid == db_oid && conn->oids.node_oid == node_oid);
+	conn = hash_search(htab_node_conn, &key, HASH_ENTER, &found);
+	if(!found)
+	{
+		Assert(node_oid != AGTM_OID);
+		conn->conn = NULL;
+		conn->last_use = 0;
+		conn->status = PGRES_POLLING_FAILED;
+		conn->doing_gid[0] = '\0';
 	}
+	Assert(conn && conn->oids.node_oid == node_oid);
+	Assert(conn->oids.db_oid == db_oid || (conn->oids.db_oid == InvalidOid && node_oid == AGTM_OID));
 
 	if(conn->conn != NULL && PQstatus(conn->conn) == CONNECTION_BAD)
 		rxact_finish_node_conn(conn);
@@ -1726,6 +1811,7 @@ static void rxact_finish_node_conn(NodeConn *conn)
 		conn->last_use = time(NULL);
 	}
 	conn->status = PGRES_POLLING_FAILED;
+	conn->doing_gid[0] = '\0';
 }
 
 static void rxact_build_2pc_cmd(StringInfo cmd, const char *gid, RemoteXactType type)
@@ -1764,15 +1850,11 @@ static void rxact_close_timeout_remote_conn(time_t cur_time)
 			continue;
 
 		if(PQstatus(node_conn->conn) == CONNECTION_OK
+			&& node_conn->doing_gid[0] == '\0'
 			&& cur_time - node_conn->last_use >= REMOTE_IDLE_TIMEOUT)
 		{
 			rxact_finish_node_conn(node_conn);
 		}
-	}
-	if(PQstatus(agtm_conn.conn) == CONNECTION_OK
-		&& cur_time - agtm_conn.last_use >= REMOTE_IDLE_TIMEOUT)
-	{
-		rxact_finish_node_conn(&agtm_conn);
 	}
 }
 
