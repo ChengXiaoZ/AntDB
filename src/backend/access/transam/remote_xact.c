@@ -50,45 +50,6 @@ RemoteXactAbort(int nnodes, Oid *nodeIds, bool normal)
 }
 
 /*
- * RecordRemoteXactPrepare
- */
-void
-RecordRemoteXactPrepare(const char *gid,
-						int nnodes,
-						Oid *nodeIds,
-						bool implicit)
-{
-	if (!IsUnderRemoteXact())
-		return ;
-
-	AssertArg(gid && gid[0]);
-
-	/* Record PREPARE log */
-	RecordRemoteXact(gid, nodeIds, nnodes, RX_PREPARE);
-
-	PG_TRY();
-	{
-		/* Prepare on remote nodes */
-		if (nnodes > 0)
-			PrePrepare_Remote(gid);
-
-		/* Prepare on AGTM */
-		agtm_PrepareTransaction(gid);
-	} PG_CATCH();
-	{
-		/* Record FAILED log */
-		RecordRemoteXactFailed(gid, RX_PREPARE);
-		PG_RE_THROW();
-	} PG_END_TRY();
-
-	/* Mark the remote xact will COMMIT or SUCCESS PREPARE */
-	if (implicit)
-		RecordRemoteXactChange(gid, RX_COMMIT);
-	else
-		RecordRemoteXactSuccess(gid, RX_PREPARE);
-}
-
-/*
  * RecordRemoteXactCommitPrepared
  */
 void

@@ -77,6 +77,7 @@
 #ifdef ADB
 #include "access/remote_xact.h"
 #include "access/rxact_mgr.h"
+#include "agtm/agtm.h"
 #include "commands/dbcommands.h"
 #include "utils/lsyscache.h"
 #endif
@@ -1085,6 +1086,56 @@ save_state_data(const void *data, uint32 len)
 	records.total_len += padlen;
 }
 
+#ifdef ADB
+/*
+ * Tell remote xact manager to record log of the transaction.
+ */
+static void
+StartRemoteXactPrepare(GlobalTransaction gxact)
+{
+	if (!IsUnderRemoteXact())
+		return ;
+
+	/* Record PREPARE log */
+	RecordRemoteXact(gxact->gid, gxact->nodeIds, gxact->node_cnt, RX_PREPARE);
+}
+
+/*
+ * Finish preparing xact.
+ *
+ * Here is where we truly prepare remote nodes(include AGTM), then mark the
+ * xact will COMMIT or SUCCESS PREPARE after all nodes truly prepare.
+ *
+ * It means we tell remote xact manager we step into the second phase.
+ */
+static void
+EndRemoteXactPrepare(GlobalTransaction gxact)
+{
+	if (!IsUnderRemoteXact())
+		return ;
+
+	PG_TRY();
+	{
+		/* Prepare on remote nodes */
+		if (gxact->node_cnt > 0)
+			PrePrepare_Remote(gxact->gid);
+
+		/* Prepare on AGTM */
+		agtm_PrepareTransaction(gxact->gid);
+	} PG_CATCH();
+	{
+		/* Record FAILED log */
+		RecordRemoteXactFailed(gxact->gid, RX_PREPARE);
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	if (gxact->isimplicit)
+		RecordRemoteXactChange(gxact->gid, RX_COMMIT);
+	else
+		RecordRemoteXactSuccess(gxact->gid, RX_PREPARE);
+}
+#endif
+
 /*
  * Start preparing a state file.
  *
@@ -1101,6 +1152,10 @@ StartPrepare(GlobalTransaction gxact)
 	RelFileNode *commitrels;
 	RelFileNode *abortrels;
 	SharedInvalidationMessage *invalmsgs;
+
+#ifdef ADB
+	StartRemoteXactPrepare(gxact);
+#endif
 
 	/* Initialize linked list */
 	records.head = palloc0(sizeof(XLogRecData));
@@ -1344,6 +1399,10 @@ EndPrepare(GlobalTransaction gxact)
 	SyncRepWaitForLSN(gxact->prepare_lsn);
 
 	records.tail = records.head = NULL;
+
+#ifdef ADB
+	EndRemoteXactPrepare(gxact);
+#endif
 }
 
 /*

@@ -2614,11 +2614,6 @@ PrepareTransaction(void)
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId,
 							nodecnt, nodeIds, isimplicit);
-
-	/*
-	 * Here is where we truly prepare remote nodes(include AGTM).
-	 */
-	RecordRemoteXactPrepare(prepareGID, nodecnt, nodeIds, isimplicit);
 #else
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);

@@ -19,10 +19,6 @@
 
 extern void RemoteXactCommit(int nnodes, Oid *nodeIds);
 extern void RemoteXactAbort(int nnodes, Oid *nodeIds, bool normal);
-extern void RecordRemoteXactPrepare(const char *gid,
-									int nnodes,
-									Oid *nodeIds,
-									bool implicit);
 extern void RecordRemoteXactCommitPrepared(const char *gid,
 									int nnodes,
 									Oid *nodeIds,

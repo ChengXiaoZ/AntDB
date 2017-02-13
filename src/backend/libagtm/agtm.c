@@ -18,6 +18,7 @@
 #include "libpq/pqformat.h"
 #include "pgxc/pgxc.h"
 #include "storage/procarray.h"
+#include "utils/builtins.h"
 #include "utils/snapmgr.h"
 
 static AGTM_Sequence agtm_DealSequence(const char *seqname, const char * database,
