@@ -60,9 +60,10 @@
 #include "mgr/mgr_cmds.h"
 #include "utils/builtins.h"
 #include "commands/defrem.h"
+#include "common/fe_memutils.h"
 
 static HeapTuple montiot_jobitem_get_item_tuple(Relation rel_jobitem, Name itemname);
-
+static void monitor_get_absolute_filepath(StringInfo strinfo, char *str);
 
 /*
 * ADD ITEM itemname(itemname, filepath, desc)
@@ -98,6 +99,7 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 	bool if_not_exists = false;
 	char *str;
 	char *itemname;
+	char space = ' ';
 	StringInfoData filepathstrdata;
 	List *options;
 
@@ -141,17 +143,19 @@ Datum monitor_jobitem_add_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			if((strlen(str) >2 && str[0] == '\'' && str[1] != '/') || (str[0] != '\'' && str[0] != '/') || str[0] == '\0')
+			while (space == *str)
+				str++;
+			if(str[0] != '/' || str[0] == '\0')
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			/*check whether space in str*/
-			if (strchr(str, ' ') == NULL || str[0] == '\'')
+			if (strchr(str, space) == NULL)
 				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(str));
 			else
 			{
 				/*add single quota*/
 				initStringInfo(&filepathstrdata);
-				appendStringInfo(&filepathstrdata, "'%s'", str);
+				monitor_get_absolute_filepath(&filepathstrdata, str);
 				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(filepathstrdata.data));
 				pfree(filepathstrdata.data);
 			}
@@ -260,16 +264,16 @@ Datum monitor_jobitem_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			if((strlen(str) >2 && str[0] == '\'' && str[1] != '/') || (str[0] != '\'' && str[0] != '/') || str[0] == '\0')
+			if (str[0] != '/' || str[0] == '\0')
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
-			if (strchr(str, ' ') == NULL || str[0] == '\'')
+			if (strchr(str, ' ') == NULL)
 				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(str));
 			else
 			{
 				/*add single quota*/
 				initStringInfo(&filepathstrdata);
-				appendStringInfo(&filepathstrdata, "'%s'", str);
+				monitor_get_absolute_filepath(&filepathstrdata, str);
 				datum[Anum_monitor_jobitem_path-1] = PointerGetDatum(cstring_to_text(filepathstrdata.data));
 				pfree(filepathstrdata.data);
 			}
@@ -418,3 +422,48 @@ static HeapTuple montiot_jobitem_get_item_tuple(Relation rel_jobitem, Name itemn
 	return tupleret;
 }
 
+/*
+* if the file absoulte path includes space, add single quota where the folder or file name contains the space
+*/
+static void monitor_get_absolute_filepath(StringInfo strinfo, char *str)
+{
+	char *point[MAXPGPATH/2];
+	char *savestr=NULL;
+	char *filestr;
+	int in = 0;
+	int nsize = 0;
+	int j = 0;
+	char space = ' ';
+
+	Assert(str != NULL);
+	filestr = pstrdup(str);
+	savestr = str;
+	while(*(savestr++))
+	{
+		if ( '/' == *savestr)
+			nsize++;
+	}
+	savestr = NULL;
+	while((point[in] = strtok_r(filestr, "/", &savestr))!=NULL)
+	{
+		in++;
+		filestr = NULL;
+	}
+	/*discard the space in the end of point[in-1]*/
+	nsize = strlen(point[in-1]);
+	while(nsize >= 1)
+	{
+		if (space == point[in-1][nsize-1])
+			point[in-1][nsize-1] = '\0';
+		else
+			break;
+		nsize--;
+	}
+	for (j=0; j<in; j++)
+	{
+		if (space == point[j][0] || ((point[j][0] != '\'' && point[j][0] != '\"') && strchr(point[j], space) != NULL))
+			appendStringInfo(strinfo, "/'%s'", point[j]);
+		else
+			appendStringInfo(strinfo, "/%s", point[j]);
+	}
+}

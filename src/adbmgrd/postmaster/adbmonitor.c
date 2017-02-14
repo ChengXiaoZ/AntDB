@@ -568,10 +568,7 @@ launcher_determine_sleep(bool canlaunch, struct timeval * nap)
 	long		secs;
 	int			usecs;
 
-	if (adbmonitor_naptime >= INT_MAX/1000)
-		nap->tv_sec = INT_MAX/10000;
-	else
-		nap->tv_sec = adbmonitor_naptime;
+	nap->tv_sec = adbmonitor_naptime;
 	nap->tv_usec = 0;
 
 	if (!canlaunch)

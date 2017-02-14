@@ -69,7 +69,6 @@
 int	adbmonitor_naptime;
 
 static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname);
-static char* monitor_strlwr(char *str);
 
 /*
 * ADD ITEM jobname(jobname, filepath, desc)
@@ -110,7 +109,6 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 	bool status;
 	Datum datumtime;
 	TimestampTz current_time = 0;
-	StringInfoData cmdstrdata;
 
 	if_not_exists = PG_GETARG_BOOL(0);
 	jobname = PG_GETARG_CSTRING(1);
@@ -186,18 +184,13 @@ Datum monitor_job_add_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			initStringInfo(&cmdstrdata);
-			appendStringInfo(&cmdstrdata, "%s", str);
-			monitor_strlwr(cmdstrdata.data);
-			if (strlen(str) < 1 || strstr(cmdstrdata.data, "insert") == NULL || strstr(cmdstrdata.data, "into") == NULL ||
-				strstr(cmdstrdata.data, "select") == NULL || strstr(cmdstrdata.data, "adbmonitor_job") == NULL)
+			if (strlen(str) < 1 || strcasestr(str, "insert") == NULL || strcasestr(str, "into") == NULL ||
+				strcasestr(str, "select") == NULL || strcasestr(str, "adbmonitor_job") == NULL)
 			{
-				pfree(cmdstrdata.data);
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("the \"command\" format is not right")
 					,errhint("Try \"\\h add job\" for more information.")));
 			}
-			pfree(cmdstrdata.data);
 			datum[Anum_monitor_job_command-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_monitor_job_command-1] = true;
 		}
@@ -287,7 +280,6 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 	int32 interval;
 	bool status;
 	Datum datumtime;
-	StringInfoData cmdstrdata;
 
 	jobname = PG_GETARG_CSTRING(0);
 	options = (List *)PG_GETARG_POINTER(1);
@@ -354,18 +346,13 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			initStringInfo(&cmdstrdata);
-			appendStringInfo(&cmdstrdata, "%s", str);
-			monitor_strlwr(cmdstrdata.data);
-			if (strlen(str) < 1 || strstr(cmdstrdata.data, "insert") == NULL || strstr(cmdstrdata.data, "into") == NULL ||
-				strstr(cmdstrdata.data, "select") == NULL || strstr(cmdstrdata.data, "adbmonitor_job") == NULL)
+			if (strlen(str) < 1 || strcasestr(str, "insert") == NULL || strcasestr(str, "into") == NULL ||
+				strcasestr(str, "select") == NULL || strcasestr(str, "adbmonitor_job") == NULL)
 			{
-				pfree(cmdstrdata.data);
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("the \"command\" format is not right")
 					,errhint("Try \"\\h add job\" for more information.")));
 			}
-			pfree(cmdstrdata.data);
 			datum[Anum_monitor_job_command-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_monitor_job_command-1] = true;
 		}
@@ -510,19 +497,4 @@ static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname)
 	heap_endscan(rel_scan);
 
 	return tupleret;
-}
-
-static char* monitor_strlwr(char *str)
-{
-	if(str == NULL)
-			return NULL;
-			 
-	char *p = str;
-	while (*p != '\0')
-	{
-			if(*p >= 'A' && *p <= 'Z')
-					*p = (*p) + 0x20;
-			p++;
-	}
-	return str;
 }
