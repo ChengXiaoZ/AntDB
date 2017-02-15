@@ -3084,7 +3084,7 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 	RedistribState   *redistribState = NULL;
 #endif
 #ifdef ADB
-	bool		rebuid_locator = false;
+	bool		need_rebuid_locator = false;
 #endif
 
 	/* Phase 1: preliminary examination of commands, create work queue */
@@ -3142,7 +3142,7 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 							 errmsg("Incompatible operation with data redistribution")));
 
 #ifdef ADB
-					rebuid_locator = true;
+					need_rebuid_locator = true;
 					/* Only local coordinator make RedistribState */
 					if (!IsConnFromCoord())
 #endif
@@ -3168,7 +3168,7 @@ ATController(Relation rel, List *cmds, bool recurse, LOCKMODE lockmode)
 
 #ifdef PGXC
 #ifdef ADB
-	if (rebuid_locator)
+	if (need_rebuid_locator)
 	{
 		Relation rel2 = relation_open(RelationGetRelid(rel), NoLock);
 

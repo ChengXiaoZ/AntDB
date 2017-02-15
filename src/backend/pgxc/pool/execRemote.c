@@ -2265,20 +2265,22 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 PGXCNodeHandle**
 pgxcNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot, char node_type)
 {
-	int i;
-	int default_node_count = (node_type == PGXC_NODE_DATANODE) ?
-									NumDataNodes : NumCoords;
-	int conn_count = list_length(nodelist) == 0 ? default_node_count : list_length(nodelist);
-	struct timeval *timeout = NULL;
-	PGXCNodeAllHandles *pgxc_handles;
-	PGXCNodeHandle **connections;
-	PGXCNodeHandle **copy_connections;
-	ListCell *nodeitem;
-	bool need_tran_block;
-	RemoteQueryState *combiner;
+	PGXCNodeHandle			**connections;
+	PGXCNodeHandle			**copy_connections;
+	PGXCNodeAllHandles		*pgxc_handles;
+	RemoteQueryState 		*combiner;
+	ListCell				*nodeitem;
+	struct timeval			*timeout = NULL;
+	bool 					need_tran_block;
+	int 					default_node_count;
+	int						conn_count;
+	int						i;
 
 	Assert(node_type == PGXC_NODE_DATANODE || node_type == PGXC_NODE_COORDINATOR);
-
+	default_node_count = (node_type == PGXC_NODE_DATANODE) ? NumDataNodes : NumCoords;
+	conn_count = list_length(nodelist);
+	if (conn_count == 0)
+		conn_count = default_node_count;
 	if (conn_count == 0)
 		return NULL;
 
@@ -2297,11 +2299,18 @@ pgxcNodeCopyBegin(const char *query, List *nodelist, Snapshot snapshot, char nod
 	if (!connections)
 		return NULL;
 
+#ifdef ADB
+	/*
+	 * We need in transaction block if we begin to copy.
+	 */
+	need_tran_block = true;
+#else
 	/*
 	 * If more than one nodes are involved or if we are already in a
 	 * transaction block, we must the remote statements in a transaction block
 	 */
 	need_tran_block = (conn_count > 1) || (TransactionBlockStatusCode() == 'T');
+#endif
 
 	elog(DEBUG1, "conn_count = %d, need_tran_block = %s", conn_count,
 			need_tran_block ? "true" : "false");
