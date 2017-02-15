@@ -96,17 +96,6 @@ typedef struct NodeConn
 	char doing_gid[NAMEDATALEN];
 }NodeConn;
 
-typedef struct GlobalTransactionInfo
-{
-	char gid[NAMEDATALEN];	/* 2pc id */
-	Oid *remote_nodes;		/* all remote nodes, include AGTM */
-	bool *remote_success;	/* remote execute success ? */
-	int count_nodes;		/* count of remote nodes */
-	Oid db_oid;				/* transaction database Oid */
-	RemoteXactType type;	/* remote 2pc type */
-	bool failed;			/* backend do it failed ? */
-}GlobalTransactionInfo;
-
 extern char	*AGtmHost;
 extern int	AGtmPort;
 extern int MaxBackends;
@@ -115,7 +104,7 @@ extern bool enableFsync;
 static HTAB *htab_remote_node = NULL;	/* RemoteNode */
 static HTAB *htab_db_node = NULL;		/* DatabaseNode */
 static HTAB *htab_node_conn = NULL;		/* NodeConn */
-static HTAB *htab_rxid = NULL;			/* GlobalTransactionInfo */
+static HTAB *htab_rxid = NULL;			/* RxactTransactionInfo */
 
 /* remote xact log files */
 static File rxlf_remote_node = -1;
@@ -170,6 +159,7 @@ static void rxact_agent_mark(RxactAgent *agent, StringInfo msg, bool success);
 static void rxact_agent_change(RxactAgent *agent, StringInfo msg);
 static void rxact_agent_checkpoint(RxactAgent *agent, StringInfo msg);
 static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_update);
+static void rxact_agent_get_running(RxactAgent *agent);
 /* if any oid unknown, get it from backend */
 static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count);
 
@@ -592,11 +582,11 @@ static void RemoteXactHtabInit(void)
 	pconn->status = PGRES_POLLING_FAILED;
 	pconn->doing_gid[0] = '\0';
 
-	/* create HTAB for GlobalTransactionInfo */
+	/* create HTAB for RxactTransactionInfo */
 	Assert(htab_rxid == NULL);
 	MemSet(&hctl, 0, sizeof(hctl));
-	hctl.keysize = sizeof(((GlobalTransactionInfo*)0)->gid);
-	hctl.entrysize = sizeof(GlobalTransactionInfo);
+	hctl.keysize = sizeof(((RxactTransactionInfo*)0)->gid);
+	hctl.entrysize = sizeof(RxactTransactionInfo);
 	hctl.hcxt = TopMemoryContext;
 	htab_rxid = hash_create("DatabaseNode"
 		, 512
@@ -607,14 +597,14 @@ static void RemoteXactHtabInit(void)
 static void
 DestroyRemoteConnHashTab(void)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	HASH_SEQ_STATUS hash_status;
 
 	hash_seq_init(&hash_status, htab_rxid);
-	while((ginfo=hash_seq_search(&hash_status))!=NULL)
+	while((rinfo=hash_seq_search(&hash_status))!=NULL)
 	{
-		if(ginfo->remote_nodes)
-			pfree(ginfo->remote_nodes);
+		if(rinfo->remote_nodes)
+			pfree(rinfo->remote_nodes);
 	}
 	hash_destroy(htab_rxid);
 	htab_rxid = NULL;
@@ -746,7 +736,7 @@ static void RxactLoadLog(void)
 
 static void RxactSaveLog(bool flush)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	void *p;
 	RXactLog rlog;
 	HASH_SEQ_STATUS hash_status;
@@ -785,16 +775,16 @@ static void RxactSaveLog(bool flush)
 	hash_seq_init(&hash_status, htab_rxid);
 	rfile = rxact_log_open_file(rxlf_xact_filename, O_WRONLY | O_TRUNC | PG_BINARY, 0);
 	rlog = rxact_begin_write_log(rfile);
-	while((ginfo = hash_seq_search(&hash_status)) != NULL)
+	while((rinfo = hash_seq_search(&hash_status)) != NULL)
 	{
-		rxact_log_write_string(rlog, ginfo->gid);
-		rxact_log_write_bytes(rlog, &(ginfo->db_oid), sizeof(ginfo->db_oid));
+		rxact_log_write_string(rlog, rinfo->gid);
+		rxact_log_write_bytes(rlog, &(rinfo->db_oid), sizeof(rinfo->db_oid));
 		/* don't need save AGTM OID */
-		rxact_log_write_int(rlog, ginfo->count_nodes-1);
-		Assert(ginfo->remote_nodes[ginfo->count_nodes-1] == AGTM_OID);
-		rxact_log_write_bytes(rlog, ginfo->remote_nodes
-			, sizeof(ginfo->remote_nodes[0]) * (ginfo->count_nodes-1));
-		rxact_log_write_byte(rlog, (char)(ginfo->type));
+		rxact_log_write_int(rlog, rinfo->count_nodes-1);
+		Assert(rinfo->remote_nodes[rinfo->count_nodes-1] == AGTM_OID);
+		rxact_log_write_bytes(rlog, rinfo->remote_nodes
+			, sizeof(rinfo->remote_nodes[0]) * (rinfo->count_nodes-1));
+		rxact_log_write_byte(rlog, (char)(rinfo->type));
 		rxact_write_log(rlog);
 	}
 	rxact_end_write_log(rlog);
@@ -854,17 +844,17 @@ rxact_agent_destroy(RxactAgent *agent)
 
 	if(agent->last_gid[0] != '\0')
 	{
-		GlobalTransactionInfo *ginfo;
+		RxactTransactionInfo *rinfo;
 		bool found;
-		ginfo = hash_search(htab_rxid, agent->last_gid, HASH_FIND, &found);
+		rinfo = hash_search(htab_rxid, agent->last_gid, HASH_FIND, &found);
 		if(!found)
 		{
 			ereport(WARNING,
 				(errmsg("Can not found gid '%s' at destroy agent", agent->last_gid)));
 		}else
 		{
-			Assert(ginfo && ginfo->failed == false);
-			rxact_mark_gid(ginfo->gid, ginfo->type, false, false);
+			Assert(rinfo && rinfo->failed == false);
+			rxact_mark_gid(rinfo->gid, rinfo->type, false, false);
 		}
 		agent->last_gid[0] = '\0';
 	}
@@ -1080,6 +1070,9 @@ rxact_agent_input(RxactAgent *agent)
 			break;
 		case RXACT_MSG_UPDATE_NODE:
 			rxact_agent_node_info(agent, &s, true);
+			break;
+		case RXACT_MSG_RUNNING:
+			rxact_agent_get_running(agent);
 			break;
 		default:
 			PG_TRY();
@@ -1317,6 +1310,38 @@ static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_upd
 	}
 }
 
+static void rxact_agent_get_running(RxactAgent *agent)
+{
+	RxactTransactionInfo *info;
+	StringInfoData buf;
+	HASH_SEQ_STATUS seq_status;
+	Oid oid;
+
+	hash_seq_init(&seq_status, htab_rxid);
+	rxact_begin_msg(&buf, RXACT_MSG_RUNNING);
+	oid = InvalidOid;
+	while((info = hash_seq_search(&seq_status)) != NULL)
+	{
+		rxact_put_string(&buf, info->gid);
+		rxact_put_int(&buf, info->count_nodes);
+		Assert(info->remote_nodes[info->count_nodes-1] == AGTM_OID);
+		if(info->count_nodes > 1)
+		{
+			StaticAssertStmt(sizeof(oid) == sizeof(info->remote_nodes[0]), "change oid type");
+			rxact_put_bytes(&buf, info->remote_nodes
+				, sizeof(info->remote_nodes[0]) * (info->count_nodes-1));
+		}
+		rxact_put_bytes(&buf, &oid, sizeof(oid));
+		rxact_put_bytes(&buf, info->remote_success
+			, sizeof(info->remote_success[0]) * info->count_nodes);
+		StaticAssertStmt(sizeof(info->db_oid) == sizeof(int), "change code off get");
+		rxact_put_int(&buf, info->db_oid);
+		rxact_put_int(&buf, info->type);
+		rxact_put_short(&buf, info->failed);
+	}
+	rxact_agent_end_msg(agent, &buf);
+}
+
 /* if any oid unknown, get it from backend */
 static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count)
 {
@@ -1428,13 +1453,13 @@ static void rxact_insert_database(Oid db_oid, const char *dbname, const char *ow
 static void
 rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType type, Oid db_oid, bool is_redo)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	bool found;
 	AssertArg(gid && gid[0] && count >= 0);
 	if(!RXACT_TYPE_IS_VALID(type))
 		ereport(ERROR, (errmsg("Unknown remote xact type %d", type)));
 
-	ginfo = hash_search(htab_rxid, gid, HASH_ENTER, &found);
+	rinfo = hash_search(htab_rxid, gid, HASH_ENTER, &found);
 	if(found)
 	{
 		if(is_redo)
@@ -1461,19 +1486,19 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 			rxact_xlog_insert(rxlf_xlog_buf.data, rxlf_xlog_buf.len+1, RXACT_MSG_DO, true);
 		}
 
-		ginfo->remote_nodes
+		rinfo->remote_nodes
 			= MemoryContextAllocZero(TopMemoryContext
 				, (sizeof(Oid)+sizeof(bool))*(count+1));
 		if(count > 0)
-			memcpy(ginfo->remote_nodes, oids, sizeof(Oid)*(count));
-		ginfo->remote_nodes[count] = AGTM_OID;
+			memcpy(rinfo->remote_nodes, oids, sizeof(Oid)*(count));
+		rinfo->remote_nodes[count] = AGTM_OID;
 
-		ginfo->remote_success = (bool*)(&ginfo->remote_nodes[count+1]);
-		ginfo->count_nodes = count+1;
+		rinfo->remote_success = (bool*)(&rinfo->remote_nodes[count+1]);
+		rinfo->count_nodes = count+1;
 
-		ginfo->type = type;
-		ginfo->failed = is_redo;
-		ginfo->db_oid = db_oid;
+		rinfo->type = type;
+		rinfo->failed = is_redo;
+		rinfo->db_oid = db_oid;
 	}PG_CATCH();
 	{
 		hash_search(htab_rxid, gid, HASH_REMOVE, NULL);
@@ -1484,7 +1509,7 @@ rxact_insert_gid(const char *gid, const Oid *oids, int count, RemoteXactType typ
 
 static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, bool is_redo)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	bool found;
 	AssertArg(gid && gid[0]);
 
@@ -1498,17 +1523,17 @@ static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, b
 		rxact_xlog_insert(rxlf_xlog_buf.data, rxlf_xlog_buf.len+1, RXACT_MSG_SUCCESS, false);
 	}
 
-	ginfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
+	rinfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
 	if(found)
 	{
-		Assert(ginfo->type == type);
+		Assert(rinfo->type == type);
 		if(success)
 		{
-			pfree(ginfo->remote_nodes);
+			pfree(rinfo->remote_nodes);
 			hash_search(htab_rxid, gid, HASH_REMOVE, NULL);
 		}else
 		{
-			ginfo->failed = true;
+			rinfo->failed = true;
 			/*rxact_has_filed_gid = true;*/
 		}
 	}else
@@ -1520,21 +1545,21 @@ static void rxact_mark_gid(const char *gid, RemoteXactType type, bool success, b
 
 static void rxact_change_gid(const char *gid, RemoteXactType type, bool is_redo)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	bool found;
 	if(gid == NULL || gid[0] == '\0')
 		ereport(ERROR, (errmsg("invalid gid")));
 	if(type != RX_COMMIT && type != RX_ROLLBACK)
 		ereport(ERROR, (errmsg("invalid rxact type '%d'", (int)type)));
 
-	ginfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
+	rinfo = hash_search(htab_rxid, gid, HASH_FIND, &found);
 	if(!found)
 	{
 		if(!is_redo)
 			ereport(ERROR, (errmsg("gid '%s' not exists", gid)));
 		return; /* for redo */
 	}
-	if(ginfo->type == type)
+	if(rinfo->type == type)
 	{
 		if(!is_redo)
 			ereport(WARNING
@@ -1549,7 +1574,7 @@ static void rxact_change_gid(const char *gid, RemoteXactType type, bool is_redo)
 			appendStringInfoString(&rxlf_xlog_buf, gid);
 			rxact_xlog_insert(rxlf_xlog_buf.data, rxlf_xlog_buf.len+1, RXACT_MSG_CHANGE, true);
 		}
-		ginfo->type = type;
+		rinfo->type = type;
 	}
 }
 
@@ -1584,7 +1609,7 @@ static void rxact_insert_node_info(Oid oid, short port, const char *addr, bool i
 
 static void rxact_2pc_do(void)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	NodeConn *node_conn;
 	HASH_SEQ_STATUS hstatus;
 	StringInfoData buf;
@@ -1595,17 +1620,17 @@ static void rxact_2pc_do(void)
 	hash_seq_init(&hstatus, htab_rxid);
 	buf.data = NULL;
 	/*all_finish = true;*/
-	while((ginfo = hash_seq_search(&hstatus)) != NULL)
+	while((rinfo = hash_seq_search(&hstatus)) != NULL)
 	{
-		Assert(ginfo->count_nodes > 0);
-		if(ginfo->failed == false)
+		Assert(rinfo->count_nodes > 0);
+		if(rinfo->failed == false)
 			continue;
 
 		node_is_ok = true;
-		for(i=0;i<ginfo->count_nodes;++i)
+		for(i=0;i<rinfo->count_nodes;++i)
 		{
-			if(ginfo->remote_success[i] == false
-				&& ginfo->remote_nodes[i] != AGTM_OID)
+			if(rinfo->remote_success[i] == false
+				&& rinfo->remote_nodes[i] != AGTM_OID)
 			{
 				node_is_ok = false;
 				break;
@@ -1613,31 +1638,31 @@ static void rxact_2pc_do(void)
 		}
 
 		cmd_is_ok = false;
-		for(i=0;i<ginfo->count_nodes;++i)
+		for(i=0;i<rinfo->count_nodes;++i)
 		{
 			/* skip successed node */
-			if(ginfo->remote_success[i])
+			if(rinfo->remote_success[i])
 				continue;
 
 			/* we first finish except AGTM nodes */
-			if(ginfo->remote_nodes[i] == AGTM_OID && node_is_ok == false)
+			if(rinfo->remote_nodes[i] == AGTM_OID && node_is_ok == false)
 				continue;
 
 			/* get node connection, skip if not connectiond */
-			node_conn = rxact_get_node_conn(ginfo->db_oid, ginfo->remote_nodes[i], time(NULL));
+			node_conn = rxact_get_node_conn(rinfo->db_oid, rinfo->remote_nodes[i], time(NULL));
 			if(node_conn == NULL || node_conn->conn == NULL || node_conn->doing_gid[0] != '\0')
 				continue;
 
 			/* when SQL not maked, make it */
 			if(cmd_is_ok == false)
 			{
-				rxact_build_2pc_cmd(&buf, ginfo->gid, ginfo->type);
+				rxact_build_2pc_cmd(&buf, rinfo->gid, rinfo->type);
 				cmd_is_ok = true;
 			}
 
 			if(PQsendQuery(node_conn->conn, buf.data))
 			{
-				strcpy(node_conn->doing_gid, ginfo->gid);
+				strcpy(node_conn->doing_gid, rinfo->gid);
 				node_conn->last_use = time(NULL);
 			}else
 			{
@@ -1654,7 +1679,7 @@ static void rxact_2pc_do(void)
 
 static void rxact_2pc_result(NodeConn *conn)
 {
-	GlobalTransactionInfo *ginfo;
+	RxactTransactionInfo *rinfo;
 	PGresult *res;
 	ExecStatusType status;
 	int i;
@@ -1666,38 +1691,38 @@ static void rxact_2pc_result(NodeConn *conn)
 	PQclear(res);
 	if(status != PGRES_COMMAND_OK)
 		return;
-	ginfo = hash_search(htab_rxid, conn->doing_gid, HASH_FIND, NULL);
-	Assert(ginfo != NULL && ginfo->failed == true);
-	Assert(conn->oids.node_oid == AGTM_OID || conn->oids.db_oid == ginfo->db_oid);
+	rinfo = hash_search(htab_rxid, conn->doing_gid, HASH_FIND, NULL);
+	Assert(rinfo != NULL && rinfo->failed == true);
+	Assert(conn->oids.node_oid == AGTM_OID || conn->oids.db_oid == rinfo->db_oid);
 	conn->last_use = time(NULL);
 	conn->doing_gid[0] = '\0';
 
 	finish = true;
-	for(i=0;i<ginfo->count_nodes;++i)
+	for(i=0;i<rinfo->count_nodes;++i)
 	{
-		if(ginfo->remote_nodes[i] == conn->oids.node_oid)
+		if(rinfo->remote_nodes[i] == conn->oids.node_oid)
 		{
-			Assert(ginfo->remote_success[i] == false);
-			ginfo->remote_success[i] = true;
+			Assert(rinfo->remote_success[i] == false);
+			rinfo->remote_success[i] = true;
 			break;
 		}
-		if(ginfo->remote_success[i] == false)
+		if(rinfo->remote_success[i] == false)
 			finish = false;
 	}
-	Assert(i < ginfo->count_nodes);
+	Assert(i < rinfo->count_nodes);
 
 	if(finish)
 	{
-		for(++i;i<ginfo->count_nodes;++i)
+		for(++i;i<rinfo->count_nodes;++i)
 		{
-			if(ginfo->remote_success[i] == false)
+			if(rinfo->remote_success[i] == false)
 			{
 				finish = false;
 				break;
 			}
 		}
 		if(finish)
-			rxact_mark_gid(ginfo->gid, ginfo->type, true, false);
+			rxact_mark_gid(rinfo->gid, rinfo->type, true, false);
 	}
 }
 
@@ -2207,7 +2232,7 @@ re_recv_msg_:
 	}else if(msg_type == RXACT_MSG_ERROR)
 	{
 		ereport(ERROR, (errmsg("error message from RXACT manager:%s", rxact_get_string(buf))));
-	}else
+	}else if(msg_type != RXACT_MSG_RUNNING)
 	{
 		ereport(ERROR, (errmsg("Unknown message type %d from RXACT manager", msg_type)));
 	}
@@ -2348,6 +2373,61 @@ void RemoteXactReloadNode(void)
 
 	recv_msg_from_rxact(&buf);
 	pfree(buf.data);
+}
+
+List *RxactGetRunningList(void)
+{
+	List *list;
+	RxactTransactionInfo *info;
+	StringInfoData buf;
+
+	if(rxact_client_fd == PGINVALID_SOCKET)
+		connect_rxact();
+
+	rxact_begin_msg(&buf, RXACT_MSG_RUNNING);
+	send_msg_to_rxact(&buf);
+
+	recv_msg_from_rxact(&buf);
+
+	list = NIL;
+	while(buf.len > buf.cursor)
+	{
+		info = palloc(sizeof(*info));
+		strncpy(info->gid, rxact_get_string(&buf), lengthof(info->gid));
+		info->count_nodes = rxact_get_int(&buf);
+		info->remote_nodes = palloc((info->count_nodes) *
+			(sizeof(info->remote_nodes[0]) + sizeof(info->remote_success[0])) );
+		rxact_copy_bytes(&buf, info->remote_nodes, info->count_nodes * sizeof(info->remote_nodes[0]));
+		info->remote_success = (bool*)&(info->remote_nodes[info->count_nodes]);
+		rxact_copy_bytes(&buf, info->remote_success, info->count_nodes * sizeof(info->remote_success[0]));
+		StaticAssertStmt(sizeof(info->db_oid) == sizeof(int), "change code off get");
+		info->db_oid = (Oid)rxact_get_int(&buf);
+		info->type = (RemoteXactType)rxact_get_int(&buf);
+		info->failed = rxact_get_short(&buf) ? true:false;
+		list = lappend(list, info);
+	}
+	rxact_get_msg_end(&buf);
+	pfree(buf.data);
+
+	return list;
+}
+
+void FreeRxactTransactionInfo(RxactTransactionInfo *rinfo)
+{
+	if(rinfo)
+	{
+		if(rinfo->remote_nodes)
+			pfree(rinfo->remote_nodes);
+		pfree(rinfo);
+	}
+}
+
+void FreeRxactTransactionInfoList(List *list)
+{
+	ListCell *lc;
+	foreach(lc,list)
+		FreeRxactTransactionInfo(lfirst(lc));
+	list_free(list);
 }
 
 void DisconnectRemoteXact(void)

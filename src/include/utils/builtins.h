@@ -1382,4 +1382,9 @@ extern Datum pgxc_is_committed(PG_FUNCTION_ARGS);
 extern Datum pg_xact_status(PG_FUNCTION_ARGS);
 #endif
 
+#ifdef ADB
+/* backend/access/rxact/rxact_comm.c */
+extern Datum rxact_get_running(PG_FUNCTION_ARGS);
+#endif /* ADB */
+
 #endif   /* BUILTINS_H */

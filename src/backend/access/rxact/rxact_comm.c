@@ -14,10 +14,15 @@
 #include "postgres.h"
 
 
+#include "access/htup_details.h"
 #include "access/rxact_comm.h"
 #include "access/rxact_mgr.h"
+#include "catalog/pg_type.h"
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "storage/ipc.h"
+#include "utils/array.h"
+#include "utils/builtins.h"
 
 #include <unistd.h>
 #include <sys/socket.h>
@@ -501,4 +506,86 @@ void rxact_report_log_error(File fd, int elevel)
 	const char *name = FilePathName(fd);
 	ereport(elevel,
 		(errmsg("invalid format rxact log file \"%s\"", name)));
+}
+
+Datum rxact_get_running(PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	RxactTransactionInfo *info;
+	HeapTuple tuple;
+	ArrayBuildState *astate,*astate2;
+	Datum values[6];
+	int i;
+	static bool nulls[6] = {false,false,false,false,false,false};
+
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		TupleDesc	tupdesc;
+		List *list;
+
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		tupdesc = CreateTemplateTupleDesc(6, false);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "gid",
+						   TEXTOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "dbid",
+						   OIDOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "type",
+						   CHAROID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "backend",
+						   BOOLOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "nodes",
+						   OIDARRAYOID, -1, 0);
+		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "status",
+						   BOOLARRAYOID, -1, 0);
+		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
+
+		list = RxactGetRunningList();
+		funcctx->user_fctx = list_head(list);
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP();
+
+	if(funcctx->user_fctx)
+	{
+		info = lfirst((ListCell*)funcctx->user_fctx);
+		funcctx->user_fctx = lnext((ListCell*)funcctx->user_fctx);
+
+		values[0] = PointerGetDatum(cstring_to_text(info->gid));
+		values[1] = ObjectIdGetDatum(info->db_oid);
+		switch(info->type)
+		{
+		case RX_PREPARE:
+			values[2] = CharGetDatum('p');
+			break;
+		case RX_COMMIT:
+			values[2] = CharGetDatum('c');
+			break;
+		case RX_ROLLBACK:
+			values[2] = CharGetDatum('r');
+			break;
+		default:
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("unknown transaction state '%d'", info->type)));
+		}
+		values[3] = BoolGetDatum(!info->failed);
+		for(i=0,astate=astate2=NULL;i<info->count_nodes;++i)
+		{
+			astate = accumArrayResult(astate, ObjectIdGetDatum(info->remote_nodes[i]),
+				false, OIDOID, CurrentMemoryContext);
+			astate2 = accumArrayResult(astate2, BoolGetDatum(info->remote_success[i]),
+				false, BOOLOID, CurrentMemoryContext);
+		}
+		values[4] = PointerGetDatum(makeArrayResult(astate, CurrentMemoryContext));
+		values[5] = PointerGetDatum(makeArrayResult(astate2, CurrentMemoryContext));
+
+		tuple = heap_form_tuple(funcctx->tuple_desc, values, nulls);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tuple));
+	}
+
+	SRF_RETURN_DONE(funcctx);
 }
