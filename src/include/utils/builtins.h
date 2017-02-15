@@ -1385,6 +1385,7 @@ extern Datum pg_xact_status(PG_FUNCTION_ARGS);
 #ifdef ADB
 /* backend/access/rxact/rxact_comm.c */
 extern Datum rxact_get_running(PG_FUNCTION_ARGS);
+extern Datum rxact_wait_gid(PG_FUNCTION_ARGS);
 #endif /* ADB */
 
 #endif   /* BUILTINS_H */

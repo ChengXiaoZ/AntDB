@@ -60,6 +60,7 @@ typedef struct RxactAgent
 	pgsocket sock;
 	Oid		dboid;
 	bool	in_error;
+	bool	waiting_gid;
 	char	last_gid[NAMEDATALEN];
 	StringInfoData out_buf;
 	StringInfoData in_buf;
@@ -160,6 +161,7 @@ static void rxact_agent_change(RxactAgent *agent, StringInfo msg);
 static void rxact_agent_checkpoint(RxactAgent *agent, StringInfo msg);
 static void rxact_agent_node_info(RxactAgent *agent, StringInfo msg, bool is_update);
 static void rxact_agent_get_running(RxactAgent *agent);
+static void rxact_agent_wait_gid(RxactAgent *agent, StringInfo msg);
 /* if any oid unknown, get it from backend */
 static bool query_remote_oid(RxactAgent *agent, Oid *oid, int count);
 
@@ -225,6 +227,7 @@ CreateRxactAgent(pgsocket agent_fd)
 
 	agent->sock = agent_fd;
 	pg_set_noblock(agent_fd);
+	agent->in_error = agent->waiting_gid = false;
 	indexRxactAgent[agentCount++] = agent->index;
 	resetStringInfo(&(agent->in_buf));
 	resetStringInfo(&(agent->out_buf));
@@ -291,11 +294,26 @@ static void RxactLoop(void)
 			agent = &allRxactAgent[index];
 			Assert(agent->index == index && agent->sock != PGINVALID_SOCKET);
 
+			if(agent->waiting_gid)
+			{
+				Assert(agent->last_gid[0] != '\0');
+				if(hash_search(htab_rxid, agent->last_gid, HASH_FIND, NULL) == NULL)
+				{
+					agent->waiting_gid = false;
+					agent->last_gid[0] = '\0';
+					rxact_agent_simple_msg(agent, RXACT_MSG_OK);
+					if(agent->sock == PGINVALID_SOCKET)
+						continue;
+				}
+			}
+
 			pollfds[i+1].fd = agent->sock;
 			if(agent->out_buf.len > agent->out_buf.cursor)
 				pollfds[i+1].events = POLLOUT;
-			else
+			else if(agent->waiting_gid == false)
 				pollfds[i+1].events = POLLIN;
+			else
+				pollfds[i+1].events = 0;
 		}
 
 		/* append node sockets */
@@ -431,7 +449,14 @@ re_poll_:
 				rxact_agent_output(agent);
 			}else if(tmpfd->revents & (POLLIN | POLLERR | POLLHUP))
 			{
-				rxact_agent_input(agent);
+				if(agent->waiting_gid)
+				{
+					Assert((tmpfd->events & POLLIN) == 0);
+					rxact_agent_destroy(agent);
+				}else
+				{
+					rxact_agent_input(agent);
+				}
 			}
 		}
 
@@ -842,7 +867,7 @@ rxact_agent_destroy(RxactAgent *agent)
 	agent->dboid = InvalidOid;
 	agent->index = INVALID_INDEX;
 
-	if(agent->last_gid[0] != '\0')
+	if(agent->last_gid[0] != '\0' && agent->waiting_gid == false)
 	{
 		RxactTransactionInfo *rinfo;
 		bool found;
@@ -1034,6 +1059,7 @@ rxact_agent_input(RxactAgent *agent)
 		rxact_agent_destroy(agent);
 		return;
 	}
+	Assert(agent->waiting_gid == false);
 
 	/* setup error callback */
 	err_calback.arg = agent;
@@ -1073,6 +1099,9 @@ rxact_agent_input(RxactAgent *agent)
 			break;
 		case RXACT_MSG_RUNNING:
 			rxact_agent_get_running(agent);
+			break;
+		case RXACT_MSG_WAIT_GID:
+			rxact_agent_wait_gid(agent, &s);
 			break;
 		default:
 			PG_TRY();
@@ -1340,6 +1369,24 @@ static void rxact_agent_get_running(RxactAgent *agent)
 		rxact_put_short(&buf, info->failed);
 	}
 	rxact_agent_end_msg(agent, &buf);
+}
+
+static void rxact_agent_wait_gid(RxactAgent *agent, StringInfo msg)
+{
+	char *gid;
+	RxactTransactionInfo *info;
+	AssertArg(agent && msg);
+
+	gid = rxact_get_string(msg);
+	info = hash_search(htab_rxid, gid, HASH_FIND, NULL);
+	if(info == NULL)
+	{
+		rxact_agent_simple_msg(agent, RXACT_MSG_OK);
+	}else
+	{
+		strcpy(agent->last_gid, gid);
+		agent->waiting_gid = true;
+	}
 }
 
 /* if any oid unknown, get it from backend */
@@ -2161,7 +2208,6 @@ re_recv_msg_:
 	Assert(rxact_client_fd != PGINVALID_SOCKET);
 	resetStringInfo(buf);
 
-	HOLD_CANCEL_INTERRUPTS();
 	PG_TRY();
 	{
 		while(buf->len < 5)
@@ -2182,7 +2228,6 @@ re_recv_msg_:
 		rxact_client_fd = PGINVALID_SOCKET;
 		PG_RE_THROW();
 	}PG_END_TRY();
-	RESUME_CANCEL_INTERRUPTS();
 
 	/* parse message */
 	buf->cursor += 5;	/* 5 is sizeof(length) and message type */
@@ -2246,6 +2291,7 @@ static void recv_socket(pgsocket sock, StringInfo buf, int max_recv)
 	enlargeStringInfo(buf, max_recv);
 
 re_recv_:
+	CHECK_FOR_INTERRUPTS();
 	recv_res = recv(sock, buf->data + buf->len, max_recv, 0);
 	if(recv_res == 0)
 	{
@@ -2270,11 +2316,13 @@ static bool wait_socket(pgsocket sock, bool wait_send, bool block)
 	poll_fd.events = (wait_send ? POLLOUT : POLLIN) | POLLERR;
 	poll_fd.revents = 0;
 re_poll_:
+	CHECK_FOR_INTERRUPTS();
 	ret = poll(&poll_fd, 1, block ? -1:0);
 #else
 	fd_set mask;
 	struct timeval tv;
 re_poll_:
+	CHECK_FOR_INTERRUPTS();
 	tv.tv_sec 0;
 	tv.tv_usec = 0;
 	FD_ZERO(&mask);
@@ -2437,6 +2485,26 @@ void DisconnectRemoteXact(void)
 		closesocket(rxact_client_fd);
 		rxact_client_fd = PGINVALID_SOCKET;
 	}
+}
+
+void RxactWaitGID(const char *gid)
+{
+	StringInfoData buf;
+
+	if(gid == NULL || gid[0] == '\0')
+		return;
+	if(strlen(gid) >= NAMEDATALEN)
+		ereport(ERROR, (errmsg("argument \"%s\" too long", gid)));
+
+	if(rxact_client_fd == PGINVALID_SOCKET)
+		connect_rxact();
+
+	rxact_begin_msg(&buf, RXACT_MSG_WAIT_GID);
+	rxact_put_string(&buf, gid);
+	send_msg_to_rxact(&buf);
+
+	recv_msg_from_rxact(&buf);
+	pfree(buf.data);
 }
 
 static void RxactHupHandler(SIGNAL_ARGS)

@@ -15,5 +15,6 @@
 #define RXACT_MSG_NODE_INFO		0x90
 #define RXACT_MSG_UPDATE_NODE	0xA0
 #define RXACT_MSG_RUNNING		0xB0
+#define RXACT_MSG_WAIT_GID		0xC0
 
 #endif /* RXACT_MSG_H_ */

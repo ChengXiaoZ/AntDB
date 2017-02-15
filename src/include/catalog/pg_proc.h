@@ -4785,8 +4785,10 @@ DATA(insert OID = 3184 (  pg_xact_status	PGNSP PGUID 12 1 1 0 0 f f f f t t s 1 
 DESCR("transaction status of specifical xid");
 #endif
 #ifdef ADB
-DATA(insert OID = 3188 (  rxact_get_running	PGNSP PGUID 12 5 20 0 0 f f f f t t v 0 0 2249 "" "{25,26,18,16,1028,1000}" "{o,o,o,o,o,o}" "{gid,dbid,type,backend,nodes,status}" _null_ rxact_get_running _null_ _null_ _null_ ));
+DATA(insert OID = 3181 (  rxact_get_running	PGNSP PGUID 12 5 20 0 0 f f f f t t v 0 0 2249 "" "{25,26,18,16,1028,1000}" "{o,o,o,o,o,o}" "{gid,dbid,type,backend,nodes,status}" _null_ rxact_get_running _null_ _null_ _null_ ));
 DESCR("list RXACT running transactions");
+DATA(insert OID = 3182 ( rxact_wait_gid		PGNSP PGUID 12 1 0 0 0 f f f f t f v 1 0 2278 "25" _null_ _null_ _null_ _null_ rxact_wait_gid _null_ _null_ _null_ ));
+DESCR("wait RXACT transaction finish");
 #endif
 
 DATA(insert OID = 3469 (  spg_range_quad_config PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_  spg_range_quad_config _null_ _null_ _null_ ));

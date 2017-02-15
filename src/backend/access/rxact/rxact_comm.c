@@ -589,3 +589,14 @@ Datum rxact_get_running(PG_FUNCTION_ARGS)
 
 	SRF_RETURN_DONE(funcctx);
 }
+
+Datum rxact_wait_gid(PG_FUNCTION_ARGS)
+{
+	text *arg = PG_GETARG_TEXT_P(0);
+	char *gid = text_to_cstring(arg);
+
+	RxactWaitGID(gid);
+	pfree(gid);
+
+	PG_RETURN_VOID();
+}

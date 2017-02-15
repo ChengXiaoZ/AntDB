@@ -35,6 +35,7 @@ extern void DisconnectRemoteXact(void);
 extern List *RxactGetRunningList(void);
 extern void FreeRxactTransactionInfo(RxactTransactionInfo *rinfo);
 extern void FreeRxactTransactionInfoList(List *list);
+extern void RxactWaitGID(const char *gid);
 
 /* xlog interfaces */
 extern void rxact_redo(XLogRecPtr lsn, XLogRecord *record);
