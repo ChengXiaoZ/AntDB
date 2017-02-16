@@ -1736,12 +1736,15 @@ static void rxact_2pc_result(NodeConn *conn)
 	res = PQgetResult(conn->conn);
 	status = PQresultStatus(res);
 	PQclear(res);
+	conn->last_use = time(NULL);
 	if(status != PGRES_COMMAND_OK)
+	{
+		conn->doing_gid[0] = '\0';
 		return;
+	}
 	rinfo = hash_search(htab_rxid, conn->doing_gid, HASH_FIND, NULL);
 	Assert(rinfo != NULL && rinfo->failed == true);
 	Assert(conn->oids.node_oid == AGTM_OID || conn->oids.db_oid == rinfo->db_oid);
-	conn->last_use = time(NULL);
 	conn->doing_gid[0] = '\0';
 
 	finish = true;
@@ -1833,6 +1836,8 @@ static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 			pfree(buf.data);
 		}
 	}
+	if(conn->status == PGRES_POLLING_OK)
+		return conn;
 
 	return rxact_check_node_conn(conn) ? conn:NULL;
 }
