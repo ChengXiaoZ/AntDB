@@ -1667,18 +1667,15 @@ FinishPreparedTransactionExt(const char *gid,
 #ifdef ADB
 	nodeIds = (Oid *) bufptr;
 	bufptr += MAXALIGN(hdr->nnodes * sizeof(Oid));
-	if (!IsConnFromRxactMgr())
-	{
-		if (!isRemoteInit)
-			init_RemoteXactStateByNodes(hdr->nnodes, nodeIds, true);
 
-		if (isCommit)
-			RecordRemoteXactCommitPrepared(gid, hdr->nnodes, nodeIds,
-										   isMissingOK, hdr->isimplicit);
-		else
-			RecordRemoteXactAbortPrepared(gid, hdr->nnodes, nodeIds,
-										  isMissingOK);
-	}
+	/*
+	 * Notice rxact manager to record rxact log.
+	 */
+	StartFinishPreparedRxact(gid,
+							 hdr->nnodes,
+							 nodeIds,
+							 hdr->isimplicit,
+							 isCommit);
 #endif
 
 	/* compute latestXid among all children */
@@ -1770,22 +1767,26 @@ FinishPreparedTransactionExt(const char *gid,
 	RemoveGXact(gxact);
 	MyLockedGxact = NULL;
 
-	pfree(buf);
-
 #ifdef ADB
 	/*
-	 * After all (local node and remote nodes) do completely.
-	 * Record SUCCESS log. It bases on the xact involves local node
-	 * (ADB 2.2 is this case absolutely).
+	 * After local node commit successfully, then we do remote commit.
+	 * If connection is from remote xact manager, it is not necessary
+	 * to do remote commit.
 	 */
-	if (IsUnderRemoteXact() && !IsConnFromRxactMgr())
+	if (!IsConnFromRxactMgr())
 	{
-		if (isCommit)
-			RecordRemoteXactSuccess(gid, RX_COMMIT);
-		else
-			RecordRemoteXactSuccess(gid, RX_ROLLBACK);
+		if (!isRemoteInit)
+			init_RemoteXactStateByNodes(hdr->nnodes, nodeIds, true);
+
+		EndFinishPreparedRxact(gid,
+							   hdr->nnodes,
+							   nodeIds,
+							   isMissingOK,
+							   isCommit);
 	}
 #endif
+
+	pfree(buf);
 }
 
 /*

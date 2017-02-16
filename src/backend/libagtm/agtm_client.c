@@ -138,7 +138,7 @@ int agtm_Init(void)
 		ereport(ERROR,
 			(errmsg("Invalid AGTM listen port: %d.", port_int)));
 
-	ereport(LOG,
+	ereport(DEBUG1,
 		(errmsg("Get AGTM listen port: %d,", port_int)));
 
 	return port_int;

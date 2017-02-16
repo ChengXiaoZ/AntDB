@@ -19,14 +19,15 @@
 
 extern void RemoteXactCommit(int nnodes, Oid *nodeIds);
 extern void RemoteXactAbort(int nnodes, Oid *nodeIds, bool normal);
-extern void RecordRemoteXactCommitPrepared(const char *gid,
-									int nnodes,
-									Oid *nodeIds,
-									bool missing_ok,
-									bool implicit);
-extern void RecordRemoteXactAbortPrepared(const char *gid,
-									int nnodes,
-									Oid *nodeIds,
-									bool missing_ok);
+extern void StartFinishPreparedRxact(const char *gid,
+									 int nnodes,
+									 Oid *nodeIds,
+									 bool isImplicit,
+									 bool isCommit);
+extern void EndFinishPreparedRxact(const char *gid,
+								   int nnodes,
+								   Oid *nodeIds,
+								   bool isMissingOK,
+								   bool isCommit);
 #endif /* REMOTE_XACT_H */
 
