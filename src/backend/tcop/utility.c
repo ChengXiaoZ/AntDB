@@ -96,6 +96,7 @@ static void ExecUtilityStmtOnNodes(const char *queryString, ExecNodes *nodes, bo
 static void ExecUtilityStmtOnNodes2(Node *stmt, const char *queryString, ExecNodes *nodes, bool sentToRemote,
 								   bool force_autocommit, RemoteQueryExecType exec_type,
 								   bool is_temp);
+static bool IsAlterTableStmtRedistribution(AlterTableStmt *atstmt);
 #endif /* ADB */
 static RemoteQueryExecType ExecUtilityFindNodes(ObjectType objectType,
 												Oid relid,
@@ -1677,6 +1678,15 @@ ProcessUtilitySlow(Node *parsetree,
 																 relid,
 																 &is_temp);
 #ifdef ADB
+								/*
+								 * If the AlterTableStmt self will only update the catalog
+								 * pgxc_node, the RemoteQuery added for the AlterTableStmt
+								 * should only be done on coordinators.
+								 */
+								if (atstmt->relkind == OBJECT_TABLE && 
+									IsAlterTableStmtRedistribution(atstmt))
+									exec_type = EXEC_ON_COORDS;
+
 								stmts = AddRemoteParseTree(stmts, queryString, parsetree, exec_type, is_temp);
 #else
 								stmts = AddRemoteQueryNode(stmts, queryString, exec_type, is_temp);
@@ -2511,6 +2521,46 @@ ExecDropStmt(DropStmt *stmt, bool isTopLevel)
 	RESUME_INTERRUPTS();
 #endif /* ADB */
 }
+
+#ifdef ADB
+static bool
+IsAlterTableStmtRedistribution(AlterTableStmt *atstmt)
+{
+	AlterTableCmd	*cmd;
+	ListCell		*lcmd;
+
+	AssertArg(atstmt);
+	Assert(atstmt->relkind == OBJECT_TABLE);
+
+	foreach (lcmd, atstmt->cmds)
+	{
+		cmd = (AlterTableCmd *) lfirst(lcmd);
+		switch(cmd->subtype)
+		{
+			/*
+			 * Datanodes will not do these kinds of commands, such
+			 * as AT_SubCluster, AT_AddNodeList, AT_DeleteNodeList,
+			 * see the function AtExecSubCluster, AtExecAddNode and
+			 * AtExecDeleteNode, so it is not necessary to send the
+			 * AlterTableStmt to datanodes.
+			 *
+			 * But this kind of command AT_DistributeBy should be
+			 * sent to datanodes, as the datanode will delete old
+			 * even add new dependency about the AlterTableStmt, see
+			 * the function AtExecDistributeBy.
+			 */
+			case AT_SubCluster:
+			case AT_AddNodeList:
+			case AT_DeleteNodeList:
+				break;
+			default:
+				return false;
+				break;
+		}
+	}
+	return true;
+}
+#endif
 
 #ifdef PGXC
 
