@@ -89,17 +89,5 @@ extern bool HeapTupleIsSurelyDead(HeapTupleHeader tuple,
 extern void HeapTupleSetHintBits(HeapTupleHeader tuple, Buffer buffer,
 					 uint16 infomask, TransactionId xid);
 extern bool HeapTupleHeaderIsOnlyLocked(HeapTupleHeader tuple);
-
-#if defined(ADB)
-#define SNAPSHOT_MVCC	0x00
-#define SNAPSHOT_NOW	0x01
-#define SNAPSHOT_SELF	0x02
-#define SNAPSHOT_ANY	0x03
-#define SNAPSHOT_TOAST	0x04
-#define SNAPSHOT_DIRTY	0x05
-
-extern int snapshot_level;
-extern void InitSnapshotLevel(Snapshot snap);
-#endif
 	
 #endif   /* TQUAL_H */

@@ -66,10 +66,6 @@
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
-#ifdef ADB
-int snapshot_level = SNAPSHOT_MVCC;
-#endif
-
 /* Static variables representing various special snapshot semantics */
 SnapshotData SnapshotNowData = {HeapTupleSatisfiesNow};
 SnapshotData SnapshotSelfData = {HeapTupleSatisfiesSelf};
@@ -1743,35 +1739,3 @@ HeapTupleHeaderIsOnlyLocked(HeapTupleHeader tuple)
 	 */
 	return true;
 }
-
-#if defined(ADB)
-void InitSnapshotLevel(Snapshot snap)
-{
-	if (!snap)
-		return ;
-
-	switch (snapshot_level)
-	{
-		case SNAPSHOT_MVCC:
-			snap->satisfies = HeapTupleSatisfiesMVCC;
-			break;
-		case SNAPSHOT_NOW:
-			snap->satisfies = HeapTupleSatisfiesNow;
-			break;
-		case SNAPSHOT_SELF:
-			snap->satisfies = HeapTupleSatisfiesSelf;
-			break;
-		case SNAPSHOT_ANY:
-			snap->satisfies = HeapTupleSatisfiesAny;
-			break;
-		case SNAPSHOT_TOAST:
-			snap->satisfies = HeapTupleSatisfiesToast;
-			break;
-		case SNAPSHOT_DIRTY:
-			snap->satisfies = HeapTupleSatisfiesDirty;
-			break;
-		default:
-			break;
-	}
-}
-#endif

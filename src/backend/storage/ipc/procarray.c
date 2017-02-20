@@ -93,7 +93,6 @@
 
 #ifdef ADB
 #include "agtm/agtm.h"
-#include "utils/tqual.h"
 #endif
 
 /* Our shared memory area */
@@ -1696,9 +1695,6 @@ GetSnapshotData(Snapshot snapshot)
 	 */
 	snapshot->active_count = 0;
 	snapshot->regd_count = 0;
-#ifdef ADB
-	InitSnapshotLevel(snapshot);
-#endif /* ADB */
 	snapshot->copied = false;
 
 	return snapshot;
