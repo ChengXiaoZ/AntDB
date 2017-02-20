@@ -555,6 +555,7 @@ SocketBackend(StringInfo inBuf)
 		case 'b':				/* Barrier */
 		case 'g':				/* gxid */
 		case 's':				/* snapshot */
+		case 't':				/* Timestamp */
 			break;
 #endif /* PGXC */
 #ifdef ADB
@@ -5115,6 +5116,20 @@ PostgresMain(int argc, char *argv[],
 					SetGlobalSnapshot(&input_message);
 				}
 				break;
+
+			case 't':			/* timestamp */
+				{
+					TimestampTz timestamp = (TimestampTz) pq_getmsgint64(&input_message);
+					pq_getmsgend(&input_message);
+
+					/*
+					 * Set in xact.x the static Timestamp difference value with AGTM
+					 * and the timestampreceivedvalues for Datanode reference
+					 */
+					SetCurrentTransactionStartTimestamp(timestamp);
+				}
+				break;
+
 #if 0
 			case 'b':			/* barrier */
 				{

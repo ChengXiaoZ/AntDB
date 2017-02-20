@@ -279,6 +279,10 @@ static CommandId receivedCommandId;
 static TimestampTz xactStartTimestamp;
 static TimestampTz stmtStartTimestamp;
 static TimestampTz xactStopTimestamp;
+#ifdef PGXC
+static TimestampTz globalXactStartTimestamp;
+static TimestampTz globalDeltaTimestmap;
+#endif
 
 /*
  * GID to be used for preparing the current transaction.  This is also
@@ -859,7 +863,15 @@ AtEOXact_Local(bool commit)
 TimestampTz
 GetCurrentTransactionStartTimestamp(void)
 {
+#ifdef PGXC
+	/*
+	 * In ADB, Transaction start timestamp is the value received
+	 * from AGTM along with first Snapshot.
+	 */
+	return globalXactStartTimestamp;
+#else
 	return xactStartTimestamp;
+#endif
 }
 
 /*
@@ -868,7 +880,20 @@ GetCurrentTransactionStartTimestamp(void)
 TimestampTz
 GetCurrentStatementStartTimestamp(void)
 {
+#ifdef PGXC
+	/*
+	 * For ADB, Statement start timestamp is adjusted at each node
+	 * (Coordinator and Datanode) with a difference value that is calculated
+	 * based on the global timestamp value received from AGTM and the local
+	 * clock. This permits to follow the AGTM timeline in the cluster.
+	 */
+	if (IS_PGXC_DATANODE && IsConnFromCoord())
+		return stmtStartTimestamp;
+	else
+		return stmtStartTimestamp + globalDeltaTimestmap;
+#else
 	return stmtStartTimestamp;
+#endif
 }
 
 /*
@@ -880,9 +905,20 @@ GetCurrentStatementStartTimestamp(void)
 TimestampTz
 GetCurrentTransactionStopTimestamp(void)
 {
+#ifdef PGXC
+	/*
+	 * As for Statement start timestamp, stop timestamp has to
+	 * be adjusted with the delta value calculated with the
+	 * timestamp received from AGTM and the local node clock.
+	 */
+	if (xactStopTimestamp != 0)
+		return xactStopTimestamp + globalDeltaTimestmap;
+	return GetCurrentTimestamp() + globalDeltaTimestmap;
+#else
 	if (xactStopTimestamp != 0)
 		return xactStopTimestamp;
 	return GetCurrentTimestamp();
+#endif
 }
 
 /*
@@ -903,6 +939,31 @@ SetCurrentTransactionStopTimestamp(void)
 	xactStopTimestamp = GetCurrentTimestamp();
 }
 
+#ifdef PGXC
+/*
+ *  SetCurrentTransactionStartTimestamp
+ *
+ *  Note: Sets local timestamp delta with the value received from AGTM
+ */
+void
+SetCurrentTransactionStartTimestamp(TimestampTz timestamp)
+{
+	/*
+	 * Master-Coordinator get timestamp from AGTM along with getting
+	 * the first snapshot.
+	 *
+	 * Datanode or NoMaster-Coordinator get timestamp from Master-Co
+	 * ordinator.
+	 */
+	if ((IS_PGXC_COORDINATOR && !IsConnFromCoord() && !FirstSnapshotSet) ||
+		(IS_PGXC_DATANODE || IsConnFromCoord()))
+	{
+		globalXactStartTimestamp = timestamp;
+		globalDeltaTimestmap = globalXactStartTimestamp - xactStartTimestamp;
+	}
+}
+#endif
+
 /*
  *	GetCurrentTransactionNestLevel
  *
@@ -916,7 +977,6 @@ GetCurrentTransactionNestLevel(void)
 
 	return s->nestingLevel;
 }
-
 
 /*
  *	TransactionIdIsCurrentTransactionId
@@ -1306,7 +1366,12 @@ RecordTransactionCommit(void)
 
 			xlrec.dbId = MyDatabaseId;
 			xlrec.tsId = MyDatabaseTableSpace;
+#ifdef PGXC
+			/* In ADB, stop timestamp has to follow the timeline of AGTM */
+			xlrec.xact_time = xactStopTimestamp + globalDeltaTimestmap;
+#else
 			xlrec.xact_time = xactStopTimestamp;
+#endif
 			xlrec.nrels = nrels;
 			xlrec.nsubxacts = nchildren;
 			xlrec.nmsgs = nmsgs;
@@ -1350,7 +1415,12 @@ RecordTransactionCommit(void)
 			int			lastrdata = 0;
 			xl_xact_commit_compact xlrec;
 
+#ifdef PGXC
+			/* In ADB, stop timestamp has to follow the timeline of AGTM */
+			xlrec.xact_time = xactStopTimestamp + globalDeltaTimestmap;
+#else
 			xlrec.xact_time = xactStopTimestamp;
+#endif
 			xlrec.nsubxacts = nchildren;
 			rdata[0].data = (char *) (&xlrec);
 			rdata[0].len = MinSizeOfXactCommitCompact;
@@ -1691,7 +1761,12 @@ RecordTransactionAbort(bool isSubXact)
 	else
 	{
 		SetCurrentTransactionStopTimestamp();
+#ifdef PGXC
+		/* In ADB, stop timestamp has to follow the timeline of AGTM */
+		xlrec.xact_time = xactStopTimestamp + globalDeltaTimestmap;
+#else
 		xlrec.xact_time = xactStopTimestamp;
+#endif
 	}
 	xlrec.nrels = nrels;
 	xlrec.nsubxacts = nchildren;
@@ -2061,7 +2136,14 @@ StartTransaction(void)
 	 */
 	xactStartTimestamp = stmtStartTimestamp;
 	xactStopTimestamp = 0;
+#ifdef PGXC
+	/*
+	 * For ADB, transaction start timestamp has to follow the AGTM timeline
+	 */
+	pgstat_report_xact_timestamp(globalXactStartTimestamp);
+#else
 	pgstat_report_xact_timestamp(xactStartTimestamp);
+#endif
 
 	/*
 	 * initialize current transaction state fields

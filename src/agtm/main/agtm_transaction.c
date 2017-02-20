@@ -22,7 +22,7 @@
 #include "utils/memutils.h"
 #include "utils/palloc.h"
 #include "utils/snapmgr.h"
-
+#include "utils/timestamp.h"
 
 static List* parse_string_to_seqOption(StringInfo strOption);
 
@@ -69,7 +69,8 @@ StringInfo ProcessGetTimestamp(StringInfo message, StringInfo output)
 
 StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 {
-	Snapshot snapshot;
+	Snapshot			snapshot;
+	TimestampTz			globalXactStartTimestamp;
 	static SnapshotData GlobalAgtmSnapshotData = {
 		NULL,
 		InvalidTransactionId,
@@ -90,11 +91,13 @@ StringInfo ProcessGetSnapshot(StringInfo message, StringInfo output)
 		};
 
 	pq_getmsgend(message);
+	globalXactStartTimestamp = GetCurrentTimestamp();
 	snapshot = GetSnapshotData(&GlobalAgtmSnapshotData);
 
 	/* Respond to the client */
 	pq_sendint(output, AGTM_SNAPSHOT_GET_RESULT, 4);
 
+	pq_sendbytes(output, (char *)&globalXactStartTimestamp, sizeof (globalXactStartTimestamp));
 	pq_sendbytes(output, (char *)&RecentGlobalXmin, sizeof (TransactionId));
 	pq_sendbytes(output, (char *)&snapshot->xmin, sizeof (TransactionId));
 	pq_sendbytes(output, (char *)&snapshot->xmax, sizeof (TransactionId));

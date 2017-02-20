@@ -1688,6 +1688,7 @@ pgxc_node_begin(int conn_count,
 	int 				 con[conn_count];
 	int					 j = 0;
 	GlobalTransactionId	 gxid = InvalidGlobalTransactionId;
+	TimestampTz			 timestamp = GetCurrentTransactionStartTimestamp();
 
 	/*
 	 * If no remote connections, we don't have anything to do
@@ -1728,6 +1729,10 @@ pgxc_node_begin(int conn_count,
 
 		/* Send GXID and check for errors */
 		if (GlobalTransactionIdIsValid(gxid) && pgxc_node_send_gxid(connections[i], gxid))
+			return EOF;
+
+		/* Send timestamp and check for errors */
+		if (GlobalTimestampIsValid(timestamp) && pgxc_node_send_timestamp(connections[i], timestamp))
 			return EOF;
 
 		/* Send BEGIN */

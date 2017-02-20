@@ -2228,6 +2228,48 @@ pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot)
 	return 0;
 }
 
+int
+pgxc_node_send_timestamp(PGXCNodeHandle *handle, TimestampTz timestamp)
+{
+	int		msglen = 12; /* 4 bytes for msglen and 8 bytes for timestamp (int64) */
+	uint32	n32;
+	int64	i = (int64) timestamp;
+
+	/* Invalid connection state, return error */
+	if (handle->state != DN_CONNECTION_STATE_IDLE)
+		return EOF;
+
+	/* msgType + msgLen */
+	if (ensure_out_buffer_capacity(handle->outEnd + 1 + msglen, handle) != 0)
+	{
+		add_error_message(handle, "out of memory");
+		return EOF;
+	}
+	handle->outBuffer[handle->outEnd++] = 't';
+	msglen = htonl(msglen);
+	memcpy(handle->outBuffer + handle->outEnd, &msglen, 4);
+	handle->outEnd += 4;
+
+	/* High order half first */
+#ifdef INT64_IS_BUSTED
+	/* don't try a right shift of 32 on a 32-bit word */
+	n32 = (i < 0) ? -1 : 0;
+#else
+	n32 = (uint32) (i >> 32);
+#endif
+	n32 = htonl(n32);
+	memcpy(handle->outBuffer + handle->outEnd, &n32, 4);
+	handle->outEnd += 4;
+
+	/* Now the low order half */
+	n32 = (uint32) i;
+	n32 = htonl(n32);
+	memcpy(handle->outBuffer + handle->outEnd, &n32, 4);
+	handle->outEnd += 4;
+
+	return 0;
+}
+
 /*
  * Add another message to the list of errors to be returned back to the client
  * at the convenient time

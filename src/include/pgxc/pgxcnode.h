@@ -207,6 +207,7 @@ extern int	pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *que
 extern int	pgxc_node_send_gxid(PGXCNodeHandle *handle, GlobalTransactionId gxid);
 extern int	pgxc_node_send_cmd_id(PGXCNodeHandle *handle, CommandId cid);
 extern int	pgxc_node_send_snapshot(PGXCNodeHandle *handle, Snapshot snapshot);
+extern int  pgxc_node_send_timestamp(PGXCNodeHandle *handle, TimestampTz timestamp);
 extern bool	pgxc_node_receive(const int conn_count,
 				  PGXCNodeHandle ** connections, struct timeval * timeout);
 extern int	pgxc_node_read_data(PGXCNodeHandle * conn, bool close_if_error);

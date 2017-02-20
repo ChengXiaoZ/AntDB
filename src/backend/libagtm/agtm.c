@@ -277,6 +277,8 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	const char *str;
 	StringInfoData	buf;
 	uint32 xcnt;
+	TimestampTz	globalXactStartTimestamp;
+
 	AssertArg(snapshot && snapshot->xip && snapshot->subxip);
 
 	if(!IsUnderAGTM())
@@ -288,6 +290,8 @@ agtm_GetGlobalSnapShot(Snapshot snapshot)
 	Assert(res);
 	agtm_use_result_type(res, &buf, AGTM_SNAPSHOT_GET_RESULT);
 
+	pq_copymsgbytes(&buf, (char*)&(globalXactStartTimestamp), sizeof(globalXactStartTimestamp));
+	SetCurrentTransactionStartTimestamp(globalXactStartTimestamp);
 	pq_copymsgbytes(&buf, (char*)&(RecentGlobalXmin), sizeof(RecentGlobalXmin));
 	pq_copymsgbytes(&buf, (char*)&(snapshot->xmin), sizeof(snapshot->xmin));
 	pq_copymsgbytes(&buf, (char*)&(snapshot->xmax), sizeof(snapshot->xmax));
