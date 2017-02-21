@@ -75,6 +75,9 @@ StartFinishPreparedRxact(const char *gid,
 	if (!IsUnderRemoteXact())
 		return ;
 
+	if (IsConnFromRxactMgr())
+		return ;
+
 	AssertArg(gid && gid[0]);
 
 	/*
@@ -109,6 +112,9 @@ EndFinishPreparedRxact(const char *gid,
 					   bool isCommit)
 {
 	if (!IsUnderRemoteXact())
+		return ;
+
+	if (IsConnFromRxactMgr())
 		return ;
 
 	AssertArg(gid && gid[0]);
