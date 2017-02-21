@@ -5335,6 +5335,16 @@ DESCR("drop job");
 
 #endif
 
+#ifdef ADB
+DATA(insert OID = 4963 ( pg_pause_cluster       PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ pg_pause_cluster _null_ _null_ _null_ ));
+DESCR("pause cluster");
+
+DATA(insert OID = 4964 ( pg_unpause_cluster       PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ pg_unpause_cluster _null_ _null_ _null_ ));
+DESCR("unpause cluster");
+
+DATA(insert OID = 4965 ( pg_alter_node       PGNSP PGUID 12 1 0 0 0 f f f f t f v 4 0 16 "2275 2275 23 16" _null_ _null_ _null_ _null_ pg_alter_node _null_ _null_ _null_ ));
+DESCR("alter node");
+#endif
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

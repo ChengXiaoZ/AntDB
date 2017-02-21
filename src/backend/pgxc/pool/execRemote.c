@@ -240,7 +240,7 @@ static ExecNodes *reget_exec_nodes_by_en_expr(RemoteQueryState *planstate,
  * Create a structure to store parameters needed to combine responses from
  * multiple connections as well as state information
  */
-static RemoteQueryState *
+RemoteQueryState *
 CreateResponseCombiner(int node_count, CombineType combine_type)
 {
 	RemoteQueryState *combiner;
@@ -961,7 +961,7 @@ validate_combiner(RemoteQueryState *combiner)
 /*
  * Close combiner and free allocated memory, if it is not needed
  */
-static void
+void
 CloseCombiner(RemoteQueryState *combiner)
 {
 	if (combiner)

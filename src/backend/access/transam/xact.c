@@ -74,6 +74,10 @@
 #include "access/remote_xact.h"
 #endif
 
+#ifdef ADB
+#include "pgxc/pause.h"
+#endif
+
 /*
  *	User-tweakable parameters
  */
@@ -2455,6 +2459,15 @@ CommitTransaction(void)
 	AtEOXact_Inval(true);
 
 	AtEOXact_MultiXact();
+#ifdef ADB
+        /* If the cluster lock was held at commit time, keep it locked! */
+        if (cluster_ex_lock_held)
+        {
+                elog(DEBUG2, "PAUSE CLUSTER still held at commit");
+                /*if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+                        RequestClusterPause(false, NULL);*/
+        }
+#endif
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_LOCKS,

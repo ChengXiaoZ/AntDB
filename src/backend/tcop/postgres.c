@@ -117,6 +117,10 @@
 #include "agtm/agtm.h"
 #endif
 
+#ifdef ADB
+#include "pgxc/pause.h"
+#endif
+
 extern int	optind;
 
 extern char *optarg;
@@ -3156,11 +3160,16 @@ die(SIGNAL_ARGS)
 		if (ImmediateInterruptOK)
 			ProcessInterrupts();
 	}
-
+#ifdef ADB
+	/* release cluster lock if holding it */
+	if (cluster_ex_lock_held)
+	{
+		ReleaseClusterLock(true);
+	}
+#endif
 	/* If we're still here, waken anything waiting on the process latch */
 	if (MyProc)
 		SetLatch(&MyProc->procLatch);
-
 	errno = save_errno;
 }
 
@@ -4195,7 +4204,10 @@ PostgresMain(int argc, char *argv[],
 
 	remoteConnType = REMOTE_CONN_APP;
 #endif
-
+#ifdef ADB
+	cluster_lock_held = false;
+	cluster_ex_lock_held = false;
+#endif
 	/*
 	 * Initialize globals (already done if under postmaster, but not if
 	 * standalone).
@@ -4452,6 +4464,10 @@ PostgresMain(int argc, char *argv[],
 	 */
 	xc_lockForBackupKey1 = Int32GetDatum(XC_LOCK_FOR_BACKUP_KEY_1);
 	xc_lockForBackupKey2 = Int32GetDatum(XC_LOCK_FOR_BACKUP_KEY_2);
+
+#ifdef ADB
+	on_shmem_exit(PGXCCleanClusterLock, 0);
+#endif
 
 	/* If this postgres is launched from another Coord, do not initialize handles. skip it */
 	if (!am_walsender && IS_PGXC_COORDINATOR && !IsPoolHandle())
@@ -4748,6 +4764,23 @@ PostgresMain(int argc, char *argv[],
 		CHECK_FOR_INTERRUPTS();
 		DoingCommandRead = false;
 
+#ifdef ADB
+		/*
+		 * Acquire the ClusterLock before starting query processing.
+		 *
+		 * If we are inside a transaction block, this lock will be already held
+		 * when the transaction began
+		 *
+		 * If the session has invoked a PAUSE CLUSTER earlier, then this lock
+		 * will be held already in exclusive mode. No need to lock in that case
+		 */
+		if (IsUnderPostmaster && IS_PGXC_COORDINATOR && !cluster_ex_lock_held && !cluster_lock_held)
+		{
+						bool exclusive = false;
+						AcquireClusterLock(exclusive);
+						cluster_lock_held = true;
+		}
+#endif
 		/*
 		 * (5) check for any other interesting events that happened while we
 		 * slept.
@@ -5170,6 +5203,22 @@ PostgresMain(int argc, char *argv[],
 						 errmsg("invalid frontend message type %d",
 								firstchar)));
 		}
+#ifdef ADB
+                /*
+                 * If the connection is going idle, release the cluster lock. However
+                 * if the session had invoked a PAUSE CLUSTER earlier, then wait for a
+                 * subsequent UNPAUSE to release this lock
+                 */
+                if (IsUnderPostmaster && IS_PGXC_COORDINATOR && !IsAbortedTransactionBlockState()
+                        && !IsTransactionOrTransactionBlock()
+                        && cluster_lock_held && !cluster_ex_lock_held)
+                {
+                        bool exclusive = false;
+                        ReleaseClusterLock(exclusive);
+                        cluster_lock_held = false;
+                }
+#endif
+
 	}							/* end of input-reading loop */
 }
 

@@ -1,6 +1,10 @@
 /*
  * commands of node
  */
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include<pwd.h>
 
 #include "postgres.h"
 #include "access/genam.h"
@@ -59,6 +63,7 @@ typedef struct AppendNodeInfo
 	int32 nodeport;
 	Oid   nodemasteroid;
 	char *nodeusername;
+	Oid		tupleoid;
 }AppendNodeInfo;
 typedef enum 
 {
@@ -92,9 +97,9 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
-static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath);
+static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn);
 static bool mgr_start_one_gtm_master(void);
-static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype);
+static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, PGconn **pg_conn, Oid cnoid);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
 static bool is_node_running(char *hostaddr, int32 hostport);
 static void mgr_make_sure_all_running(char node_type);
@@ -167,6 +172,9 @@ static Oid mgr_get_role_oid_or_public(const char *rolname);
 static void mgr_priv_all(char command_type, char *username_list_str);
 static void mgr_send_sql_cmd(Oid hostoid, char cmdtype, char *cmdstr);
 extern void mgr_clean_hba_table(void);
+static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
+static void mgr_unlock_cluster(PGconn **pg_conn);
+static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -1323,10 +1331,12 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	Oid nodemasternameoid;
 	Oid	tupleOid;
 	Oid	masterhostOid;
+	Oid cnoid;
 	bool ismasterrunning = 0;
 	HeapTuple gtmmastertuple;
 	NameData cndnnamedata;
 	HeapTuple mastertuple;
+	PGconn *pg_conn;
 
 	getAgentCmdRst->ret = false;
 	initStringInfo(&infosendmsg);
@@ -1504,6 +1514,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
 	{
+		/*pause cluster*/
+		mgr_lock_cluster(&pg_conn, &cnoid);
 		/*stop gtm master*/
 		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		if(!HeapTupleIsValid(mastertuple))
@@ -1520,6 +1532,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	else if (AGT_CMD_DN_FAILOVER == cmdtype)
 	{
+		/*pause cluster*/
+		mgr_lock_cluster(&pg_conn, &cnoid);
 		/*stop datanode master*/
 		 mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		 if(!HeapTupleIsValid(mastertuple))
@@ -1658,13 +1672,13 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	if(AGT_CMD_DN_FAILOVER == cmdtype && execok)
 	{
 		namestrcpy(&cndnnamedata, cndnname);
-		mgr_after_datanode_failover_handle(nodemasternameoid, &cndnnamedata, cndnport, hostaddress, noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype);
+		mgr_after_datanode_failover_handle(nodemasternameoid, &cndnnamedata, cndnport, hostaddress, noderel, getAgentCmdRst, aimtuple, cndnPath, nodetype, &pg_conn, cnoid);
 	}
 
 	/*gtm failover*/
 	if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype && execok)
 	{
-		mgr_after_gtm_failover_handle(hostaddress, cndnport, noderel, getAgentCmdRst, aimtuple, cndnPath);
+		mgr_after_gtm_failover_handle(hostaddress, cndnport, noderel, getAgentCmdRst, aimtuple, cndnPath, &pg_conn);
 	}
 
 	pfree(infosendmsg.data);
@@ -4446,7 +4460,7 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
-
+	appendnodeinfo->tupleoid = HeapTupleGetOid(tuple);
 	host = get_hostaddress_from_hostoid(mgr_node->nodehost);
 
 	initStringInfo(&port);
@@ -5700,7 +5714,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 * 5.new gtm master: refresh postgresql.conf and restart it
 * 6.refresh gtm extra nodemasternameoid in node systbl and recovery.confs and restart gtm extra
 */
-static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath)
+static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn)
 {
 	StringInfoData infosendmsg;
 	StringInfoData infosendsyncmsg;
@@ -5723,7 +5737,9 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	char aimtuplenodetype;
 	char nodetype;
 	ScanKeyData key[2];
-
+	PGresult * volatile res = NULL;
+	int maxtry = 3;
+	int try = 0;
 
 	initStringInfo(&infosendmsg);
 	newgtmtupleoid = HeapTupleGetOid(aimtuple);
@@ -5741,7 +5757,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
 	{
-		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+		ereport(WARNING, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			,errmsg("gtm master \"%s\" does not exist", cndnname.data)));
 	}
 	/*2.refresh all coordinator/datanode postgresql.conf:agtm_port,agtm_host*/
@@ -5787,7 +5803,8 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 					,DEFAULT_DB
 					,user);
 				pfree(user);
-				appendStringInfo(&infosendsyncmsg, " %s\"", "select sync_agtm_xid()");
+				appendStringInfo(&infosendsyncmsg, " %s\"", "select * from sync_agtm_xid()");
+				ereport(LOG, (errmsg("sync agtm xid: nodename \"%s\", sql \"%s\"", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
 				mgr_send_sql_cmd(mgr_nodetmp->nodehost, AGT_CMD_PSQL_CMD, infosendsyncmsg.data);
 			}
 		}
@@ -5820,20 +5837,40 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		cndnPathtmp = TextDatumGetCString(datumPath);
 		resetStringInfo(&(getAgentCmdRst->description));		
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, cndnPathtmp, &infosendmsg, hostOidtmp, getAgentCmdRst);
-		/*send sync agtm xid*/
-		resetStringInfo(&infosendsyncmsg);
-		user = get_hostuser_from_hostoid(mgr_nodetmp->nodehost);
-		appendStringInfo(&infosendsyncmsg, " -h %s -p %u -d %s -U %s -a -c \""
-			,"127.0.0.1"
-			,mgr_nodetmp->nodeport
-			,DEFAULT_DB
-			,user);
-		pfree(user);
-		appendStringInfo(&infosendsyncmsg, " %s\"", "select sync_agtm_xid()");
-		mgr_send_sql_cmd(mgr_nodetmp->nodehost, AGT_CMD_PSQL_CMD, infosendsyncmsg.data);
 	}
-	pfree(infosendsyncmsg.data);
 	heap_endscan(rel_scan);
+	/*send sync agtm xid*/
+	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_nodetmp);
+		resetStringInfo(&infosendsyncmsg);
+		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (%s) 'select * from sync_agtm_xid()';", NameStr(mgr_nodetmp->nodename));
+		try = maxtry;
+		while(try >= 0)
+		{
+			ereport(LOG, (errmsg("sync agtm xid: nodename \"%s\", sql \"%s\"", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
+			res = PQexec(*pg_conn, infosendsyncmsg.data);
+			if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+			{
+				try--;
+			}
+			else
+				break;
+		}
+		if (try<0)
+		{
+			ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
+				,errmsg("on coordinator \"%s\" execute \"%s\" fail", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
+		}
+		else
+			PQclear(res);
+	}
+	heap_endscan(rel_scan);
+	pfree(infosendsyncmsg.data);
+	mgr_unlock_cluster(pg_conn);
+
 	/*3.delete old master record in node systbl*/
 	simple_heap_delete(noderel, &mastertuple->t_self);
 	CatalogUpdateIndexes(noderel, mastertuple);
@@ -5917,7 +5954,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 * 2. change the datanode  extra dn1's recovery.conf:host,port
 * 3. restart datanode extra dn1
 */
-static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport,char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype)
+static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport,char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, PGconn **pg_conn, Oid cnoid)
 {
 	StringInfoData infosendmsg;
 	HeapScanDesc rel_scan;
@@ -5949,8 +5986,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 	Assert(mgr_node);
-
-	getrefresh = mgr_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst);
+	getrefresh = mgr_pqexec_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst, pg_conn, cnoid);
 	if(!getrefresh)
 	{
 		ReleaseSysCache(mastertuple);
@@ -5959,6 +5995,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 		getAgentCmdRst->ret = getrefresh;
 		return;
 	}
+	mgr_unlock_cluster(pg_conn);
 	/*3.delete old master record in node systbl*/
 	simple_heap_delete(noderel, &mastertuple->t_self);
 	CatalogUpdateIndexes(noderel, mastertuple);
@@ -6890,9 +6927,9 @@ static void mgr_get_cmd_head_word(char cmdtype, char *str)
 	{
 		case AGT_CMD_GTM_INIT:
 		case AGT_CMD_GTM_SLAVE_INIT:
-	  case AGT_CMD_GTM_START_MASTER:
 			strcpy(str, "initagtm");
 			break;
+		case AGT_CMD_GTM_START_MASTER:
 		case AGT_CMD_GTM_START_SLAVE:
 		case AGT_CMD_GTM_STOP_MASTER:
 		case AGT_CMD_GTM_STOP_SLAVE:
@@ -9533,4 +9570,183 @@ static void mgr_send_sql_cmd(Oid hostoid, char cmdtype, char *cmdstr)
 		ereport(WARNING, (errmsg("sync agtm xid fail, %s", getAgentCmdRst.description.data)));
 	pfree(getAgentCmdRst.description.data);
 	ma_close(ma);
+}
+
+static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
+{
+	Oid coordhostoid;
+	int32 coordport;
+	AppendNodeInfo appendnodeinfo;
+	char *coordhost;
+	char coordport_buf[10];
+	char hname[128];
+	struct hostent *hent;
+	char *address;
+	char *current_user;
+	struct passwd *pwd;
+	PGresult *res;
+
+	gethostname(hname, sizeof(hname));
+	hent = gethostbyname(hname);
+	address = pstrdup(inet_ntoa(*(struct in_addr*)(hent->h_addr_list[0])));
+	 pwd = getpwuid(getuid());
+	current_user = pwd->pw_name;
+	appendnodeinfo.nodeaddr = address;
+	appendnodeinfo.nodeusername = current_user;
+	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo);
+	coordhost = get_hostaddress_from_hostoid(coordhostoid);
+	*cnoid = appendnodeinfo.tupleoid;
+	sprintf(coordport_buf, "%d", coordport);
+	*pg_conn = PQsetdbLogin(coordhost
+							,coordport_buf
+							,NULL, NULL
+							,DEFAULT_DB
+							,current_user
+							,NULL);
+
+	if (*pg_conn == NULL || PQstatus((PGconn*)*pg_conn) != CONNECTION_OK)
+	{
+		ereport(ERROR,
+			(errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)*pg_conn)),
+			errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
+				coordhost, coordport, DEFAULT_DB, appendnodeinfo.nodeusername)));
+	}
+	pfree(address);
+	pfree(coordhost);
+
+	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
+	res = PQexec(*pg_conn, "SELECT PG_PAUSE_CLUSTER();");
+	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ereport(WARNING,
+			(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)*pg_conn)),
+			errhint("execute command failed: \"SELECT PG_PAUSE_CLUSTER()\".")));
+	}
+	else
+		PQclear(res);
+}
+
+static void mgr_unlock_cluster(PGconn **pg_conn)
+{
+	PGresult *res;
+	char *sqlstr = "SELECT PG_UNPAUSE_CLUSTER();";
+
+	ereport(LOG, (errmsg("%s", sqlstr)));
+	res = PQexec(*pg_conn, sqlstr);
+	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
+			,errmsg("on coordinator execute \"%s\" fail %s", sqlstr, PQerrorMessage((PGconn*)*pg_conn))));
+	}
+	else
+		PQclear(res);
+	PQfinish(*pg_conn);
+}
+
+static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid)
+{
+	struct tuple_cndn *prefer_cndn;
+	ListCell *lc_out, *dn_lc;
+	int coordinator_num = 0, datanode_num = 0;
+	HeapTuple tuple_in, tuple_out;
+	StringInfoData cmdstring;
+	Form_mgr_node mgr_node_out, mgr_node_in;
+	char *host_address;
+	bool is_preferred = false;
+	PGresult *res;
+	int maxtry = 3;
+	int try = 0;
+
+	prefer_cndn = get_new_pgxc_node(cmd, dnname, nodetype);
+	if(!PointerIsValid(prefer_cndn->coordiantor_list))
+	{
+		appendStringInfoString(&(getAgentCmdRst->description),"not exist coordinator in the cluster");
+		return false;
+	}
+
+	initStringInfo(&cmdstring);
+	coordinator_num = 0;
+	foreach(lc_out, prefer_cndn->coordiantor_list)
+	{
+		coordinator_num = coordinator_num + 1;
+		tuple_out = (HeapTuple)lfirst(lc_out);
+		mgr_node_out = (Form_mgr_node)GETSTRUCT(tuple_out);
+		Assert(mgr_node_out);
+		resetStringInfo(&(getAgentCmdRst->description));
+		namestrcpy(&(getAgentCmdRst->nodename), NameStr(mgr_node_out->nodename));
+		datanode_num = 0;
+		foreach(dn_lc, prefer_cndn->datanode_list)
+		{
+			datanode_num = datanode_num +1;
+			tuple_in = (HeapTuple)lfirst(dn_lc);
+			mgr_node_in = (Form_mgr_node)GETSTRUCT(tuple_in);
+			Assert(mgr_node_in);
+			host_address = get_hostaddress_from_hostoid(mgr_node_in->nodehost);
+			if(coordinator_num == datanode_num)
+			{
+				is_preferred = true;
+			}
+			else
+			{
+				is_preferred = false;
+			}
+			resetStringInfo(&cmdstring);
+			if (cnoid == HeapTupleGetOid(tuple_out))
+				appendStringInfo(&cmdstring, "select pg_alter_node('%s', '%s', %d, %s);"
+								,NameStr(mgr_node_in->nodename)
+								,host_address
+								,mgr_node_in->nodeport
+								,true == is_preferred ? "true":"false");
+			else
+				appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pg_alter_node(''%s'', ''%s'', %d, %s);'"
+								,NameStr(mgr_node_out->nodename)
+								,NameStr(mgr_node_in->nodename)
+								,host_address
+								,mgr_node_in->nodeport
+								,true == is_preferred ? "true":"false");
+			pfree(host_address);
+			try = maxtry;
+			while(try >= 0)
+			{
+				ereport(LOG, (errmsg("%s", cmdstring.data)));
+				res = PQexec(*pg_conn, cmdstring.data);
+				if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+				{
+					try--;
+				}
+				else
+					break;
+			}
+			if (try<0)
+			{
+				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
+					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", NameStr(mgr_node_out->nodename), cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+			}
+			PQclear(res);
+			resetStringInfo(&cmdstring);
+			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (%s) 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
+			try = maxtry;
+			while(try >= 0)
+			{
+				ereport(LOG, (errmsg("%s", cmdstring.data)));
+				res = PQexec(*pg_conn, cmdstring.data);
+				if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+				{
+					try--;
+				}
+				else
+					break;
+			}
+			if (try<0)
+			{
+				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
+					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", NameStr(mgr_node_out->nodename), cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+			}
+			else
+				PQclear(res);
+
+		}
+	}
+	pfree(cmdstring.data);
+	return true;
 }

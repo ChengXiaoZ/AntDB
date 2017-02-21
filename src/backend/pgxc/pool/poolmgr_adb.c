@@ -30,6 +30,9 @@
 #include "utils/resowner.h"
 #include "libpq/libpq-fe.h"
 #include "libpq/libpq-int.h"
+#ifdef ADB
+#include "pgxc/pause.h"
+#endif
 
 #define START_POOL_ALLOC	512
 #define STEP_POLL_ALLOC		8
@@ -2100,7 +2103,7 @@ static void release_slot(ADBNodePoolSlot *slot, bool force_close)
 	AssertArg(slot);
 	if(force_close)
 	{
-		destroy_slot(slot, true);
+		destroy_slot(slot, false);
 	}else if(check_slot_status(slot) != false)
 	{
 		slot->slot_state = SLOT_STATE_RELEASED;
@@ -2348,6 +2351,14 @@ static void agent_release_connections(PoolAgent *agent, bool force_destroy)
 	ADBNodePoolSlot *slot;
 	Size i;
 	AssertArg(agent);
+#ifdef ADB
+        if (!force_destroy && cluster_ex_lock_held)
+        {
+                elog(LOG, "Not releasing connection with cluster lock");
+                return;
+        }
+#endif
+
 	for(i=0;i<agent->num_dn_connections;++i)
 	{
 		Assert(agent->dn_connections);

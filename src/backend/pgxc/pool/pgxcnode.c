@@ -55,6 +55,9 @@
 #include "utils/lsyscache.h"
 #include "utils/formatting.h"
 #include "../interfaces/libpq/libpq-fe.h"
+#ifdef ADB
+#include "pgxc/pause.h"
+#endif
 
 #define CMD_ID_MSG_LEN 8
 #define PGXC_CANCEL_DELAY 15
@@ -93,7 +96,6 @@ static void pgxc_node_all_free(void);
 
 static int	get_int(PGXCNodeHandle * conn, size_t len, int *out);
 static int	get_char(PGXCNodeHandle * conn, char *out);
-
 /*
  * Initialize PGXCNodeHandle struct
  */
@@ -837,6 +839,13 @@ void release_handles2(bool force_close)
 #ifdef ADB
 	bool has_error = false;
 #endif /* ADB */
+#ifdef ADB
+        /* don't free connection if holding a cluster lock */
+        if (cluster_ex_lock_held)
+        {
+                return;
+        }
+#endif
 	if (datanode_count == 0 && coord_count == 0)
 		return;
 
@@ -2672,4 +2681,3 @@ PGXCNodeGetNodeIdFromName(char *node_name, char node_type)
 
 	return PGXCNodeGetNodeId(nodeoid, node_type);
 }
-

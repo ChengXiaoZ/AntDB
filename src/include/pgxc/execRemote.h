@@ -203,5 +203,6 @@ extern int pgxcGetInvolvedRemoteNodes(Oid **nodeIds);
 extern int pgxcGetInvolvedNodes(bool localNode, Oid **nodeIds);
 extern void AbnormalAbort_Remote(void);
 #endif /* ADB */
-
+extern RemoteQueryState *CreateResponseCombiner(int node_count, CombineType combine_type);
+extern void CloseCombiner(RemoteQueryState *combiner);
 #endif
