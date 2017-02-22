@@ -66,7 +66,9 @@
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
+#ifdef ADB
 extern bool	debug_enable_satisfy_mvcc;
+#endif
 
 /* Static variables representing various special snapshot semantics */
 SnapshotData SnapshotNowData = {HeapTupleSatisfiesNow};
@@ -1099,8 +1101,10 @@ bool
 HeapTupleSatisfiesMVCC(HeapTupleHeader tuple, Snapshot snapshot,
 					   Buffer buffer)
 {
+#ifdef ADB
 	if(debug_enable_satisfy_mvcc)
 		return true;
+#endif
 
 	if (!(tuple->t_infomask & HEAP_XMIN_COMMITTED))
 	{
