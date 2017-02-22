@@ -502,16 +502,6 @@ ReleaseClusterLock(bool exclusive)
 		 */
 		clinfo->cl_holder_pid = 0;
 	}
-	else
-	{
- 		if (clinfo->cl_holder_pid != 0)
-		{
-			SpinLockRelease(&clinfo->cl_mutex);
-			ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Inconsistent state while releasing cluster lock")));
-		}
-	}
 	SpinLockRelease(&clinfo->cl_mutex);
 }
 

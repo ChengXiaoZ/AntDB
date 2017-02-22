@@ -5846,7 +5846,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
 		resetStringInfo(&infosendsyncmsg);
-		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (%s) 'select * from sync_agtm_xid()';", NameStr(mgr_nodetmp->nodename));
+		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (\"%s\") 'select * from sync_agtm_xid()';", NameStr(mgr_nodetmp->nodename));
 		try = maxtry;
 		while(try >= 0)
 		{
@@ -5991,7 +5991,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	{
 		ReleaseSysCache(mastertuple);
 		resetStringInfo(&(getAgentCmdRst->description));
-		appendStringInfoString(&(getAgentCmdRst->description),"ERROR: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
+		appendStringInfoString(&(getAgentCmdRst->description),"WARNING: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
 		getAgentCmdRst->ret = getrefresh;
 		return;
 	}
@@ -9656,6 +9656,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	PGresult *res;
 	int maxtry = 3;
 	int try = 0;
+	bool result = true;
 
 	prefer_cndn = get_new_pgxc_node(cmd, dnname, nodetype);
 	if(!PointerIsValid(prefer_cndn->coordiantor_list))
@@ -9719,12 +9720,13 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 			}
 			if (try<0)
 			{
+				result = false;
 				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
 					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", NameStr(mgr_node_out->nodename), cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 			}
 			PQclear(res);
 			resetStringInfo(&cmdstring);
-			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (%s) 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
+			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
 			try = maxtry;
 			while(try >= 0)
 			{
@@ -9739,6 +9741,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 			}
 			if (try<0)
 			{
+				result = false;
 				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
 					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", NameStr(mgr_node_out->nodename), cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 			}
@@ -9748,5 +9751,5 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 		}
 	}
 	pfree(cmdstring.data);
-	return true;
+	return result;
 }
