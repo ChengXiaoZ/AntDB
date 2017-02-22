@@ -203,6 +203,12 @@ HandleClusterPause(bool pause, bool initiator)
 							 errmsg("\"%s\" command failed "
 									"with error %s", action, handle->error)));
 			}
+			/* throw away message */
+			if (combiner->currentRow.msg)
+			{
+				pfree(combiner->currentRow.msg);
+				combiner->currentRow.msg = NULL;
+			}
 		}
 
  		if (!combiner->errorMessage.data)
