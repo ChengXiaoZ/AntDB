@@ -2709,6 +2709,8 @@ PrepareTransaction(void)
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId,
 							nodecnt, nodeIds, isimplicit);
+
+	StartRemoteXactPrepare(gxact);
 #else
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);
@@ -2845,6 +2847,7 @@ PrepareTransaction(void)
 	s->nChildXids = 0;
 	s->maxChildXids = 0;
 #ifdef ADB
+	EndRemoteXactPrepare(gxact);
 	UnsetGlobalTransactionId();
 #endif
 

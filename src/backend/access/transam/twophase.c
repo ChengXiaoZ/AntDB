@@ -1090,10 +1090,13 @@ save_state_data(const void *data, uint32 len)
 /*
  * Tell remote xact manager to record log of the transaction.
  */
-static void
+void
 StartRemoteXactPrepare(GlobalTransaction gxact)
 {
 	if (!IsUnderRemoteXact())
+		return ;
+
+	if (IsConnFromRxactMgr())
 		return ;
 
 	/* Record PREPARE log */
@@ -1108,10 +1111,13 @@ StartRemoteXactPrepare(GlobalTransaction gxact)
  *
  * It means we tell remote xact manager we step into the second phase.
  */
-static void
+void
 EndRemoteXactPrepare(GlobalTransaction gxact)
 {
 	if (!IsUnderRemoteXact())
+		return ;
+
+	if (IsConnFromRxactMgr())
 		return ;
 
 	PG_TRY();
@@ -1152,10 +1158,6 @@ StartPrepare(GlobalTransaction gxact)
 	RelFileNode *commitrels;
 	RelFileNode *abortrels;
 	SharedInvalidationMessage *invalmsgs;
-
-#ifdef ADB
-	StartRemoteXactPrepare(gxact);
-#endif
 
 	/* Initialize linked list */
 	records.head = palloc0(sizeof(XLogRecData));
@@ -1399,10 +1401,6 @@ EndPrepare(GlobalTransaction gxact)
 	SyncRepWaitForLSN(gxact->prepare_lsn);
 
 	records.tail = records.head = NULL;
-
-#ifdef ADB
-	EndRemoteXactPrepare(gxact);
-#endif
 }
 
 /*
