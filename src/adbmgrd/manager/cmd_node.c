@@ -175,6 +175,7 @@ extern void mgr_clean_hba_table(void);
 static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
 static void mgr_unlock_cluster(PGconn **pg_conn);
 static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
+static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxtry);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -5730,6 +5731,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Datum datumPath;
 	bool isNull;
 	bool bget = false;
+	bool needloop = true;
 	char *cndnPathtmp;
 	NameData cndnname;
 	char *strlabel;
@@ -5847,25 +5849,31 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		Assert(mgr_nodetmp);
 		resetStringInfo(&infosendsyncmsg);
 		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (\"%s\") 'select * from sync_agtm_xid()';", NameStr(mgr_nodetmp->nodename));
+		ereport(LOG, (errmsg("sync agtm xid: nodename \"%s\", sql \"%s\"", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
 		try = maxtry;
+		needloop = true;
 		while(try >= 0)
 		{
-			ereport(LOG, (errmsg("sync agtm xid: nodename \"%s\", sql \"%s\"", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
 			res = PQexec(*pg_conn, infosendsyncmsg.data);
 			if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
-			{
 				try--;
-			}
 			else
+			{
+				needloop = false;
+			}
+			if (res)
+			{
+				PQclear(res);
+				res = NULL;
+			}
+			if (!needloop)
 				break;
 		}
 		if (try<0)
 		{
 			ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-				,errmsg("on coordinator \"%s\" execute \"%s\" fail", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
+				,errmsg("execute \"%s\" fail", infosendsyncmsg.data)));
 		}
-		else
-			PQclear(res);
 	}
 	heap_endscan(rel_scan);
 	pfree(infosendsyncmsg.data);
@@ -5989,11 +5997,9 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	getrefresh = mgr_pqexec_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst, pg_conn, cnoid);
 	if(!getrefresh)
 	{
-		ReleaseSysCache(mastertuple);
 		resetStringInfo(&(getAgentCmdRst->description));
 		appendStringInfoString(&(getAgentCmdRst->description),"WARNING: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
 		getAgentCmdRst->ret = getrefresh;
-		return;
 	}
 	mgr_unlock_cluster(pg_conn);
 	/*3.delete old master record in node systbl*/
@@ -9584,7 +9590,8 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	char *address;
 	char *current_user;
 	struct passwd *pwd;
-	PGresult *res;
+	int try = 0;
+	const int maxtry = 3;
 
 	gethostname(hname, sizeof(hname));
 	hent = gethostbyname(hname);
@@ -9615,31 +9622,28 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	pfree(coordhost);
 
 	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
-	res = PQexec(*pg_conn, "SELECT PG_PAUSE_CLUSTER();");
-	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxtry);
+	if (try < 0)
 	{
 		ereport(WARNING,
 			(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)*pg_conn)),
 			errhint("execute command failed: \"SELECT PG_PAUSE_CLUSTER()\".")));
 	}
-	else
-		PQclear(res);
 }
 
 static void mgr_unlock_cluster(PGconn **pg_conn)
 {
-	PGresult *res;
+	int try = 0;
+	const int maxtry = 3;
 	char *sqlstr = "SELECT PG_UNPAUSE_CLUSTER();";
 
 	ereport(LOG, (errmsg("%s", sqlstr)));
-	res = PQexec(*pg_conn, sqlstr);
-	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, sqlstr, maxtry);
+	if (try<0)
 	{
 		ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-			,errmsg("on coordinator execute \"%s\" fail %s", sqlstr, PQerrorMessage((PGconn*)*pg_conn))));
+			,errmsg("execute \"%s\" fail %s", sqlstr, PQerrorMessage((PGconn*)*pg_conn))));
 	}
-	else
-		PQclear(res);
 	PQfinish(*pg_conn);
 }
 
@@ -9653,8 +9657,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	Form_mgr_node mgr_node_out, mgr_node_in;
 	char *host_address;
 	bool is_preferred = false;
-	PGresult *res;
-	int maxtry = 3;
+	const int maxtry = 128;
 	int try = 0;
 	bool result = true;
 
@@ -9706,50 +9709,67 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 								,mgr_node_in->nodeport
 								,true == is_preferred ? "true":"false");
 			pfree(host_address);
-			try = maxtry;
-			while(try >= 0)
-			{
-				ereport(LOG, (errmsg("%s", cmdstring.data)));
-				res = PQexec(*pg_conn, cmdstring.data);
-				if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
-				{
-					try--;
-				}
-				else
-					break;
-			}
+			ereport(LOG, (errmsg("%s", cmdstring.data)));
+			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtry);
 			if (try<0)
 			{
 				result = false;
 				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", NameStr(mgr_node_out->nodename), cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+					,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 			}
-			PQclear(res);
 			resetStringInfo(&cmdstring);
-			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
-			try = maxtry;
-			while(try >= 0)
+			if (cnoid == HeapTupleGetOid(tuple_out))
+				appendStringInfo(&cmdstring, "%s", "select pgxc_pool_reload();");
+			else
+				appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
+			ereport(LOG, (errmsg("%s", cmdstring.data)));
+			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtry);
+			if (try < 0)
 			{
-				ereport(LOG, (errmsg("%s", cmdstring.data)));
-				res = PQexec(*pg_conn, cmdstring.data);
-				if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
-				{
-					try--;
-				}
-				else
-					break;
+				pg_usleep(1 * 1000000L);
+				try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtry);
 			}
-			if (try<0)
+			if (try < 0)
 			{
 				result = false;
 				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", NameStr(mgr_node_out->nodename), cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+					,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 			}
-			else
-				PQclear(res);
 
 		}
 	}
 	pfree(cmdstring.data);
+	return result;
+}
+
+/*
+* try maxtry to execute the sql, the result of sql if bool type
+*/
+static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxtry)
+{
+	int result = maxtry;
+	PGresult *res;
+
+	while(result >= 0)
+	{
+		result--;
+		res = PQexec(*pg_conn, sqlstr);
+		if (PQresultStatus(res) == PGRES_TUPLES_OK)
+		{
+			if (strcasecmp("t", PQgetvalue(res, 0, 0)) == 0)
+			{
+				PQclear(res);
+				res = NULL;
+				break;
+			}
+		}
+		if (res)
+		{
+			PQclear(res);
+			res = NULL;
+		}
+		pg_usleep(1 * 1000L);
+	}
+
 	return result;
 }

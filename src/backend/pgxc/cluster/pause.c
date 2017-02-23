@@ -11,7 +11,6 @@
  */
 
 #ifdef ADB
-#include <signal.h>
 
 #include "postgres.h"
 #include "pgxc/execRemote.h"
@@ -122,8 +121,8 @@ HandleClusterPause(bool pause, bool initiator)
 		ProcessClusterPauseRequest(pause);
 		return;
 	}
-	if(pause)
-		PoolManagerSetCommand(POOL_CMD_TEMP, NULL); 
+	//if(pause)
+	//	PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
 
 	/*
 	 * Send SELECT PG_PAUSE_CLUSTER()/SELECT PG_UNPAUSE_CLUSTER() message to all the coordinators. We should send an
@@ -308,7 +307,6 @@ pg_unpause_cluster(PG_FUNCTION_ARGS)
 	char	*action = pause ? pause_cluster_str : unpause_cluster_str;
 	bool	 initiator = true;
 
-	pqsignal(SIGINT, SIG_IGN);
 	elog(DEBUG2, "\"%s\" request received", action);
 
 	/* Only a superuser can perform this activity on a cluster */
@@ -346,7 +344,6 @@ PGXCCleanClusterLock(int code, Datum arg)
 	PGXCNodeAllHandles *coord_handles;
 	int conn;
 
-	pqsignal(SIGINT, SIG_IGN);
 	if (cluster_lock_held && !cluster_ex_lock_held)
 	{
 		ReleaseClusterLock (false);
