@@ -51,7 +51,7 @@
 #define SYNC            't'
 #define ASYNC           'f'
 #define SPACE           ' '
-
+#define DEFAULT_WAIT	60
 
 typedef struct AppendNodeInfo
 {
@@ -5736,8 +5736,10 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	NameData cndnname;
 	char *strlabel;
 	char *user;
+	char *address;
 	char aimtuplenodetype;
 	char nodetype;
+	char coordport_buf[10];
 	ScanKeyData key[2];
 	PGresult * volatile res = NULL;
 	int maxtry = 3;
@@ -5754,7 +5756,31 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	strlabel = (nodetype == GTM_TYPE_GTM_EXTRA ? "extra":"slave");
 	/*get nodename*/
 	namestrcpy(&cndnname,NameStr(mgr_node->nodename));
-	
+	address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	sprintf(coordport_buf, "%d", mgr_node->nodeport);
+
+	/*wait the new master accept connect*/
+	fputs(_("waiting for the new master to accept connection..."), stdout);
+	fflush(stdout);
+	try = DEFAULT_WAIT;
+	while(try >= 0)
+	{
+		try--;
+		if (pingNode(address, coordport_buf) != 0)
+		{
+			fputs(_("."), stdout);
+			fflush(stdout);
+			pg_usleep(1 * 1000000L);
+		}
+		else
+			break;
+	}
+	pfree(address);
+	if (try < 0)
+		fputs(_(" failed\n"), stdout);
+	else
+		fputs(_(" done\n"), stdout);
+	fflush(stdout);
 	/*1.stop the old gtm master*/
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
@@ -5980,8 +6006,11 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	char *cndnPathtmp;
 	char *strtmp;
 	char *strlabel;
+	char *address;
 	char secondnodetype;
+	char coordport_buf[10];
 	ScanKeyData key[3];
+	int try = 0;
 
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
@@ -5994,6 +6023,31 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	resetStringInfo(&(getAgentCmdRst->description));
 	mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 	Assert(mgr_node);
+	address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	sprintf(coordport_buf, "%d", mgr_node->nodeport);
+	/*wait the new master accept connect*/
+	fputs(_("waiting for the new master to accept connection..."), stdout);
+	fflush(stdout);
+	try = DEFAULT_WAIT;
+	while(try >= 0)
+	{
+		try--;
+		if (pingNode(address, coordport_buf) != 0)
+		{
+			fputs(_("."), stdout);
+			fflush(stdout);
+			pg_usleep(1 * 1000000L);
+		}
+		else
+			break;
+	}
+	pfree(address);
+	if (try < 0)
+		fputs(_(" failed\n"), stdout);
+	else
+		fputs(_(" done\n"), stdout);
+	fflush(stdout);
+
 	getrefresh = mgr_pqexec_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst, pg_conn, cnoid);
 	if(!getrefresh)
 	{
