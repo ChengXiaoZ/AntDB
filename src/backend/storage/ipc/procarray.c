@@ -1450,10 +1450,20 @@ GetSnapshotData(Snapshot snapshot)
 		snap = GetGlobalSnapshot(snapshot);
 		Assert(snap == snapshot);
 		Assert(snap->xcnt <= snap->max_xcnt);
-		snapshot = snap;
 		subcount = snapshot->subxcnt;
 		count = snapshot->xcnt;
 		suboverflowed = snapshot->suboverflowed;
+
+		LWLockAcquire(ProcArrayLock, LW_SHARED);
+		if (!TransactionIdIsValid(MyPgXact->xmin))
+			MyPgXact->xmin = TransactionXmin = snapshot->xmin;
+		LWLockRelease(ProcArrayLock);
+
+		if (!TransactionIdIsNormal(RecentGlobalXmin))
+			RecentGlobalXmin = FirstNormalTransactionId;
+		RecentXmin = snapshot->xmin;
+
+		return snapshot;
 	}
 #endif /* ADB */
 
