@@ -19,6 +19,10 @@
 #include "access/tupmacs.h"
 #include "storage/bufpage.h"
 
+#ifdef ADB
+#include "fmgr.h"
+#endif
+
 /*
  * MaxTupleAttributeNumber limits the number of (user) columns in a tuple.
  * The key limit on this value is that the size of the fixed overhead for
@@ -710,5 +714,10 @@ extern void heap_free_minimal_tuple(MinimalTuple mtup);
 extern MinimalTuple heap_copy_minimal_tuple(MinimalTuple mtup);
 extern HeapTuple heap_tuple_from_minimal_tuple(MinimalTuple mtup);
 extern MinimalTuple minimal_tuple_from_heap_tuple(HeapTuple htup);
+
+#ifdef ADB
+/* explain infomask of each tuple */
+extern Datum pg_explain_infomask(PG_FUNCTION_ARGS);
+#endif
 
 #endif   /* HTUP_DETAILS_H */

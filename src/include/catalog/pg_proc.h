@@ -5099,6 +5099,9 @@ DESCR("close pool connection in  idle_slot");
 DATA(insert OID = 5304 ( sync_agtm_xid	PGNSP PGUID 12 10 100 0 0 f f f f t t s 0 0 2249 "" "{19,28,28}" "{o,o,o}" "{node,local,agtm}" _null_ sync_agtm_xid _null_ _null_ _null_ ));
 DESCR("synchronize the next XID with AGTM");
 
+DATA(insert OID = 5305 ( pg_explain_infomask	PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "23" _null_ _null_ _null_ _null_ pg_explain_infomask _null_ _null_ _null_ ));
+DESCR("explain infomask of each heap tuple");
+
 #endif
 
 #ifdef ADBMGRD

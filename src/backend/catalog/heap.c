@@ -3791,3 +3791,52 @@ insert_ordered_unique_oid(List *list, Oid datum)
 	lappend_cell_oid(list, prev, datum);
 	return list;
 }
+
+#ifdef ADB
+Datum pg_explain_infomask(PG_FUNCTION_ARGS)
+{
+	uint16			infomask;
+	StringInfoData	buf;
+	text*			result;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+
+	infomask = PG_GETARG_UINT16(0);
+	initStringInfo(&buf);
+
+#define EXPLAIN_INFO(him)	\
+	if (infomask & (him))	\
+		appendStringInfoString(&buf, #him" | ")
+
+	EXPLAIN_INFO(HEAP_HASNULL);
+	EXPLAIN_INFO(HEAP_HASVARWIDTH);
+	EXPLAIN_INFO(HEAP_HASEXTERNAL);
+	EXPLAIN_INFO(HEAP_HASOID);
+	EXPLAIN_INFO(HEAP_XMAX_KEYSHR_LOCK);
+	EXPLAIN_INFO(HEAP_COMBOCID);
+	EXPLAIN_INFO(HEAP_XMAX_EXCL_LOCK);
+	EXPLAIN_INFO(HEAP_XMAX_LOCK_ONLY);
+	EXPLAIN_INFO(HEAP_XMIN_COMMITTED);
+	EXPLAIN_INFO(HEAP_XMIN_INVALID);
+	EXPLAIN_INFO(HEAP_XMAX_COMMITTED);
+	EXPLAIN_INFO(HEAP_XMAX_INVALID);
+	EXPLAIN_INFO(HEAP_XMAX_IS_MULTI);
+	EXPLAIN_INFO(HEAP_UPDATED);
+	EXPLAIN_INFO(HEAP_MOVED_OFF);
+	EXPLAIN_INFO(HEAP_MOVED_IN);
+
+#undef EXPLAIN_INFO
+
+	if (buf.len == 0)
+		PG_RETURN_NULL();
+
+	/* trim the last " | " */
+	buf.data[buf.len - 3] = '\0';
+	result = cstring_to_text(buf.data);
+	pfree(buf.data);
+
+	PG_RETURN_TEXT_P(result);
+}
+#endif
+

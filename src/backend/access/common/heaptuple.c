@@ -297,6 +297,7 @@ heap_attisnull(HeapTuple tup, int attnum)
 		case XC_NodeIdAttributeNumber:
 #ifdef ADB
 		case ADB_RowIdAttributeNumber:
+		case ADB_InfoMaskAttributeNumber:
 #endif /* ADB */
 #endif
 			/* these are never null */
