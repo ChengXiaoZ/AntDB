@@ -175,7 +175,7 @@ extern void mgr_clean_hba_table(void);
 static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
 static void mgr_unlock_cluster(PGconn **pg_conn);
 static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
-static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxtry);
+static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxseconds, const int msonce);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -5760,7 +5760,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	sprintf(coordport_buf, "%d", mgr_node->nodeport);
 
 	/*wait the new master accept connect*/
-	fputs(_("waiting for the new master to accept connection..."), stdout);
+	fputs(_("waiting for the new master can accept connections..."), stdout);
 	fflush(stdout);
 	try = DEFAULT_WAIT;
 	while(try >= 0)
@@ -6026,7 +6026,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	sprintf(coordport_buf, "%d", mgr_node->nodeport);
 	/*wait the new master accept connect*/
-	fputs(_("waiting for the new master to accept connection..."), stdout);
+	fputs(_("waiting for the new master can accept connection..."), stdout);
 	fflush(stdout);
 	try = DEFAULT_WAIT;
 	while(try >= 0)
@@ -9645,7 +9645,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	char *current_user;
 	struct passwd *pwd;
 	int try = 0;
-	const int maxtry = 3;
+	const int maxtime = 1;
 
 	gethostname(hname, sizeof(hname));
 	hent = gethostbyname(hname);
@@ -9676,7 +9676,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	pfree(coordhost);
 
 	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
-	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxtry);
+	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxtime, 100);
 	if (try < 0)
 	{
 		ereport(WARNING,
@@ -9688,11 +9688,11 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 static void mgr_unlock_cluster(PGconn **pg_conn)
 {
 	int try = 0;
-	const int maxtry = 3;
+	const int maxtime = 1;
 	char *sqlstr = "SELECT PG_UNPAUSE_CLUSTER();";
 
 	ereport(LOG, (errmsg("%s", sqlstr)));
-	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, sqlstr, maxtry);
+	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, sqlstr, maxtime, 100);
 	if (try<0)
 	{
 		ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
@@ -9711,9 +9711,9 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	Form_mgr_node mgr_node_out, mgr_node_in;
 	char *host_address;
 	bool is_preferred = false;
-	const int maxtry = 128;
-	int try = 0;
 	bool result = true;
+	int maxtime = DEFAULT_WAIT;
+	int try = 0;
 
 	prefer_cndn = get_new_pgxc_node(cmd, dnname, nodetype);
 	if(!PointerIsValid(prefer_cndn->coordiantor_list))
@@ -9724,6 +9724,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 
 	initStringInfo(&cmdstring);
 	coordinator_num = 0;
+	maxtime = maxtime * 2;
 	foreach(lc_out, prefer_cndn->coordiantor_list)
 	{
 		coordinator_num = coordinator_num + 1;
@@ -9764,44 +9765,44 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 								,true == is_preferred ? "true":"false");
 			pfree(host_address);
 			ereport(LOG, (errmsg("%s", cmdstring.data)));
-			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtry);
+			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, 1, 100);
 			if (try<0)
 			{
 				result = false;
 				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
 					,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 			}
-			resetStringInfo(&cmdstring);
-			if (cnoid == HeapTupleGetOid(tuple_out))
-				appendStringInfo(&cmdstring, "%s", "select pgxc_pool_reload();");
-			else
-				appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
-			ereport(LOG, (errmsg("%s", cmdstring.data)));
-			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtry);
-			if (try < 0)
-			{
-				pg_usleep(1 * 1000000L);
-				try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtry);
-			}
-			if (try < 0)
-			{
-				result = false;
-				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-					,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
-			}
-
 		}
+		resetStringInfo(&cmdstring);
+		if (cnoid == HeapTupleGetOid(tuple_out))
+			appendStringInfo(&cmdstring, "%s", "select pgxc_pool_reload();");
+		else
+			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
+		ereport(LOG, (errmsg("%s", cmdstring.data)));
+		if (maxtime > 2)
+			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtime, 100);
+		else
+			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, 2, 100);
+		if (try < 0)
+		{
+			maxtime = 0;
+			result = false;
+			ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
+				,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+		}
+		else
+			maxtime = try*(100/1000.0)+1;
 	}
 	pfree(cmdstring.data);
 	return result;
 }
 
 /*
-* try maxtry to execute the sql, the result of sql if bool type
+* try maxseconds to execute the sql, the result of sql if bool type, the unit of msonce is ms
 */
-static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxtry)
+static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxseconds, const int msonce)
 {
-	int result = maxtry;
+	int result = maxseconds*(1000/msonce);
 	PGresult *res;
 
 	while(result >= 0)
@@ -9822,7 +9823,7 @@ static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const i
 			PQclear(res);
 			res = NULL;
 		}
-		pg_usleep(1 * 1000L);
+		pg_usleep(1000 * msonce);
 	}
 
 	return result;
