@@ -1288,6 +1288,7 @@ OutputGlobalSnapshot(Snapshot snapshot)
 void
 SetGlobalSnapshot(StringInfo input_message)
 {
+	CommandId		recvcid;
 	uint32			xcnt;
 	int32			subxcnt;
 	int32			maxsubxcnt;
@@ -1310,8 +1311,17 @@ SetGlobalSnapshot(StringInfo input_message)
 	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
 	/* xmax */
 	GlobalSnapshot->xmax = pq_getmsgint(input_message, sizeof(TransactionId));
-	/* curcid */
-	GlobalSnapshot->curcid = pq_getmsgint(input_message, sizeof(CommandId));
+
+	/*
+	 * curcid
+	 *
+	 * If current GlobalSnapshot has a bigger command id, we prefer to keep it
+	 * rather to replace it.
+	 */
+	recvcid = pq_getmsgint(input_message, sizeof(CommandId));
+	if (recvcid > GlobalSnapshot->curcid)
+		GlobalSnapshot->curcid = recvcid;
+
 	/* xcnt */
 	xcnt = pq_getmsgint(input_message, sizeof(uint32));
 	/* xip */
