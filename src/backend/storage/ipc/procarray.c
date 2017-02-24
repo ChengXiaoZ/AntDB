@@ -1453,7 +1453,7 @@ GetSnapshotData(Snapshot snapshot)
 		subcount = snapshot->subxcnt;
 		count = snapshot->xcnt;
 		suboverflowed = snapshot->suboverflowed;
-
+#if 0
 		LWLockAcquire(ProcArrayLock, LW_SHARED);
 		if (!TransactionIdIsValid(MyPgXact->xmin))
 			MyPgXact->xmin = TransactionXmin = snapshot->xmin;
@@ -1464,6 +1464,7 @@ GetSnapshotData(Snapshot snapshot)
 		RecentXmin = snapshot->xmin;
 
 		return snapshot;
+#endif
 	}
 #endif /* ADB */
 
