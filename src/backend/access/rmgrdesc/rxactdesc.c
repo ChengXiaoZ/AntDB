@@ -72,7 +72,7 @@ static void desc_do(StringInfo buf, const char *rec)
 		oids = NULL;
 	}
 
-	appendStringInfo(buf, "%s '%s';", remote_type_string(type), rec);
+	appendStringInfo(buf, "begin %s '%s';", remote_type_string(type), rec);
 	appendStringInfo(buf, " DB %u;", db_oid);
 
 	if(count > 0)
@@ -97,7 +97,7 @@ static void desc_result(StringInfo buf, const char *rec, bool success)
 	RemoteXactType type;
 	type = (RemoteXactType)(*rec++);
 
-	appendStringInfo(buf, "%s '%s' %s", remote_type_string(type), rec,
+	appendStringInfo(buf, "change '%s' to %s %s", rec, remote_type_string(type),
 		success ? "success" : "failed");
 }
 
@@ -106,5 +106,5 @@ static void desc_change(StringInfo buf, const char *rec)
 	RemoteXactType type;
 	type = (RemoteXactType)(*rec++);
 
-	appendStringInfo(buf, "%s '%s'", remote_type_string(type), rec);
+	appendStringInfo(buf, "%s '%s' %s", remote_type_string(type), rec, "success");
 }
