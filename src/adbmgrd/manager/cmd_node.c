@@ -5762,10 +5762,8 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	/*wait the new master accept connect*/
 	fputs(_("waiting for the new master can accept connections..."), stdout);
 	fflush(stdout);
-	try = DEFAULT_WAIT;
-	while(try >= 0)
+	while(1)
 	{
-		try--;
 		if (pingNode(address, coordport_buf) != 0)
 		{
 			fputs(_("."), stdout);
@@ -5776,10 +5774,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 			break;
 	}
 	pfree(address);
-	if (try < 0)
-		fputs(_(" failed\n"), stdout);
-	else
-		fputs(_(" done\n"), stdout);
+	fputs(_(" done\n"), stdout);
 	fflush(stdout);
 	/*1.stop the old gtm master*/
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
@@ -6010,7 +6005,6 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	char secondnodetype;
 	char coordport_buf[10];
 	ScanKeyData key[3];
-	int try = 0;
 
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
@@ -6026,12 +6020,10 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	sprintf(coordport_buf, "%d", mgr_node->nodeport);
 	/*wait the new master accept connect*/
-	fputs(_("waiting for the new master can accept connection..."), stdout);
+	fputs(_("waiting for the new master can accept connections..."), stdout);
 	fflush(stdout);
-	try = DEFAULT_WAIT;
-	while(try >= 0)
+	while(1)
 	{
-		try--;
 		if (pingNode(address, coordport_buf) != 0)
 		{
 			fputs(_("."), stdout);
@@ -6042,10 +6034,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 			break;
 	}
 	pfree(address);
-	if (try < 0)
-		fputs(_(" failed\n"), stdout);
-	else
-		fputs(_(" done\n"), stdout);
+	fputs(_(" done\n"), stdout);
 	fflush(stdout);
 
 	getrefresh = mgr_pqexec_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst, pg_conn, cnoid);
