@@ -1630,27 +1630,44 @@ send_agtm_port_:
 				if(slot->retry < RetryTimes)
 				{
 					ADBNodePool *node_pool;
-					node_pool = slot->parent;
-					PQfinish(slot->conn);
-					slot->conn = PQconnectStart(node_pool->connstr);
+					node_pool = slot->parent;					
+					if (node_pool->connstr != NULL)
+					{
+						PQfinish(slot->conn);
+						slot->conn = PQconnectStart(node_pool->connstr);
 
-					if(slot->conn == NULL)
-					{
-						ereport(ERROR,
-							(errcode(ERRCODE_OUT_OF_MEMORY)
-							,errmsg("out of memory")));
-					}else if(PQstatus(slot->conn) != CONNECTION_BAD)
-					{
-						slot->slot_state = SLOT_STATE_CONNECTING;
-						slot->poll_state = PGRES_POLLING_WRITING;						
+						if(slot->conn == NULL)
+						{
+							ereport(ERROR,
+								(errcode(ERRCODE_OUT_OF_MEMORY)
+								,errmsg("out of memory")));
+						}else if(PQstatus(slot->conn) != CONNECTION_BAD)
+						{
+							slot->slot_state = SLOT_STATE_CONNECTING;
+							slot->poll_state = PGRES_POLLING_WRITING;						
+						}
+						slot->retry++;
+						ereport(DEBUG1, (errmsg("[pool] reconnect three thimes : %d, backend pid : %d",
+							slot->retry,slot->owner->pid)));
 					}
-					slot->retry++;
-					ereport(DEBUG1, (errmsg("[pool] reconnect three thimes : %d, backend pid : %d",
-						slot->retry,slot->owner->pid)));
+					else
+					{
+						slot->retry = RetryTimes;
+						ereport(WARNING,
+							(errmsg("node_pool->connstr is NULL, may be pgxc_pool_reload free wrong datanode connection")));
+					}
 				}
 			}
 			if(slot->slot_state == SLOT_STATE_ERROR)
+			{
+				/* connect str need to reset */
+				if (NULL != slot->parent->connstr)
+				{
+					pfree(slot->parent->connstr);
+					slot->parent->connstr = NULL;
+				}
 				ereport(ERROR, (errmsg("reconnect three thimes , %s", PQerrorMessage(slot->conn))));
+			}
 			else if(slot->slot_state != SLOT_STATE_LOCKED)
 				all_ready = false;
 			else
@@ -2699,7 +2716,10 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			static PGcustumFuns funs = {NULL, NULL, pq_custom_msg};
 			Assert(slot->parent == node_pool);
 			if(node_pool->connstr == NULL)
-				node_pool->connstr = build_node_conn_str(node_pool->nodeoid, node_pool->parent);
+			{
+				char *str = build_node_conn_str(node_pool->nodeoid, node_pool->parent);
+				node_pool->connstr =MemoryContextStrdup(TopMemoryContext, str);
+			}
 			slot->conn = PQconnectStart(node_pool->connstr);
 			if(slot->conn == NULL)
 			{
@@ -2898,14 +2918,18 @@ static int node_info_check(PoolAgent *agent)
 				continue;
 
 			connstr = build_node_conn_str(node_pool->nodeoid, db_pool);
-			if(connstr == NULL || strcmp(connstr, node_pool->connstr) != 0)
+			if (connstr == NULL)
 			{
-				if(connstr)
-					pfree(connstr);
-				hash_seq_term(&hash_nodepool_status);
-				hash_seq_term(&hash_database_status);
 				res = POOL_CHECK_FAILED;
 				goto node_info_check_end_;
+			}
+			else
+			{
+				if (strcmp(connstr, node_pool->connstr) != 0)
+				{
+					pfree(node_pool->connstr);
+					node_pool->connstr = NULL;
+				}
 			}
 			PFREE_SAFE(connstr);
 			checked_oids = lappend_oid(checked_oids, node_pool->nodeoid);
