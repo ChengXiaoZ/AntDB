@@ -1831,6 +1831,8 @@ static NodeConn* rxact_get_node_conn(Oid db_oid, Oid node_oid, time_t cur_time)
 	if(conn->conn != NULL && PQstatus(conn->conn) == CONNECTION_BAD)
 		rxact_finish_node_conn(conn);
 
+	if(conn->last_use > cur_time)
+		conn->last_use = (time_t)0;
 	if(conn->conn == NULL && conn->last_use < cur_time)
 	{
 		StringInfoData buf;
