@@ -2925,7 +2925,7 @@ static int node_info_check(PoolAgent *agent)
 			}
 			else
 			{
-				if (strcmp(connstr, node_pool->connstr) != 0)
+				if (node_pool->connstr && strcmp(connstr, node_pool->connstr) != 0)
 				{
 					pfree(node_pool->connstr);
 					node_pool->connstr = NULL;
