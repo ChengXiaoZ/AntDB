@@ -97,7 +97,7 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
-static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn);
+static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn, Oid cnoid);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, PGconn **pg_conn, Oid cnoid);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
@@ -175,7 +175,7 @@ extern void mgr_clean_hba_table(void);
 static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
 static void mgr_unlock_cluster(PGconn **pg_conn);
 static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
-static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxseconds, const int msonce);
+static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxnum);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -1679,7 +1679,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	/*gtm failover*/
 	if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype && execok)
 	{
-		mgr_after_gtm_failover_handle(hostaddress, cndnport, noderel, getAgentCmdRst, aimtuple, cndnPath, &pg_conn);
+		mgr_after_gtm_failover_handle(hostaddress, cndnport, noderel, getAgentCmdRst, aimtuple, cndnPath, &pg_conn, cnoid);
 	}
 
 	pfree(infosendmsg.data);
@@ -5715,7 +5715,7 @@ Datum mgr_failover_gtm(PG_FUNCTION_ARGS)
 * 5.new gtm master: refresh postgresql.conf and restart it
 * 6.refresh gtm extra nodemasternameoid in node systbl and recovery.confs and restart gtm extra
 */
-static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn)
+static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn, Oid cnoid)
 {
 	StringInfoData infosendmsg;
 	StringInfoData infosendsyncmsg;
@@ -5724,6 +5724,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Form_mgr_node mgr_nodetmp;
 	HeapTuple tuple;
 	HeapTuple mastertuple;
+	HeapTuple cn_tuple;
 	Oid hostOidtmp;
 	Oid hostOid;
 	Oid nodemasternameoid;
@@ -5734,6 +5735,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	bool needloop = true;
 	char *cndnPathtmp;
 	NameData cndnname;
+	NameData cnnamedata;
 	char *strlabel;
 	char *user;
 	char *address;
@@ -5827,7 +5829,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 					,user);
 				pfree(user);
 				appendStringInfo(&infosendsyncmsg, " %s\"", "select * from sync_agtm_xid()");
-				ereport(LOG, (errmsg("sync agtm xid: nodename \"%s\", sql \"%s\"", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
+				ereport(LOG, (errmsg("on datanode \"%s\" execute \"%s\"", NameStr(mgr_nodetmp->nodename), "select * from sync_agtm_xid()")));
 				mgr_send_sql_cmd(mgr_nodetmp->nodehost, AGT_CMD_PSQL_CMD, infosendsyncmsg.data);
 			}
 		}
@@ -5863,6 +5865,18 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	}
 	heap_endscan(rel_scan);
 	/*send sync agtm xid*/
+	/*get name of coordinator, whos oid is cnoid*/
+	cn_tuple = SearchSysCache1(NODENODEOID, cnoid);
+	if(!HeapTupleIsValid(cn_tuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("oid \"%u\" of coordinator does not exist", cnoid)));
+	}
+	mgr_node = (Form_mgr_node)GETSTRUCT(cn_tuple);
+	Assert(cn_tuple);
+	namestrcpy(&cnnamedata, NameStr(mgr_node->nodename));
+	ReleaseSysCache(cn_tuple);
+
 	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
@@ -5870,7 +5884,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		Assert(mgr_nodetmp);
 		resetStringInfo(&infosendsyncmsg);
 		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (\"%s\") 'select * from sync_agtm_xid()';", NameStr(mgr_nodetmp->nodename));
-		ereport(LOG, (errmsg("sync agtm xid: nodename \"%s\", sql \"%s\"", NameStr(mgr_nodetmp->nodename), infosendsyncmsg.data)));
+		ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", cnnamedata.data, infosendsyncmsg.data)));
 		try = maxtry;
 		needloop = true;
 		while(try >= 0)
@@ -5893,7 +5907,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		if (try<0)
 		{
 			ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-				,errmsg("execute \"%s\" fail", infosendsyncmsg.data)));
+				,errmsg("on coordinator \"%s\" execute \"%s\" fail", cnnamedata.data, infosendsyncmsg.data)));
 		}
 	}
 	heap_endscan(rel_scan);
@@ -5961,7 +5975,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPathtmp, &infosendmsg, mgr_nodetmp->nodehost, getAgentCmdRst);
 		if(!getAgentCmdRst->ret)
 		{
-			ereport(WARNING, (errmsg("refresh agtm %s fail", strlabel)));
+			ereport(WARNING, (errmsg("refresh recovery.conf of agtm %s fail", strlabel)));
 		}
 		/*restart gtm extra*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -9634,7 +9648,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	char *current_user;
 	struct passwd *pwd;
 	int try = 0;
-	const int maxtime = 1;
+	const int maxnum = 3;
 
 	gethostname(hname, sizeof(hname));
 	hent = gethostbyname(hname);
@@ -9665,7 +9679,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	pfree(coordhost);
 
 	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
-	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxtime, 100);
+	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxnum);
 	if (try < 0)
 	{
 		ereport(WARNING,
@@ -9677,11 +9691,11 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 static void mgr_unlock_cluster(PGconn **pg_conn)
 {
 	int try = 0;
-	const int maxtime = 1;
+	const int maxnum = 3;
 	char *sqlstr = "SELECT PG_UNPAUSE_CLUSTER();";
 
 	ereport(LOG, (errmsg("%s", sqlstr)));
-	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, sqlstr, maxtime, 100);
+	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, sqlstr, maxnum);
 	if (try<0)
 	{
 		ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
@@ -9698,11 +9712,14 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	HeapTuple tuple_in, tuple_out;
 	StringInfoData cmdstring;
 	Form_mgr_node mgr_node_out, mgr_node_in;
+	Form_mgr_node mgr_node;
 	char *host_address;
 	bool is_preferred = false;
 	bool result = true;
-	int maxtime = DEFAULT_WAIT;
+	const int maxnum = 3;
 	int try = 0;
+	HeapTuple cn_tuple;
+	NameData cnnamedata;
 
 	prefer_cndn = get_new_pgxc_node(cmd, dnname, nodetype);
 	if(!PointerIsValid(prefer_cndn->coordiantor_list))
@@ -9711,9 +9728,20 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 		return false;
 	}
 
+	/*get name of coordinator, whos oid is cnoid*/
+	cn_tuple = SearchSysCache1(NODENODEOID, cnoid);
+	if(!HeapTupleIsValid(cn_tuple))
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("oid \"%u\" of coordinator does not exist", cnoid)));
+	}
+	mgr_node = (Form_mgr_node)GETSTRUCT(cn_tuple);
+	Assert(cn_tuple);
+	namestrcpy(&cnnamedata, NameStr(mgr_node->nodename));
+	ReleaseSysCache(cn_tuple);
+
 	initStringInfo(&cmdstring);
 	coordinator_num = 0;
-	maxtime = maxtime * 2;
 	foreach(lc_out, prefer_cndn->coordiantor_list)
 	{
 		coordinator_num = coordinator_num + 1;
@@ -9753,13 +9781,13 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 								,mgr_node_in->nodeport
 								,true == is_preferred ? "true":"false");
 			pfree(host_address);
-			ereport(LOG, (errmsg("%s", cmdstring.data)));
-			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, 1, 100);
+			ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", cnnamedata.data, cmdstring.data)));
+			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxnum);
 			if (try<0)
 			{
 				result = false;
 				ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-					,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+					,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", cnnamedata.data, cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 			}
 		}
 		resetStringInfo(&cmdstring);
@@ -9767,31 +9795,25 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 			appendStringInfo(&cmdstring, "%s", "select pgxc_pool_reload();");
 		else
 			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
-		ereport(LOG, (errmsg("%s", cmdstring.data)));
-		if (maxtime > 2)
-			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxtime, 100);
-		else
-			try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, 2, 100);
+		ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", cnnamedata.data, cmdstring.data)));
+		try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxnum*2);
 		if (try < 0)
 		{
-			maxtime = 0;
 			result = false;
 			ereport(WARNING, (errcode(ERRCODE_DATA_EXCEPTION)
-				,errmsg("execute \"%s\" fail %s", cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
+				,errmsg("on coordinator \"%s\" execute \"%s\" fail %s", cnnamedata.data, cmdstring.data, PQerrorMessage((PGconn*)*pg_conn))));
 		}
-		else
-			maxtime = try*(100/1000.0)+1;
 	}
 	pfree(cmdstring.data);
 	return result;
 }
 
 /*
-* try maxseconds to execute the sql, the result of sql if bool type, the unit of msonce is ms
+* try maxnum to execute the sql, the result of sql if bool type
 */
-static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxseconds, const int msonce)
+static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxnum)
 {
-	int result = maxseconds*(1000/msonce);
+	int result = maxnum;
 	PGresult *res;
 
 	while(result >= 0)
@@ -9812,7 +9834,7 @@ static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const i
 			PQclear(res);
 			res = NULL;
 		}
-		pg_usleep(1000 * msonce);
+		pg_usleep(100000L);
 	}
 
 	return result;

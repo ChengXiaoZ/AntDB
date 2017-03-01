@@ -256,8 +256,8 @@ HandleClusterPause(bool pause, bool initiator)
 		}
 
 		/* cleanup locally.. */
-		ReleaseClusterLock(pause? true:false);
-		AcquireClusterLock(pause? false:true);
+		ReleaseClusterLock(true);
+		AcquireClusterLock(false);
 		cluster_ex_lock_held = false;
 		PG_RE_THROW();
 	}
@@ -491,14 +491,6 @@ ReleaseClusterLock(bool exclusive)
 	SpinLockAcquire(&clinfo->cl_mutex);
 	if (exclusive)
 	{
-		if (clinfo->cl_holder_pid == 0)
-		{
-			SpinLockRelease(&clinfo->cl_mutex);
-			ereport(ERROR,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("Inconsistent state while doing \"%s\"", unpause_cluster_str)));
-		}
-
 		/*
 		 * Reset the holder pid. Any waiters in AcquireClusterLock will
 		 * eventually come out of their sleep and notice this new value and
