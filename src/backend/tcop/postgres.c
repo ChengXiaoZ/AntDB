@@ -5213,8 +5213,6 @@ PostgresMain(int argc, char *argv[],
                         && !IsTransactionOrTransactionBlock()
                         && cluster_lock_held && !cluster_ex_lock_held)
                 {
-                        bool exclusive = false;
-                        ReleaseClusterLock(exclusive);
                         cluster_lock_held = false;
                 }
 #endif

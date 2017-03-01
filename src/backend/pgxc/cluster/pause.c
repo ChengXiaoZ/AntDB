@@ -344,19 +344,18 @@ PGXCCleanClusterLock(int code, Datum arg)
 	PGXCNodeAllHandles *coord_handles;
 	int conn;
 
-	if (cluster_lock_held && !cluster_ex_lock_held)
-	{
-		ReleaseClusterLock (false);
-		cluster_lock_held = false;
-	}
+	cluster_lock_held = false;
 
 	/* Do nothing if cluster lock not held */
 	if (!cluster_ex_lock_held)
 		return;
-
 	/* Do nothing if we are not the initiator */
 	if (IsConnFromCoord())
+	{
+		if (cluster_ex_lock_held)
+			ReleaseClusterLock(true);
 		return;
+	}
 
 	coord_handles = get_handles(NIL, GetAllCoordNodes(), true);
 	/* Try best-effort to UNPAUSE other coordinators now */
@@ -487,6 +486,8 @@ ReleaseClusterLock(bool exclusive)
 {
 	volatile ClusterLockInfo *clinfo = ClustLinfo;
 
+	if (!exclusive)
+		return;
 	SpinLockAcquire(&clinfo->cl_mutex);
 	if (exclusive)
 	{
