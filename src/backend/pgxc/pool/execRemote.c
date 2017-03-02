@@ -1351,8 +1351,16 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 	{
 		int i = 0;
 
+#ifdef ADB
+		/*
+		 * No matter any connection has crash down, we still need to deal with
+		 * other connections.
+		 */
+		pgxc_node_receive(count, to_receive, timeout);
+#else
 		if (pgxc_node_receive(count, to_receive, timeout))
 			return EOF;
+#endif
 
 		while (i < count)
 		{
@@ -1805,6 +1813,153 @@ pgxc_node_begin(int conn_count,
 	return 0;
 }
 
+#ifdef ADB
+static void
+pgxc_node_remote_prepare(const char *gid)
+{
+	int					i, result, new_count;
+	StringInfoData		prepare_cmd;
+	const int			count = remoteXactState.numWriteRemoteNodes;
+	PGXCNodeHandle		**connections = remoteXactState.remoteNodeHandles;
+	RemoteQueryState	*combiner = NULL;
+	PGXCNodeHandle		*new_connections[count];
+	int					conn_idx[count];
+
+	/*
+	 * If there is NO write activity or the caller does not want us to run a
+	 * 2PC protocol, we don't need to do anything special
+	 */
+	if (count <= 0 || gid == NULL)
+		return ;
+	ADB_CONN_STATE_ERROR(gid[0] != '\0');
+
+	SetSendCommandId(false);
+
+	/* Generate the PREPARE TRANSACTION command */
+	initStringInfo(&prepare_cmd);
+	appendStringInfo(&prepare_cmd, "PREPARE TRANSACTION '%s'", gid);
+	elog(DEBUG1, "[ADB prepare]: %s", prepare_cmd.data);
+
+	new_count = 0;
+	for (i = 0; i < count; i++)
+	{
+		/*
+		 * PGXCTODO - We should actually make sure that the connection state is
+		 * IDLE when we reach here. The executor should have guaranteed that
+		 * before the transaction gets to the commit point. For now, consume
+		 * the pending data on the connection
+		 */
+		if (connections[i]->state != DN_CONNECTION_STATE_IDLE)
+			BufferConnection(connections[i]);
+
+		/* Clean the previous errors, if any */
+		FreeHandleError(connections[i]);
+		connections[i]->combiner = NULL;
+
+		/*
+		 * Now we are ready to PREPARE the transaction. Any error at this point
+		 * can be safely ereport-ed and the transaction will be aborted.
+		 */
+		if (pgxc_node_send_query(connections[i], prepare_cmd.data))
+		{
+			remoteXactState.remoteNodeStatus[i] = RXACT_NODE_PREPARE_SENT_FAILED;
+			remoteXactState.status = RXACT_PREPARE_FAILED;
+			ereport(WARNING,
+					(errcode(ERRCODE_INTERNAL_ERROR),
+					 errnode(NameStr(connections[i]->name)),
+					 errmsg("Fail to send: %s", prepare_cmd.data),
+					 (connections[i]->error ? errhint("Error: %s", connections[i]->error) : 0)));
+		} else
+		{
+			remoteXactState.remoteNodeStatus[i] = RXACT_NODE_PREPARE_SENT;
+			/* Let the HandleCommandComplete know response checking is enable */
+			connections[i]->ck_resp_rollback = RESP_ROLLBACK_CHECK;
+			new_connections[new_count] = connections[i];
+			conn_idx[new_count] = i;
+			new_count++;
+		}
+	}
+	pfree(prepare_cmd.data);
+
+	/*
+	 * Some nodes have already been sent prepare command if new_count is bigger
+	 * than zero. it means that we need to handle response from these nodes.
+	 *
+	 * Receive and check for any errors. In case of errors, we don't bail out
+	 * just yet. We first go through the list of connections and look for
+	 * errors on each connection. This is important to ensure that we run
+	 * an appropriate ROLLBACK command later on (prepared transactions must be
+	 * rolled back with ROLLBACK PREPARED commands).
+	 *
+	 * PGXCTODO - There doesn't seem to be a solid mechanism to track errors on
+	 * individual connections. The transaction_status field doesn't get set
+	 * every time there is an error on the connection. The combiner mechanism is
+	 * good for parallel proessing, but I think we should have a leak-proof
+	 * mechanism to track connection status
+	 */
+	result = 0;
+	if (new_count > 0)
+	{
+		combiner = CreateResponseCombiner(new_count, COMBINE_TYPE_NONE);
+
+		/* Receive responses */
+		result = pgxc_node_receive_responses(new_count, new_connections, NULL, combiner);
+		if (result || !validate_combiner(combiner))
+		{
+			result = EOF;
+		} else
+		{
+			CloseCombiner(combiner);
+			combiner = NULL;
+		}
+
+		for (i = 0; i < new_count; i++)
+		{
+			if (remoteXactState.remoteNodeStatus[conn_idx[i]] == RXACT_NODE_PREPARE_SENT)
+			{
+				if (new_connections[i]->error ||
+					new_connections[i]->ck_resp_rollback == RESP_ROLLBACK_RECEIVED)
+				{
+					remoteXactState.remoteNodeStatus[conn_idx[i]] = RXACT_NODE_PREPARE_FAILED;
+					remoteXactState.status = RXACT_PREPARE_FAILED;
+
+					ereport(WARNING,
+							(errcode(ERRCODE_INTERNAL_ERROR),
+							 errnode(NameStr(new_connections[i]->name)),
+							 errmsg("Fail to PREPARE the transaction '%s'",	gid),
+							 (new_connections[i]->error ?
+							 	errhint("Error: %s", new_connections[i]->error) :
+							 	errhint("Error: Received ROLLBACK response"))));
+ 				} else
+				{
+					remoteXactState.remoteNodeStatus[conn_idx[i]] = RXACT_NODE_PREPARED;
+					elog(DEBUG1, "node %s prepare transaction '%s' OK",
+						NameStr(new_connections[i]->name), gid);
+				}
+			}
+		}
+	}
+
+	/*
+	 * If we failed to PREPARE on one or more nodes, report an error and let
+	 * the normal abort processing take charge of aborting the transaction
+	 */
+	if (result)
+	{
+		remoteXactState.status = RXACT_PREPARE_FAILED;
+		if (combiner)
+			pgxc_node_report_error(combiner);
+	}
+	
+	if (remoteXactState.status == RXACT_PREPARE_FAILED)
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("Failed to PREPARE the transaction on all nodes")));
+
+	/* Everything went OK. */
+	remoteXactState.status = RXACT_PREPARED;
+}
+#else
 /*
  * Prepare all remote nodes involved in this transaction. The local node is
  * handled separately and prepared first in xact.c. If there is any error
@@ -1946,6 +2101,7 @@ pgxc_node_remote_prepare(const char *gid)
 	/* Everything went OK. */
 	remoteXactState.status = RXACT_PREPARED;
 }
+#endif
 
 /*
  * Commit a running or a previously PREPARED transaction on the remote nodes.
