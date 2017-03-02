@@ -1685,9 +1685,10 @@ GetSnapshotData(Snapshot snapshot)
 	 */
 	if (TransactionIdPrecedes(xmin, globalxmin))
 		globalxmin = xmin;
-
-	/* Update global variables too */
-	RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
+	
+	if(RecentGlobalXmin > (globalxmin - vacuum_defer_cleanup_age))
+		/* Update global variables too */
+		RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
 	if (!TransactionIdIsNormal(RecentGlobalXmin))
 		RecentGlobalXmin = FirstNormalTransactionId;
 	RecentXmin = xmin;
