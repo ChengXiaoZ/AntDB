@@ -8493,13 +8493,13 @@ static void mgr_manage_reset(char command_type, char *user_list_str)
 	{
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_reset_updateparm_func(\"char\", cstring, \"char\", cstring, boolean, \"any\") ");
+		appendStringInfoString(&commandsql, "mgr_reset_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\") ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_reset_updateparm_func(\"char\", cstring, \"char\", cstring, boolean, \"any\") ");
+		appendStringInfoString(&commandsql, "mgr_reset_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\") ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -8529,13 +8529,13 @@ static void mgr_manage_set(char command_type, char *user_list_str)
 	{
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", cstring, cstring, boolean, \"any\") ");
+		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\") ");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", cstring, cstring, boolean, \"any\") ");
+		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\") ");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -9291,7 +9291,7 @@ bool mgr_has_priv_reset(void)
 {
 	bool f1;
 
-	f1 = mgr_has_function_privilege_name("mgr_reset_updateparm_func(\"char\", cstring, \"char\", cstring, boolean, \"any\")",
+	f1 = mgr_has_function_privilege_name("mgr_reset_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\")",
 										"execute");
 	return (f1);
 }
@@ -9301,7 +9301,7 @@ static bool mgr_acl_reset(char *username)
 	bool f1;
 
 	f1 = mgr_has_func_priv(username,
-							"mgr_reset_updateparm_func(\"char\", cstring, \"char\", cstring, boolean, \"any\")",
+							"mgr_reset_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\")",
 							"execute");
 
 	return f1;
@@ -9311,7 +9311,7 @@ bool mgr_has_priv_set(void)
 {
 	bool f1;
 
-	f1 = mgr_has_function_privilege_name("mgr_add_updateparm_func(\"char\", cstring, \"char\", cstring, cstring, boolean, \"any\")",
+	f1 = mgr_has_function_privilege_name("mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\")",
 										"execute");
 	return (f1);
 }
@@ -9321,7 +9321,7 @@ static bool mgr_acl_set(char *username)
 	bool f1;
 
 	f1 = mgr_has_func_priv(username,
-							"mgr_add_updateparm_func(\"char\", cstring, \"char\", cstring, cstring, boolean, \"any\")",
+							"mgr_add_updateparm_func(\"char\", cstring, \"char\", boiolean, \"any\")",
 							"execute");
 
 	return f1;
@@ -9839,3 +9839,4 @@ static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const i
 
 	return result;
 }
+

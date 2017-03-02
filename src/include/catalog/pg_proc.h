@@ -5300,10 +5300,10 @@ DESCR("mgr alter host");
 DATA(insert OID = 4937 (  mgr_alter_node_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 4 0 16 "16 18 2275 2276" _null_ _null_ _null_ _null_ mgr_alter_node_func _null_ _null_ _null_ ));
 DESCR("mgr alter node");
 
-DATA(insert OID = 4938 (  mgr_add_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 7 0 16 "18 2275 18 2275 2275 16 2276" _null_ _null_ _null_ _null_ mgr_add_updateparm_func _null_ _null_ _null_ ));
+DATA(insert OID = 4938 (  mgr_add_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 5 0 16 "18 2275 18 16 2276" _null_ _null_ _null_ _null_ mgr_add_updateparm_func _null_ _null_ _null_ ));
 DESCR("mgr set param");
 
-DATA(insert OID = 4939 (  mgr_reset_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 6 0 16 "18 2275 18 2275 16 2276" _null_ _null_ _null_ _null_ mgr_reset_updateparm_func _null_ _null_ _null_ ));
+DATA(insert OID = 4939 (  mgr_reset_updateparm_func        PGNSP PGUID 12 10 400 0 0 f f f f t t s 5 0 16 "18 2275 18 16 2276" _null_ _null_ _null_ _null_ mgr_reset_updateparm_func _null_ _null_ _null_ ));
 DESCR("mgr reset param");
 
 DATA(insert OID = 4940 ( mgr_deploy_all      PGNSP PGUID 12 10 400 0 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{hostname,status,description}" _null_ mgr_deploy_all _null_ _null_ _null_ ));

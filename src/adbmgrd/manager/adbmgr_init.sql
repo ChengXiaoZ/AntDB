@@ -1085,12 +1085,12 @@ from public;
 
 --set
 revoke execute on function
-mgr_add_updateparm_func("char", cstring, "char", cstring, cstring, boolean, "any")
+mgr_add_updateparm_func("char", cstring, "char", boolean, "any")
 from public;
 
 --reset
 revoke execute on function
-mgr_reset_updateparm_func("char", cstring, "char", cstring, boolean, "any")
+mgr_reset_updateparm_func("char", cstring, "char", boolean, "any")
 from public;
 
 --deploy

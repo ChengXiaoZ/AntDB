@@ -78,8 +78,6 @@ typedef struct MGRUpdateparm
 	char		parmtype;
 	char		*nodename;
 	char		nodetype;
-	char		*key;
-	char		*value;
 	bool		is_force;
 	List		*options;		/* list of DefElem */
 }MGRUpdateparm;
@@ -90,7 +88,6 @@ typedef struct MGRUpdateparmReset
 	char		parmtype;
 	char		*nodename;
 	char		nodetype;
-	char		*key;
 	bool		is_force;
 	List		*options;		/* list of DefElem */
 }MGRUpdateparmReset;

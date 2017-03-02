@@ -98,12 +98,10 @@ void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver 
 {
 	if (mgr_has_priv_set())
 	{
-		DirectFunctionCall7(mgr_add_updateparm_func,
+		DirectFunctionCall5(mgr_add_updateparm_func,
 							CharGetDatum(node->parmtype),
 							CStringGetDatum(node->nodename),
 							CharGetDatum(node->nodetype),
-							CStringGetDatum(node->key),
-							CStringGetDatum(node->value),
 							BoolGetDatum(node->is_force),
 							PointerGetDatum(node->options));
 		return;
@@ -133,10 +131,8 @@ Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS)
 	parm_node->parmtype = PG_GETARG_CHAR(0);
 	parm_node->nodename = PG_GETARG_CSTRING(1);
 	parm_node->nodetype = PG_GETARG_CHAR(2);
-	parm_node->key = PG_GETARG_CSTRING(3);
-	parm_node->value = PG_GETARG_CSTRING(4);
-	parm_node->is_force = PG_GETARG_BOOL(5);
-	parm_node->options = (List *)PG_GETARG_POINTER(6);
+	parm_node->is_force = PG_GETARG_BOOL(3);
+	parm_node->options = (List *)PG_GETARG_POINTER(4);
 
 	Assert(parm_node && parm_node->nodename && parm_node->nodetype && parm_node->parmtype);
 	nodetype = parm_node->nodetype;
@@ -1009,11 +1005,10 @@ void mgr_reset_updateparm(MGRUpdateparmReset *node, ParamListInfo params, DestRe
 {
 	if (mgr_has_priv_reset())
 	{
-		DirectFunctionCall6(mgr_reset_updateparm_func,
+		DirectFunctionCall5(mgr_reset_updateparm_func,
 							CharGetDatum(node->parmtype),
 							CStringGetDatum(node->nodename),
 							CharGetDatum(node->nodetype),
-							CStringGetDatum(node->key),
 							BoolGetDatum(node->is_force),
 							PointerGetDatum(node->options));
 		return;
@@ -1067,9 +1062,8 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	parm_node->parmtype = PG_GETARG_CHAR(0);
 	parm_node->nodename = PG_GETARG_CSTRING(1);
 	parm_node->nodetype = PG_GETARG_CHAR(2);
-	parm_node->key = PG_GETARG_CSTRING(3);
-	parm_node->is_force = PG_GETARG_BOOL(4);
-	parm_node->options = (List *)PG_GETARG_POINTER(5);
+	parm_node->is_force = PG_GETARG_BOOL(3);
+	parm_node->options = (List *)PG_GETARG_POINTER(4);
 
 	initStringInfo(&enumvalue);
 	Assert(parm_node && parm_node->nodename && parm_node->nodetype && parm_node->parmtype);
