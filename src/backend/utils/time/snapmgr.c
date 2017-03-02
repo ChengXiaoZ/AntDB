@@ -1288,7 +1288,6 @@ OutputGlobalSnapshot(Snapshot snapshot)
 void
 SetGlobalSnapshot(StringInfo input_message)
 {
-	CommandId		recvcid;
 	uint32			xcnt;
 	int32			subxcnt;
 	int32			maxsubxcnt;
@@ -1311,17 +1310,8 @@ SetGlobalSnapshot(StringInfo input_message)
 	GlobalSnapshot->xmin = pq_getmsgint(input_message, sizeof(TransactionId));
 	/* xmax */
 	GlobalSnapshot->xmax = pq_getmsgint(input_message, sizeof(TransactionId));
-
-	/*
-	 * curcid
-	 *
-	 * If current GlobalSnapshot has a bigger command id, we prefer to keep it
-	 * rather to replace it.
-	 */
-	recvcid = pq_getmsgint(input_message, sizeof(CommandId));
-	if (recvcid > GlobalSnapshot->curcid)
-		GlobalSnapshot->curcid = recvcid;
-
+	/* curcid */
+	GlobalSnapshot->curcid = pq_getmsgint(input_message, sizeof(CommandId));
 	/* xcnt */
 	xcnt = pq_getmsgint(input_message, sizeof(uint32));
 	/* xip */
@@ -1395,42 +1385,47 @@ CopyGlobalSnapshot(Snapshot snapshot)
 Snapshot
 GetGlobalSnapshot(Snapshot snapshot)
 {
-	Snapshot ret;
+	Snapshot	snap;
+	CommandId	cid;
 
-	/*
-	 * Master-Coordinator get snapshot from AGTM
-	 */
 	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 	{
-		ret = agtm_GetGlobalSnapShot(snapshot);
-#ifdef DEBUG_ADB
-		OutputGlobalSnapshot(ret);
-#endif
-		return ret;
-	}
-
-	/*
-	 * Datanode or NoMaster-Coordinator get snapshot
-	 * from AGTM when GlobalSnapshot is invalid or
-	 * current process is AutoVacuum process.
-	 */
-	if (GlobalSnapshot == NULL ||
+		/*
+	 	 * Master-Coordinator get snapshot from AGTM.
+	 	 */
+		snap = agtm_GetGlobalSnapShot(snapshot);
+	} else if (GlobalSnapshot == NULL ||
 		GlobalSnapshotSet == false ||
 		IsAnyAutoVacuumProcess())
 	{
-		ret = agtm_GetGlobalSnapShot(snapshot);
-#ifdef DEBUG_ADB
-		OutputGlobalSnapshot(ret);
-#endif
-		return ret;
+		/*
+		 * Datanode or NoMaster-Coordinator get snapshot
+		 * from AGTM when GlobalSnapshot is invalid or
+		 * current process is AutoVacuum process.
+		 */
+		snap = agtm_GetGlobalSnapShot(snapshot);
+	} else
+	{
+		/*
+		 * Datanode or NoMaster-Coordinator copy snapshot
+		 * from Master-Coordinator.
+		 */
+		snap = CopyGlobalSnapshot(snapshot);
 	}
 
-
 	/*
-	 * Datanode or NoMaster-Coordinator copy snapshot
-	 * from Master-Coordinator.
+	 * We replace "curcid" if the current command id is
+	 * bigger than the snapshot's.
 	 */
-	return CopyGlobalSnapshot(snapshot);
+	cid = GetCurrentCommandId(false);
+	if (cid > snap->curcid)
+		snap->curcid = cid;
+
+#ifdef DEBUG_ADB
+	OutputGlobalSnapshot(snap);
+#endif
+
+	return snap;
 }
 #endif /* ADB */
 
