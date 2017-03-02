@@ -2050,7 +2050,7 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 
 #ifdef DEBUG_ADB
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "/*%d*/%s", MyProcPid, query);
+	appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
 	query = buf.data;
 
 	elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
