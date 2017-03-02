@@ -487,6 +487,8 @@ typedef enum NodeTag
 	,T_MonitorJobAdd
 	,T_MonitorJobAlter
 	,T_MonitorJobDrop
+	,T_MgrExtensionAdd
+	,T_MgrExtensionDrop
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor

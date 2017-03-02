@@ -160,5 +160,18 @@ typedef struct MonitorJobDrop
 	List			*namelist;
 }MonitorJobDrop;
 
+typedef struct MgrExtensionAdd
+{
+	NodeTag         type;
+	char		cmdtype;
+	char		*name;
+}MgrExtensionAdd;
+
+typedef struct MgrExtensionDrop
+{
+	NodeTag         type;
+	char            cmdtype;
+	char            *name;
+}MgrExtensionDrop;
 
 #endif /* MGR_NODE_H */

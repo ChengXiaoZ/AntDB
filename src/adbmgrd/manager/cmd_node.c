@@ -16,6 +16,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/mgr_updateparm.h"
+#include "catalog/mgr_parm.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "fmgr.h"
@@ -39,6 +40,7 @@
 #include "utils/lsyscache.h"
 #include "executor/spi.h"
 #include "../../interfaces/libpq/libpq-fe.h"
+#include "nodes/makefuncs.h"
 
 #define DEFAULT_DB "postgres"
 #define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
@@ -71,6 +73,7 @@ typedef enum
 	APPEND,
 	FAILOVER
 }pgxc_node_operator;
+
 struct tuple_cndn
 {
 	List *coordiantor_list;
@@ -124,7 +127,7 @@ static bool mgr_modify_node_parameter_after_initd(Relation rel_node, HeapTuple n
 static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, int32 master_newport);
 static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata);
 static void mgr_check_all_agent(void);
-static void mgr_add_extension(char *sqlstr);
+static bool mgr_add_extension_sqlcmd(char *sqlstr);
 static char *get_username_list_str(List *user_list);
 static void mgr_manage_flush(char command_type, char *user_list_str);
 static void mgr_manage_stop_func(StringInfo commandsql);
@@ -176,6 +179,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
 static void mgr_unlock_cluster(PGconn **pg_conn);
 static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
 static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxnum);
+static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -4585,8 +4589,6 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg)
 {
-	if (node_type == CNDN_TYPE_COORDINATOR_MASTER)
-		mgr_append_pgconf_paras_str_quotastr("shared_preload_libraries", "pg_stat_statements", infosendmsg);
 	mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendmsg);
 	mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendmsg);
@@ -4958,8 +4960,6 @@ Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS)
 		pfree(info_out);
 		/*set gtm or datanode master synchronous_standby_names*/
 		mgr_set_master_sync();
-		/*create extension*/
-		mgr_add_extension("CREATE EXTENSION IF NOT EXISTS pg_stat_statements;");
 		SRF_RETURN_DONE(funcctx);
 	}
 
@@ -5276,8 +5276,6 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 	{
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", infosendparamsg);
 	}
-	if (nodetype == CNDN_TYPE_COORDINATOR_MASTER)
-		mgr_append_pgconf_paras_str_quotastr("shared_preload_libraries", "pg_stat_statements", infosendparamsg);
 	mgr_append_pgconf_paras_str_str("synchronous_commit", "on", infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendparamsg);
 	mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendparamsg);
@@ -8056,10 +8054,10 @@ static void mgr_check_all_agent(void)
 }
 
 /*
-*create extension pg_stat_statements
+* sql command for create extension
 */
 
-static void mgr_add_extension(char *sqlstr)
+static bool mgr_add_extension_sqlcmd(char *sqlstr)
 {
 	ScanKeyData key[1];
 	HeapScanDesc rel_scan;
@@ -8091,8 +8089,8 @@ static void mgr_add_extension(char *sqlstr)
 	{
 		heap_endscan(rel_scan);
 		heap_close(rel_node, RowExclusiveLock);
-		ereport(WARNING, (errmsg("%s fail", sqlstr)));
-		return;
+		ereport(ERROR, (errmsg("can not get right coordinator to execute \"%s\"", sqlstr)));
+		return false;
 	}
 	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&infosendmsg);
@@ -8110,9 +8108,9 @@ static void mgr_add_extension(char *sqlstr)
 		/* report error message */
 		heap_endscan(rel_scan);
 		heap_close(rel_node, RowExclusiveLock);
-		ereport(WARNING, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
+		ereport(ERROR, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
 		ma_close(ma);
-		return;
+		return false;
 	}
 	initStringInfo(&buf);
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
@@ -8124,24 +8122,28 @@ static void mgr_add_extension(char *sqlstr)
 	{
 		heap_endscan(rel_scan);
 		heap_close(rel_node, RowExclusiveLock);
-		ereport(WARNING, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
+		ereport(ERROR, (errmsg("%s, %s", sqlstr, ma_last_error_msg(ma))));
 		ma_close(ma);
-		return;
+		return false;
 	}
 	getAgentCmdRst.ret = false;
 	initStringInfo(&getAgentCmdRst.description);
 	execok = mgr_recv_msg(ma, &getAgentCmdRst);
+	ma_close(ma);
 	if (!execok)
 	{
 		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		ereport(WARNING, (errmsg(" %s %s:  %s fail, %s", address, NameStr(mgr_node->nodename), sqlstr, getAgentCmdRst.description.data)));
+		heap_endscan(rel_scan);
+		heap_close(rel_node, RowExclusiveLock);
+		ereport(ERROR, (errmsg(" %s %s:  %s fail, %s", address, NameStr(mgr_node->nodename), sqlstr, getAgentCmdRst.description.data)));
 		pfree(address);
 	}
-	ma_close(ma);
+
 	pfree(getAgentCmdRst.description.data);
 	heap_endscan(rel_scan);
 	heap_close(rel_node, RowExclusiveLock);
 
+	return execok;
 }
 Datum mgr_priv_list_to_all(PG_FUNCTION_ARGS)
 {
@@ -9840,3 +9842,112 @@ static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const i
 	return result;
 }
 
+/*
+* ADD EXTENSION extension_name
+*/
+void mgr_extension(MgrExtensionAdd *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_add())
+	{
+		DirectFunctionCall2(mgr_extension_handle,
+									CharGetDatum(node->cmdtype),
+									CStringGetDatum(node->name));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+/*
+* create extension
+*/
+Datum mgr_extension_handle(PG_FUNCTION_ARGS)
+{
+	char *extension_name;
+	char cmdtype;
+	StringInfoData cmdstring;
+	bool ret;
+
+	cmdtype = PG_GETARG_CHAR(0);
+	extension_name = PG_GETARG_CSTRING(1);
+	if (strcmp (extension_name, "pg_stat_statements") == 0)
+	{
+		ret = mgr_extension_pg_stat_statements(cmdtype, extension_name);
+	}
+	else
+	{
+		initStringInfo(&cmdstring);
+		if (cmdtype == EXTENSION_CREATE)
+			appendStringInfo(&cmdstring, "CREATE EXTENSION IF NOT EXISTS %s;", extension_name);
+		else if (cmdtype == EXTENSION_DROP)
+			appendStringInfo(&cmdstring, "DROP EXTENSION IF NOT EXISTS %s;", extension_name);
+		else
+		{
+			pfree(cmdstring.data);
+			ereport(ERROR, (errmsg("no such cmdtype '%c'", cmdtype)));
+		}
+		ret = mgr_add_extension_sqlcmd(cmdstring.data);
+		pfree(cmdstring.data);
+
+	}
+	if (ret)
+		ereport(NOTICE, (errmsg("need set the parameters for the extension \"%s\" and put its dynamic library file on the library path", extension_name)));
+
+	PG_RETURN_BOOL(ret);
+}
+
+/*
+* create or drop extension pg_stat_statements
+*/
+
+static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name)
+{
+	MGRUpdateparm *nodestmt;
+	MGRUpdateparmReset *resetnodestmt;
+	StringInfoData cmdstring;
+
+	initStringInfo(&cmdstring);
+	/*create extension*/
+	if (cmdtype == EXTENSION_CREATE)
+	{
+		/*create extension*/
+		appendStringInfo(&cmdstring, "CREATE EXTENSION IF NOT EXISTS %s;", extension_name);
+		if (!mgr_add_extension_sqlcmd(cmdstring.data))
+			return false;
+
+		nodestmt = makeNode(MGRUpdateparm);
+		nodestmt->parmtype = PARM_TYPE_COORDINATOR;
+		nodestmt->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+		nodestmt->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+		nodestmt->is_force = false;
+		nodestmt->options = lappend(nodestmt->options, makeDefElem("shared_preload_libraries", (Node *)makeString(extension_name)));
+		mgr_add_updateparm(nodestmt, NULL, NULL);
+	}
+	else if (cmdtype == EXTENSION_DROP)
+	{
+		/*drop extension*/
+		appendStringInfo(&cmdstring, "DROP EXTENSION IF EXISTS %s;", extension_name);
+		if (!mgr_add_extension_sqlcmd(cmdstring.data))
+			return false;
+
+		resetnodestmt = makeNode(MGRUpdateparmReset);
+		resetnodestmt->parmtype = PARM_TYPE_COORDINATOR;
+		resetnodestmt->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+		resetnodestmt->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+		resetnodestmt->is_force = false;
+		resetnodestmt->options = lappend(resetnodestmt->options, makeDefElem("shared_preload_libraries", (Node *)makeString("''")));
+		mgr_reset_updateparm(resetnodestmt, NULL, NULL);
+	}
+	else
+	{
+		pfree(cmdstring.data);
+		ereport(ERROR, (errmsg("no such cmdtype '%c'", cmdtype)));
+	}
+
+	pfree(cmdstring.data);
+
+	return true;
+}

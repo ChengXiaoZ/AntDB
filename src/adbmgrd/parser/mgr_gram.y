@@ -150,6 +150,7 @@ static void check_host_name_isvaild(List *node_name_list);
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt ListJobStmt
+				AddExtensionStmt DropExtensionStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -183,7 +184,7 @@ static void check_host_name_isvaild(List *node_name_list);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
-%token<keyword> GRANT REVOKE FROM ITEM JOB
+%token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -265,6 +266,8 @@ stmt :
 	|	AlterJobitemStmt
 	|	DropJobitemStmt
 	|	ListJobStmt
+	| AddExtensionStmt
+	| DropExtensionStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2381,6 +2384,25 @@ ListJobStmt:
 		}
 		;
 
+AddExtensionStmt:
+		ADD_P EXTENSION Ident
+		{
+			MgrExtensionAdd *node = makeNode(MgrExtensionAdd);
+			node->cmdtype = EXTENSION_CREATE;
+			node->name = $3;
+			$$ = (Node*)node;
+		}
+		;
+DropExtensionStmt:
+		DROP EXTENSION Ident
+		{
+			MgrExtensionDrop *node = makeNode(MgrExtensionDrop);
+			node->cmdtype = EXTENSION_DROP;
+			node->name = $3;
+			$$ = (Node*)node;
+		}
+		;
+
 unreserved_keyword:
 	  ACL
 	| ADD_P
@@ -2397,6 +2419,7 @@ unreserved_keyword:
 	| DROP
 	| EXISTS
 	| EXTRA
+	| EXTENSION
 	| F
 	| FAILOVER
 	| FAST

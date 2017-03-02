@@ -5334,7 +5334,10 @@ DATA(insert OID = 4947 (  monitor_job_drop_func        PGNSP PGUID 12 10 400 0 0
 DESCR("drop job");
 
 DATA(insert OID = 4962 (  adbmonitor_job        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 25 "2275 2275" _null_ _null_ _null_ _null_ adbmonitor_job _null_ _null_ _null_ ));
-DESCR("drop job");
+DESCR("run job");
+
+	DATA(insert OID = 4966 (  mgr_extension_handle        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 16 "2275" _null_ _null_ _null_ _null_ mgr_extension_handle _null_ _null_ _null_ ));
+DESCR("create extension");
 
 #endif
 

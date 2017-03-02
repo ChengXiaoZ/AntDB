@@ -4194,4 +4194,18 @@ BEGIN_NODE(MonitorJobDrop)
 END_NODE(MonitorJobDrop)
 #endif /* NO_NODE_MonitorJobDrop */
 
+#ifndef NO_NODE_MgrExtensionAdd
+BEGIN_NODE(MgrExtensionAdd)
+	NODE_SCALAR(char, cmdtype)
+	NODE_STRING(name)
+END_NODE(MgrExtensionAdd)
+#endif /*NO_NODE_MgrExtensionAdd*/
+
+#ifndef NO_NODE_MgrExtensionDrop
+BEGIN_NODE(MgrExtensionDrop)
+        NODE_SCALAR(char, cmdtype)
+        NODE_STRING(name)
+END_NODE(MgrExtensionDrop)
+#endif /*NO_NODE_MgrExtensionDrop*/
+
 #endif /* ADBMGRD */

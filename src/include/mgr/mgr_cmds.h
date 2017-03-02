@@ -43,6 +43,13 @@ typedef struct Monitor_Threshold
 	int16			threshold_emergency;
 }Monitor_Threshold;
 
+/*cmd flag for create/drop extension*/
+typedef enum 
+{
+	EXTENSION_CREATE,
+	EXTENSION_DROP
+}extension_operator;
+
 /* host commands, in cmd_host.c */
 extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
@@ -264,4 +271,8 @@ extern Datum monitor_job_add_func(PG_FUNCTION_ARGS);
 extern Datum monitor_job_alter_func(PG_FUNCTION_ARGS);
 extern Datum monitor_job_drop_func(PG_FUNCTION_ARGS);
 extern Datum adbmonitor_job(PG_FUNCTION_ARGS);
+
+/*create/drop extension*/
+Datum mgr_extension_handle(PG_FUNCTION_ARGS);
+void mgr_extension(MgrExtensionAdd *node, ParamListInfo params, DestReceiver *dest);
 #endif /* MGR_CMDS_H */
