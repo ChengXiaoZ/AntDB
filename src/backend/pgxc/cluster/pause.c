@@ -121,8 +121,8 @@ HandleClusterPause(bool pause, bool initiator)
 		ProcessClusterPauseRequest(pause);
 		return;
 	}
-	//if(pause)
-	//	PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
+	if(pause)
+		PoolManagerSetCommand(POOL_CMD_TEMP, NULL);
 
 	/*
 	 * Send SELECT PG_PAUSE_CLUSTER()/SELECT PG_UNPAUSE_CLUSTER() message to all the coordinators. We should send an

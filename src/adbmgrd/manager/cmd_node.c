@@ -89,7 +89,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg);
-static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo, bool set_ip);
+static bool mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo, bool set_ip);
 static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *temp_file);
 static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port, char *temp_file);
@@ -4423,22 +4423,20 @@ static void mgr_pg_dumpall(Oid hostoid, int32 hostport, Oid dnmasteroid, char *t
 		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 }
 
-static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo, bool set_ip)
+static bool mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 *hostport, AppendNodeInfo *appendnodeinfo, bool set_ip)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[2];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	char * host;
-	StringInfoData port;
-	int ret;
+	char coordportstr[19];
 	bool isNull;
+	bool bget = false;
 	Datum datumPath;
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData  infosendmsg;
 
-	initStringInfo(&infosendmsg);
-	initStringInfo(&(getAgentCmdRst.description));
 	ScanKeyInit(&key[0]
 				,Anum_mgr_node_nodetype
 				,BTEqualStrategyNumber
@@ -4454,33 +4452,37 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
 	info->lcp =NULL;
 
-	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
-	if(tuple == NULL)
+	while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 	{
-		/* end of row */
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		/* check the coordinator active */
+		sprintf(coordportstr, "%d", mgr_node->nodeport);
+		host = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		if(PQPING_OK != pingNode(host, coordportstr))
+		{
+			if (host)
+				pfree(host);
+			continue;
+		}
+		pfree(host);
+		bget = true;
+		break;
+	}
+	if (!bget)
+	{
 		heap_endscan(info->rel_scan);
 		heap_close(info->rel_node, AccessShareLock);
 		pfree(info);
-		return ;
+		return false;
 	}
-
-	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-	Assert(mgr_node);
 	appendnodeinfo->tupleoid = HeapTupleGetOid(tuple);
-	host = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	if (hostoid)
+		*hostoid = mgr_node->nodehost;
+	if (hostport)
+		*hostport = mgr_node->nodeport;
 
-	initStringInfo(&port);
-	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode(host, port.data);
-	if (ret == 0)
-	{
-		if (hostoid)
-			*hostoid = mgr_node->nodehost;
-		if (hostport)
-			*hostport = mgr_node->nodeport;
-	}
-
-	if (node_type == CNDN_TYPE_DATANODE_MASTER && set_ip)
+	if ((node_type == CNDN_TYPE_DATANODE_MASTER || node_type == CNDN_TYPE_COORDINATOR_MASTER) && set_ip)
 	{
 		/*get nodepath from tuple*/
 		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
@@ -4490,6 +4492,9 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 				, errmsg("column nodepath is null")));
 		}
+		initStringInfo(&infosendmsg);
+		initStringInfo(&(getAgentCmdRst.description));
+		getAgentCmdRst.ret = false;
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo->nodeaddr,
 										32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
@@ -4497,53 +4502,27 @@ static void mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 								&infosendmsg,
 								mgr_node->nodehost,
 								&getAgentCmdRst);
+		pfree(infosendmsg.data);
 		if (!getAgentCmdRst.ret)
 		{
 			heap_endscan(info->rel_scan);
 			heap_close(info->rel_node, AccessShareLock);
 			pfree(info);
-			pfree(host);
-
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 		}
+		pfree(getAgentCmdRst.description.data);
 		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
-
 	}
-
-	if (node_type == CNDN_TYPE_COORDINATOR_MASTER && set_ip)
+	else
 	{
-		/*get nodepath from tuple*/
-		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
-		if (isNull)
-		{
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-				, errmsg("column nodepath is null")));
-		}
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo->nodeaddr,
-										32, "trust", &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
-								TextDatumGetCString(datumPath),
-								&infosendmsg,
-								mgr_node->nodehost,
-								&getAgentCmdRst);
-
-		if (!getAgentCmdRst.ret)
-		{
-			heap_endscan(info->rel_scan);
-			heap_close(info->rel_node, AccessShareLock);
-			pfree(info);
-			pfree(host);
-
-			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-		}
-		mgr_reload_conf(mgr_node->nodehost, TextDatumGetCString(datumPath));
+		/*do nothing*/
 	}
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-	pfree(host);
+
+	return true;
 }
 
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
@@ -9663,7 +9642,8 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	current_user = pwd->pw_name;
 	appendnodeinfo.nodeaddr = NULL;
 	appendnodeinfo.nodeusername = current_user;
-	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, false);
+	if (!mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, false))
+		ereport(ERROR, (errmsg("can not get active coordinator in cluster")));
 	coordhost = get_hostaddress_from_hostoid(coordhostoid);
 	/*get the adbmanager ip*/
 	mgr_get_self_address(coordhost, coordport, &self_address);
