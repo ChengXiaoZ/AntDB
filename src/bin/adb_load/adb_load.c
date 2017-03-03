@@ -250,7 +250,7 @@ int main(int argc, char **argv)
 			FileLocation *file_location = (FileLocation*)palloc0(sizeof(FileLocation));
 			tables_ptr = (Tables *)palloc0(sizeof(Tables));
 			tables_ptr->table_nums = 1;
-			
+
 			table_info_ptr = (Table_Info *)palloc0(sizeof(Table_Info));
 			table_info_ptr->table_name = pg_strdup(setting->table_name);
 			table_info_ptr->file_nums = 1;
@@ -267,10 +267,10 @@ int main(int argc, char **argv)
 				ADBLOADER_LOG(LOG_ERROR,"[main] there is no table to store");
 				return 0;
 			}
-			
+
 			/*get special table which the tail of name is Glide line add digit num*/
 			get_special_table_by_sql();
-			
+
 			table_info_ptr = tables_ptr->info;
 			table_count = 0;
 		}
@@ -304,7 +304,7 @@ int main(int argc, char **argv)
 		get_table_attribute(setting, table_info_ptr);
 
 		get_use_datanodes(setting, table_info_ptr);		
-		
+
 		/*the table may be split to more than one*/
 		slist_foreach_modify (siter, &table_info_ptr->file_head) 
 		{	
@@ -353,22 +353,22 @@ int main(int argc, char **argv)
 			linebuff = format_error_end(file_location->location);
 			write_error(linebuff);
 			release_linebuf(linebuff);
-			fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n", file_location->location);
+			fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n", file_location->location);
+			/* remove  file from file list*/
 			slist_delete_current(&siter);
+			/* file num  subtract 1 */
+			table_info_ptr->file_nums--;
 		}
 		table_info_ptr = table_info_ptr->next;
 	}
-	
 	/* close error file */
 	fclose_error_file();
-	
 	/*check again*/
 	if(table_count != tables_ptr->table_nums)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate: %d");
 		return 0;
 	}
-	
 	tables_list_free(tables_ptr);
 	/*close log file. */
 	adbLoader_log_end();
@@ -378,7 +378,6 @@ int main(int argc, char **argv)
 	return 0;
 }
 /*------------------------end main-------------------------------------------------------*/
-
 
 char *
 get_outqueue_name (int datanode_num)
