@@ -359,6 +359,10 @@ int main(int argc, char **argv)
 			slist_delete_current(&siter);
 			/* file num  subtract 1 */
 			table_info_ptr->file_nums--;
+			/* free location */
+			if (file_location->location)
+				pfree(file_location);
+			file_location = NULL;
 		}
 		table_info_ptr = table_info_ptr->next;
 	}
