@@ -181,6 +181,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxnum);
 static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name);
 static void mgr_get_self_address(char *server_address, int server_port, Name self_address);
+static bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodeport, char *address);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -5723,7 +5724,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	char coordport_buf[10];
 	ScanKeyData key[2];
 	PGresult * volatile res = NULL;
-	int maxtry = 3;
+	int maxtry = 15;
 	int try = 0;
 
 	initStringInfo(&infosendmsg);
@@ -5743,6 +5744,15 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	/*wait the new master accept connect*/
 	fputs(_("waiting for the new master can accept connections..."), stdout);
 	fflush(stdout);
+	/*check recovery finish*/
+	while(1)
+	{
+		if (mgr_check_node_recovery_finish(mgr_node->nodetype, hostOid, mgr_node->nodeport, address))
+			break;
+		fputs(_("."), stdout);
+		fflush(stdout);
+		pg_usleep(1 * 1000000L);
+	}
 	while(1)
 	{
 		if (pingNode(address, coordport_buf) != 0)
@@ -5757,6 +5767,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	pfree(address);
 	fputs(_(" done\n"), stdout);
 	fflush(stdout);
+
 	/*1.stop the old gtm master*/
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 	if(!HeapTupleIsValid(mastertuple))
@@ -6015,6 +6026,15 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	/*wait the new master accept connect*/
 	fputs(_("waiting for the new master can accept connections..."), stdout);
 	fflush(stdout);
+	/*check recovery finish*/
+	while(1)
+	{
+		if (mgr_check_node_recovery_finish(mgr_node->nodetype, mgr_node->nodehost, mgr_node->nodeport, address))
+			break;
+		fputs(_("."), stdout);
+		fflush(stdout);
+		pg_usleep(1 * 1000000L);
+	}
 	while(1)
 	{
 		if (pingNode(address, coordport_buf) != 0)
@@ -9629,7 +9649,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	char cnpath[1024];
 	struct passwd *pwd;
 	int try = 0;
-	const int maxnum = 3;
+	const int maxnum = 15;
 	NameData self_address;
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData infosendmsg;
@@ -9710,7 +9730,7 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 static void mgr_unlock_cluster(PGconn **pg_conn)
 {
 	int try = 0;
-	const int maxnum = 3;
+	const int maxnum = 15;
 	char *sqlstr = "SELECT PG_UNPAUSE_CLUSTER();";
 
 	ereport(LOG, (errmsg("%s", sqlstr)));
@@ -9735,7 +9755,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	char *host_address;
 	bool is_preferred = false;
 	bool result = true;
-	const int maxnum = 3;
+	const int maxnum = 15;
 	int try = 0;
 	HeapTuple cn_tuple;
 	NameData cnnamedata;
@@ -9815,7 +9835,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 		else
 			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload();'", NameStr(mgr_node_out->nodename));
 		ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", cnnamedata.data, cmdstring.data)));
-		try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxnum*2);
+		try = mgr_pqexec_boolsql_try_maxnum(pg_conn, cmdstring.data, maxnum);
 		if (try < 0)
 		{
 			result = false;
@@ -10005,3 +10025,47 @@ static void mgr_get_self_address(char *server_address, int server_port, Name sel
 		close(sock);
 
 }
+
+/*
+* check the node is recovery or not
+*/
+static bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodeport, char *address)
+{
+	StringInfoData resultstrdata;
+	HeapTuple tuple;
+	Form_mgr_host mgr_host;
+	char *pstr;
+	char *sqlstr = "select * from pg_is_in_recovery()";
+
+	tuple = SearchSysCache1(HOSTHOSTOID, hostoid);
+	if(!(HeapTupleIsValid(tuple)))
+	{
+		ereport(ERROR, (errmsg("host oid \"%u\" not exist", hostoid)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errcode(ERRCODE_UNDEFINED_OBJECT)));
+	}
+	mgr_host= (Form_mgr_host)GETSTRUCT(tuple);
+	Assert(mgr_host);
+	initStringInfo(&resultstrdata);
+	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, mgr_host->hostagentport, sqlstr, AGTM_USER, address, nodeport, DEFAULT_DB, &resultstrdata);
+	else
+		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, mgr_host->hostagentport, sqlstr, NameStr(mgr_host->hostuser), address, nodeport, DEFAULT_DB, &resultstrdata);
+	ReleaseSysCache(tuple);
+	if (resultstrdata.len == 0)
+	{
+		return false;
+	}
+	pstr = resultstrdata.data;
+	if (strcmp(pstr, "f") !=0)
+	{
+		pfree(resultstrdata.data);
+		return false;
+	}
+	pfree(resultstrdata.data);
+
+	return true;
+}
+
+
+
