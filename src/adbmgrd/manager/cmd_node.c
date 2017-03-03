@@ -5719,6 +5719,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	StringInfoData infosendsyncmsg;
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_nodecn;
 	Form_mgr_node mgr_nodetmp;
 	HeapTuple tuple;
 	HeapTuple mastertuple;
@@ -5870,9 +5871,9 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			, errmsg("oid \"%u\" of coordinator does not exist", cnoid)));
 	}
-	mgr_node = (Form_mgr_node)GETSTRUCT(cn_tuple);
+	mgr_nodecn = (Form_mgr_node)GETSTRUCT(cn_tuple);
 	Assert(cn_tuple);
-	namestrcpy(&cnnamedata, NameStr(mgr_node->nodename));
+	namestrcpy(&cnnamedata, NameStr(mgr_nodecn->nodename));
 	ReleaseSysCache(cn_tuple);
 
 	rel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
