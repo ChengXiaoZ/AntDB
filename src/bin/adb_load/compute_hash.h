@@ -6,9 +6,9 @@
 #include "msg_queue.h"
 #include "msg_queue_pipe.h"
 
-typedef pthread_t	Hash_ThreadID;
+typedef pthread_t	HashThreadID;
 
-typedef struct Hash_Field
+typedef struct HashField
 {
 	int  *field_loc;     /* hash fields locations , begin at 1 */
 	Oid  *field_type;    /* hash fields type */	
@@ -23,9 +23,9 @@ typedef struct Hash_Field
 	char escapec;
 	bool has_escape;
 	char *hash_delim;
-} Hash_Field;
+} HashField;
 
-typedef struct Hash_ComputeInfo
+typedef struct HashComputeInfo
 {
 	bool				 is_need_create;
 	int					 thread_nums;
@@ -35,10 +35,10 @@ typedef struct Hash_ComputeInfo
 	char				*start_cmd;
 	MessageQueuePipe	*input_queue;	
 	MessageQueuePipe   **output_queue;
-	Hash_Field			*hash_field;
-} Hash_ComputeInfo;
+	HashField			*hash_field;
+} HashComputeInfo;
 
-typedef enum THREAD_WORK_STATE
+typedef enum ThreadWorkState
 {
 	THREAD_DEFAULT,
 	THREAD_MEMORY_ERROR,
@@ -54,54 +54,54 @@ typedef enum THREAD_WORK_STATE
 	THREAD_DEAL_COMPLETE,
 	THREAD_EXIT_BY_OTHERS,
 	THREAD_EXIT_NORMAL
-} THREAD_WORK_STATE;
+} ThreadWorkState;
 
-typedef struct Compute_ThreadInfo
+typedef struct ComputeThreadInfo
 {
-	Hash_ThreadID 		thread_id;
+	HashThreadID 		thread_id;
 	long				send_seq;
 	int					output_queue_size;
 	MessageQueuePipe  	*input_queue;
 	MessageQueuePipe  	**output_queue;
 	MessageQueue		*inner_queue;
-	Hash_Field	  		*hash_field;
+	HashField	  		*hash_field;
 	char		  		*func_name;
 	char 		  		*conninfo;
 	char				*copy_str;
 	char				*start_cmd;
 	PGconn   	  		*conn;
-	THREAD_WORK_STATE	state;
+	ThreadWorkState	state;
 	bool				exit;
 	void 				* (* thr_startroutine)(void *); /* thread start function */
-} Compute_ThreadInfo;
+} ComputeThreadInfo;
 
-typedef struct Hash_Threads
+typedef struct HashThreads
 {
 	int 			   hs_thread_count;
 	int				   hs_thread_cur;
-	Compute_ThreadInfo **hs_threads;
+	ComputeThreadInfo **hs_threads;
 	pthread_mutex_t	   mutex;
-} Hash_Threads;
+} HashThreads;
 
 #define	HASH_COMPUTE_ERROR		0
 #define	HASH_COMPUTE_OK			1
 
-int Init_Hash_Compute(int thread_nums, char * func, char * conninfo, MessageQueuePipe * message_queue_in,
-			MessageQueuePipe ** message_queue_out, int queue_size, Hash_Field * field, char * start_cmd);
+int InitHashCompute(int thread_nums, char * func, char * conninfo, MessageQueuePipe * message_queue_in,
+			MessageQueuePipe ** message_queue_out, int queue_size, HashField * field, char * start_cmd);
 
 /**
-* @brief Check_Compute_state
+* @brief CheckComputeState
 * 
 * return  running thread numbers
 * @return int  running thread numbers
 */
-int Check_Compute_state(void);
+int CheckComputeState(void);
 
 /* caller don't need to free memory */
-Hash_Threads *Get_Exit_Threads_Info(void);
+HashThreads *GetExitThreadsInfo(void);
 
-int Stop_Hash(void);
+int StopHash(void);
 
 /* make sure all threads had exited */
-void Clean_Hash_Resource(void);
+void CleanHashResource(void);
 #endif

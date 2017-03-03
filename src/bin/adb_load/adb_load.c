@@ -28,7 +28,7 @@
 typedef struct tables
 {
 	int table_nums;
-	struct Table_Info *info;
+	struct TableInfo *info;
 }Tables;
 
 typedef enum DISTRIBUTE
@@ -47,18 +47,18 @@ typedef struct FileLocation
 	slist_node next;
 } FileLocation;
 
-typedef struct Table_Info
+typedef struct TableInfo
 {
 	int           file_nums;        /*the num of files which own to one table */
 	char         *table_name;       /*the name of table*/
-	Hash_Field   *table_attribute;  /*the attribute of table*/
+	HashField   *table_attribute;  /*the attribute of table*/
 	DISTRIBUTE    distribute_type;
 	UserFuncInfo *funcinfo;
 	slist_head	   file_head;
 	NodeInfoData **use_datanodes;
 	int   		   use_datanodes_num; // use datanode num for special table
-	struct Table_Info *next;/* */
-} Table_Info;
+	struct TableInfo *next;/* */
+} TableInfo;
 
 struct special_table
 {
@@ -77,25 +77,25 @@ static char get_distribute_by(const char *conninfo, const char *tablename);
 static void get_all_datanode_info(ADBLoadSetting *setting);
 static void get_conninfo_for_alldatanode(ADBLoadSetting *setting);
 static int  adbloader_cmp_nodes(const void *a, const void *b);
-static void get_table_attribute(ADBLoadSetting *setting, Table_Info *table_info);
-static void get_hash_field(const char *conninfo, Table_Info *table_info);
-// static void get_func_info(const char *conninfo, Table_Info *table_info);
+static void get_table_attribute(ADBLoadSetting *setting, TableInfo *table_info);
+static void get_hash_field(const char *conninfo, TableInfo *table_info);
+// static void get_func_info(const char *conninfo, TableInfo *table_info);
 static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 //static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo);
 static void get_create_and_drop_func_sql(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
-static void get_userdefined_funcinfo(const char *conninfo, Table_Info *table_info);
+static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info);
 static void create_func_to_server(char *serverconninfo, char *creat_func_sql);
-static void reset_hash_field(Table_Info *table_info);
+static void reset_hash_field(TableInfo *table_info);
 static void get_node_count_and_node_list(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void drop_func_to_server(char *serverconninfo, char *drop_func_sql);
-static void get_use_datanodes(ADBLoadSetting *setting, Table_Info *table_info);
+static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info);
 static bool file_exists(char *file);
 
-static void do_replaciate_roundrobin(char *filepath, Table_Info *table_info);
+static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info);
 static void clean_replaciate_roundrobin(void);
 
-static void do_hash_module(char *filepath, const Table_Info *table_info);
+static void do_hash_module(char *filepath, const TableInfo *table_info);
 static void clean_hash_module(void);
 static char *get_outqueue_name (int datanode_num);
 static void exit_nicely(PGconn *conn);
@@ -106,7 +106,7 @@ void tables_print(Tables *tables_ptr);
 
 static Tables *read_table_info(char *fullpath);
 static Tables *get_tables(char **file_name_list, char **file_path_list, int file_num);
-static Table_Info *get_table_info(char**file_name_list, int file_num);
+static TableInfo *get_table_info(char**file_name_list, int file_num);
 static void get_special_table_by_sql(void);
 static struct special_table *add_special_table(struct special_table *table_list, char *table_name);
 static int has_special_file(char **file_name_list, int file_nums);
@@ -117,8 +117,8 @@ static int get_file_num(char *fullpath);
 static int is_type_file(char *fullpath);
 static int is_type_dir(char *fullpath);
 static void tables_list_free(Tables *tables);
-static void table_free(Table_Info *table_info);
-static void clean_hash_field (Hash_Field *hash_field);
+static void table_free(TableInfo *table_info);
+static void clean_hash_field (HashField *hash_field);
 static char * conver_type_to_fun (Oid type, DISTRIBUTE loactor);
 static void free_datanode_info (Datanode_Info *datanode_info);
 static void free_dispatch_info (Dispatch_Info *dispatch_info);
@@ -144,7 +144,7 @@ static void show_process(int total,	int datanodes, int * thread_send_total, DIST
 static ADBLoadSetting *setting;
 
 void
-clean_hash_field (Hash_Field *hash_field)
+clean_hash_field (HashField *hash_field)
 {
 	if (NULL == hash_field)
 		return;
@@ -228,7 +228,7 @@ covert_distribute_type_to_string (DISTRIBUTE type)
 int main(int argc, char **argv)
 {
 	Tables *tables_ptr = NULL;
-	Table_Info    *table_info_ptr = NULL;
+	TableInfo    *table_info_ptr = NULL;
 	int table_count = 0;
 
 	/* get cmdline param. */
@@ -252,7 +252,7 @@ int main(int argc, char **argv)
 			tables_ptr = (Tables *)palloc0(sizeof(Tables));
 			tables_ptr->table_nums = 1;
 
-			table_info_ptr = (Table_Info *)palloc0(sizeof(Table_Info));
+			table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
 			table_info_ptr->table_name = pg_strdup(setting->table_name);
 			table_info_ptr->file_nums = 1;
 			table_info_ptr->next = NULL;
@@ -397,7 +397,7 @@ get_outqueue_name (int datanode_num)
 	return name;
 }
 
-static void do_replaciate_roundrobin(char *filepath, Table_Info *table_info)
+static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 {
 	MessageQueuePipe 	 **output_queue;
 	Dispatch_Info 		  *dispatch = NULL;
@@ -596,11 +596,11 @@ clean_replaciate_roundrobin(void)
 
 }
 
-static void do_hash_module(char *filepath, const Table_Info *table_info)
+static void do_hash_module(char *filepath, const TableInfo *table_info)
 {
 	MessageQueuePipe 	  *	input_queue;
 	MessageQueuePipe 	 **	output_queue;
-	Hash_Field		 	  * field;
+	HashField		 	  * field;
 	Dispatch_Info 		  * dispatch = NULL;
 	Datanode_Info		  * datanode_info = NULL;
 	int					 	flag = 0;
@@ -664,7 +664,7 @@ static void do_hash_module(char *filepath, const Table_Info *table_info)
 		func_name = pg_strdup(field->func_name);
 	}
 
-	res = Init_Hash_Compute(setting->hash_config->hash_thread_num, func_name, setting->server_info->connection,
+	res = InitHashCompute(setting->hash_config->hash_thread_num, func_name, setting->server_info->connection,
 						input_queue, output_queue, table_info->use_datanodes_num, field, start);
 	pfree(func_name);
 	func_name = NULL;
@@ -709,7 +709,7 @@ static void do_hash_module(char *filepath, const Table_Info *table_info)
 	{
 		READ_PRODUCER_STATE  state = READ_PRODUCER_PROCESS_DEFAULT;
 		Dispatch_Threads	*dispatch_exit = NULL;
-		Hash_Threads		*hash_exit = NULL;
+		HashThreads		*hash_exit = NULL;
 		int					 flag;
 
 		if (setting->process_bar)
@@ -733,7 +733,7 @@ static void do_hash_module(char *filepath, const Table_Info *table_info)
 			{
 				Set_Read_Producer_Exit();
 				/* read module error, stop hash and dispatch */
-				Stop_Hash();
+				StopHash();
 				Stop_Dispath();
 				read_finish = true;
 				hash_finish = true;
@@ -746,7 +746,7 @@ static void do_hash_module(char *filepath, const Table_Info *table_info)
 
 		/* if read module state is ok, check hash and dispatch state */
 		dispatch_exit = Get_Dispatch_Exit_Threads();
-		hash_exit = Get_Exit_Threads_Info();
+		hash_exit = GetExitThreadsInfo();
 
 		if (hash_exit->hs_thread_cur == 0 && dispatch_exit->send_thread_cur == 0)
 		{
@@ -761,7 +761,7 @@ static void do_hash_module(char *filepath, const Table_Info *table_info)
 			pthread_mutex_lock(&hash_exit->mutex);
 			for (flag = 0; flag < hash_exit->hs_thread_count; flag++)
 			{
-				Compute_ThreadInfo * thread_info = hash_exit->hs_threads[flag];
+				ComputeThreadInfo * thread_info = hash_exit->hs_threads[flag];
 				if (NULL != thread_info && thread_info->state != THREAD_EXIT_NORMAL) /* ERROR happened */
 				{
 					pthread_mutex_unlock(&hash_exit->mutex);
@@ -769,7 +769,7 @@ static void do_hash_module(char *filepath, const Table_Info *table_info)
 						"[MAIN][thread main] hash module error, thread id :%ld, table name :%s, filepath : %s",
 						thread_info->thread_id, table_info->table_name, filepath);
 					/* stop hash other threads */
-					Stop_Hash();
+					StopHash();
 					hash_failed = true;
 					hash_finish = true;
 					goto FAILED;
@@ -824,10 +824,10 @@ FAILED:
 			Set_Read_Producer_Exit();
 
 		if (!hash_finish)
-			Stop_Hash();
+			StopHash();
 	}
 
-	Clean_Hash_Resource();
+	CleanHashResource();
 	Clean_Dispatch_Resource();
 	/* free  memory */
 	for (flag = 0; flag < table_info->use_datanodes_num; flag++)
@@ -856,7 +856,7 @@ clean_hash_module(void)
 }
 
 static void
-get_table_attribute(ADBLoadSetting *setting, Table_Info *table_info)
+get_table_attribute(ADBLoadSetting *setting, TableInfo *table_info)
 {
 	char distribute_by;
 	char *coord_conn_info = NULL;
@@ -900,7 +900,7 @@ get_table_attribute(ADBLoadSetting *setting, Table_Info *table_info)
 
 	return;
 }
-static void get_use_datanodes(ADBLoadSetting *setting, Table_Info *table_info)
+static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -999,11 +999,11 @@ static void get_use_datanodes(ADBLoadSetting *setting, Table_Info *table_info)
 
 }
 
-static void reset_hash_field(Table_Info *table_info)
+static void reset_hash_field(TableInfo *table_info)
 {
-	Hash_Field *hashfield = NULL;
+	HashField *hashfield = NULL;
 
-	hashfield = (Hash_Field *)palloc0(sizeof(Hash_Field));
+	hashfield = (HashField *)palloc0(sizeof(HashField));
 
 	hashfield->node_nums = table_info->funcinfo->node_count;
 	hashfield->node_list = (Oid *)palloc0(hashfield->node_nums * sizeof(Oid));
@@ -1076,7 +1076,7 @@ static void create_func_to_server(char *serverconninfo, char *creat_func_sql)
 	PQfinish(conn);
 }
 
-static void get_userdefined_funcinfo(const char *conninfo, Table_Info *table_info)
+static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info)
 {
 	UserFuncInfo *userdefined_funcinfo = NULL;
 	userdefined_funcinfo = (UserFuncInfo *)palloc0(sizeof(UserFuncInfo));
@@ -1140,17 +1140,17 @@ static void get_node_count_and_node_list(const char *conninfo, char *table_name,
 	return ;
 }
 
-static void get_hash_field(const char *conninfo, Table_Info *table_info)
+static void get_hash_field(const char *conninfo, TableInfo *table_info)
 {
 	char query[QUERY_MAXLEN];
 	PGconn     *conn;
 	PGresult   *res;
 	int i;
-	Hash_Field *hashfield = NULL;
+	HashField *hashfield = NULL;
 	int local_node_nums;
 	int local_field_nums;
 
-	hashfield = (Hash_Field *)palloc0(sizeof(Hash_Field));
+	hashfield = (HashField *)palloc0(sizeof(HashField));
 
 	conn = PQconnectdb(conninfo);
 	if (PQstatus(conn) != CONNECTION_OK)
@@ -1311,7 +1311,7 @@ static char get_distribute_by(const char *conninfo, const char *tablename)
 }
 
 /*
-static void get_func_info(const char *conninfo, Table_Info *table_info)
+static void get_func_info(const char *conninfo, TableInfo *table_info)
 {
 	UserFuncInfo *funcinfodata;
 
@@ -1900,9 +1900,9 @@ static Tables* read_table_info(char *fullpath)
 
 static Tables * get_tables(char **file_name_list, char **file_path_list, int file_num)
 {
-	Table_Info *table_info_ptr = NULL;
-	Table_Info *table_info_prev_ptr = NULL;
-	Table_Info *table_info_head_ptr = NULL;
+	TableInfo *table_info_ptr = NULL;
+	TableInfo *table_info_prev_ptr = NULL;
+	TableInfo *table_info_head_ptr = NULL;
 	Tables *tables_ptr = NULL;
 	int file_index = 0;
 	int table_sum = 0;
@@ -1946,17 +1946,17 @@ static Tables * get_tables(char **file_name_list, char **file_path_list, int fil
 
 	return tables_ptr;
 }
-static Table_Info *get_table_info(char **file_name_list, int file_num)
+static TableInfo *get_table_info(char **file_name_list, int file_num)
 {
 	char *table_name;
 	char table_name_temp[256];
 	int file_index;
 	int file_name_len = 0;
 	int table_split_num = 0;
-	Table_Info *table_info_ptr;
+	TableInfo *table_info_ptr;
 	if(file_name_list == NULL || file_num <= 0)
 		return NULL;
-	table_info_ptr = (Table_Info *)palloc0(sizeof(Table_Info));
+	table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
 	slist_init(&table_info_ptr->file_head);
 
 	for(file_index = 0; file_index < file_num; ++file_index)
@@ -2094,7 +2094,7 @@ void file_name_print(char **file_list, int file_num)
 
 void tables_print(Tables *tables_ptr)
 {
-	Table_Info * table_info_ptr;
+	TableInfo * table_info_ptr;
 	slist_iter	iter;
 	if(tables_ptr == NULL)
 		return;
@@ -2117,8 +2117,8 @@ void tables_print(Tables *tables_ptr)
 
 static void tables_list_free(Tables *tables)
 {
-	Table_Info *table_info;
-	Table_Info *table_info_next;
+	TableInfo *table_info;
+	TableInfo *table_info_next;
 	
 	table_info = tables->info;
 	
@@ -2133,7 +2133,7 @@ static void tables_list_free(Tables *tables)
 	tables = NULL;
 }
 
-static void table_free(Table_Info *table_info)
+static void table_free(TableInfo *table_info)
 {
 	int i = 0;
 	slist_mutable_iter siter;

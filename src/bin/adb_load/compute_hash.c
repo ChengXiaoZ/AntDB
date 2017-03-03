@@ -73,28 +73,28 @@ static const unsigned int xc_mod_r[][6] =
   {0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff}
 };
 
-static int 	  		adbLoader_hashThreadCreate (Hash_ComputeInfo *hash_info, Hash_Field *field);
+static int 	  		adbLoader_hashThreadCreate (HashComputeInfo *hash_info, HashField *field);
 
 static void			adbLoader_ThreadCleanup (void * argp);
 
 static void   		prepare_hash_field (LineBuffer **element_batch, int size,
-							Compute_ThreadInfo *thrinfo, MessageQueue *inner_queue);
+							ComputeThreadInfo *thrinfo, MessageQueue *inner_queue);
 
 static int	  		max_value (int * values, int size);
 
 static int			compute_hash_modulo (unsigned int numerator, unsigned int denominator);
 
-static int			calc_send_datanode (uint32 hash, Hash_Field *hash_field);
+static int			calc_send_datanode (uint32 hash, HashField *hash_field);
 
-static void			read_data (PGconn *conn, char *read_buff, Compute_ThreadInfo	*thrinfo);
+static void			read_data (PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo);
 
-static void			restart_hash_stream (Compute_ThreadInfo	*thrinfo);
+static void			restart_hash_stream (ComputeThreadInfo	*thrinfo);
 
-static void			check_restart_hash_stream (Compute_ThreadInfo	*thrinfo);
+static void			check_restart_hash_stream (ComputeThreadInfo	*thrinfo);
 
 static void   		free_buff (char ** buff, int len);
 
-static void			print_struct (Hash_ComputeInfo * hash_computeInfo, Hash_Field * hash_field);
+static void			print_struct (HashComputeInfo * hash_computeInfo, HashField * hash_field);
 
 static void		 	* adbLoader_ThreadMainWrapper (void *argp);
 
@@ -103,17 +103,17 @@ static char		  	* create_copy_string (char *func, int parameter_nums, char *copy
 //static LineBuffer 	* get_field (char **fields, char *line, int * loc, char *delim, int size);
 
 static LineBuffer	* get_field_quote (char **fields, char *line, int * loc, char *delim, char quotec,
-								char escapec, int size, Compute_ThreadInfo * thrinfo);
+								char escapec, int size, ComputeThreadInfo * thrinfo);
 
 static void		 	* hash_threadMain (void *argp);
 
-static LineBuffer 	* package_field (LineBuffer *lineBuffer, Compute_ThreadInfo *thrinfo);
+static LineBuffer 	* package_field (LineBuffer *lineBuffer, ComputeThreadInfo *thrinfo);
 
-static PGconn		* reconnect (Compute_ThreadInfo *thrinfo);
+static PGconn		* reconnect (ComputeThreadInfo *thrinfo);
 
 static void 		  set_other_threads_exit(void); 
 
-static void		  	  hash_write_error_message(Compute_ThreadInfo	*thrinfo, char * message,
+static void		  	  hash_write_error_message(ComputeThreadInfo	*thrinfo, char * message,
 										char * hash_error_message, int line_no, char *line_data, bool redo);
 
 
@@ -123,20 +123,20 @@ const int MESSAGE_QUEUE_GET_EMPTY = 0;
 
 bool			RECV_END_FLAG = FALSE;
 bool			ALL_THREADS_EXIT = FALSE;
-Hash_Threads	HASHThreadsData;
-Hash_Threads	*HashThreads = &HASHThreadsData;
-Hash_Threads	HASHThreadsERRORData;
-Hash_Threads	*FinishThreads = &HASHThreadsERRORData;
+HashThreads	HashThreadsData;
+HashThreads	*RunThreads = &HashThreadsData;
+HashThreads	HashThreadsFinishData;
+HashThreads	*FinishThreads = &HashThreadsFinishData;
 
 int
-Init_Hash_Compute(int thread_nums, char * func, char * conninfo, MessageQueuePipe * message_queue_in,
-	MessageQueuePipe ** message_queue_out, int queue_size, Hash_Field * field, char * start_cmd)
+InitHashCompute(int thread_nums, char * func, char * conninfo, MessageQueuePipe * message_queue_in,
+	MessageQueuePipe ** message_queue_out, int queue_size, HashField * field, char * start_cmd)
 {
-	Hash_ComputeInfo * hash_info;
+	HashComputeInfo * hash_info;
 	Assert(NULL != func && NULL != conninfo &&
 		NULL != message_queue_in && NULL != message_queue_out && NULL != field);
 
-	hash_info = (Hash_ComputeInfo *)palloc0(sizeof(Hash_ComputeInfo));
+	hash_info = (HashComputeInfo *)palloc0(sizeof(HashComputeInfo));
 	if(NULL == hash_info)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[HASH][thread main ] Init_Hash_ComputeInfo function palloc memory error");
@@ -154,46 +154,46 @@ Init_Hash_Compute(int thread_nums, char * func, char * conninfo, MessageQueuePip
 }
 
 int
-Check_Compute_state(void)
+CheckComputeState(void)
 {
 	int		running = 0;
-	pthread_mutex_lock(&HashThreads->mutex);
-	running = HashThreads->hs_thread_cur;
-	pthread_mutex_unlock(&HashThreads->mutex);
+	pthread_mutex_lock(&RunThreads->mutex);
+	running = RunThreads->hs_thread_cur;
+	pthread_mutex_unlock(&RunThreads->mutex);
 	return running;
 }
 
-Hash_Threads *
-Get_Exit_Threads_Info(void)
+HashThreads *
+GetExitThreadsInfo(void)
 {
 	return FinishThreads;
 }
 
 int
-Stop_Hash(void)
+StopHash(void)
 {
 	int flag;
-	pthread_mutex_lock(&HashThreads->mutex);
-	for (flag = 0; flag < HashThreads->hs_thread_count; flag++)
+	pthread_mutex_lock(&RunThreads->mutex);
+	for (flag = 0; flag < RunThreads->hs_thread_count; flag++)
 	{
-		Compute_ThreadInfo *thrinfo = HashThreads->hs_threads[flag];
+		ComputeThreadInfo *thrinfo = RunThreads->hs_threads[flag];
 		if (NULL != thrinfo)
 		{
 			thrinfo->exit = true;
 			ADBLOADER_LOG(LOG_INFO, "[HASH][thread main ] hash function set thread exit : %ld", thrinfo->thread_id);
 		}
 	}
-	pthread_mutex_unlock(&HashThreads->mutex);
+	pthread_mutex_unlock(&RunThreads->mutex);
 
 	for (;;)
 	{
-		pthread_mutex_lock(&HashThreads->mutex);
-		if (HashThreads->hs_thread_cur == 0)
+		pthread_mutex_lock(&RunThreads->mutex);
+		if (RunThreads->hs_thread_cur == 0)
 		{
-			pthread_mutex_unlock(&HashThreads->mutex);
+			pthread_mutex_unlock(&RunThreads->mutex);
 			break;
 		}
-		pthread_mutex_unlock(&HashThreads->mutex);		
+		pthread_mutex_unlock(&RunThreads->mutex);		
 		sleep(5);
 	}
 	return 0;
@@ -203,21 +203,21 @@ static void
 set_other_threads_exit(void)
 {
 	int flag;
-	pthread_mutex_lock(&HashThreads->mutex);
-	for (flag = 0; flag < HashThreads->hs_thread_count; flag++)
+	pthread_mutex_lock(&RunThreads->mutex);
+	for (flag = 0; flag < RunThreads->hs_thread_count; flag++)
 	{
-		Compute_ThreadInfo *thrinfo = HashThreads->hs_threads[flag];
+		ComputeThreadInfo *thrinfo = RunThreads->hs_threads[flag];
 		if (NULL != thrinfo)
 		{
 			thrinfo->exit = true;
 			ADBLOADER_LOG(LOG_INFO, "[HASH] current thread error , set other threads exit");
 		}
 	}
-	pthread_mutex_unlock(&HashThreads->mutex);
+	pthread_mutex_unlock(&RunThreads->mutex);
 }
 
 static void
-hash_write_error_message(Compute_ThreadInfo	*thrinfo, char * message,
+hash_write_error_message(ComputeThreadInfo	*thrinfo, char * message,
 										char * hash_error_message, int line_no, char *line_data, bool redo)
 {
 	LineBuffer *error_buffer = NULL;
@@ -255,16 +255,16 @@ hash_write_error_message(Compute_ThreadInfo	*thrinfo, char * message,
 }
 
 void 
-Clean_Hash_Resource(void)
+CleanHashResource(void)
 {
 	int flag;
-	Assert(HashThreads->hs_thread_cur == 0);
-	if (NULL != HashThreads->hs_threads)
-		pfree(HashThreads->hs_threads);
+	Assert(RunThreads->hs_thread_cur == 0);
+	if (NULL != RunThreads->hs_threads)
+		pfree(RunThreads->hs_threads);
 
 	for (flag = 0; flag < FinishThreads->hs_thread_count; flag++)
 	{
-		Compute_ThreadInfo *thrinfo = FinishThreads->hs_threads[flag];
+		ComputeThreadInfo *thrinfo = FinishThreads->hs_threads[flag];
 		if (NULL != thrinfo)
 		{
 			Assert(NULL == thrinfo->conn && NULL == thrinfo->inner_queue);
@@ -291,10 +291,10 @@ Clean_Hash_Resource(void)
 	}
 	pfree(FinishThreads->hs_threads);
 
-	HashThreads->hs_threads = NULL;
-	HashThreads->hs_thread_count = 0;
-	HashThreads->hs_thread_cur = 0;
-	pthread_mutex_destroy(&HashThreads->mutex);
+	RunThreads->hs_threads = NULL;
+	RunThreads->hs_thread_count = 0;
+	RunThreads->hs_thread_cur = 0;
+	pthread_mutex_destroy(&RunThreads->mutex);
 
 	FinishThreads->hs_threads = NULL;
 	FinishThreads->hs_thread_count = 0;
@@ -303,15 +303,15 @@ Clean_Hash_Resource(void)
 }
 
 int
-adbLoader_hashThreadCreate(Hash_ComputeInfo *hash_info, Hash_Field *field)
+adbLoader_hashThreadCreate(HashComputeInfo *hash_info, HashField *field)
 {
 	int 		error;
 	int			thread_flag;
-	Compute_ThreadInfo *thread_info;
+	ComputeThreadInfo *thread_info;
 
 	Assert(field->field_nums > 0 && field->node_nums && NULL != field->field_loc &&
 		NULL != field->field_type && NULL != field->node_list && NULL != field->delim && NULL != field->hash_delim);
-	if(pthread_mutex_init(&HashThreads->mutex, NULL) != 0 ||
+	if(pthread_mutex_init(&RunThreads->mutex, NULL) != 0 ||
 		pthread_mutex_init(&FinishThreads->mutex, NULL) != 0 )
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[HASH][thread main ] Can not initialize mutex: %s", strerror(errno));
@@ -321,18 +321,18 @@ adbLoader_hashThreadCreate(Hash_ComputeInfo *hash_info, Hash_Field *field)
 								hash_info->start_cmd, 0, NULL, TRUE);	
 		exit(1);
 	}
-	/*print Hash_ComputeInfo and Hash_Field */
+	/*print HashComputeInfo and HashField */
 	print_struct(hash_info, field);
 
-	HashThreads->hs_thread_count = hash_info->thread_nums;
-	HashThreads->hs_threads = (Compute_ThreadInfo **)palloc0(sizeof(Compute_ThreadInfo *) * hash_info->thread_nums);	
+	RunThreads->hs_thread_count = hash_info->thread_nums;
+	RunThreads->hs_threads = (ComputeThreadInfo **)palloc0(sizeof(ComputeThreadInfo *) * hash_info->thread_nums);	
 
 	FinishThreads->hs_thread_count = hash_info->thread_nums;
-	FinishThreads->hs_threads = (Compute_ThreadInfo **)palloc0(sizeof(Compute_ThreadInfo *) * hash_info->thread_nums);
+	FinishThreads->hs_threads = (ComputeThreadInfo **)palloc0(sizeof(ComputeThreadInfo *) * hash_info->thread_nums);
 
 	for (thread_flag = 0; thread_flag < hash_info->thread_nums; thread_flag++)
 	{	
-		thread_info = (Compute_ThreadInfo *)palloc0(sizeof(Compute_ThreadInfo));
+		thread_info = (ComputeThreadInfo *)palloc0(sizeof(ComputeThreadInfo));
 		/* copy func name */
 		thread_info->func_name = pg_strdup(hash_info->func_name);
 		if(NULL == thread_info->func_name)
@@ -351,10 +351,10 @@ adbLoader_hashThreadCreate(Hash_ComputeInfo *hash_info, Hash_Field *field)
 		thread_info->input_queue = hash_info->input_queue;
 		thread_info->output_queue = hash_info->output_queue;
 		thread_info->output_queue_size = hash_info->output_queue_size;
-		thread_info->hash_field = (Hash_Field *)palloc0(sizeof(Hash_Field));
+		thread_info->hash_field = (HashField *)palloc0(sizeof(HashField));
 		if (NULL == thread_info->hash_field)
 		{
-			ADBLOADER_LOG(LOG_ERROR, "[HASH][thread main ] palloc Hash_Field error");
+			ADBLOADER_LOG(LOG_ERROR, "[HASH][thread main ] palloc HashField error");
 			return HASH_COMPUTE_ERROR;
 		}
 		thread_info->hash_field->field_nums = field->field_nums;
@@ -382,7 +382,7 @@ adbLoader_hashThreadCreate(Hash_ComputeInfo *hash_info, Hash_Field *field)
 		thread_info->hash_field->has_qoute = field->has_qoute;
 		thread_info->thr_startroutine = hash_threadMain;
 		thread_info->state = THREAD_DEFAULT;
-		HashThreads->hs_threads[thread_flag] = thread_info;
+		RunThreads->hs_threads[thread_flag] = thread_info;
 
 		if ((error = pthread_create(&thread_info->thread_id, NULL, adbLoader_ThreadMainWrapper, thread_info)) < 0)
 		{
@@ -390,9 +390,9 @@ adbLoader_hashThreadCreate(Hash_ComputeInfo *hash_info, Hash_Field *field)
 			return HASH_COMPUTE_ERROR;
 		}
 		ADBLOADER_LOG(LOG_INFO, "[HASH][thread main ] create thread : %ld ",thread_info->thread_id);
-		HashThreads->hs_thread_cur++;
+		RunThreads->hs_thread_cur++;
 	}
-	/* free Hash_ComputeInfo */
+	/* free HashComputeInfo */
 	if (hash_info->func_name)
 	{
 		pfree(hash_info->func_name);
@@ -416,7 +416,7 @@ adbLoader_hashThreadCreate(Hash_ComputeInfo *hash_info, Hash_Field *field)
 static void	*
 adbLoader_ThreadMainWrapper(void *argp)
 {
-	Compute_ThreadInfo  *thrinfo = (Compute_ThreadInfo*) argp;
+	ComputeThreadInfo  *thrinfo = (ComputeThreadInfo*) argp;
 	pthread_detach(thrinfo->thread_id);
 	pthread_cleanup_push(adbLoader_ThreadCleanup, thrinfo);
 	thrinfo->thr_startroutine(thrinfo);
@@ -428,7 +428,7 @@ adbLoader_ThreadMainWrapper(void *argp)
 static void
 adbLoader_ThreadCleanup(void * argp)
 {
-	Compute_ThreadInfo  *thrinfo = (Compute_ThreadInfo*) argp;
+	ComputeThreadInfo  *thrinfo = (ComputeThreadInfo*) argp;
 	MessageQueue *inner_queue = thrinfo->inner_queue;
 	int flag, loc;
 
@@ -457,25 +457,25 @@ adbLoader_ThreadCleanup(void * argp)
 		thrinfo->copy_str = NULL;
 	}
 	/* remove thread info  */
-	pthread_mutex_lock(&HashThreads->mutex);
-	for (flag = 0; flag < HashThreads->hs_thread_count; flag++)
+	pthread_mutex_lock(&RunThreads->mutex);
+	for (flag = 0; flag < RunThreads->hs_thread_count; flag++)
 	{
-		Compute_ThreadInfo *thread_info = HashThreads->hs_threads[flag];
+		ComputeThreadInfo *thread_info = RunThreads->hs_threads[flag];
 		if(thread_info == thrinfo)
 		{
-			HashThreads->hs_threads[flag] = NULL;
-			HashThreads->hs_thread_cur--;
+			RunThreads->hs_threads[flag] = NULL;
+			RunThreads->hs_thread_cur--;
 			break;
 		}
 	}
-	if (flag >= HashThreads->hs_thread_count)
+	if (flag >= RunThreads->hs_thread_count)
 	{
 		/* error happen */
 	}
 	else
 		loc = flag;
-	pthread_mutex_unlock(&HashThreads->mutex);
-	if (HashThreads->hs_thread_cur == 0)
+	pthread_mutex_unlock(&RunThreads->mutex);
+	if (RunThreads->hs_thread_cur == 0)
 		ALL_THREADS_EXIT = true;
 
 	/* destory inner_queue */
@@ -486,7 +486,7 @@ adbLoader_ThreadCleanup(void * argp)
 	if (ALL_THREADS_EXIT)
 	{
 		bool copy_end = false;
-		Compute_ThreadInfo * exit_thread = NULL;
+		ComputeThreadInfo * exit_thread = NULL;
 		/* check all threads state */
 		for (flag = 0; flag < FinishThreads->hs_thread_count; flag++)
 		{
@@ -502,7 +502,7 @@ adbLoader_ThreadCleanup(void * argp)
 			thrinfo->state == THREAD_SELECT_ERROR || thrinfo->state == THREAD_COPY_STATE_ERROR ||
 			thrinfo->state == THREAD_MESSAGE_CONFUSION_ERROR || thrinfo->state == THREAD_FIELD_ERROR)
 			copy_end = false;
-		if (HashThreads->hs_thread_count == 1 &&
+		if (RunThreads->hs_thread_count == 1 &&
 			((thrinfo->state == THREAD_EXIT_NORMAL) || (thrinfo->state == THREAD_DEAL_COMPLETE) ||
 			(thrinfo->state == THREAD_DEFAULT)))
 			copy_end = true;
@@ -547,7 +547,7 @@ static void *
 hash_threadMain(void *argp)
 {
 	int					poll_size;
-	Compute_ThreadInfo	*thrinfo = (Compute_ThreadInfo*) argp;
+	ComputeThreadInfo	*thrinfo = (ComputeThreadInfo*) argp;
 	MessageQueuePipe	*input_queue;
 	MessageQueue		*inner_queue;
 	MessageQueuePipe	**output_queue;
@@ -838,7 +838,7 @@ ENDCOPY:
 
 static void
 prepare_hash_field (LineBuffer **	element_batch, int size,
-				Compute_ThreadInfo * thrinfo,  MessageQueue *inner_queue)
+				ComputeThreadInfo * thrinfo,  MessageQueue *inner_queue)
 {
 	int 		  element_flag;
 	LineBuffer	  *lineBuffer = NULL;
@@ -906,7 +906,7 @@ prepare_hash_field (LineBuffer **	element_batch, int size,
 }
 
 static LineBuffer *
-package_field (LineBuffer *lineBuffer, Compute_ThreadInfo * thrinfo)
+package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 {
 	LineBuffer  *buf;
 	char 	   **fields = (char **)palloc0(sizeof(char*) * thrinfo->hash_field->field_nums);
@@ -1019,7 +1019,7 @@ get_field (char **fields, char *line, int * loc, char *delim, int size)
 */
 static LineBuffer	*
 get_field_quote (char **fields, char *line, int * loc, char *delim, char quotec, char escapec,
-							int size, Compute_ThreadInfo * thrinfo)
+							int size, ComputeThreadInfo * thrinfo)
 {
 	int			max_loc;	
 	int			split = 0;
@@ -1179,7 +1179,7 @@ create_copy_string(char *func, int parameter_nums, char *copy_options)
 }
 
 static void
-read_data(PGconn *conn, char *read_buff, Compute_ThreadInfo	*thrinfo)
+read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 {
 	int	 ret;
 	PGresult *res;
@@ -1296,7 +1296,7 @@ read_data(PGconn *conn, char *read_buff, Compute_ThreadInfo	*thrinfo)
 
 /* this function only called by read_data() */
 static void
-check_restart_hash_stream (Compute_ThreadInfo	*thrinfo)
+check_restart_hash_stream (ComputeThreadInfo	*thrinfo)
 {
 	QueueElement	*inner_element = NULL;
 
@@ -1368,7 +1368,7 @@ check_restart_hash_stream (Compute_ThreadInfo	*thrinfo)
 
 
 static void
-restart_hash_stream (Compute_ThreadInfo *thrinfo)
+restart_hash_stream (ComputeThreadInfo *thrinfo)
 {
 	char 	 		*copy;
 	PGresult 		*res;
@@ -1523,7 +1523,7 @@ restart_hash_stream (Compute_ThreadInfo *thrinfo)
 }
 
 static int
-calc_send_datanode (uint32 hash, Hash_Field *hash_field)
+calc_send_datanode (uint32 hash, HashField *hash_field)
 {
 	int		modulo;
 	Assert(NULL != hash_field);
@@ -1567,15 +1567,15 @@ free_buff(char ** buff, int len)
 }
 
 static void
-print_struct (Hash_ComputeInfo * hash_computeInfo, Hash_Field * hash_field)
+print_struct (HashComputeInfo * hash_computeInfo, HashField * hash_field)
 {
 	int flag;
 	Assert(NULL != hash_computeInfo && NULL != hash_field);
-	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] print Hash_ComputeInfo");
+	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] print HashComputeInfo");
 	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] tread numbers : %d, connecion info : %s,",
 		hash_computeInfo->thread_nums, hash_computeInfo->conninfo);
 	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] funcion name : %s", hash_computeInfo->func_name);
-	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] print Hash_Field");
+	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] print HashField");
 	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] field num: %d ", hash_field->field_nums);
 	for (flag = 0; flag < hash_field->field_nums; flag ++)
 	{
@@ -1593,7 +1593,7 @@ print_struct (Hash_ComputeInfo * hash_computeInfo, Hash_Field * hash_field)
 }
 
 static PGconn *
-reconnect(Compute_ThreadInfo *thrinfo)
+reconnect(ComputeThreadInfo *thrinfo)
 {	
 	int times = 3;
 	Assert(thrinfo->conn != NULL && thrinfo->conninfo != NULL);

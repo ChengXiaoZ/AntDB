@@ -13,7 +13,7 @@ int main(int argc, char **argv)
 	char 			 *	conninfo;
 	int					thread_nums = 1;
 	int					output_queue_size = 3;
-	Hash_Field		 *  field;
+	HashField		 *  field;
 	int 			 	loc[2] = {3,1};
 	Oid				 	type[2] = {5433,5434};
 	Oid				 	node[2] = {15433,14561};
@@ -48,7 +48,7 @@ int main(int argc, char **argv)
 	mq_pipe_put(input_queue, buf1);
 	mq_pipe_put(input_queue, buf2);
 
-	field = (Hash_Field *)palloc0(sizeof(Hash_Field));
+	field = (HashField *)palloc0(sizeof(HashField));
 	conninfo = "user=lvcx host=localhost port=15436 dbname=postgres";
 	field->field_nums = 2;
 	field->field_loc = loc;
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 	field->has_qoute = true;
 
 	fopen_error_file(NULL);
-	Init_Hash_Compute(thread_nums, func_name, conninfo, input_queue,
+	InitHashCompute(thread_nums, func_name, conninfo, input_queue,
 		output_queue, output_queue_size, field, "start");
 
 	mq_pipe_put(input_queue, NULL);
