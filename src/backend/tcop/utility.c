@@ -38,6 +38,7 @@
 #include "commands/collationcmds.h"
 #include "commands/conversioncmds.h"
 #include "commands/copy.h"
+#include "commands/copyfunc.h"
 #include "commands/createas.h"
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
@@ -713,6 +714,17 @@ standard_ProcessUtility(Node *parsetree,
 				DoCopy((CopyStmt *) parsetree, queryString, &processed);
 				if (completionTag)
 					snprintf(completionTag, COMPLETION_TAG_BUFSIZE,
+							 "COPY " UINT64_FORMAT, processed);
+			}
+			break;
+
+		case T_CopyFuncStmt:
+			{
+				uint64		processed;
+
+				processed = DoCopyFunction((CopyFuncStmt*)parsetree, queryString);
+				if (completionTag)
+					snprintf(completionTag,  COMPLETION_TAG_BUFSIZE,
 							 "COPY " UINT64_FORMAT, processed);
 			}
 			break;
@@ -2622,6 +2634,7 @@ IsStmtAllowedInLockedMode(Node *parsetree, const char *queryString)
 		case T_FetchStmt:
 		case T_TruncateStmt:
 		case T_CopyStmt:
+		case T_CopyFuncStmt:
 		case T_PrepareStmt:					/*
 											 * Prepared statememts can only have
 											 * SELECT, INSERT, UPDATE, DELETE,
@@ -3459,6 +3472,10 @@ CreateCommandTag(Node *parsetree)
 			tag = "COPY";
 			break;
 
+		case T_CopyFuncStmt:
+			tag = "COPY FUNCTION";
+			break;
+
 		case T_RenameStmt:
 			tag = AlterObjectTypeCommandTag(((RenameStmt *) parsetree)->renameType);
 			break;
@@ -4062,6 +4079,10 @@ GetCommandLogLevel(Node *parsetree)
 				lev = LOGSTMT_MOD;
 			else
 				lev = LOGSTMT_ALL;
+			break;
+
+		case T_CopyFuncStmt:
+			lev = LOGSTMT_ALL;
 			break;
 
 		case T_PrepareStmt:

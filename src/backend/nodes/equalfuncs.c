@@ -1112,6 +1112,19 @@ _equalCopyStmt(const CopyStmt *a, const CopyStmt *b)
 }
 
 static bool
+_equalCopyFuncStmt(const CopyFuncStmt *a, const CopyFuncStmt *b)
+{
+	COMPARE_SCALAR_FIELD(is_from_program);
+	COMPARE_SCALAR_FIELD(is_to_program);
+	COMPARE_NODE_FIELD(func);
+	COMPARE_STRING_FIELD(fromname);
+	COMPARE_STRING_FIELD(toname);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
+static bool
 _equalCreateStmt(const CreateStmt *a, const CreateStmt *b)
 {
 #ifdef ADB
@@ -2827,6 +2840,9 @@ equal(const void *a, const void *b)
 			break;
 		case T_CopyStmt:
 			retval = _equalCopyStmt(a, b);
+			break;
+		case T_CopyFuncStmt:
+			retval = _equalCopyFuncStmt(a, b);
 			break;
 		case T_CreateStmt:
 			retval = _equalCreateStmt(a, b);

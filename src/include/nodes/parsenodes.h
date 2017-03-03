@@ -1052,6 +1052,7 @@ typedef struct BaseStmt
 	IsA(node, GrantRoleStmt) || \
 	IsA(node, AlterDefaultPrivilegesStmt) || \
 	IsA(node, CopyStmt) || \
+	IsA(node, CopyFuncStmt) || \
 	IsA(node, VariableSetStmt) || \
 	IsA(node, VariableShowStmt) || \
 	IsA(node, CreateStmt) || \
@@ -1651,6 +1652,17 @@ typedef struct CopyStmt
 	char	   *filename;		/* filename, or NULL for STDIN/STDOUT */
 	List	   *options;		/* List of DefElem nodes */
 } CopyStmt;
+
+typedef struct CopyFuncStmt
+{
+	NodeTag		type;
+	bool		is_from_program;
+	bool		is_to_program;
+	Node	   *func;
+	char	   *fromname;
+	char	   *toname;
+	List	   *options;
+}CopyFuncStmt;
 
 /* ----------------------
  * SET Statement (includes RESET)

@@ -2194,6 +2194,15 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 						goto fail;
 					}
 				}
+				else if (IsA(stmt, CopyFuncStmt))
+				{
+					CopyFuncStmt *cstmt = (CopyFuncStmt*) stmt;
+					if(cstmt->toname == NULL || cstmt->fromname == NULL)
+					{
+						my_res = SPI_ERROR_COPY;
+						goto fail;
+					}
+				}
 				else if (IsA(stmt, TransactionStmt))
 				{
 					my_res = SPI_ERROR_TRANSACTION;
@@ -2278,7 +2287,7 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 					if (((CreateTableAsStmt *) stmt)->is_select_into)
 						res = SPI_OK_SELINTO;
 				}
-				else if (IsA(stmt, CopyStmt))
+				else if (IsA(stmt, CopyStmt) || IsA(stmt, CopyFuncStmt))
 				{
 					Assert(strncmp(completionTag, "COPY ", 5) == 0);
 					_SPI_current->processed = strtoul(completionTag + 5,

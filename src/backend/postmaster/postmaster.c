@@ -642,6 +642,10 @@ Datum xc_lockForBackupKey2;
 #endif
 
 #ifdef ADB
+bool isADBLoader = false;
+#endif
+
+#ifdef ADB
 #define StartRemoteXactMgr()	StartChildProcess(RemoteXactMgrProcess)
 #endif
 
@@ -916,6 +920,10 @@ PostmasterMain(int argc, char *argv[])
 						isRestoreMode = true;
 						isPGXCDataNode = true;
 					}
+					else if (strcmp(name, "adbloader") == 0 && !value)
+					{
+						isADBLoader = true;
+					}
 					else /* default case */
 					{
 #endif
@@ -951,9 +959,9 @@ PostmasterMain(int argc, char *argv[])
 	}
 
 #ifdef PGXC
-	if (!IS_PGXC_COORDINATOR && !IS_PGXC_DATANODE)
+	if (!IS_PGXC_COORDINATOR && !IS_PGXC_DATANODE && !IS_ADBLOADER)
 	{
-		write_stderr("%s: Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (--datanode)\n",
+		write_stderr("%s: Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (--datanode) or ADBloader (--adbloader)\n",
 					 progname);
 		ExitPostmaster(1);
 	}

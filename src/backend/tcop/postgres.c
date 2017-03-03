@@ -130,7 +130,6 @@ extern int	optind;
 extern int	optreset;			/* might not be declared by system headers */
 #endif
 
-
 /* ----------------
  *		global variables
  * ----------------
@@ -231,6 +230,11 @@ static ProcSignalReason RecoveryConflictReason;
 #ifdef ADB
 int parse_grammar = PARSE_GRAM_POSTGRES;
 int current_grammar = PARSE_GRAM_POSTGRES;
+/* adbload */
+int    hash_size = 0;
+Oid   *adbload_types = NULL;
+Datum *adbload_values = NULL;
+Oid    func_oid = 0;
 #endif
 extern bool Debug_print_grammar;
 
@@ -571,6 +575,8 @@ SocketBackend(StringInfo inBuf)
 		case 'A':				/* agtm command */
 			break;
 #endif /* AGTM */
+		case 'N':
+			break;
 
 		default:
 
@@ -4129,11 +4135,11 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 	 * Make sure we specified the mode if Coordinator or Datanode.
 	 * Allow for the exception of initdb by checking config option
 	 */
-	if (!IS_PGXC_COORDINATOR && !IS_PGXC_DATANODE && IsUnderPostmaster)
+	if (!IS_PGXC_COORDINATOR && !IS_PGXC_DATANODE && !IS_ADBLOADER && IsUnderPostmaster)
 	{
 		ereport(FATAL,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (-datanode)\n")));
+			 errmsg("Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (-datanode) or ADBloader (--adbloader)\n")));
 	}
 	if (!IsPostmasterEnvironment)
 	{

@@ -2917,6 +2917,21 @@ _copyCopyStmt(const CopyStmt *from)
 	return newnode;
 }
 
+static CopyFuncStmt *
+_copyCopyFuncStmt(const CopyFuncStmt *from)
+{
+	CopyFuncStmt *newnode = makeNode(CopyFuncStmt);
+
+	COPY_SCALAR_FIELD(is_from_program);
+	COPY_SCALAR_FIELD(is_to_program);
+	COPY_NODE_FIELD(func);
+	COPY_STRING_FIELD(fromname);
+	COPY_STRING_FIELD(toname);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
 #ifdef PGXC
 static DistributeBy *
 _copyDistributeBy(const DistributeBy *from)
@@ -4846,6 +4861,9 @@ copyObject(const void *from)
 			break;
 		case T_CopyStmt:
 			retval = _copyCopyStmt(from);
+			break;
+		case T_CopyFuncStmt:
+			retval = _copyCopyFuncStmt(from);
 			break;
 		case T_CreateStmt:
 			retval = _copyCreateStmt(from);

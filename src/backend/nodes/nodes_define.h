@@ -2706,6 +2706,18 @@ BEGIN_NODE(CopyStmt)
 	NODE_NODE(List,options)		/* List of DefElem nodes */
 END_NODE(CopyStmt)
 #endif /* NO_NODE_CopyStmt */
+
+#ifndef NO_NODE_CopyFuncStmt
+BEGIN_NODE(CopyFuncStmt)
+	NODE_SCALAR(bool, is_from_program)
+	NODE_SCALAR(bool, is_to_program)
+	NODE_NODE(Node, func)
+	NODE_STRING(fromname)
+	NODE_STRING(toname)
+	NODE_NODE(List,options)
+END_NODE(CopyFuncStmt)
+#endif /* NO_NODE_CopyFuncStmt */
+
 /* ----------------------
  * SET Statement (includes RESET)
  *

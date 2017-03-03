@@ -189,7 +189,7 @@ static FuncCall *makeOverlaps(List *largs, List *rargs,
 		AlterRoleStmt AlterRoleSetStmt
 		AlterDefaultPrivilegesStmt DefACLAction
 		AnalyzeStmt ClosePortalStmt ClusterStmt CommentStmt
-		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
+		ConstraintsSetStmt CopyStmt CopyFuncStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateExtensionStmt CreateGroupStmt CreateOpClassStmt
 		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
@@ -702,6 +702,7 @@ stmt :
 			| CommentStmt
 			| ConstraintsSetStmt
 			| CopyStmt
+			| CopyFuncStmt
 			| CreateAsStmt
 			| CreateAssertStmt
 			| CreateCastStmt
@@ -2292,6 +2293,47 @@ ClosePortalStmt:
 				}
 		;
 
+/*****************************************************************************
+ *
+ *		QUERY :
+ *				COPY FUNCTION function FROM file TO file [WITH] [(options)]
+ *
+ *				where 'file' can be one of:
+ *				{ PROGRAM 'command' | STDIN | STDOUT | 'filename' }
+ *
+ *****************************************************************************/
+
+CopyFuncStmt:	COPY opt_binary FUNCTION func_expr
+				FROM opt_program copy_file_name
+				TO opt_program copy_file_name opt_with copy_options 
+					{
+						CopyFuncStmt *n;
+						if($2)
+							ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("syntax error"),
+									 parser_errposition(@2)));
+						n = makeNode(CopyFuncStmt);
+						n->func = $4;
+						n->is_from_program = $6;
+						n->fromname = $7;
+						n->is_to_program = $9;
+						n->toname = $10;
+						n->options = $12;
+						if(n->is_from_program && n->fromname == NULL)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("STDIN/STDOUT not allowed with PROGRAM"),
+									 parser_errposition(@7)));
+						if(n->is_to_program && n->toname == NULL)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("STDIN/STDOUT not allowed with PROGRAM"),
+									 parser_errposition(@10)));
+
+						$$ = (Node*)n;
+					}
+				;
 
 /*****************************************************************************
  *
