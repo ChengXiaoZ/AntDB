@@ -22,7 +22,7 @@ int main(int argc, char **argv)
 	init_linebuf(2);
 	input_queue = (MessageQueuePipe*)palloc0(sizeof(MessageQueuePipe));
 	mq_pipe_init(input_queue, "input_queue");
-	Init_Read_Producer(filepath, input_queue, output_queue, datanode_num, true, 0, "start");
+	InitReadProducer(filepath, input_queue, output_queue, datanode_num, true, 0, "start");
 	for (;;)
 	{
 	}

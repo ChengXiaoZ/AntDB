@@ -465,7 +465,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	}
 
 	/* start read_producer module last */
-	if ( (res = Init_Read_Producer(filepath, NULL, output_queue,
+	if ( (res = InitReadProducer(filepath, NULL, output_queue,
 										table_info->use_datanodes_num, true, 0, start)) != READ_PRODUCER_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"start read_producer module failed");
@@ -476,7 +476,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	/* check module state every 10s */
 	for (;;)
 	{
-		READ_PRODUCER_STATE  state;
+		ReadProducerState  state;
 		DispatchThreads *dispatch_exit = NULL;
 		int              flag;
 
@@ -497,10 +497,10 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 
 		if (!read_finish)
 		{
-			state = Get_Read_Module();
+			state = GetReadModule();
 			if (state == READ_PRODUCER_PROCESS_ERROR)
 			{
-				Set_Read_Producer_Exit();
+				SetReadProducerExit();
 				/* read module error, stop dispatch */
 				StopDispatch();
 				read_finish = true;
@@ -564,7 +564,7 @@ FAILED:
 	{
 		if (!read_finish)
 		{
-			Set_Read_Producer_Exit();
+			SetReadProducerExit();
 			read_finish = true;
 		}
 			
@@ -696,7 +696,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	}
 	
 	/* start read_producer module last */
-	if ((res =Init_Read_Producer(filepath, input_queue, NULL, 0, 
+	if ((res =InitReadProducer(filepath, input_queue, NULL, 0, 
 						false, setting->hash_config->hash_thread_num, start))!= READ_PRODUCER_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start read module failed");
@@ -707,7 +707,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	/* check module state every 10s */
 	for (;;)
 	{
-		READ_PRODUCER_STATE  state = READ_PRODUCER_PROCESS_DEFAULT;
+		ReadProducerState  state = READ_PRODUCER_PROCESS_DEFAULT;
 		DispatchThreads	*dispatch_exit = NULL;
 		HashThreads		*hash_exit = NULL;
 		int					 flag;
@@ -728,10 +728,10 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 
 		if (!read_finish)
 		{
-			state = Get_Read_Module();
+			state = GetReadModule();
 			if (state == READ_PRODUCER_PROCESS_ERROR)
 			{
-				Set_Read_Producer_Exit();
+				SetReadProducerExit();
 				/* read module error, stop hash and dispatch */
 				StopHash();
 				StopDispatch();
@@ -813,7 +813,7 @@ FAILED:
 	{
 		/* check read module is finish */
 		if (!read_finish)
-			Set_Read_Producer_Exit();
+			SetReadProducerExit();
 
 		if (!dispatch_finish)
 			StopDispatch();
@@ -821,7 +821,7 @@ FAILED:
 	else if (dispatch_failed)
 	{
 		if (!read_finish)
-			Set_Read_Producer_Exit();
+			SetReadProducerExit();
 
 		if (!hash_finish)
 			StopHash();

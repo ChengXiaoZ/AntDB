@@ -33,7 +33,7 @@ static void	  read_write_error_message(Read_ThreadInfo  *thrinfo, char * message
 													int line_no, char *line_data, bool redo);
 
 
-static READ_PRODUCER_STATE	STATE = READ_PRODUCER_PROCESS_OK;
+static ReadProducerState	STATE = READ_PRODUCER_PROCESS_OK;
 static bool				NEED_EXIT = false;
 static bool				EXITED = false;
 
@@ -180,7 +180,7 @@ read_threadMain (void *argp)
 }
 
 int
-Init_Read_Producer(char *filepath, MessageQueuePipe *input_queue, MessageQueuePipe **output_queue,
+InitReadProducer(char *filepath, MessageQueuePipe *input_queue, MessageQueuePipe **output_queue,
 								int out_queue_size, bool replication, int end_flag_num, char * start_cmd)
 {
 	Read_ThreadInfo *read_threadInfo = (Read_ThreadInfo*)palloc0(sizeof(Read_ThreadInfo));
@@ -211,14 +211,14 @@ Init_Read_Producer(char *filepath, MessageQueuePipe *input_queue, MessageQueuePi
 	return READ_PRODUCER_OK;
 }
 
-READ_PRODUCER_STATE
-Get_Read_Module(void)
+ReadProducerState
+GetReadModule(void)
 {
 	return STATE;
 }
 
 void
-Set_Read_Producer_Exit(void)
+SetReadProducerExit(void)
 {
 	NEED_EXIT = true;
 	for (;;)
