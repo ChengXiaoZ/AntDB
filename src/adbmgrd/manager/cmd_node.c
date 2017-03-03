@@ -9646,9 +9646,6 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	AppendNodeInfo appendnodeinfo;
 	char *coordhost;
 	char coordport_buf[10];
-	char hname[128];
-	struct hostent *hent;
-	char *address;
 	char *current_user;
 	char cnpath[1024];
 	struct passwd *pwd;
@@ -9662,12 +9659,9 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	HeapTuple tuple;
 	bool isNull;
 
-	gethostname(hname, sizeof(hname));
-	hent = gethostbyname(hname);
-	address = pstrdup(inet_ntoa(*(struct in_addr*)(hent->h_addr_list[0])));
-	 pwd = getpwuid(getuid());
+	pwd = getpwuid(getuid());
 	current_user = pwd->pw_name;
-	appendnodeinfo.nodeaddr = address;
+	appendnodeinfo.nodeaddr = NULL;
 	appendnodeinfo.nodeusername = current_user;
 	mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, false);
 	coordhost = get_hostaddress_from_hostoid(coordhostoid);
@@ -9721,7 +9715,6 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 			errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
 				coordhost, coordport, DEFAULT_DB, appendnodeinfo.nodeusername)));
 	}
-	pfree(address);
 	pfree(coordhost);
 
 	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
