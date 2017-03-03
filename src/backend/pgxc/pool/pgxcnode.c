@@ -1211,6 +1211,12 @@ clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 			continue;
 		}
 
+		if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+			handle->state == DN_CONNECTION_STATE_COPY_OUT)
+		{
+			DataNodeCopyEnd(handle, true);
+		}
+
 		/* try to flush read any data */
 		if (handle->state != DN_CONNECTION_STATE_IDLE)
 			pgxc_node_flush_read(handle);
@@ -1237,6 +1243,12 @@ clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 			continue;
 		}
 
+		if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+			handle->state == DN_CONNECTION_STATE_COPY_OUT)
+		{
+			DataNodeCopyEnd(handle, true);
+		}
+
 		/* try to flush read any data */
 		if (handle->state != DN_CONNECTION_STATE_IDLE)
 			pgxc_node_flush_read(handle);
@@ -1251,7 +1263,7 @@ clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 }
 
 void
-clear_all_handles(void)
+clear_all_handles(bool error)
 {
 	PGXCNodeHandle *handle;
 	int 			i;
@@ -1275,6 +1287,12 @@ clear_all_handles(void)
 		{
 			handle->combiner = NULL;
 			continue;
+		}
+
+		if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+			handle->state == DN_CONNECTION_STATE_COPY_OUT)
+		{
+			DataNodeCopyEnd(handle, error);
 		}
 
 		/* try to flush read any data */
@@ -1301,6 +1319,12 @@ clear_all_handles(void)
 		{
 			handle->combiner = NULL;
 			continue;
+		}
+
+		if (handle->state == DN_CONNECTION_STATE_COPY_IN ||
+			handle->state == DN_CONNECTION_STATE_COPY_OUT)
+		{
+			DataNodeCopyEnd(handle, error);
 		}
 
 		/* try to flush read any data */

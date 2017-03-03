@@ -4672,7 +4672,7 @@ PostgresMain(int argc, char *argv[],
 #ifdef ADB
 		if (!IsTransactionState())
 		{
-			clear_all_handles();
+			clear_all_handles(false);
 			release_handles();
 		}
 		if(need_reload_pooler)

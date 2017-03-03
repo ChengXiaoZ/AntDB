@@ -5200,7 +5200,7 @@ AbnormalAbort_Remote(void)
 	if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
 		return ;
 
-	clear_all_handles();
+	clear_all_handles(true);
 
 	if (remoteXactState.status == RXACT_NONE)
 		init_RemoteXactState(false);

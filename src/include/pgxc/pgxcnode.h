@@ -167,7 +167,7 @@ extern void cancel_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 								int num_cohandles, PGXCNodeHandle **cohandles);
 extern void clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 								int num_cohandles, PGXCNodeHandle **cohandles);
-extern void clear_all_handles(void);
+extern void clear_all_handles(bool error);
 #endif /* ADB */
 
 extern void cancel_query(void);
