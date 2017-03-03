@@ -9,24 +9,24 @@
 
 typedef pthread_t	DispatchThreadID;
 
-typedef struct Datanode_Info
+typedef struct DatanodeInfo
 {
 	Oid 	*datanode;
 	int		node_nums;
 	char	**conninfo;
-} Datanode_Info;
+} DatanodeInfo;
 
-typedef struct Dispatch_Info
+typedef struct DispatchInfo
 {
 	int					 thread_nums;
 	char				*conninfo_agtm;
 	MessageQueuePipe	**output_queue;
-	Datanode_Info		*datanode_info;
+	DatanodeInfo		*datanode_info;
 	char				*table_name;
 	char				*copy_options;
 	char				*start_cmd;
 	bool				 process_bar;
-} Dispatch_Info;
+} DispatchInfo;
 
 typedef enum DISPATCH_THREAD_WORK_STATE
 {
@@ -44,15 +44,15 @@ typedef enum DISPATCH_THREAD_WORK_STATE
 	DISPATCH_THREAD_MESSAGE_CONFUSION_ERROR,
 	DISPATCH_THREAD_KILLED_BY_OTHERTHREAD,
 	DISPATCH_THREAD_EXIT_NORMAL
-} DISPATCH_THREAD_WORK_STATE;
+} DispatchThreadWorkState;
 
 typedef enum TABLE_TYPE
 {
 	TABLE_REPLICATION,
 	TABLE_DISTRIBUTE
-} TABLE_TYPE;
+} TableType;
 
-typedef struct Dispatch_ThreadInfo
+typedef struct DispatchThreadInfo
 {
 	DispatchThreadID	thread_id;
 	MessageQueuePipe  	*output_queue;
@@ -67,21 +67,21 @@ typedef struct Dispatch_ThreadInfo
 	bool				exit;
 	int					send_total;
 	void 				* (* thr_startroutine)(void *); /* thread start function */
-	DISPATCH_THREAD_WORK_STATE state;
-} Dispatch_ThreadInfo;
+	DispatchThreadWorkState state;
+} DispatchThreadInfo;
 
-typedef struct Dispatch_Threads
+typedef struct DispatchThreads
 {
 	int 			   	send_thread_count;
 	int				   	send_thread_cur;
-	Dispatch_ThreadInfo **send_threads;
+	DispatchThreadInfo **send_threads;
 	pthread_mutex_t	   	mutex;
-} Dispatch_Threads;
+} DispatchThreads;
 
-int Init_Dispatch (Dispatch_Info *dispatch_info, TABLE_TYPE type);
-int Stop_Dispath (void);
+int InitDispatch (DispatchInfo *dispatch_info, TableType type);
+int StopDispatch (void);
 /* make sure all threads had exited */
-void Clean_Dispatch_Resource (void);
-Dispatch_Threads *Get_Dispatch_Exit_Threads (void);
+void CleanDispatchResource (void);
+DispatchThreads *GetDispatchExitThreads (void);
 void GetSendCount(int * thread_send_num);
 #endif

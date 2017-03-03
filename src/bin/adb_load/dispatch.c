@@ -29,27 +29,27 @@ static struct enum_name message_name_tab[] =
 	{-1, NULL}
 };
 
-Dispatch_Threads	DispatchThreadsData;
-Dispatch_Threads	*DispatchThreads = &DispatchThreadsData;
-Dispatch_Threads	DispatchThreadsErrorData;
-Dispatch_Threads	*DispatchThreadsFinish = &DispatchThreadsErrorData;
-TABLE_TYPE			Table_Type;
+DispatchThreads	DispatchThreadsData;
+DispatchThreads	*DispatchThreadsRun = &DispatchThreadsData;
+DispatchThreads	DispatchThreadsFinishData;
+DispatchThreads	*DispatchThreadsFinish = &DispatchThreadsFinishData;
+TableType			Table_Type;
 bool				Is_Deal = false;
 static	bool	    process_bar = false;
 static char 		**error_message_name = NULL;
 static int 			error_message_max;
 
-static int		  dispatch_threadsCreate(Dispatch_Info *dispatch);
+static int		  dispatch_threadsCreate(DispatchInfo *dispatch);
 static void		* dispatch_threadMain (void *argp);
 static void		* dispatch_ThreadMainWrapper (void *argp);
 static void		  dispatch_ThreadCleanup (void * argp);
-static PGconn	* reconnect (Dispatch_ThreadInfo *thrinfo);
+static PGconn	* reconnect (DispatchThreadInfo *thrinfo);
 static char		* create_copy_string (char *table_name, char *copy_options);
 static void		  deal_after_thread_exit(void);
-static void 	  build_communicate_agtm_and_datanode (Dispatch_ThreadInfo *thrinfo);
+static void 	  build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo);
 static void		  dispatch_init_error_nametabs(void);
-static char	 	* dispatch_util_message_name (DISPATCH_THREAD_WORK_STATE state);
-static void		  dispatch_write_error_message(Dispatch_ThreadInfo	*thrinfo, char * message,
+static char	 	* dispatch_util_message_name (DispatchThreadWorkState state);
+static void		  dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 										char * dispatch_error_message, int line_no, char *line_data, bool redo);
 
 void
@@ -74,7 +74,7 @@ dispatch_init_error_nametabs(void)
 }
 
 char *
-dispatch_util_message_name(DISPATCH_THREAD_WORK_STATE state)
+dispatch_util_message_name(DispatchThreadWorkState state)
 {
 	if (error_message_name == NULL)
 		dispatch_init_error_nametabs();
@@ -84,7 +84,7 @@ dispatch_util_message_name(DISPATCH_THREAD_WORK_STATE state)
 }
 
 void
-dispatch_write_error_message(Dispatch_ThreadInfo	*thrinfo, char * message,
+dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			char * dispatch_error_message, int line_no, char *line_data, bool redo)
 {
 	LineBuffer *error_buffer = NULL;
@@ -142,7 +142,7 @@ dispatch_write_error_message(Dispatch_ThreadInfo	*thrinfo, char * message,
 }
 
 int
-Init_Dispatch(Dispatch_Info *dispatch_info, TABLE_TYPE type)
+InitDispatch(DispatchInfo *dispatch_info, TableType type)
 {
 	int		res;
 	Assert(dispatch_info != NULL);
@@ -155,24 +155,24 @@ Init_Dispatch(Dispatch_Info *dispatch_info, TABLE_TYPE type)
 }
 
 int
-Stop_Dispath (void)
+StopDispatch (void)
 {
 	int flag;
-	pthread_mutex_lock(&DispatchThreads->mutex);
-	for (flag = 0; flag < DispatchThreads->send_thread_count; flag++)
+	pthread_mutex_lock(&DispatchThreadsRun->mutex);
+	for (flag = 0; flag < DispatchThreadsRun->send_thread_count; flag++)
 	{
-		Dispatch_ThreadInfo *thread_info = DispatchThreads->send_threads[flag];
+		DispatchThreadInfo *thread_info = DispatchThreadsRun->send_threads[flag];
 		if(thread_info != NULL)
 			thread_info->exit = true;
 	}
-	pthread_mutex_unlock(&DispatchThreads->mutex);
+	pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 	/* wait thread exit */
 	for (;;)
 	{
-		pthread_mutex_lock(&DispatchThreads->mutex);
-		if (DispatchThreads->send_thread_cur == 0)
+		pthread_mutex_lock(&DispatchThreadsRun->mutex);
+		if (DispatchThreadsRun->send_thread_cur == 0)
 		{
-			pthread_mutex_unlock(&DispatchThreads->mutex);
+			pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 			break;
 		}
 		/* sleep 5s */
@@ -182,13 +182,13 @@ Stop_Dispath (void)
 }
 
 int
-dispatch_threadsCreate(Dispatch_Info  *dispatch)
+dispatch_threadsCreate(DispatchInfo  *dispatch)
 {
 	int flag;
-	Datanode_Info *datanode_info = dispatch->datanode_info;
+	DatanodeInfo *datanode_info = dispatch->datanode_info;
 	Assert(NULL != dispatch && NULL != dispatch->conninfo_agtm && NULL != dispatch->output_queue
 		&& dispatch->thread_nums > 0 && NULL != dispatch->datanode_info);
-	if(pthread_mutex_init(&DispatchThreads->mutex, NULL) != 0 ||
+	if(pthread_mutex_init(&DispatchThreadsRun->mutex, NULL) != 0 ||
 		pthread_mutex_init(&DispatchThreadsFinish->mutex, NULL) != 0)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not initialize dispatch mutex: %s",
@@ -200,19 +200,19 @@ dispatch_threadsCreate(Dispatch_Info  *dispatch)
 		exit(1);
 	}
 
-	DispatchThreads->send_thread_count = dispatch->thread_nums;
-	DispatchThreads->send_threads = (Dispatch_ThreadInfo **)palloc0(sizeof(Dispatch_ThreadInfo *) * dispatch->thread_nums);
+	DispatchThreadsRun->send_thread_count = dispatch->thread_nums;
+	DispatchThreadsRun->send_threads = (DispatchThreadInfo **)palloc0(sizeof(DispatchThreadInfo *) * dispatch->thread_nums);
 	DispatchThreadsFinish->send_thread_count = dispatch->thread_nums;
-	DispatchThreadsFinish->send_threads = (Dispatch_ThreadInfo **)palloc0(sizeof(Dispatch_ThreadInfo *) * dispatch->thread_nums);
+	DispatchThreadsFinish->send_threads = (DispatchThreadInfo **)palloc0(sizeof(DispatchThreadInfo *) * dispatch->thread_nums);
 	for (flag = 0; flag < dispatch->thread_nums; flag++)
 	{
-		Dispatch_ThreadInfo *thrinfo = (Dispatch_ThreadInfo*)palloc0(sizeof(Dispatch_ThreadInfo ));
+		DispatchThreadInfo *thrinfo = (DispatchThreadInfo*)palloc0(sizeof(DispatchThreadInfo ));
 		if (NULL == thrinfo)
 		{
-			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not malloc memory to Dispatch_ThreadInfo");
+			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not malloc memory to DispatchThreadInfo");
 
 			dispatch_write_error_message(NULL, 
-										"Can not malloc memory to Dispatch_ThreadInfo ,file need to redo",
+										"Can not malloc memory to DispatchThreadInfo ,file need to redo",
 										dispatch->start_cmd, 0 , NULL, true);
 			exit(1);
 		}
@@ -231,8 +231,8 @@ dispatch_threadsCreate(Dispatch_Info  *dispatch)
 			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] create dispatch thread error");
 			return DISPATCH_ERROR;
 		}
-		DispatchThreads->send_thread_cur++;
-		DispatchThreads->send_threads[flag] = thrinfo;
+		DispatchThreadsRun->send_thread_cur++;
+		DispatchThreadsRun->send_threads[flag] = thrinfo;
 		ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread main ] create dispatch thread : %ld ",thrinfo->thread_id);
 	}
 	return DISPATCH_OK;
@@ -241,7 +241,7 @@ dispatch_threadsCreate(Dispatch_Info  *dispatch)
 void *
 dispatch_threadMain (void *argp)
 {	
-	Dispatch_ThreadInfo	*thrinfo = (Dispatch_ThreadInfo*) argp;
+	DispatchThreadInfo	*thrinfo = (DispatchThreadInfo*) argp;
 	MessageQueuePipe	*output_queue;
 	char 				*read_buff = NULL;
 	LineBuffer 			*lineBuffer = NULL;
@@ -513,7 +513,7 @@ dispatch_threadMain (void *argp)
 }
 
 void 
-build_communicate_agtm_and_datanode (Dispatch_ThreadInfo *thrinfo)
+build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 {
 	char		*agtm_port;
 	PGresult 	*res;
@@ -607,7 +607,7 @@ build_communicate_agtm_and_datanode (Dispatch_ThreadInfo *thrinfo)
 void *
 dispatch_ThreadMainWrapper (void *argp)
 {
-	Dispatch_ThreadInfo  *thrinfo = (Dispatch_ThreadInfo*) argp;
+	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
 	pthread_detach(thrinfo->thread_id);
 	pthread_cleanup_push(dispatch_ThreadCleanup, thrinfo);
 	thrinfo->thr_startroutine(thrinfo);
@@ -622,21 +622,21 @@ dispatch_ThreadCleanup (void * argp)
 	int					 flag;
 	int					 current_run_thread = 0;
 	int					 current_exit_thread = 0;
-	Dispatch_ThreadInfo  *thrinfo = (Dispatch_ThreadInfo*) argp;
+	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
 
-	pthread_mutex_lock(&DispatchThreads->mutex);
-	for (flag = 0; flag < DispatchThreads->send_thread_count; flag++)
+	pthread_mutex_lock(&DispatchThreadsRun->mutex);
+	for (flag = 0; flag < DispatchThreadsRun->send_thread_count; flag++)
 	{
-		Dispatch_ThreadInfo *thread_info = DispatchThreads->send_threads[flag];
+		DispatchThreadInfo *thread_info = DispatchThreadsRun->send_threads[flag];
 		if(thread_info == thrinfo)
 		{
-			DispatchThreads->send_threads[flag] = NULL;
-			DispatchThreads->send_thread_cur--;
-			current_run_thread = DispatchThreads->send_thread_cur;
+			DispatchThreadsRun->send_threads[flag] = NULL;
+			DispatchThreadsRun->send_thread_cur--;
+			current_run_thread = DispatchThreadsRun->send_thread_cur;
 			break;
 		}
 	}
-	pthread_mutex_unlock(&DispatchThreads->mutex);
+	pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 
 	if (thrinfo->state != DISPATCH_THREAD_EXIT_NORMAL)
 	{
@@ -689,7 +689,7 @@ dispatch_ThreadCleanup (void * argp)
 	}
 	ADBLOADER_LOG(LOG_INFO,
 	"[DISPATCH][thread id : %ld ] thread exit, total threads is : %d, current thread number: %d, current exit thread number: %d, state :%s",
-	thrinfo->thread_id, DispatchThreads->send_thread_count, current_run_thread,
+	thrinfo->thread_id, DispatchThreadsRun->send_thread_count, current_run_thread,
 	current_exit_thread, dispatch_util_message_name(thrinfo->state));
 
 	pthread_mutex_lock(&DispatchThreadsFinish->mutex);
@@ -701,7 +701,7 @@ dispatch_ThreadCleanup (void * argp)
 }
 
 PGconn *
-reconnect(Dispatch_ThreadInfo *thrinfo)
+reconnect(DispatchThreadInfo *thrinfo)
 {	
 	int times = 3;
 	Assert(thrinfo->conn != NULL && thrinfo->conninfo_datanode != NULL);
@@ -778,10 +778,10 @@ deal_after_thread_exit(void)
 		int flag;
 		if (Table_Type == TABLE_DISTRIBUTE)
 		{
-			pthread_mutex_lock(&DispatchThreads->mutex);
-			for (flag = 0; flag < DispatchThreads->send_thread_count; flag++)
+			pthread_mutex_lock(&DispatchThreadsRun->mutex);
+			for (flag = 0; flag < DispatchThreadsRun->send_thread_count; flag++)
 			{
-				Dispatch_ThreadInfo *thread_info = DispatchThreads->send_threads[flag];
+				DispatchThreadInfo *thread_info = DispatchThreadsRun->send_threads[flag];
 				if (NULL != thread_info)
 				{
 					ADBLOADER_LOG(LOG_INFO,
@@ -791,23 +791,23 @@ deal_after_thread_exit(void)
 					thread_info->state = DISPATCH_THREAD_KILLED_BY_OTHERTHREAD;
 				}
 			}
-			pthread_mutex_unlock(&DispatchThreads->mutex);
+			pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 			Is_Deal = true;
 		}		
 	}
 }
 
 void 
-Clean_Dispatch_Resource(void)
+CleanDispatchResource(void)
 {
 	int flag;
-	Assert(DispatchThreads->send_thread_cur == 0);
-	if (NULL != DispatchThreads->send_threads)
-		pfree(DispatchThreads->send_threads);
+	Assert(DispatchThreadsRun->send_thread_cur == 0);
+	if (NULL != DispatchThreadsRun->send_threads)
+		pfree(DispatchThreadsRun->send_threads);
 
 	for (flag = 0; flag < DispatchThreadsFinish->send_thread_count; flag++)
 	{
-		Dispatch_ThreadInfo *thread_info  = DispatchThreadsFinish->send_threads[flag];
+		DispatchThreadInfo *thread_info  = DispatchThreadsFinish->send_threads[flag];
 		if (NULL != thread_info)
 		{
 			pfree(thread_info);
@@ -817,10 +817,10 @@ Clean_Dispatch_Resource(void)
 	}
 	pfree(DispatchThreadsFinish->send_threads);	
 
-	DispatchThreads->send_threads = NULL;
-	DispatchThreads->send_thread_count = 0;
-	DispatchThreads->send_thread_cur = 0;
-	pthread_mutex_destroy(&DispatchThreads->mutex);
+	DispatchThreadsRun->send_threads = NULL;
+	DispatchThreadsRun->send_thread_count = 0;
+	DispatchThreadsRun->send_thread_cur = 0;
+	pthread_mutex_destroy(&DispatchThreadsRun->mutex);
 
 	DispatchThreadsFinish->send_threads = NULL;
 	DispatchThreadsFinish->send_thread_count = 0;
@@ -831,8 +831,8 @@ Clean_Dispatch_Resource(void)
 		process_bar = false;
 }
 
-Dispatch_Threads *
-Get_Dispatch_Exit_Threads(void)
+DispatchThreads *
+GetDispatchExitThreads(void)
 {
 	return DispatchThreadsFinish;
 }
@@ -842,21 +842,21 @@ GetSendCount(int * thread_send_num)
 {
 	int flag;
 
-	pthread_mutex_lock(&DispatchThreads->mutex);
-	for (flag = 0; flag < DispatchThreads->send_thread_count; flag++)
+	pthread_mutex_lock(&DispatchThreadsRun->mutex);
+	for (flag = 0; flag < DispatchThreadsRun->send_thread_count; flag++)
 	{
-		Dispatch_ThreadInfo *thread_info = DispatchThreads->send_threads[flag];
+		DispatchThreadInfo *thread_info = DispatchThreadsRun->send_threads[flag];
 		if (NULL != thread_info)
 		{
 			thread_send_num[flag] = thread_info->send_total;
 		}
 	}
-	pthread_mutex_unlock(&DispatchThreads->mutex);
+	pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 
 	pthread_mutex_lock(&DispatchThreadsFinish->mutex);
 	for (flag = 0; flag < DispatchThreadsFinish->send_thread_count; flag++)
 	{
-		Dispatch_ThreadInfo *thread_info = DispatchThreadsFinish->send_threads[flag];
+		DispatchThreadInfo *thread_info = DispatchThreadsFinish->send_threads[flag];
 		if (NULL != thread_info)
 		{
 			Assert(thread_send_num[flag] == 0);

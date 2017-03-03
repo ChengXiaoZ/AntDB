@@ -12,7 +12,7 @@ format_error_begin (char * file_name, char* table_type)
 	appendLineBufInfoString(linebuf, "-------------------------------------------------------");
 	appendLineBufInfoString(linebuf, file_name);
 	appendLineBufInfoString(linebuf, "-------------------------------------------------------\n");
-	appendLineBufInfoString(linebuf, "TABLE_TYPE : ");
+	appendLineBufInfoString(linebuf, "TableType : ");
 	appendLineBufInfoString(linebuf, table_type);
 	appendLineBufInfoString(linebuf, "\n");
 	return linebuf;

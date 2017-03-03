@@ -8,10 +8,10 @@ int main(int argc, char **argv)
 	int 				 flag;
 	MessageQueuePipe	 **output_queue;
 	int					 datanode_size = 1;
-	Datanode_Info		 *datanode_info;
+	DatanodeInfo		 *datanode_info;
 	char				 *connect_str_dn1 = "user=adb2.2 host=10.1.226.202 port=17998 dbname=postgres options='-c grammar=postgres -c remotetype=coordinator  -c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'user=adb2.2 host=10.1.226.202 port=17998 dbname=postgres options='-c grammar=postgres -c remotetype=coordinator  -c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'";
 //	char				 *connect_str = "user=lvcx host=localhost port=15436 dbname=postgres";
-	Dispatch_Info 		 *dispatch = NULL;
+	DispatchInfo 		 *dispatch = NULL;
 	LineBuffer		 	* buf1 = NULL;
 	LineBuffer		 	* buf2 = NULL;
 	LineBuffer		 	* buf3 = NULL;
@@ -22,7 +22,7 @@ int main(int argc, char **argv)
 
 	init_linebuf(2);
 	output_queue = (MessageQueuePipe**)palloc0(sizeof(MessageQueuePipe*) * datanode_size);
-	datanode_info = (Datanode_Info*)palloc0(sizeof(Datanode_Info));
+	datanode_info = (DatanodeInfo*)palloc0(sizeof(DatanodeInfo));
 	datanode_info->node_nums = datanode_size;
 	datanode_info->datanode = (Oid *)palloc0(sizeof(Oid) * datanode_size);
 	datanode_info->datanode[0] = 12345;
@@ -40,7 +40,7 @@ int main(int argc, char **argv)
 //	mq_pipe_init(output_queue[1], "datanode1");
 //	mq_pipe_init(output_queue[2], "datanode2");
 
-	dispatch = (Dispatch_Info *)palloc0(sizeof(Dispatch_Info));
+	dispatch = (DispatchInfo *)palloc0(sizeof(DispatchInfo));
 	dispatch->conninfo_agtm	= "user=postgres host=10.1.226.202 port=12998 dbname=postgres options='-c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'";
 	dispatch->thread_nums = datanode_size;
 	dispatch->output_queue = output_queue;
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 
  	adbLoader_log_init(NULL, LOG_INFO);
 	fopen_error_file(NULL);
-	Init_Dispatch(dispatch, TABLE_REPLICATION);
+	InitDispatch(dispatch, TABLE_REPLICATION);
 
 	buf1 = get_linebuf();
 	buf2 = get_linebuf();

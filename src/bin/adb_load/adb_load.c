@@ -120,8 +120,8 @@ static void tables_list_free(Tables *tables);
 static void table_free(TableInfo *table_info);
 static void clean_hash_field (HashField *hash_field);
 static char * conver_type_to_fun (Oid type, DISTRIBUTE loactor);
-static void free_datanode_info (Datanode_Info *datanode_info);
-static void free_dispatch_info (Dispatch_Info *dispatch_info);
+static void free_datanode_info (DatanodeInfo *datanode_info);
+static void free_dispatch_info (DispatchInfo *dispatch_info);
 static LOG_TYPE covert_loglevel_from_char_type (char *type);
 static char * covert_distribute_type_to_string (DISTRIBUTE type);
 static void main_write_error_message(char * message, char *start_cmd);
@@ -400,8 +400,8 @@ get_outqueue_name (int datanode_num)
 static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 {
 	MessageQueuePipe 	 **output_queue;
-	Dispatch_Info 		  *dispatch = NULL;
-	Datanode_Info		  *datanode_info = NULL;
+	DispatchInfo 		  *dispatch = NULL;
+	DatanodeInfo		  *datanode_info = NULL;
 	char 				  *queue_name;
 	int					   flag;
 	int					   res;
@@ -428,7 +428,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 		exit(1);
 	}
 	output_queue = (MessageQueuePipe**)palloc0(sizeof(MessageQueuePipe*) * table_info->use_datanodes_num);
-	datanode_info = (Datanode_Info*)palloc0(sizeof(Datanode_Info));
+	datanode_info = (DatanodeInfo*)palloc0(sizeof(DatanodeInfo));
 	datanode_info->node_nums = table_info->use_datanodes_num;
 	datanode_info->datanode = (Oid *)palloc0(sizeof(Oid) * table_info->use_datanodes_num);
 	datanode_info->conninfo = (char **)palloc0(sizeof(char *) * table_info->use_datanodes_num);
@@ -445,7 +445,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 		queue_name = NULL;
 	}
 
-	dispatch = (Dispatch_Info *)palloc0(sizeof(Dispatch_Info));
+	dispatch = (DispatchInfo *)palloc0(sizeof(DispatchInfo));
 	dispatch->conninfo_agtm = pg_strdup(setting->agtm_info->connection);
 	dispatch->thread_nums = table_info->use_datanodes_num;
 	dispatch->output_queue = output_queue;
@@ -457,7 +457,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	dispatch->start_cmd = pg_strdup(start);
 	dispatch->process_bar = setting->process_bar;
 	/* start dispatch module  */
-	if ((res = Init_Dispatch(dispatch, TABLE_REPLICATION)) != DISPATCH_OK)
+	if ((res = InitDispatch(dispatch, TABLE_REPLICATION)) != DISPATCH_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"start dispatch module failed");
 		main_write_error_message("start dispatch module failed", start);
@@ -477,7 +477,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	for (;;)
 	{
 		READ_PRODUCER_STATE  state;
-		Dispatch_Threads *dispatch_exit = NULL;
+		DispatchThreads *dispatch_exit = NULL;
 		int              flag;
 
 		if (setting->process_bar)
@@ -502,7 +502,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 			{
 				Set_Read_Producer_Exit();
 				/* read module error, stop dispatch */
-				Stop_Dispath();
+				StopDispatch();
 				read_finish = true;
 				dispatch_finish = true;
 				break;
@@ -512,7 +512,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 		}		
 		
 		/* if read module state is ok, check dispatch state */
-		dispatch_exit = Get_Dispatch_Exit_Threads();
+		dispatch_exit = GetDispatchExitThreads();
 		if (dispatch_exit->send_thread_cur == 0)
 		{
 			sleep(1);
@@ -535,7 +535,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 					ADBLOADER_LOG(LOG_ERROR,
 						"[MAIN][Tthread main] dispatch module all threads error, tabel name :%s ", table_info->table_name);
 					dispatch_failed = true;
-					Stop_Dispath();
+					StopDispatch();
 					dispatch_finish = true;
 					goto FAILED;
 				}
@@ -543,7 +543,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 
 			for (flag = 0 ;flag < dispatch_exit->send_thread_count; flag ++)
 			{
-				Dispatch_ThreadInfo *dispatch_thread = NULL;
+				DispatchThreadInfo *dispatch_thread = NULL;
 				dispatch_thread = dispatch_exit->send_threads[flag];
 				if (NULL != dispatch_thread)
 				{
@@ -569,7 +569,7 @@ FAILED:
 		}
 			
 	}
-	Clean_Dispatch_Resource();
+	CleanDispatchResource();
 
 	/* free  memory */
 	for (flag = 0; flag < table_info->use_datanodes_num; flag++)
@@ -601,8 +601,8 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	MessageQueuePipe 	  *	input_queue;
 	MessageQueuePipe 	 **	output_queue;
 	HashField		 	  * field;
-	Dispatch_Info 		  * dispatch = NULL;
-	Datanode_Info		  * datanode_info = NULL;
+	DispatchInfo 		  * dispatch = NULL;
+	DatanodeInfo		  * datanode_info = NULL;
 	int					 	flag = 0;
 	char 				  * queue_name = NULL;
 	char				  * func_name = NULL;
@@ -634,7 +634,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	output_queue = (MessageQueuePipe**)palloc0(sizeof(MessageQueuePipe*) * table_info->use_datanodes_num);
 	mq_pipe_init(input_queue, "input_queue");
 
-	datanode_info = (Datanode_Info*)palloc0(sizeof(Datanode_Info));
+	datanode_info = (DatanodeInfo*)palloc0(sizeof(DatanodeInfo));
 	datanode_info->node_nums = table_info->use_datanodes_num;
 	datanode_info->datanode = (Oid *)palloc0(sizeof(Oid) * table_info->use_datanodes_num);
 	datanode_info->conninfo = (char **)palloc0(sizeof(char *) * table_info->use_datanodes_num);
@@ -676,7 +676,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	}
 
 	/* start dispatch module */
-	dispatch = (Dispatch_Info *)palloc0(sizeof(Dispatch_Info));
+	dispatch = (DispatchInfo *)palloc0(sizeof(DispatchInfo));
 	dispatch->conninfo_agtm = pg_strdup(setting->agtm_info->connection);
 	dispatch->thread_nums = table_info->use_datanodes_num;
 	dispatch->output_queue = output_queue;
@@ -688,7 +688,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	dispatch->process_bar = setting->process_bar;
 
 	/* start dispatch module */
-	if ((res = Init_Dispatch(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
+	if ((res = InitDispatch(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start dispatch module failed");
 		main_write_error_message("start dispatch module failed", start);
@@ -708,7 +708,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	for (;;)
 	{
 		READ_PRODUCER_STATE  state = READ_PRODUCER_PROCESS_DEFAULT;
-		Dispatch_Threads	*dispatch_exit = NULL;
+		DispatchThreads	*dispatch_exit = NULL;
 		HashThreads		*hash_exit = NULL;
 		int					 flag;
 
@@ -734,7 +734,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 				Set_Read_Producer_Exit();
 				/* read module error, stop hash and dispatch */
 				StopHash();
-				Stop_Dispath();
+				StopDispatch();
 				read_finish = true;
 				hash_finish = true;
 				dispatch_finish = true;
@@ -745,7 +745,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 		}		
 
 		/* if read module state is ok, check hash and dispatch state */
-		dispatch_exit = Get_Dispatch_Exit_Threads();
+		dispatch_exit = GetDispatchExitThreads();
 		hash_exit = GetExitThreadsInfo();
 
 		if (hash_exit->hs_thread_cur == 0 && dispatch_exit->send_thread_cur == 0)
@@ -785,7 +785,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 			pthread_mutex_lock(&dispatch_exit->mutex);
 			for (flag = 0 ;flag < dispatch_exit->send_thread_count; flag ++)
 			{
-				Dispatch_ThreadInfo *dispatch_thread = NULL;
+				DispatchThreadInfo *dispatch_thread = NULL;
 				dispatch_thread = dispatch_exit->send_threads[flag];
 				if (NULL != dispatch_thread && dispatch_thread->state != DISPATCH_THREAD_EXIT_NORMAL)
 				{
@@ -794,7 +794,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 					"[MAIN][Tthread main] dispatch module error, thread id :%ld table name :%s, connection : %s, filepath :%s",
 					dispatch_thread->thread_id, dispatch_thread->table_name, dispatch_thread->conninfo_datanode, filepath);
 					/* stop dispatch other threads */
-					Stop_Dispath();
+					StopDispatch();
 					dispatch_failed = true;
 					dispatch_finish = true;
 					goto FAILED;
@@ -816,7 +816,7 @@ FAILED:
 			Set_Read_Producer_Exit();
 
 		if (!dispatch_finish)
-			Stop_Dispath();
+			StopDispatch();
 	}
 	else if (dispatch_failed)
 	{
@@ -828,7 +828,7 @@ FAILED:
 	}
 
 	CleanHashResource();
-	Clean_Dispatch_Resource();
+	CleanDispatchResource();
 	/* free  memory */
 	for (flag = 0; flag < table_info->use_datanodes_num; flag++)
 	{
@@ -2329,7 +2329,7 @@ conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 }
 
 void
-free_datanode_info (Datanode_Info *datanode_info)
+free_datanode_info (DatanodeInfo *datanode_info)
 {
 	int flag;
 	Assert(NULL != datanode_info && NULL != datanode_info->datanode && NULL != datanode_info->conninfo);
@@ -2348,7 +2348,7 @@ free_datanode_info (Datanode_Info *datanode_info)
 }
 
 void
-free_dispatch_info (Dispatch_Info *dispatch_info)
+free_dispatch_info (DispatchInfo *dispatch_info)
 {
 	Assert(NULL != dispatch_info && NULL != dispatch_info->table_name && NULL != dispatch_info->conninfo_agtm);
 
