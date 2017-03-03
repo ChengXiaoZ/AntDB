@@ -100,7 +100,7 @@ static void		 	* adbLoader_ThreadMainWrapper (void *argp);
 
 static char		  	* create_copy_string (char *func, int parameter_nums, char *copy_options);
 
-static LineBuffer 	* get_field (char **fields, char *line, int * loc, char *delim, int size);
+//static LineBuffer 	* get_field (char **fields, char *line, int * loc, char *delim, int size);
 
 static LineBuffer	* get_field_quote (char **fields, char *line, int * loc, char *delim, char quotec,
 								char escapec, int size, Compute_ThreadInfo * thrinfo);
@@ -948,6 +948,7 @@ package_field (LineBuffer *lineBuffer, Compute_ThreadInfo * thrinfo)
 	return buf;
 }
 
+/*
 static LineBuffer *
 get_field (char **fields, char *line, int * loc, char *delim, int size)
 {
@@ -996,7 +997,7 @@ get_field (char **fields, char *line, int * loc, char *delim, int size)
 	}
 	if (split <= max_loc)
 	{
-		/* some error */
+
 		for (cur = 0; cur < flag; cur++)
 		{
 			pfree(fields[cur]);
@@ -1015,7 +1016,7 @@ get_field (char **fields, char *line, int * loc, char *delim, int size)
 	appendLineBufInfo(buf, "%s", fields[loc[size -1]-1]);
 	return buf;
 }
-
+*/
 static LineBuffer	*
 get_field_quote (char **fields, char *line, int * loc, char *delim, char quotec, char escapec,
 							int size, Compute_ThreadInfo * thrinfo)

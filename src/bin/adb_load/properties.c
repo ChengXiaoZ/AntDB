@@ -28,7 +28,7 @@ static int saveConfig(const char *filepath);
 PROPS_HANDLE *Properties;
 
 int
-initConfig (const char *filepath)
+InitConfig (const char *filepath)
 {
 	int ret = 0;
 	FILE *fp = NULL;
@@ -99,7 +99,7 @@ initConfig (const char *filepath)
 }
 
 char *
-getConfValue (const char *key)
+GetConfValue (const char *key)
 {
 	PROPS_HANDLE *ph = NULL;
 	PropertieNode *pCurrent = NULL;
@@ -120,7 +120,7 @@ getConfValue (const char *key)
 }
 
 void
-getConfValues (const char **key, char **values, int count)
+GetConfValues (const char **key, char **values, int count)
 {
 	int flag;
 	PROPS_HANDLE *ph = NULL;
@@ -149,7 +149,7 @@ getConfValues (const char **key, char **values, int count)
 }
 
 int
-setValue(const char *key, const char *value)
+SetValue(const char *key, const char *value)
 {
 	PROPS_HANDLE *ph = NULL;
 	PropertieNode *pCurrent = NULL;
@@ -262,7 +262,7 @@ trime_symbol_copy (const char *src, char **dest)
 }
 
 int 
-propsDel(const char *key)
+PropsDel(const char *key)
 {
 	PROPS_HANDLE *ph = NULL;
     PropertieNode *pCurrent = NULL, *pPrev = NULL;
@@ -288,7 +288,7 @@ propsDel(const char *key)
 }
 
 int	
-propsAdd(const char *key, const char *value)
+PropsAdd(const char *key, const char *value)
 {
 	PROPS_HANDLE *ph = NULL;
     PropertieNode *pCurrent = NULL;
@@ -302,12 +302,12 @@ propsAdd(const char *key, const char *value)
 		pCurrent = pCurrent->pNext;
 	}
 	if (pCurrent->pNext != NULL)
-		return setValue(key,value);
+		return SetValue(key,value);
 	return -1;
 }
 
 int
-propsRelease(void)
+PropsRelease(void)
 {
 	PROPS_HANDLE *ph = NULL;
 	PropertieNode *pCurr = NULL;
@@ -343,7 +343,7 @@ propsRelease(void)
 }
 
 int
-propsGetCount(void)
+PropsGetCount(void)
 {
 	int count = 0;
 	PROPS_HANDLE *ph = NULL;
@@ -359,7 +359,7 @@ propsGetCount(void)
 }
 
 void 	
-printConfig(void)
+PrintConfig(void)
 {
 	PROPS_HANDLE *ph = NULL;
 	PropertieNode *pCurrent = NULL;
@@ -370,5 +370,29 @@ printConfig(void)
 		printf("%s=%s\n", pCurrent->key, pCurrent->value);
 		pCurrent = pCurrent->pNext;
 	}
+}
+
+void
+DestoryConfig (void)
+{
+	PROPS_HANDLE *ph = NULL;
+	PropertieNode *pCurrent = NULL;
+
+	ph = Properties;
+	pCurrent = ph->pHead->pNext;
+	while (pCurrent != NULL)
+	{
+		PropertieNode *tmp = pCurrent->pNext;
+		clean_props_node(pCurrent);
+		pCurrent = tmp;
+	}
+	if (Properties->filepath)
+		pfree(Properties->filepath);
+	Properties->filepath = NULL;
+	if (Properties->pHead)
+		clean_props_node(Properties->pHead);		
+	Properties->pHead = NULL;
+	pfree(Properties);
+	Properties = NULL;
 }
 

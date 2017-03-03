@@ -23,6 +23,7 @@
 #include "dispatch.h"
 #include "lib/ilist.h"
 #include "utility.h"
+#include "properties.h"
 
 typedef struct tables
 {
@@ -78,10 +79,10 @@ static void get_conninfo_for_alldatanode(ADBLoadSetting *setting);
 static int  adbloader_cmp_nodes(const void *a, const void *b);
 static void get_table_attribute(ADBLoadSetting *setting, Table_Info *table_info);
 static void get_hash_field(const char *conninfo, Table_Info *table_info);
-static void get_func_info(const char *conninfo, Table_Info *table_info);
+// static void get_func_info(const char *conninfo, Table_Info *table_info);
 static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
-static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo);
+//static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo);
 static void get_create_and_drop_func_sql(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void get_userdefined_funcinfo(const char *conninfo, Table_Info *table_info);
 static void create_func_to_server(char *serverconninfo, char *creat_func_sql);
@@ -226,8 +227,8 @@ covert_distribute_type_to_string (DISTRIBUTE type)
 
 int main(int argc, char **argv)
 {
-	Tables *tables_ptr;
-	Table_Info    *table_info_ptr;
+	Tables *tables_ptr = NULL;
+	Table_Info    *table_info_ptr = NULL;
 	int table_count = 0;
 
 	/* get cmdline param. */
@@ -375,6 +376,8 @@ int main(int argc, char **argv)
 	free_adb_load_setting(setting);
 	/* end line buffer */
 	end_linebuf();
+	/* destory config  */
+	DestoryConfig();
 	return 0;
 }
 /*------------------------end main-------------------------------------------------------*/
@@ -1307,6 +1310,7 @@ static char get_distribute_by(const char *conninfo, const char *tablename)
 	return distribute;
 }
 
+/*
 static void get_func_info(const char *conninfo, Table_Info *table_info)
 {
 	UserFuncInfo *funcinfodata;
@@ -1336,7 +1340,7 @@ static void get_func_info(const char *conninfo, Table_Info *table_info)
 	table_info->funcinfo = funcinfodata;
 	return;
 }
-
+*/
 static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char query[QUERY_MAXLEN];
@@ -1386,6 +1390,7 @@ static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, 
 
 }
 
+/*
 static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo)
 {
 	char query[QUERY_MAXLEN];
@@ -1428,7 +1433,7 @@ static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tabl
 	PQclear(res);
 	PQfinish(conn);
 }
-
+*/
 static void get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo) 
 {
 	char query[QUERY_MAXLEN];
@@ -1952,6 +1957,7 @@ static Table_Info *get_table_info(char **file_name_list, int file_num)
 	if(file_name_list == NULL || file_num <= 0)
 		return NULL;
 	table_info_ptr = (Table_Info *)palloc0(sizeof(Table_Info));
+	slist_init(&table_info_ptr->file_head);
 
 	for(file_index = 0; file_index < file_num; ++file_index)
 	{

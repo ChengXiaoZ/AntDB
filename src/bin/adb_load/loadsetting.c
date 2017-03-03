@@ -383,7 +383,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		print_help(stdout);
 		exit(1);
 	}
-	initConfig(setting->config_file_path);
+	InitConfig(setting->config_file_path);
 
 	setting->server_info = (ServerNodeInfo *)palloc0(sizeof(ServerNodeInfo)); 
 	setting->agtm_info = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
@@ -477,7 +477,7 @@ static char *replace_string(const char *string, const char *replace, const char 
 
 static char *get_config_file_value(const char *key)
 {
-	char *get_value = getConfValue(key);
+	char *get_value = GetConfValue(key);
 	if(get_value == NULL)
 	{
 		fprintf(stderr, "the config parameter \"%s\" need a value\n",key);

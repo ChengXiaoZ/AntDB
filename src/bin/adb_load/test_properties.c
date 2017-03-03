@@ -9,14 +9,14 @@ int main(int argc, char **argv)
 	char *value;
     const char *filepath = "/home/lvcx/adbload/src/bin/adb_load/adb_load.conf.example";
 
-    ret = initConfig(filepath);
+    ret = InitConfig(filepath);
     if (ret != 0) {
         printf("env init error:%d\n",ret);
         return 0;
     }
-	value = getConfValue("ip");
-	value = getConfValue("SERVER_IP");
-	printConfig();
+	value = GetConfValue("ip");
+	value = GetConfValue("SERVER_IP");
+	PrintConfig();
 	return 0;
 }
 
