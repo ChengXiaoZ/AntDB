@@ -21,6 +21,7 @@
 #include "adbloader_log.h"
 #include "read_producer.h"
 #include "dispatch.h"
+#include "lib/ilist.h"
 #include "utility.h"
 
 typedef struct tables
@@ -39,6 +40,12 @@ typedef enum DISTRIBUTE
 	DISTRIBUTE_BY_ERROR
 } DISTRIBUTE;
 
+typedef struct FileLocation
+{
+	char * location;
+	slist_node next;
+} FileLocation;
+
 typedef struct Table_Info
 {
 	int           file_nums;        /*the num of files which own to one table */
@@ -46,7 +53,7 @@ typedef struct Table_Info
 	Hash_Field   *table_attribute;  /*the attribute of table*/
 	DISTRIBUTE    distribute_type;
 	UserFuncInfo *funcinfo;
-	char         **location;         /*the directory of table stored*/
+	slist_head	   file_head;
 	NodeInfoData **use_datanodes;
 	int   		   use_datanodes_num; // use datanode num for special table
 	struct Table_Info *next;/* */
@@ -240,6 +247,7 @@ int main(int argc, char **argv)
 	{
 		if (setting->input_file != NULL && setting->table_name != NULL) // sigle file
 		{
+			FileLocation *file_location = (FileLocation*)palloc0(sizeof(FileLocation));
 			tables_ptr = (Tables *)palloc0(sizeof(Tables));
 			tables_ptr->table_nums = 1;
 			
@@ -247,9 +255,8 @@ int main(int argc, char **argv)
 			table_info_ptr->table_name = pg_strdup(setting->table_name);
 			table_info_ptr->file_nums = 1;
 			table_info_ptr->next = NULL;
-
-			table_info_ptr->location = (char **)palloc(sizeof(char *));
-			table_info_ptr->location[0] = pg_strdup(setting->input_file);
+			file_location->location = pg_strdup(setting->input_file);
+			slist_push_head(&table_info_ptr->file_head, &file_location->next);
 		}
 		else // static mode ,multi file in one directry
 		{
@@ -289,8 +296,8 @@ int main(int argc, char **argv)
 	fopen_error_file(NULL);
 	while(table_info_ptr)
 	{
-		int flag;
 		LineBuffer *linebuff = NULL;
+		slist_mutable_iter siter;
 		++table_count;
 
 		/*get table info to store in the table_info_ptr*/
@@ -299,23 +306,22 @@ int main(int argc, char **argv)
 		get_use_datanodes(setting, table_info_ptr);		
 		
 		/*the table may be split to more than one*/
-		for (flag = 0; flag < table_info_ptr->file_nums; flag++)
-		{			
-			char * filepath = table_info_ptr->location[flag];
-			Assert(NULL != filepath);
-
+		slist_foreach_modify (siter, &table_info_ptr->file_head) 
+		{	
+			FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
+			Assert(NULL != file_location->location);
 			/* begin record error file */
-			linebuff = format_error_begin(filepath,
+			linebuff = format_error_begin(file_location->location,
 								covert_distribute_type_to_string(table_info_ptr->distribute_type));
 			write_error(linebuff);
 			release_linebuf(linebuff);
-			fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n", filepath);
+			fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n", file_location->location);
 			switch(table_info_ptr->distribute_type)
 			{
 				case DISTRIBUTE_BY_REPLICATION:
 				case DISTRIBUTE_BY_ROUNDROBIN:
 					/* start module */
-					do_replaciate_roundrobin(filepath, table_info_ptr);
+					do_replaciate_roundrobin(file_location->location, table_info_ptr);
 					/* stop module and clean resource */
 					clean_replaciate_roundrobin();
 					break;
@@ -323,7 +329,7 @@ int main(int argc, char **argv)
 				case DISTRIBUTE_BY_DEFAULT_MODULO:
 				case DISTRIBUTE_BY_USERDEFINED:
 					/* start module */
-					do_hash_module(filepath,table_info_ptr);
+					do_hash_module(file_location->location,table_info_ptr);
 					/* stop module and clean resource */
 					clean_hash_module();
 					break;
@@ -344,10 +350,11 @@ int main(int argc, char **argv)
 			}
 
 			/* end record error file */
-			linebuff = format_error_end(filepath);
+			linebuff = format_error_end(file_location->location);
 			write_error(linebuff);
 			release_linebuf(linebuff);
-			fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n", filepath);
+			fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n", file_location->location);
+			slist_delete_current(&siter);
 		}
 		table_info_ptr = table_info_ptr->next;
 	}
@@ -1912,11 +1919,11 @@ static Tables * get_tables(char **file_name_list, char **file_path_list, int fil
 	while(table_info_ptr)
 	{
 		int i;
-
-		table_info_ptr->location = (char **)palloc0(table_info_ptr->file_nums * sizeof(char* ));
 		for (i = 0; i < table_info_ptr->file_nums; i++)
 		{
-			table_info_ptr->location[i] = pg_strdup(file_path_list[file_index]);
+			FileLocation * file_location = (FileLocation*)palloc0(sizeof(FileLocation));
+			file_location->location = pg_strdup(file_path_list[file_index]);
+			slist_push_head(&table_info_ptr->file_head, &file_location->next);
 			file_index++;
 		}
 
@@ -2083,7 +2090,7 @@ void file_name_print(char **file_list, int file_num)
 void tables_print(Tables *tables_ptr)
 {
 	Table_Info * table_info_ptr;
-	int i =0;
+	slist_iter	iter;
 	if(tables_ptr == NULL)
 		return;
 	printf("table nums:%d\n", tables_ptr->table_nums);
@@ -2092,8 +2099,12 @@ void tables_print(Tables *tables_ptr)
 	{
 		printf("table_split_num:%d\n", table_info_ptr->file_nums);
 		printf("table_split_files:%s\n", table_info_ptr->table_name);
-		for(i = 0; i < table_info_ptr->file_nums; ++i)
-			printf("\t table_split_files:%s", table_info_ptr->location[i]);
+		slist_foreach(iter, &table_info_ptr->file_head)
+		{
+			FileLocation * file_location = slist_container(FileLocation, next, iter.cur);
+			printf("\t table_split_files:%s", file_location->location);
+			
+		}
 		printf("\n");
 		table_info_ptr = table_info_ptr->next;
 	}
@@ -2120,6 +2131,7 @@ static void tables_list_free(Tables *tables)
 static void table_free(Table_Info *table_info)
 {
 	int i = 0;
+	slist_mutable_iter siter;
 	Assert(NULL != table_info && NULL != table_info->table_name);
 
 	pg_free(table_info->table_name);
@@ -2157,13 +2169,14 @@ static void table_free(Table_Info *table_info)
 		table_info->funcinfo = NULL;
 	}
 
-	for(i=0; i < table_info->file_nums; ++i)
+	slist_foreach_modify(siter, &table_info->file_head)
 	{
-		pfree(table_info->location[i]);
-		table_info->location[i] = NULL;
+		FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
+		if (file_location->location)
+			pfree(file_location->location);
+		file_location->location = NULL;
+		pfree(file_location);
 	}
-	pfree(table_info->location);
-	table_info->location = NULL;
 	
 	for (i = 0; i < table_info->use_datanodes_num; i++)
 	{
