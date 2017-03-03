@@ -35,7 +35,7 @@ OBJ_TEST_LIST = test_list.o
 all: adb_load
 
 adb_load: $(OBJS) | submake-libpgport submake-libpq
-	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) $(LIBS) $(libpq) -o $@$(X)
+	$(CC) $(CFLAGS) $(OBJS) $(LDFLAGS) $(LDFLAGS_EX) -lpthread $(LIBS) $(libpq) -o $@$(X)
 
 install: all installdirs
 	$(INSTALL_PROGRAM) adb_load$(X) '$(DESTDIR)$(bindir)/adb_load$(X)'
