@@ -663,7 +663,7 @@ static void parse_line(CopyFuncState *state)
 	int			input_len;
 	int			tmp_loc;
 	
-	Size i,count = state->expr_context->ecxt_param_list_info->numParams;
+	Size count = state->expr_context->ecxt_param_list_info->numParams;
 	Assert(NULL != state->buf_input.data);	
 	line = (char*)palloc0(state->buf_input.len + 1);
 	memcpy(line, state->buf_input.data, state->buf_input.len);
