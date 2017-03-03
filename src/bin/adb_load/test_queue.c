@@ -32,8 +32,8 @@ int main(int argc, char **argv)
 	buf = get_linebuf();
 	appendLineBufInfoString(buf, string);
 	mq_init(queue, 1, "test_queue");
-	if (errno =  pthread_create(&thread_id, NULL,
-									thread_func, queue))
+	if ((errno =  pthread_create(&thread_id, NULL,
+									thread_func, queue)) < 0)
 	{
 		fprintf(stderr, "create thread error");
 		return 0;

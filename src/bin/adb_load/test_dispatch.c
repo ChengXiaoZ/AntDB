@@ -2,6 +2,7 @@
 #include "dispatch.h"
 #include "msg_queue_pipe.h"
 #include "adbloader_log.h"
+#include "read_write_file.h"
 int main(int argc, char **argv)
 {
 	int 				 flag;
@@ -9,7 +10,7 @@ int main(int argc, char **argv)
 	int					 datanode_size = 1;
 	Datanode_Info		 *datanode_info;
 	char				 *connect_str_dn1 = "user=adb2.2 host=10.1.226.202 port=17998 dbname=postgres options='-c grammar=postgres -c remotetype=coordinator  -c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'user=adb2.2 host=10.1.226.202 port=17998 dbname=postgres options='-c grammar=postgres -c remotetype=coordinator  -c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'";
-	char				 *connect_str = "user=lvcx host=localhost port=15436 dbname=postgres";
+//	char				 *connect_str = "user=lvcx host=localhost port=15436 dbname=postgres";
 	Dispatch_Info 		 *dispatch = NULL;
 	LineBuffer		 	* buf1 = NULL;
 	LineBuffer		 	* buf2 = NULL;

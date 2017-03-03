@@ -14,7 +14,7 @@ int main(int argc, char **argv)
 	char			*agtm_conninfo = "user=postgres host=10.1.226.202 port=12998 dbname=postgres options='-c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'";
 	char 			*dn1_conninfo  = "user=adb2.2 host=10.1.226.202 port=17998 dbname=postgres options='-c grammar=postgres -c remotetype=coordinator  -c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'";
 	char			*dn2_conninfo  = "user=adb2.2 host=10.1.226.201 port=17998 dbname=postgres options='-c grammar=postgres -c remotetype=coordinator  -c lc_monetary=C -c DateStyle=iso,mdy -c	timezone=prc -c	geqo=on	-c intervalstyle=postgres'";
-	char			*agtm_port;
+	char			*agtm_port = NULL;
 	PGresult   		*res;
 	const char 		*buffer = "321\n";
 	sprintf(port_buf, "%d", AGtmPort);
@@ -29,7 +29,7 @@ int main(int argc, char **argv)
 		PQerrorMessage((PGconn*)pg_conn_agtm);
 
 	else
-		agtm_port = PQparameterStatus(pg_conn_agtm, "agtm_port");
+		agtm_port = (char*)PQparameterStatus(pg_conn_agtm, "agtm_port");
 
 	pg_conn_dn1 = PQconnectdb(dn1_conninfo);
 	if (PQstatus((PGconn*)pg_conn_dn1) != CONNECTION_OK)
