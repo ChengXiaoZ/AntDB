@@ -221,6 +221,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrFlushHost       SYSTEM "mgr_flush_host.sgml">
 <!ENTITY mgrGrant           SYSTEM "mgr_grant_right.sgml">
 <!ENTITY mgrInitAll         SYSTEM "mgr_init_all.sgml">
+<!ENTITY mgrListAcl        	SYSTEM "mgr_list_acl.sgml">
 <!ENTITY mgrListHba        	SYSTEM "mgr_list_hba.sgml">
 <!ENTITY mgrListHost        SYSTEM "mgr_list_host.sgml">
 <!ENTITY mgrListNode        SYSTEM "mgr_list_node.sgml">

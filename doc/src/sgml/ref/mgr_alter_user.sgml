@@ -22,7 +22,8 @@ Administrators</refpurpose>
 
   <refsynopsisdiv>
 <synopsis>
-ALTER user username PASSWORD 'passwd'
+ALTER USER <replaceable class="parameter">user_name</replaceable> PASSWORD 'new_passwd'
+
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -38,7 +39,7 @@ Administrators.
  <para>
 Modify user_name1 with password 'h2ed':
 <programlisting>
-ALTER user user_name1 PASSWORD 'h2ed'
+ALTER USER user_name1 PASSWORD 'h2ed';
 </programlisting>
 </para>
   </refsect1>

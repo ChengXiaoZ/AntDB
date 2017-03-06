@@ -22,7 +22,8 @@ Administrators</refpurpose>
 
   <refsynopsisdiv>
 <synopsis>
-CREATE USER username PASSWORD 'passwd'
+CREATE USER <replaceable class="parameter">user_name</replaceable> PASSWORD 'passwd'
+
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -38,7 +39,7 @@ Administrators.
  <para>
 Create user user_name1 with password 'h2ed':
 <programlisting>
-CREATE USER user_name1 PASSWORD 'h2ed'
+CREATE USER user_name1 PASSWORD 'h2ed';
 </programlisting>
 </para>
   </refsect1>

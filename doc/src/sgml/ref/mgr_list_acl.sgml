@@ -1,0 +1,47 @@
+<!--
+doc/src/sgml/ref/mgr_list_acl.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-LISTACL">
+  <refmeta>
+    <refentrytitle>LIST ACL</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>LIST ACL</refname>
+    <refpurpose>Show the user name and its permissions</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-listacl">
+    <primary>LIST ACL</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+LIST ACL
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>INIT ALL</command> show the user name and its permissions
+    </para>	
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+	  Show all user name and its permissions:
+<programlisting>
+LIST ACL;
+</programlisting>
+    </para>
+  </refsect1>
+
+</refentry>

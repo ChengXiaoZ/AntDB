@@ -21,27 +21,27 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-REVOKE {opt_priv [, ...]} TO {username [, ...]}
-REVOKE ALL TO {username [, ...]}
-REVOKE {opt_priv [, ...] } TO ALL
-<phrase>where <replaceable class="parameter">opt_priv</replaceable> must be the following:</phrase>
+REVOKE { <replaceable class="parameter">opt_privilege</replaceable> [, ...] } FROM { <replaceable class="parameter">user_name</replaceable> [, ...] }
+REVOKE ALL FROM { <replaceable class="parameter">user_name</replaceable> [, ...] }
+REVOKE { <replaceable class="parameter">opt_privilege</replaceable> [, ...] } FROM ALL
 
-    opt_prive is the ADB execute command which such as "stop", "add", "monitor"
+<phrase>where <replaceable class="parameter">opt_privilege</replaceable> must be the following:</phrase>
+    opt_privilege is the ADB execute command, such as "STOP", "ADD", "MONITOR".
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
     <title>Description</title>
     <para>
-    <command>REVOKE</command> remove access privileges, but the command only execute by Administrators.
+    <command>REVOKE</command> recycling access privileges from user name, but the command only execute by Administrators.
     </para>
   </refsect1>
 
   <refsect1>
   <title>Examples</title>
  <para>
-remove three privileges from all the role:
+recycling "init", "add", "drop" from all the role:
 <programlisting>
-REVOKE init, add, drop TO ALL
+REVOKE init, add, drop TO ALL;
 </programlisting>
 </para>
   </refsect1>

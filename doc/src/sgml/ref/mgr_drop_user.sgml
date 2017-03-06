@@ -22,7 +22,7 @@ Administrators</refpurpose>
 
   <refsynopsisdiv>
 <synopsis>
-DROP USER { username [, ...] }
+DROP USER { <replaceable class="parameter">user_name</replaceable> [, ...] }
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -38,7 +38,7 @@ Administrators.
  <para>
 remove a role which named user_name1:
 <programlisting>
-DROP USER user_name1
+DROP USER user_name1;
 </programlisting>
 </para>
   </refsect1>

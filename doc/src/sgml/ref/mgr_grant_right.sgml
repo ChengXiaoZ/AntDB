@@ -21,12 +21,12 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-GRANT {opt_priv [, ...]} TO {username [, ...]}
-GRANT ALL TO {username [, ...]}
-GRANT {opt_priv [, ...] } TO ALL
-<phrase>where <replaceable class="parameter">opt_priv</replaceable> must be the following:</phrase>
+GRANT { <replaceable class="parameter">opt_privilege</replaceable> [, ...] } TO { <replaceable class="parameter">user_name</replaceable> [, ...] }
+GRANT ALL TO { <replaceable class="parameter">user_name</replaceable> [, ...] }
+GRANT { <replaceable class="parameter">opt_privilege</replaceable> [, ...] } TO ALL
 
-    opt_prive is the ADB execute command which such as "stop", "add", "monitor"
+<phrase>where <replaceable class="parameter">opt_privilege</replaceable> must be the following:</phrase>
+    opt_privilege is the ADB execute command which such as "stop", "add", "monitor".
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -39,9 +39,9 @@ GRANT {opt_priv [, ...] } TO ALL
   <refsect1>
   <title>Examples</title>
  <para>
-grant three privileges to all the role:
+grant "init", "add", "drop" privileges to all the role:
 <programlisting>
-GRANT init, add, drop TO ALL
+GRANT init, add, drop TO ALL;
 </programlisting>
 </para>
   </refsect1>

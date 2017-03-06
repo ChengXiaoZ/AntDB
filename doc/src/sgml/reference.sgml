@@ -300,6 +300,7 @@
    &mgrFlushHost;
    &mgrGrant;
    &mgrInitAll;
+   &mgrListAcl;
    &mgrListHba;
    &mgrListHost;
    &mgrListNode;
