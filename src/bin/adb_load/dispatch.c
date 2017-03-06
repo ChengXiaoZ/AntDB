@@ -846,6 +846,10 @@ CleanDispatchResource(void)
 
 	if (process_bar)
 		process_bar = false;
+
+	if (g_start_cmd)
+		pfree(g_start_cmd);
+	g_start_cmd = NULL;
 }
 
 DispatchThreads *

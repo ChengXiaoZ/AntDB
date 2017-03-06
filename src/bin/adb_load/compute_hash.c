@@ -298,6 +298,10 @@ CleanHashResource(void)
 	FinishThreads->hs_thread_count = 0;
 	FinishThreads->hs_thread_cur = 0;
 	pthread_mutex_destroy(&FinishThreads->mutex);
+
+	if (g_start_cmd)
+		pfree(g_start_cmd);
+	g_start_cmd = NULL;
 }
 
 void 
