@@ -3180,7 +3180,9 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 {
 	AppendNodeInfo appendnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
+	AppendNodeInfo agtm_e_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
 	bool is_extra_exist, is_extra_sync;
 	StringInfoData infosendmsg;
 	StringInfoData primary_conninfo_value;
@@ -3201,12 +3203,24 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		mgr_check_appendnodeinfo(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(GTM_TYPE_GTM_SLAVE, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
-		
+		get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &agtm_e_nodeinfo);
+
 		if (!agtm_m_is_exist)
 			ereport(ERROR, (errmsg("gtm master is not initialized")));
 
 		if (!agtm_m_is_running)
 			ereport(ERROR, (errmsg("gtm master is not running")));
+
+		if (agtm_e_is_exist)
+		{
+			if (agtm_e_is_running)
+			{
+				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
+				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, agtm_e_nodeinfo.nodeaddr);
+			}
+			else
+			{   ereport(ERROR, (errmsg("gtm extra is not running")));}
+		}
 
 		/* step 1: update agtm master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3317,7 +3331,9 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 {
 	AppendNodeInfo appendnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
+	AppendNodeInfo agtm_s_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
+	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	bool is_slave_exist, is_slave_sync;
 	StringInfoData  infosendmsg;
 	StringInfoData primary_conninfo_value;
@@ -3338,13 +3354,24 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		mgr_check_appendnodeinfo(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodename);
 		mgr_get_appendnodeinfo(GTM_TYPE_GTM_EXTRA, &appendnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
-		//get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
 
 		if (!agtm_m_is_exist)
 			ereport(ERROR, (errmsg("gtm master is not initialized")));
 		
 		if (!agtm_m_is_running)
 			ereport(ERROR, (errmsg("gtm master is not running")));
+
+		if (agtm_s_is_exist)
+		{
+			if (agtm_s_is_running)
+			{
+				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
+				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, agtm_s_nodeinfo.nodeaddr);
+			}
+			else
+			{   ereport(ERROR, (errmsg("gtm slave is not running")));}
+		}
 
 		/* step 1: update agtm master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
