@@ -347,68 +347,107 @@ int main(int argc, char **argv)
 
 		get_use_datanodes(setting, table_info_ptr);		
 
-		/*the table may be split to more than one*/
-		slist_foreach_modify (siter, &table_info_ptr->file_head) 
-		{	
-			FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
-			Assert(NULL != file_location->location);
-			/* begin record error file */
-			linebuff = format_error_begin(file_location->location,
-								covert_distribute_type_to_string(table_info_ptr->distribute_type));
-			write_error(linebuff);
-			release_linebuf(linebuff);
-			fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n", file_location->location);
-			switch(table_info_ptr->distribute_type)
+		switch(table_info_ptr->distribute_type)
+		{
+			case DISTRIBUTE_BY_REPLICATION:
+			case DISTRIBUTE_BY_ROUNDROBIN:
 			{
-				case DISTRIBUTE_BY_REPLICATION:
-				case DISTRIBUTE_BY_ROUNDROBIN:
+				/*the table may be split to more than one*/
+				slist_foreach_modify (siter, &table_info_ptr->file_head) 
+				{
+					FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
+					Assert(NULL != file_location->location);
+					/* begin record error file */
+					linebuff = format_error_begin(file_location->location,
+										covert_distribute_type_to_string(table_info_ptr->distribute_type));
+					write_error(linebuff);
+					release_linebuf(linebuff);
+					fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n",
+						file_location->location);
+
 					/* start module */
 					do_replaciate_roundrobin(file_location->location, table_info_ptr);
 					/* stop module and clean resource */
 					clean_replaciate_roundrobin();
-					break;
-				case DISTRIBUTE_BY_DEFAULT_HASH:
-				case DISTRIBUTE_BY_DEFAULT_MODULO:
-				case DISTRIBUTE_BY_USERDEFINED:
+
+					/* end record error file */
+					linebuff = format_error_end(file_location->location);
+					write_error(linebuff);
+					release_linebuf(linebuff);
+					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
+						file_location->location);
+					//rename file name
+					rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+
+					/* remove  file from file list*/
+					slist_delete_current(&siter);
+					/* file num  subtract 1 */
+					table_info_ptr->file_nums--;
+
+					/* free location */
+					if (file_location->location)
+						pfree(file_location);
+					file_location = NULL;
+				}
+				break;
+			}
+			case DISTRIBUTE_BY_DEFAULT_HASH:
+			case DISTRIBUTE_BY_DEFAULT_MODULO:
+			case DISTRIBUTE_BY_USERDEFINED:
+			{
+				/*the table may be split to more than one*/
+				slist_foreach_modify (siter, &table_info_ptr->file_head) 
+				{					
+					FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
+					Assert(NULL != file_location->location);
+					/* begin record error file */
+					linebuff = format_error_begin(file_location->location,
+										covert_distribute_type_to_string(table_info_ptr->distribute_type));
+					write_error(linebuff);
+					release_linebuf(linebuff);
+					fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n",
+						file_location->location);
+
 					/* start module */
 					do_hash_module(file_location->location,table_info_ptr);
 					/* stop module and clean resource */
 					clean_hash_module();
-					break;
-				default:
-					{
-						LineBuffer * error_buffer = NULL;
-						ADBLOADER_LOG(LOG_ERROR,"[main] unrecognized distribute by type: %d",
-								table_info_ptr->distribute_type);
-						error_buffer = format_error_info("table type error ,file need to redo",
-														MAIN,
-														NULL,
-														0,
-														NULL);
-						write_error(error_buffer);
-						release_linebuf(error_buffer);
-					}
-					break; 
+
+					/* end record error file */
+					linebuff = format_error_end(file_location->location);
+					write_error(linebuff);
+					release_linebuf(linebuff);
+					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
+						file_location->location);
+					//rename file name
+					rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+
+					/* remove  file from file list*/
+					slist_delete_current(&siter);
+					/* file num  subtract 1 */
+					table_info_ptr->file_nums--;
+
+					/* free location */
+					if (file_location->location)
+						pfree(file_location);
+					file_location = NULL;
+				}
+				break;
 			}
-
-			/* end record error file */
-			linebuff = format_error_end(file_location->location);
-			write_error(linebuff);
-			release_linebuf(linebuff);
-			fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n", file_location->location);
-
-			//rename file name
-			rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
-
-			/* remove  file from file list*/
-			slist_delete_current(&siter);
-			/* file num  subtract 1 */
-			table_info_ptr->file_nums--;
-
-			/* free location */
-			if (file_location->location)
-				pfree(file_location);
-			file_location = NULL;
+			default:
+			{
+				LineBuffer * error_buffer = NULL;
+				ADBLOADER_LOG(LOG_ERROR,"[main] unrecognized distribute by type: %d",
+						table_info_ptr->distribute_type);
+				error_buffer = format_error_info("table type error ,file need to redo",
+												MAIN,
+												NULL,
+												0,
+												NULL);
+				write_error(error_buffer);
+				release_linebuf(error_buffer);
+			}
+				break; 
 		}
 
 		if (update_tables)
