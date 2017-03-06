@@ -63,7 +63,7 @@ int main(int argc, char **argv)
 
 	fopen_error_file(NULL);
 	InitHashCompute(thread_nums, func_name, conninfo, input_queue,
-		output_queue, output_queue_size, field, "start");
+		output_queue, output_queue_size, field);
 
 	mq_pipe_put(input_queue, NULL);
 	

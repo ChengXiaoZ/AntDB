@@ -1034,8 +1034,9 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		func_name = pg_strdup(field->func_name);
 	}
 
+	SetHashFileStartCmd(start);
 	res = InitHashCompute(setting->hash_config->hash_thread_num, func_name, setting->server_info->connection,
-						input_queue, output_queue, table_info->use_datanodes_num, field, start);
+						input_queue, output_queue, table_info->use_datanodes_num, field);
 	pfree(func_name);
 	func_name = NULL;
 	if (res != HASH_COMPUTE_OK)

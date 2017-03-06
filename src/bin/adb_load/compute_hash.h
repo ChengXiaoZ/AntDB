@@ -32,7 +32,6 @@ typedef struct HashComputeInfo
 	int					 output_queue_size;
 	char				*func_name;
 	char				*conninfo;
-	char				*start_cmd;
 	MessageQueuePipe	*input_queue;	
 	MessageQueuePipe   **output_queue;
 	HashField			*hash_field;
@@ -68,7 +67,6 @@ typedef struct ComputeThreadInfo
 	char		  		*func_name;
 	char 		  		*conninfo;
 	char				*copy_str;
-	char				*start_cmd;
 	PGconn   	  		*conn;
 	ThreadWorkState	state;
 	bool				exit;
@@ -87,7 +85,7 @@ typedef struct HashThreads
 #define	HASH_COMPUTE_OK			1
 
 int InitHashCompute(int thread_nums, char * func, char * conninfo, MessageQueuePipe * message_queue_in,
-			MessageQueuePipe ** message_queue_out, int queue_size, HashField * field, char * start_cmd);
+			MessageQueuePipe ** message_queue_out, int queue_size, HashField * field);
 
 /**
 * @brief CheckComputeState
@@ -104,4 +102,6 @@ int StopHash(void);
 
 /* make sure all threads had exited */
 void CleanHashResource(void);
+
+void SetHashFileStartCmd(char * start_cmd);
 #endif

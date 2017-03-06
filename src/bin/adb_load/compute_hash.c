@@ -117,20 +117,19 @@ static void		  	  hash_write_error_message(ComputeThreadInfo	*thrinfo, char * me
 										char * hash_error_message, int line_no, char *line_data, bool redo);
 
 
-const int THREAD_QUEUE_SIZE = 200;
-const int THREAD_BATCH_SIZE = 50;
-const int MESSAGE_QUEUE_GET_EMPTY = 0;
+static const int 	THREAD_QUEUE_SIZE = 200;
+static bool			RECV_END_FLAG = FALSE;
+static bool			ALL_THREADS_EXIT = FALSE;
+static HashThreads	HashThreadsData;
+static HashThreads	*RunThreads = &HashThreadsData;
+static HashThreads	HashThreadsFinishData;
+static HashThreads	*FinishThreads = &HashThreadsFinishData;
 
-bool			RECV_END_FLAG = FALSE;
-bool			ALL_THREADS_EXIT = FALSE;
-HashThreads	HashThreadsData;
-HashThreads	*RunThreads = &HashThreadsData;
-HashThreads	HashThreadsFinishData;
-HashThreads	*FinishThreads = &HashThreadsFinishData;
+static char 		*g_start_cmd = NULL;	
 
 int
 InitHashCompute(int thread_nums, char * func, char * conninfo, MessageQueuePipe * message_queue_in,
-	MessageQueuePipe ** message_queue_out, int queue_size, HashField * field, char * start_cmd)
+	MessageQueuePipe ** message_queue_out, int queue_size, HashField * field)
 {
 	HashComputeInfo * hash_info;
 	Assert(NULL != func && NULL != conninfo &&
@@ -149,7 +148,6 @@ InitHashCompute(int thread_nums, char * func, char * conninfo, MessageQueuePipe 
 	hash_info->output_queue = message_queue_out;
 	hash_info->output_queue_size = queue_size;
 	hash_info->func_name = pg_strdup(func);
-	hash_info->start_cmd = pg_strdup(start_cmd);
 	return (adbLoader_hashThreadCreate(hash_info, field));
 }
 
@@ -233,7 +231,7 @@ hash_write_error_message(ComputeThreadInfo	*thrinfo, char * message,
 		appendLineBufInfoString(error_buffer, "\n");
 		appendLineBufInfoString(error_buffer, "suggest : ");
 		if (thrinfo)
-			appendLineBufInfoString(error_buffer, thrinfo->start_cmd);
+			appendLineBufInfoString(error_buffer, g_start_cmd);
 		else if (thrinfo == NULL && hash_error_message != NULL)
 			appendLineBufInfoString(error_buffer, hash_error_message);
 		appendLineBufInfoString(error_buffer, "\n");
@@ -302,6 +300,16 @@ CleanHashResource(void)
 	pthread_mutex_destroy(&FinishThreads->mutex);
 }
 
+void 
+SetHashFileStartCmd(char * start_cmd)
+{
+	Assert(NULL != start_cmd);
+	 if(g_start_cmd)
+	 	pfree(g_start_cmd);
+	 g_start_cmd = NULL;
+	 g_start_cmd = pg_strdup(start_cmd);
+}
+
 int
 adbLoader_hashThreadCreate(HashComputeInfo *hash_info, HashField *field)
 {
@@ -318,7 +326,7 @@ adbLoader_hashThreadCreate(HashComputeInfo *hash_info, HashField *field)
 
 		hash_write_error_message(NULL, 
 								"Can not initialize mutex, file need to redo",
-								hash_info->start_cmd, 0, NULL, TRUE);	
+								g_start_cmd, 0, NULL, TRUE);	
 		exit(1);
 	}
 	/*print HashComputeInfo and HashField */
@@ -373,7 +381,6 @@ adbLoader_hashThreadCreate(HashComputeInfo *hash_info, HashField *field)
 		memcpy(thread_info->hash_field->node_list, field->node_list, sizeof(Oid) * field->node_nums);
 		thread_info->hash_field->delim = pg_strdup(field->delim);
 		thread_info->hash_field->hash_delim = pg_strdup(field->hash_delim);
-		thread_info->start_cmd = pg_strdup(hash_info->start_cmd);
 		if(NULL != field->copy_options)
 			thread_info->hash_field->copy_options = pg_strdup(field->copy_options);
 		else
@@ -402,11 +409,6 @@ adbLoader_hashThreadCreate(HashComputeInfo *hash_info, HashField *field)
 	{
 		pfree(hash_info->conninfo);
 		hash_info->conninfo = NULL;
-	}
-	if (hash_info->start_cmd)
-	{
-		pfree(hash_info->start_cmd);
-		hash_info->start_cmd = NULL;
 	}
 	pfree(hash_info);
 	hash_info = NULL;
@@ -528,11 +530,6 @@ adbLoader_ThreadCleanup(void * argp)
 			thrinfo->state == THREAD_MESSAGE_CONFUSION_ERROR)
 		set_other_threads_exit();
 
-	if (thrinfo->start_cmd)
-	{
-		pfree(thrinfo->start_cmd);
-		thrinfo->start_cmd = NULL;
-	}
 	/* record exit thread */
 	pthread_mutex_lock(&FinishThreads->mutex);
 	FinishThreads->hs_threads[loc] = thrinfo;
