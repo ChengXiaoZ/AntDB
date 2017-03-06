@@ -36,7 +36,8 @@ DispatchThreads	*DispatchThreadsFinish = &DispatchThreadsFinishData;
 TableType			Table_Type;
 bool				Is_Deal = false;
 static	bool	    process_bar = false;
-static char 		**error_message_name = NULL;
+static char 	  **error_message_name = NULL;
+static char		   *g_start_cmd = NULL;
 static int 			error_message_max;
 
 static int		  dispatch_threadsCreate(DispatchInfo *dispatch);
@@ -108,7 +109,7 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			appendLineBufInfoString(error_buffer, "\n");
 			appendLineBufInfoString(error_buffer, "suggest : ");
 			if (thrinfo)				
-				appendLineBufInfoString(error_buffer, thrinfo->start_cmd);
+				appendLineBufInfoString(error_buffer, g_start_cmd);
 				
 			else if (thrinfo == NULL && dispatch_error_message != NULL)
 				appendLineBufInfoString(error_buffer, dispatch_error_message);
@@ -120,7 +121,7 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			appendLineBufInfoString(error_buffer, "suggest : ");				
 			appendLineBufInfoString(error_buffer, "set config file DATANODE_VALID = on, remain this datanode info \n");
 			if (thrinfo)				
-				appendLineBufInfoString(error_buffer, thrinfo->start_cmd);
+				appendLineBufInfoString(error_buffer, g_start_cmd);
 			else if (thrinfo == NULL && dispatch_error_message != NULL)
 				appendLineBufInfoString(error_buffer, dispatch_error_message);
 			appendLineBufInfoString(error_buffer, "\n");
@@ -196,7 +197,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 
 		dispatch_write_error_message(NULL, 
 									"Can not initialize dispatch mutex ,file need to redo",
-									dispatch->start_cmd, 0 , NULL, true);
+									g_start_cmd, 0 , NULL, true);
 		exit(1);
 	}
 
@@ -213,7 +214,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 
 			dispatch_write_error_message(NULL, 
 										"Can not malloc memory to DispatchThreadInfo ,file need to redo",
-										dispatch->start_cmd, 0 , NULL, true);
+										g_start_cmd, 0 , NULL, true);
 			exit(1);
 		}
 		thrinfo->conninfo_datanode = pg_strdup(datanode_info->conninfo[flag]);
@@ -224,14 +225,13 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 			thrinfo->copy_options = pg_strdup(dispatch->copy_options);
 		else
 			thrinfo->copy_options = NULL;
-		thrinfo->start_cmd = pg_strdup(dispatch->start_cmd);
 		thrinfo->thr_startroutine = dispatch_threadMain;
 		if ((pthread_create(&thrinfo->thread_id, NULL, dispatch_ThreadMainWrapper, thrinfo)) < 0)
 		{
 			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] create dispatch thread error");
 			dispatch_write_error_message(NULL, 
 										"create dispatch thread error",
-										dispatch->start_cmd, 0 , NULL, true);
+										g_start_cmd, 0 , NULL, true);
 			/* stop start thread */
 			StopDispatch();
 			return DISPATCH_ERROR;
@@ -704,11 +704,6 @@ dispatch_ThreadCleanup (void * argp)
 		thrinfo->copy_options = NULL;
 	}
 
-	if (thrinfo->start_cmd)
-	{
-		pfree(thrinfo->start_cmd);
-		thrinfo->start_cmd = NULL;
-	}
 	ADBLOADER_LOG(LOG_INFO,
 	"[DISPATCH][thread id : %ld ] thread exit, total threads is : %d, current thread number: %d, current exit thread number: %d, state :%s",
 	thrinfo->thread_id, DispatchThreadsRun->send_thread_count, current_run_thread,
@@ -888,4 +883,13 @@ GetSendCount(int * thread_send_num)
 	pthread_mutex_unlock(&DispatchThreadsFinish->mutex);
 }
 
+void
+SetDispatchFileStartCmd(char * start_cmd)
+{
+	Assert(NULL != start_cmd);
+	if (g_start_cmd)
+		pfree(g_start_cmd);
+	g_start_cmd = NULL;
+	g_start_cmd = pg_strdup(start_cmd);
+}
 

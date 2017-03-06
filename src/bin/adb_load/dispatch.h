@@ -24,7 +24,6 @@ typedef struct DispatchInfo
 	DatanodeInfo		*datanode_info;
 	char				*table_name;
 	char				*copy_options;
-	char				*start_cmd;
 	bool				 process_bar;
 } DispatchInfo;
 
@@ -61,7 +60,6 @@ typedef struct DispatchThreadInfo
 	char				*table_name;
 	char				*copy_str;	/* copy str */
 	char				*copy_options; /* copy with options */
-	char				*start_cmd;
 	PGconn   	  		*conn;
 	PGconn				*agtm_conn;
 	bool				exit;
@@ -84,4 +82,5 @@ int StopDispatch (void);
 void CleanDispatchResource (void);
 DispatchThreads *GetDispatchExitThreads (void);
 void GetSendCount(int * thread_send_num);
+void SetDispatchFileStartCmd(char * start_cmd);
 #endif

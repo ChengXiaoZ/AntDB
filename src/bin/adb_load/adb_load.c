@@ -121,7 +121,7 @@ static struct special_table *add_special_table(struct special_table *table_list,
 static int has_special_file(char **file_name_list, int file_nums);
 static int is_special_table(char *table_name);
 static int is_special_file_name(char *file_name);
-static void str_list_sort(char **file_list, int file_num);
+//static void str_list_sort(char **file_list, int file_num);
 static int get_file_num(char *fullpath);
 static int is_type_file(char *fullpath);
 static int is_type_dir(char *fullpath);
@@ -819,9 +819,8 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	dispatch->table_name = pg_strdup(table_info->table_name);
 	if (NULL != setting->hash_config->copy_option)		
 		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
-
-	dispatch->start_cmd = pg_strdup(start);
 	dispatch->process_bar = setting->process_bar;
+	SetDispatchFileStartCmd(start);
 	/* start dispatch module  */
 	if ((res = InitDispatch(dispatch, TABLE_REPLICATION)) != DISPATCH_OK)
 	{
@@ -1055,9 +1054,8 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	dispatch->table_name = pg_strdup(table_info->table_name);
 	if (NULL != setting->hash_config->copy_option)		
 		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
-	dispatch->start_cmd = pg_strdup(start);
 	dispatch->process_bar = setting->process_bar;
-
+	SetDispatchFileStartCmd(start);
 	/* start dispatch module */
 	if ((res = InitDispatch(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
 	{
@@ -2435,6 +2433,7 @@ static int get_file_num(char *fullpath)
 	closedir(dir);
 	return file_num;
 }
+/*
 static void str_list_sort(char **file_list, int file_num)
 {
 	int i=0;
@@ -2458,7 +2457,7 @@ static void str_list_sort(char **file_list, int file_num)
         }
     }
 }
-
+*/
 void file_name_print(char **file_list, int file_num)
 {
 	int file_index = 0;
@@ -2739,8 +2738,6 @@ free_dispatch_info (DispatchInfo *dispatch_info)
 	}
 
 	dispatch_info->output_queue = NULL;
-	pfree(dispatch_info->start_cmd);
-	dispatch_info->start_cmd = NULL;
 	pfree(dispatch_info);
 }
 
