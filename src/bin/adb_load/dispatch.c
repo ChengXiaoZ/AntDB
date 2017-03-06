@@ -52,7 +52,7 @@ static char	 	* dispatch_util_message_name (DispatchThreadWorkState state);
 static void		  dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 										char * dispatch_error_message, int line_no, char *line_data, bool redo);
 
-void
+static void
 dispatch_init_error_nametabs(void)
 {
 	int ii;
@@ -73,7 +73,7 @@ dispatch_init_error_nametabs(void)
 	}
 }
 
-char *
+static char *
 dispatch_util_message_name(DispatchThreadWorkState state)
 {
 	if (error_message_name == NULL)
@@ -83,7 +83,7 @@ dispatch_util_message_name(DispatchThreadWorkState state)
 	return error_message_name[state];
 }
 
-void
+static void
 dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			char * dispatch_error_message, int line_no, char *line_data, bool redo)
 {
@@ -181,7 +181,7 @@ StopDispatch (void)
 	return DISPATCH_OK;
 }
 
-int
+static int
 dispatch_threadsCreate(DispatchInfo  *dispatch)
 {
 	int flag;
@@ -229,6 +229,11 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 		if ((pthread_create(&thrinfo->thread_id, NULL, dispatch_ThreadMainWrapper, thrinfo)) < 0)
 		{
 			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] create dispatch thread error");
+			dispatch_write_error_message(NULL, 
+										"create dispatch thread error",
+										dispatch->start_cmd, 0 , NULL, true);
+			/* stop start thread */
+			StopDispatch();
 			return DISPATCH_ERROR;
 		}
 		DispatchThreadsRun->send_thread_cur++;
@@ -238,7 +243,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 	return DISPATCH_OK;
 }
 
-void *
+static void *
 dispatch_threadMain (void *argp)
 {	
 	DispatchThreadInfo	*thrinfo = (DispatchThreadInfo*) argp;
@@ -512,7 +517,7 @@ dispatch_threadMain (void *argp)
 	return thrinfo;
 }
 
-void 
+static void 
 build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 {
 	char		*agtm_port;
@@ -604,7 +609,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 	thrinfo->copy_str = copy;
 }
 
-void *
+static void *
 dispatch_ThreadMainWrapper (void *argp)
 {
 	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
@@ -616,7 +621,7 @@ dispatch_ThreadMainWrapper (void *argp)
 	return thrinfo;
 }
 
-void 
+static void 
 dispatch_ThreadCleanup (void * argp)
 {
 	int					 flag;
@@ -700,7 +705,7 @@ dispatch_ThreadCleanup (void * argp)
 	return;
 }
 
-PGconn *
+static PGconn *
 reconnect(DispatchThreadInfo *thrinfo)
 {	
 	int times = 3;
@@ -751,7 +756,7 @@ reconnect(DispatchThreadInfo *thrinfo)
 	return thrinfo->conn;
 }
 
-char *
+static char *
 create_copy_string (char *table_name, char *copy_options)
 {
 	LineBuffer	*buf;
@@ -770,7 +775,7 @@ create_copy_string (char *table_name, char *copy_options)
 	return result;
 }
 
-void
+static void
 deal_after_thread_exit(void)
 {
 	if (!Is_Deal)
