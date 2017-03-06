@@ -101,10 +101,10 @@ static char *get_full_path(char *file_name, char *input_dir);
 static char *get_table_name(char *file_name);
 static bool is_suffix(char *str, char *suffix);
 
-static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info);
+static bool do_replaciate_roundrobin(char *filepath, TableInfo *table_info);
 static void clean_replaciate_roundrobin(void);
 
-static void do_hash_module(char *filepath, const TableInfo *table_info);
+static bool do_hash_module(char *filepath, const TableInfo *table_info);
 static void clean_hash_module(void);
 static char *get_outqueue_name (int datanode_num);
 static void exit_nicely(PGconn *conn);
@@ -717,7 +717,8 @@ get_outqueue_name (int datanode_num)
 	return name;
 }
 
-static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
+static bool
+do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 {
 	MessageQueuePipe 	 **output_queue;
 	DispatchInfo 		  *dispatch = NULL;
@@ -729,6 +730,7 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	bool				   read_finish = false;
 	bool				   dispatch_finish = false;
 	bool				   dispatch_failed = false;
+	bool				   do_sucess = true;
 	char				  *start = NULL;
 	int					  *thread_send_total;
 
@@ -849,6 +851,8 @@ static void do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 				{
 					if (dispatch_exit->send_threads[i]->state == DISPATCH_THREAD_EXIT_NORMAL)
 						all_error = false;
+					else
+						do_sucess = false;
 				}
 				if (all_error)
 				{
@@ -908,6 +912,7 @@ FAILED:
 	dispatch = NULL;
 	pfree(start);
 	start = NULL;
+	return do_sucess;
 }
 
 void 
@@ -916,7 +921,8 @@ clean_replaciate_roundrobin(void)
 
 }
 
-static void do_hash_module(char *filepath, const TableInfo *table_info)
+static bool
+do_hash_module(char *filepath, const TableInfo *table_info)
 {
 	MessageQueuePipe 	  *	input_queue;
 	MessageQueuePipe 	 **	output_queue;
@@ -933,6 +939,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 	bool					read_finish = false;
 	bool					hash_finish = false;
 	bool					dispatch_finish = false;
+	bool				   do_sucess = true;
 	char				  * start = NULL;
 	int					  *thread_send_total;
 
@@ -1014,7 +1021,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 		main_write_error_message("start dispatch module failed", start);
 		exit(1);
 	}
-	
+
 	/* start read_producer module last */
 	if ((res =InitReadProducer(filepath, input_queue, NULL, 0, 
 						false, setting->hash_config->hash_thread_num, start))!= READ_PRODUCER_OK)
@@ -1024,7 +1031,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 		exit(1);
 	}
 
-	/* check module state every 10s */
+	/* check module state every 1s */
 	for (;;)
 	{
 		ReadProducerState  state = READ_PRODUCER_PROCESS_DEFAULT;
@@ -1074,7 +1081,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 			sleep(1);
 			continue;
 		}
-		
+
 		if (!hash_finish && hash_exit->hs_thread_cur > 0)
 		{
 			/* check hash module state */
@@ -1092,6 +1099,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 					StopHash();
 					hash_failed = true;
 					hash_finish = true;
+					do_sucess = false;
 					goto FAILED;
 				}
 			}
@@ -1117,6 +1125,7 @@ static void do_hash_module(char *filepath, const TableInfo *table_info)
 					StopDispatch();
 					dispatch_failed = true;
 					dispatch_finish = true;
+					do_sucess = false;
 					goto FAILED;
 				}
 			}
@@ -1167,6 +1176,8 @@ FAILED:
 	dispatch = NULL;
 	pfree(start);
 	start = NULL;
+
+	return do_sucess;
 }
 
 void
