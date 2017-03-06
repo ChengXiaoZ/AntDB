@@ -297,6 +297,11 @@ int main(int argc, char **argv)
 	else if (setting->dynamic_mode)// dysnamic mode
 	{
 		tables_ptr = get_file_info(setting->input_directory);
+		if (tables_ptr == NULL)
+		{
+			fprintf(stderr, "cannot get file information in \"%s\" \n", setting->input_directory);
+			exit(EXIT_FAILURE);
+		}
 		table_info_ptr = tables_ptr->info;
 	}
 	else
@@ -2220,7 +2225,8 @@ static Tables* read_table_info(char *fullpath)
 		return NULL;
 	}
 
-	str_list_sort(file_name_list, file_num);
+	//no need sort
+	//str_list_sort(file_name_list, file_num);
 
 	file_name_print(file_name_list, file_num);
 
@@ -2228,7 +2234,7 @@ static Tables* read_table_info(char *fullpath)
 	for(file_index = 0; file_index < file_num; ++file_index)
 	{
 		file_name = file_name_list[file_index];
-		file_path = (char*)palloc0(strlen(fullpath) + strlen(file_name) + 2);
+		file_path = (char*)palloc0(strlen(fullpath) + strlen(file_name) + 2);/* 2 = '\0' + '/' */
 		sprintf(file_path, "%s/%s", fullpath, file_name);
 		file_path_list[file_index] = file_path;
 	}
