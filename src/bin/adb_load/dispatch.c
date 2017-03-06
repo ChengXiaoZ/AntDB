@@ -526,6 +526,19 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 	Assert(NULL != thrinfo->conninfo_agtm && NULL != thrinfo->conninfo_datanode);
 
 	thrinfo->conn = PQconnectdb(thrinfo->conninfo_datanode);
+
+	if (NULL == thrinfo->conn)
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_DATANODE_ERROR;
+
+		dispatch_write_error_message(thrinfo, 
+									"memory allocation failed,file need to redo",
+									NULL, 0, NULL, true);
+		pthread_exit(thrinfo);
+	}
+
 	if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH] Connection to database failed: %s, thread id is : %ld",
@@ -536,6 +549,9 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 									"Connection to database failed,file need to redo",
 									PQerrorMessage(thrinfo->conn), 0,
 									NULL, true);
+
+		PQfinish(thrinfo->conn);
+		thrinfo->conn = NULL;
 		pthread_exit(thrinfo);
 	}
 
@@ -557,14 +573,15 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
 					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->agtm_conn));
-		PQfinish(thrinfo->agtm_conn);
-		thrinfo->agtm_conn = NULL;
 		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
 
 		dispatch_write_error_message(thrinfo, 
 									"connect to agtm error,file need to redo",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
+
+		PQfinish(thrinfo->agtm_conn);
+		thrinfo->agtm_conn = NULL;
 		pthread_exit(thrinfo);
 	}
 	else
@@ -575,16 +592,16 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 	{
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] could not send agtm port: %s",
-					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));
-
-		PQfinish(thrinfo->conn);
-		thrinfo->conn = NULL;
-		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
+					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));		
 
 		dispatch_write_error_message(thrinfo, 
 									"could not send agtm port,file need to redo",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
+
+		PQfinish(thrinfo->conn);
+		thrinfo->conn = NULL;
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
 		pthread_exit(thrinfo);
 	}
 
