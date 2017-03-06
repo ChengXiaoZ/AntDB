@@ -73,7 +73,9 @@ LineBuffer * format_error_end (char * file_name)
 {
 	LineBuffer * linebuf = get_linebuf();
 	Assert(NULL != file_name);
-	appendLineBufInfoString(linebuf, "--------------------------------------------------------------------------------------------------------------\n");
+	appendLineBufInfoString(linebuf, "-----------------------------------------------------------------end  ");
+	appendLineBufInfoString(linebuf,file_name);
+	appendLineBufInfoString(linebuf, "-----------------------------------------------------------------\n");
 	return linebuf;
 }
 
