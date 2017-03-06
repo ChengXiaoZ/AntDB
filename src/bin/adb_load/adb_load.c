@@ -870,6 +870,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 				StopDispatch();
 				read_finish = true;
 				dispatch_finish = true;
+				do_sucess = false;
 				break;
 			}
 			else if (state == READ_PRODUCER_PROCESS_COMPLETE)
@@ -1108,6 +1109,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				read_finish = true;
 				hash_finish = true;
 				dispatch_finish = true;
+				do_sucess = false;
 				break;
 			}
 			else if (state == READ_PRODUCER_PROCESS_COMPLETE)
