@@ -102,6 +102,7 @@ agtm_Connect(void)
 	}PG_CATCH();
 	{
 		PQfinish((PGconn*)pg_conn);
+		agtm_conn = NULL;
 		save_AGtmHost = NULL;
 		save_AGtmPort = 0;
 		PG_RE_THROW();
