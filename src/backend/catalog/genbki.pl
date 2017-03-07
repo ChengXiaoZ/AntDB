@@ -236,10 +236,18 @@ foreach my $catname (@{ $catalogs->{names} })
 #PGXC_BEGIN
 				   ,{ xc_node_id  => 'int4' }
 #PGXC_END
+#ADB_BEGIN
+				   ,{ rowid => '' }
+				   ,{ infomask => 'int4'}
+#ADB_END
                 );
 				foreach my $attr (@SYS_ATTRS)
 				{
 					$attnum--;
+#ADB_BEGIN
+					my ($tmpkey, $tmpvalue) = %$attr;
+					next if (not $tmpvalue);
+#ADB_END
 					my $row = emit_pgattr_row($table_name, $attr, 1);
 					$row->{attnum}        = $attnum;
 					$row->{attstattarget} = '0';
