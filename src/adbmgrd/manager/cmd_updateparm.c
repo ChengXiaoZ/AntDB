@@ -1832,3 +1832,76 @@ static void mgr_string_add_single_quota(Name value)
 		/*do nothing*/
 	}
 }
+
+/*
+* update param table for gtm failover
+*/
+
+Datum mgr_update_param_gtm_failover(PG_FUNCTION_ARGS)
+{
+	NameData oldmastername;
+	NameData newmastername;
+	NameData newmastertypestr;
+	char oldmastertype = GTM_TYPE_GTM_MASTER;
+	char newmastertype;
+
+	/*check new master  type*/
+	namestrcpy(&oldmastername, PG_GETARG_CSTRING(0));
+	namestrcpy(&newmastername, PG_GETARG_CSTRING(1));
+	namestrcpy(&newmastertypestr, PG_GETARG_CSTRING(2));
+
+	if (strcmp(newmastertypestr.data, "slave") == 0)
+		newmastertype = GTM_TYPE_GTM_SLAVE;
+	else if (strcmp(newmastertypestr.data, "extra") == 0)
+		newmastertype = GTM_TYPE_GTM_EXTRA;
+	else
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
+				,errmsg("nodetype \"%s\" is not recognized", newmastertypestr.data)
+				,errhint("nodetype is \"slave\" or \"extra\"")));
+	if (strcmp(oldmastername.data, newmastername.data) != 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
+				,errmsg("the input is not right")
+				,errhint("the input are: oldmastername, slavename, slavetype")));
+	}
+	mgr_parm_after_gtm_failover_handle(&oldmastername, oldmastertype, &newmastername, newmastertype);
+
+	PG_RETURN_BOOL(true);
+}
+
+/*
+* update param table for datanode failover
+*/
+
+Datum mgr_update_param_datanode_failover(PG_FUNCTION_ARGS)
+{
+	NameData oldmastername;
+	NameData newmastername;
+	NameData newmastertypestr;
+	char oldmastertype = CNDN_TYPE_DATANODE_MASTER;
+	char newmastertype;
+
+	/*check new master  type*/
+	namestrcpy(&oldmastername, PG_GETARG_CSTRING(0));
+	namestrcpy(&newmastername, PG_GETARG_CSTRING(1));
+	namestrcpy(&newmastertypestr, PG_GETARG_CSTRING(2));
+
+	if (strcmp(newmastertypestr.data, "slave") == 0)
+		newmastertype = CNDN_TYPE_DATANODE_SLAVE;
+	else if (strcmp(newmastertypestr.data, "extra") == 0)
+		newmastertype = CNDN_TYPE_DATANODE_EXTRA;
+	else
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
+				,errmsg("nodetype \"%s\" is not recognized", newmastertypestr.data)
+				,errhint("nodetype is \"slave\" or \"extra\"")));
+
+	if (strcmp(oldmastername.data, newmastername.data) != 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
+				,errmsg("the input is not right")
+				,errhint("the input are: oldmastername, slavename, slavetype")));
+	}
+	mgr_update_parm_after_dn_failover(&oldmastername, oldmastertype, &newmastername, newmastertype);
+
+	PG_RETURN_BOOL(true);
+}

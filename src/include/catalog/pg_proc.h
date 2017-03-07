@@ -5336,7 +5336,13 @@ DESCR("drop job");
 DATA(insert OID = 4962 (  adbmonitor_job        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 25 "2275 2275" _null_ _null_ _null_ _null_ adbmonitor_job _null_ _null_ _null_ ));
 DESCR("run job");
 
-	DATA(insert OID = 4966 (  mgr_extension_handle        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 16 "2275" _null_ _null_ _null_ _null_ mgr_extension_handle _null_ _null_ _null_ ));
+DATA(insert OID = 4966 (  mgr_extension_handle        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 16 "2275" _null_ _null_ _null_ _null_ mgr_extension_handle _null_ _null_ _null_ ));
+DESCR("create extension");
+
+DATA(insert OID = 4967 (  mgr_update_param_gtm_failover        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "2275 2275 2275" _null_ _null_ _null_ _null_ mgr_update_param_gtm_failover _null_ _null_ _null_ ));
+DESCR("create extension");
+
+DATA(insert OID = 4968 (  mgr_update_param_datanode_failover        PGNSP PGUID 12 10 400 0 0 f f f f t t s 3 0 16 "2275 2275 2275" _null_ _null_ _null_ _null_ mgr_update_param_datanode_failover _null_ _null_ _null_ ));
 DESCR("create extension");
 
 #endif

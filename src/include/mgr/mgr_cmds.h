@@ -250,6 +250,8 @@ extern void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name node
 extern void mgr_flushhost(MGRFlushHost *node, ParamListInfo params, DestReceiver *dest);
 extern  Datum mgr_flush_host(PG_FUNCTION_ARGS);
 extern Datum mgr_show_var_param(PG_FUNCTION_ARGS);
+Datum mgr_update_param_gtm_failover(PG_FUNCTION_ARGS);
+Datum mgr_update_param_datanode_failover(PG_FUNCTION_ARGS);
 
 /*mgr_hba*/
 	
