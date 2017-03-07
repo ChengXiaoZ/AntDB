@@ -50,7 +50,9 @@
 #endif
 
 #define REMOTE_IDLE_TIMEOUT			60	/* close remote connect if it idle in second */
-
+#ifndef RXACT_LOG_LEVEL
+#	define RXACT_LOG_LEVEL			DEBUG1
+#endif /* RXACT_LOG_LEVEL */
 #define RXACT_TYPE_IS_VALID(t) (t == RX_PREPARE || t == RX_COMMIT || t == RX_ROLLBACK)
 
 typedef struct RxactAgent
@@ -881,7 +883,7 @@ rxact_agent_destroy(RxactAgent *agent)
 		{
 			Assert(rinfo && rinfo->failed == false);
 			rxact_mark_gid(rinfo->gid, rinfo->type, false, false);
-			ereport(LOG, (errmsg("agent destroy mark '%s' %s %s"
+			ereport(RXACT_LOG_LEVEL, (errmsg("agent destroy mark '%s' %s %s"
 				, rinfo->gid, RemoteXactType2String(rinfo->type), "failed")));
 		}
 		agent->last_gid[0] = '\0';
@@ -1235,7 +1237,7 @@ static void rxact_agent_do(RxactAgent *agent, StringInfo msg)
 	gid = rxact_get_string(msg);
 
 	rxact_insert_gid(gid, oids, count, type, agent->dboid, false);
-	ereport(LOG, (errmsg("backend begin '%s' %s"
+	ereport(RXACT_LOG_LEVEL, (errmsg("backend begin '%s' %s"
 		, gid, RemoteXactType2String(type))));
 	strncpy(agent->last_gid, gid, sizeof(agent->last_gid)-1);
 
@@ -1256,7 +1258,7 @@ static void rxact_agent_mark(RxactAgent *agent, StringInfo msg, bool success)
 	type = (RemoteXactType)rxact_get_int(msg);
 	gid = rxact_get_string(msg);
 	rxact_mark_gid(gid, type, success, false);
-	ereport(LOG, (errmsg("backend mark '%s' %s %s"
+	ereport(RXACT_LOG_LEVEL, (errmsg("backend mark '%s' %s %s"
 		, gid, RemoteXactType2String(type), success ? "success":"failed")));
 	agent->last_gid[0] = '\0';
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
@@ -1276,7 +1278,7 @@ static void rxact_agent_change(RxactAgent *agent, StringInfo msg)
 	}
 	gid = rxact_get_string(msg);
 	rxact_change_gid(gid, type, false);
-	ereport(LOG, (errmsg("backend change '%s' to %s", gid, RemoteXactType2String(type))));
+	ereport(RXACT_LOG_LEVEL, (errmsg("backend change '%s' to %s", gid, RemoteXactType2String(type))));
 	rxact_agent_simple_msg(agent, RXACT_MSG_OK);
 }
 
@@ -1719,10 +1721,10 @@ static void rxact_2pc_do(void)
 			{
 				strcpy(node_conn->doing_gid, rinfo->gid);
 				node_conn->last_use = time(NULL);
-				ereport(LOG, (errmsg("send \"%s\" to %u", buf.data, rinfo->remote_nodes[i])));
+				ereport(RXACT_LOG_LEVEL, (errmsg("send \"%s\" to %u", buf.data, rinfo->remote_nodes[i])));
 			}else
 			{
-				ereport(LOG, (errmsg("send \"%s\" to %u %s", buf.data, rinfo->remote_nodes[i], "failed")));
+				ereport(RXACT_LOG_LEVEL, (errmsg("send \"%s\" to %u %s", buf.data, rinfo->remote_nodes[i], "failed")));
 				rxact_finish_node_conn(node_conn);
 			}
 		}
@@ -1753,7 +1755,7 @@ static void rxact_2pc_result(NodeConn *conn)
 	if(status != PGRES_COMMAND_OK)
 	{
 		conn->doing_gid[0] = '\0';
-		ereport(LOG,
+		ereport(RXACT_LOG_LEVEL,
 			(errmsg("gid '%s' from %u %s:%s"
 				, gid
 				, conn->oids.node_oid
@@ -1761,7 +1763,7 @@ static void rxact_2pc_result(NodeConn *conn)
 				, PQerrorMessage(conn->conn))));
 		return;
 	}
-	ereport(LOG,
+	ereport(RXACT_LOG_LEVEL,
 			(errmsg("gid '%s' from %u %s"
 				, gid
 				, conn->oids.node_oid
@@ -1798,7 +1800,7 @@ static void rxact_2pc_result(NodeConn *conn)
 		if(finish)
 		{
 			rxact_mark_gid(rinfo->gid, rinfo->type, true, false);
-			ereport(LOG, (errmsg("rxact mark '%s' %s %s"
+			ereport(RXACT_LOG_LEVEL, (errmsg("rxact mark '%s' %s %s"
 				, rinfo->gid, RemoteXactType2String(rinfo->type), "success")));
 		}
 	}
