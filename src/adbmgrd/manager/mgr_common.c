@@ -20,6 +20,8 @@
 
 #define MAXLINE (8192-1)
 #define MAXPATH (512-1)
+#define RETRY 3
+#define SLEEP_MICRO 100*1000     /* 100 millisec */
 
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
@@ -296,8 +298,6 @@ int pingNode(char *host, char *port)
 	PGPing status;
 	char conninfo[MAXLINE+1];
 	char editBuf[MAXPATH+1];
-#define RETRY 3
-#define sleepMicro 100*1000     /* 100 millisec */
 	int retry;
 	conninfo[0] = 0;
 
@@ -325,7 +325,7 @@ int pingNode(char *host, char *port)
 				return 0;
 			else
 			{
-				myUsleep(sleepMicro);
+				myUsleep(SLEEP_MICRO);
 				continue;
 			}
 		}
@@ -333,62 +333,93 @@ int pingNode(char *host, char *port)
 	}
 	else
 		return -1;
-#undef RETRY
-#undef sleepMicro
 }
 
+bool is_valid_ip(char *ip)
+{
+	FILE *pPipe;
+	char psBuffer[1024];
+	char ping_str[1024];
+	struct hostent *hptr;
+
+	if ((hptr = gethostbyname(ip)) == NULL)
+	{
+		return false;
+	}
+
+	snprintf(ping_str, sizeof(ping_str), "ping -c 1 %s", ip);
+
+	if((pPipe = popen(ping_str, "r" )) == NULL )
+	{
+		return false;
+	}
+	while(fgets(psBuffer, 1024, pPipe))
+	{
+		if (strstr(psBuffer, "0 received") != NULL ||
+			strstr(psBuffer, "Unreachable") != NULL)
+		{
+			pclose(pPipe);
+			return false;
+		}
+	}
+	pclose(pPipe);
+	return true;
+}
 
 /* ping someone node for monitor */
 int pingNode_user(char *host, char *port, char *user)
 {
-	PGPing status;
-	char conninfo[MAXLINE+1];
-	char editBuf[MAXPATH+1];
-#define RETRY 3
-#define sleepMicro 100*1000     /* 100 millisec */
+	PGPing ret;
+	char conninfo[MAXLINE + 1] = {0};
+	char editBuf[MAXPATH + 1] = {0};
 	int retry;
-	conninfo[0] = 0;
 
 	if (host)
 	{
-		snprintf(editBuf, MAXPATH, "host = '%s' ", host);
+		snprintf(editBuf, MAXPATH, "host='%s' ", host);
 		strncat(conninfo, editBuf, MAXLINE);
 	}
 
 	if (port)
 	{
-		snprintf(editBuf, MAXPATH, "port = %d ", atoi(port));
+		snprintf(editBuf, MAXPATH, "port=%d ", atoi(port));
 		strncat(conninfo, editBuf, MAXLINE);
 	}
 
 	if (user)
 	{
-		snprintf(editBuf, MAXPATH, "user = %s ", user);
+		snprintf(editBuf, MAXPATH, "user=%s ", user);
 		strncat(conninfo, editBuf, MAXLINE);
 	}
+
+	/*timeout set 2s*/
+	snprintf(editBuf, MAXPATH,"connect_timeout=2");
+	strncat(conninfo, editBuf, MAXLINE);
 
 	if (conninfo[0])
 	{
 		elog(DEBUG1, "Ping node string: %s.\n", conninfo);
 		for (retry = RETRY; retry; retry--)
 		{
-			status = PQping(conninfo);
-			if (status == PQPING_REJECT)
-				return -2;
-			else if (status == PQPING_OK)
-				return 0;
-			else
+			ret = PQping(conninfo);
+			switch (ret)
 			{
-				myUsleep(sleepMicro);
-				continue;
+				case PQPING_OK:
+					return PQPING_OK;
+				case PQPING_REJECT:
+					return PQPING_REJECT;
+				case PQPING_NO_ATTEMPT:
+					return PQPING_NO_ATTEMPT;
+				case PQPING_NO_RESPONSE:
+					return PQPING_NO_RESPONSE;
+				default:
+					myUsleep(SLEEP_MICRO);
+					continue;
 			}
 		}
-		return 1;
 	}
 	else
 		return -1;
-#undef RETRY
-#undef sleepMicro
 }
 
 static void
@@ -405,7 +436,7 @@ myUsleep(long microsec)
 }
 
 /*check the host in use or not*/
-bool	mgr_check_host_in_use(Oid hostoid)
+bool mgr_check_host_in_use(Oid hostoid)
 {
 	HeapScanDesc rel_scan;
 	HeapTuple tuple =NULL;

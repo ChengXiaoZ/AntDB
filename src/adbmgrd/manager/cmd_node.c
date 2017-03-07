@@ -1975,9 +1975,11 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
-	char *host_addr;
-	char *user;
-	int ret;
+	char *host_addr = NULL;
+	char *user = NULL;
+	const char *error_str = NULL;
+	bool is_valid = false;
+	int ret = 0;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2018,14 +2020,39 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode_user(host_addr, port.data, user);
+	is_valid = is_valid_ip(host_addr);
+	if (is_valid)
+	{
+		ret = pingNode_user(host_addr, port.data, user);
+
+		switch (ret)
+		{
+			case PQPING_OK:
+				error_str = "running";
+				break;
+			case PQPING_REJECT:
+				error_str = "server is alive but rejecting connections";
+				break;
+			case PQPING_NO_RESPONSE:
+				error_str = "not running";
+				break;
+			case PQPING_NO_ATTEMPT:
+				error_str = "connection not attempted (bad params)";
+				break;
+			default:
+				break;
+		}
+	}
+	else
+		error_str = "could not establish host connection";
+
 
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
-				,ret == 0 ? true:false
-				,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
-				);
+				,ret == PQPING_OK ? true:false
+				,error_str);
+
 	pfree(port.data);
 	pfree(host_addr);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -2042,9 +2069,11 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
-	char *host_addr;
+	char *host_addr = NULL;
+	bool is_valid = false;
+	const char *error_str = NULL;
 	char *user;
-	int ret;
+	int ret = 0;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2073,7 +2102,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tup);
 		Assert(mgr_node);
-		
+
 		/* if node type is datanode master ,datanode slave ,datanode extra. */
 		if (mgr_node->nodetype == 'd' || mgr_node->nodetype == 'b' || mgr_node->nodetype == 'n')
 		{
@@ -2081,14 +2110,38 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 			user = get_hostuser_from_hostoid(mgr_node->nodehost);
 			initStringInfo(&port);
 			appendStringInfo(&port, "%d", mgr_node->nodeport);
-			ret = pingNode_user(host_addr, port.data, user);
+
+			is_valid = is_valid_ip(host_addr);
+			if (is_valid)
+			{
+				ret = pingNode_user(host_addr, port.data, user);
+				switch (ret)
+				{
+					case PQPING_OK:
+						error_str = "running";
+						break;
+					case PQPING_REJECT:
+						error_str = "server is alive but rejecting connections";
+						break;
+					case PQPING_NO_RESPONSE:
+						error_str = "not running";
+						break;
+					case PQPING_NO_ATTEMPT:
+						error_str = "connection not attempted (bad params)";
+						break;
+					default:
+						break;
+				}
+			}
+			else
+				error_str = "could not establish host connection";
 
 			tup_result = build_common_command_tuple_for_monitor(
 						&(mgr_node->nodename)
 						,mgr_node->nodetype
 						,ret == 0 ? true:false
-						,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
-						);
+						,error_str);
+
 			pfree(port.data);
 			pfree(host_addr);
 			SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -2116,7 +2169,9 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 	StringInfoData port;
 	char *host_addr;
 	char *user;
-	int ret;
+	bool is_valid = false;
+	const char *error_str = NULL;
+	int ret = 0;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -2140,12 +2195,12 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 	Assert(funcctx);
 	info = funcctx->user_fctx;
 	Assert(info);
-	
+
 	while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tup);
 		Assert(mgr_node);
-		
+
 		/* if node type is gtm master ,gtm slave ,gtm extra. */
 		if (mgr_node->nodetype == 'g' || mgr_node->nodetype == 'p' || mgr_node->nodetype == 'e')
 		{
@@ -2153,14 +2208,37 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 			user = get_hostuser_from_hostoid(mgr_node->nodehost);
 			initStringInfo(&port);
 			appendStringInfo(&port, "%d", mgr_node->nodeport);
-			ret = pingNode_user(host_addr, port.data, user);
-			
+
+			is_valid = is_valid_ip(host_addr);
+			if (is_valid)
+			{
+				ret = pingNode_user(host_addr, port.data, user);
+				switch (ret)
+				{
+					case PQPING_OK:
+						error_str = "running";
+						break;
+					case PQPING_REJECT:
+						error_str = "server is alive but rejecting connections";
+						break;
+					case PQPING_NO_RESPONSE:
+						error_str = "not running";
+						break;
+					case PQPING_NO_ATTEMPT:
+						error_str = "connection not attempted (bad params)";
+						break;
+					default:
+						break;
+				}
+			}
+			else
+				error_str = "could not establish host connection";
+
 			tup_result = build_common_command_tuple_for_monitor(
 						&(mgr_node->nodename)
 						,mgr_node->nodetype
 						,ret == 0 ? true:false
-						,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
-						);
+						,error_str);
 			pfree(port.data);
 			pfree(host_addr);
 			SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -2189,10 +2267,12 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	StringInfoData port;
 	char *host_addr;
 	char *nodename;
+	bool is_valid = false;
+	const char *error_str = NULL;
 	char *user;
-	int ret;
+	int ret = 0;
 	char nodetype;
-	
+
 	nodetype = PG_GETARG_CHAR(0);
 
 	if (SRF_IS_FIRSTCALL())
@@ -2202,7 +2282,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
-		
+
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		*(info->lcp) = list_head(nodenamelist);
@@ -2269,14 +2349,38 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode_user(host_addr, port.data, user);
+
+	is_valid = is_valid_ip(host_addr);
+	if (is_valid)
+	{
+		ret = pingNode_user(host_addr, port.data, user);
+		switch (ret)
+		{
+			case PQPING_OK:
+				error_str = "running";
+				break;
+			case PQPING_REJECT:
+				error_str = "server is alive but rejecting connections";
+				break;
+			case PQPING_NO_RESPONSE:
+				error_str = "not running";
+				break;
+			case PQPING_NO_ATTEMPT:
+				error_str = "connection not attempted (bad params)";
+				break;
+			default:
+				break;
+		}
+	}
+	else
+		error_str = "could not establish host connection";
 
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
-				);
+				,error_str);
+
 	pfree(port.data);
 	pfree(host_addr);
 	heap_freetuple(tup);
@@ -2297,8 +2401,10 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	StringInfoData port;
 	char *host_addr;
 	char *user;
-	int ret;
+	int ret = 0;
 	char nodetype;
+	bool is_valid = false;
+	const char *error_str = NULL;
 
 	nodetype = PG_GETARG_CHAR(0);
 
@@ -2348,14 +2454,38 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", mgr_node->nodeport);
-	ret = pingNode_user(host_addr, port.data, user);
+
+	is_valid = is_valid_ip(host_addr);
+	if (is_valid)
+	{
+		ret = pingNode_user(host_addr, port.data, user);
+		switch (ret)
+		{
+			case PQPING_OK:
+				error_str = "running";
+				break;
+			case PQPING_REJECT:
+				error_str = "server is alive but rejecting connections";
+				break;
+			case PQPING_NO_RESPONSE:
+				error_str = "not running";
+				break;
+			case PQPING_NO_ATTEMPT:
+				error_str = "connection not attempted (bad params)";
+				break;
+			default:
+				break;
+		}
+	}
+	else
+		error_str = "could not establish host connection";
 
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,(ret == 0 ? "running":(ret == -2 ? "server is alive but rejecting connections":"not running"))
-				);
+				,error_str);
+
 	pfree(port.data);
 	pfree(host_addr);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
