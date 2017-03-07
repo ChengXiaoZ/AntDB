@@ -243,7 +243,7 @@ hash_write_error_message(ComputeThreadInfo	*thrinfo, char * message,
 			appendLineBufInfoString(error_buffer, "\n");
 			appendLineBufInfoString(error_buffer, "suggest : ");
 			appendLineBufInfoString(error_buffer, "must deal this data alone");
-			appendLineBufInfoString(error_buffer, "\n");
+			appendLineBufInfoString(error_buffer, "\n");
 		}
 	}
 	appendLineBufInfoString(error_buffer, "-------------------------------------------------------\n");
@@ -547,12 +547,12 @@ adbLoader_ThreadCleanup(void * argp)
 static void *
 hash_threadMain(void *argp)
 {
-	int					poll_size;
+	//int					poll_size;
 	ComputeThreadInfo	*thrinfo = (ComputeThreadInfo*) argp;
 	MessageQueuePipe	*input_queue;
 	MessageQueue		*inner_queue;
-	MessageQueuePipe	**output_queue;
-	QueueElementPipe 	**element_batch;
+	//MessageQueuePipe	**output_queue;
+	//QueueElementPipe 	**element_batch;
 	char				*copy;
 	PGresult 	 		*res;
 	bool 				mq_read = false;
@@ -566,10 +566,10 @@ hash_threadMain(void *argp)
 	int max_fd;
 	int select_res;
 
-	poll_size = 0;
-	element_batch = NULL;
+	//poll_size = 0;
+	//element_batch = NULL;
 	input_queue = thrinfo->input_queue;
-	output_queue = thrinfo->output_queue;
+	//output_queue = thrinfo->output_queue;
 	inner_queue = (MessageQueue*)palloc0(sizeof(MessageQueue));
 	mq_init(inner_queue, THREAD_QUEUE_SIZE, "inner_queue");
 	thrinfo->inner_queue = inner_queue;
@@ -1041,7 +1041,7 @@ get_field_quote (char **fields, char *line, int * loc, char *delim, char quotec,
 	output_ptr = result;
 	for(;;)
 	{
-		bool		found_delim = false;
+		//bool		found_delim = false;
 		bool		saw_quote = false;
 		char	   *start_ptr;
 		char	   *end_ptr;
@@ -1063,7 +1063,7 @@ get_field_quote (char **fields, char *line, int * loc, char *delim, char quotec,
 				/* unquoted field delimiter */
 				if (c == delimc)
 				{
-					found_delim = true;
+					//found_delim = true;
 					goto endfield;
 				}
 				/* start of quoted field (or part of field) */

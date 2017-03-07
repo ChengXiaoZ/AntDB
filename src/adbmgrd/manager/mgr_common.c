@@ -418,8 +418,8 @@ int pingNode_user(char *host, char *port, char *user)
 			}
 		}
 	}
-	else
-		return -1;
+
+	return -1;
 }
 
 static void

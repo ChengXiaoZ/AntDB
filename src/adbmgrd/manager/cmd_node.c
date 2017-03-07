@@ -2965,7 +2965,6 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	AppendNodeInfo parentnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
 	AppendNodeInfo agtm_s_nodeinfo;
-	AppendNodeInfo agtm_e_nodeinfo;
 	AppendNodeInfo dn_s_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
