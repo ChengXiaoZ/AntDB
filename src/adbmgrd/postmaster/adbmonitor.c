@@ -1400,7 +1400,7 @@ adbmonitor_job(PG_FUNCTION_ARGS)
 	initStringInfo(&resultstrinfo);
 	mgr_recv_sql_stringvalues_msg(ma, &resultstrinfo);
 	ma_close(ma);
-	if (resultstrinfo.data == NULL)
+	if (resultstrinfo.data[0] == '\0')
 	{
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 			,errmsg("get result fail")));
@@ -1458,7 +1458,7 @@ print_workers(void)
 	{
 		if (OidIsValid(workers[i].wi_job))
 		{
-			elog(LOG, "Launcher find workers[%d] %d is running",
+			elog(DEBUG1, "Launcher find workers[%d] %d is running",
 				i, workers[i].wi_job);
 		}
 	}
