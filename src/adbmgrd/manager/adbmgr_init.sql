@@ -944,8 +944,8 @@ VOLATILE
 RETURNS NULL ON NULL INPUT;
 
 --insert into monitor_user, as default value: 1: ordinary users, 2: db manager
-insert into monitor_user values('数据库DBA', 2, '2016-01-01','2050-01-01', '12345678901', 
-'userdba@asiainfo.com', '亚信', '数据库', '数据库研发工程师', '21232f297a57a5a743894a0e4a801fc3','系统管理员');
+insert into monitor_user values('adbmonitor', 2, '2016-01-01','2050-01-01', '12345678901', 
+'userdba@asiainfo.com', '亚信', '数据库', '数据库研发工程师', 'ISMvKXpXpadDiUoOSoAfww==','系统管理员');
 --check user name/password
 CREATE OR REPLACE  FUNCTION  pg_catalog.monitor_checkuser_func(in Name, in Name)
 RETURNS oid AS $$
