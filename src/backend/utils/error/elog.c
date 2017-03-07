@@ -1528,6 +1528,21 @@ EmitErrorReport(void)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
+#if defined(ADB) && defined(DEBUG_ADB)
+	if (edata->elevel >= ERROR && edata->message)
+	{
+		StringInfoData new_message;
+		initStringInfo(&new_message);
+		appendStringInfo(&new_message, "%s/*node=%s pid=%d session flag=%lx*/",
+			edata->message,
+			PGXCNodeName ? PGXCNodeName : "local",
+			MyProcPid,
+			GetCurrentTransactionStartTimestamp());
+		pfree(edata->message);
+		edata->message = new_message.data;
+	}
+#endif
+
 	/*
 	 * Call hook before sending message to log.  The hook function is allowed
 	 * to turn off edata->output_to_server, so we must recheck that afterward.

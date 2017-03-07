@@ -1923,9 +1923,9 @@ pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *query,
 #ifdef DEBUG_ADB
 		StringInfoData buf;
 		initStringInfo(&buf);
-		appendStringInfo(&buf, "/*%d*/%s", MyProcPid, query);
+		appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
 
-		elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
+		elog(LOG, "[ADB]Send to [node] %s [sock] %d [query] %s",
 			NameStr(handle->name), handle->sock, query);
 
 		MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
@@ -2077,7 +2077,7 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 	appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
 	query = buf.data;
 
-	elog(DEBUG1, "[ADB]Send to [node] %s [sock] %d [query] %s",
+	elog(LOG, "[ADB]Send to [node] %s [sock] %d [query] %s",
 		NameStr(handle->name), handle->sock, query);
 
 	MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);

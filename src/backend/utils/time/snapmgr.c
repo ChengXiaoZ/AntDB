@@ -1279,7 +1279,7 @@ OutputGlobalSnapshot(Snapshot snapshot)
 		*/
 	}
 
-	ereport(DEBUG1,
+	ereport(LOG,
 		(errmsg("%s", buf.data)));
 	pfree(buf.data);
 }
@@ -1404,6 +1404,13 @@ GetGlobalSnapshot(Snapshot snapshot)
 		 * current process is AutoVacuum process.
 		 */
 		snap = agtm_GetGlobalSnapShot(snapshot);
+#ifdef DEBUG_ADB
+		if (IsAnyAutoVacuumProcess())
+		{
+			elog(LOG, "Auto vacuum process get snapshot from AGTM, and RecentGlobalMin is %u",
+				RecentGlobalXmin);
+		}
+#endif
 	} else
 	{
 		/*

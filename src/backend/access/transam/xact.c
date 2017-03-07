@@ -965,6 +965,11 @@ SetCurrentTransactionStartTimestamp(TimestampTz timestamp)
 		globalXactStartTimestamp = timestamp;
 		globalDeltaTimestmap = globalXactStartTimestamp - xactStartTimestamp;
 	}
+
+#ifdef DEBUG_ADB
+	elog(LOG, "[ADB] node %s session flag %lx.%x",
+		PGXCNodeName, globalXactStartTimestamp, MyProcPid);
+#endif
 }
 #endif
 
@@ -5747,7 +5752,7 @@ ReportCommandIdChange(CommandId cid)
 
 	/* Send command Id change to Coordinator */
 #ifdef DEBUG_ADB
-	elog(DEBUG1, "[ADB]Send Command(M)");
+	elog(LOG, "[ADB]Send Command(M)");
 #endif
 	pq_beginmessage(&buf, 'M');
 	pq_sendint(&buf, cid, 4);
