@@ -6121,7 +6121,10 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 			{
 				if (PQntuples(res) > 0)
 					if (strcasecmp(NameStr(mgr_nodetmp->nodename), PQgetvalue(res, 0, 0)) == 0)
+					{
+						PQclear(res);
 						break;
+					}
 			}
 			PQclear(res);
 		}
