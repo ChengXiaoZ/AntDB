@@ -339,13 +339,6 @@ Datum monitor_job_alter_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
-			if (strlen(str) < 1 || strcasestr(str, "insert") == NULL || strcasestr(str, "into") == NULL ||
-				strcasestr(str, "select") == NULL || strcasestr(str, "adbmonitor_job") == NULL)
-			{
-				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-					,errmsg("the \"command\" format is not right")
-					,errhint("Try \"\\h add job\" for more information.")));
-			}
 			datum[Anum_monitor_job_command-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_monitor_job_command-1] = true;
 		}

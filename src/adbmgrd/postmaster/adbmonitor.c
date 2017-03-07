@@ -1251,15 +1251,15 @@ adbmonitor_exec_job(Oid jobid)
 	if (SPI_connect() < 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CONNECTION_FAILURE),
-		(errmsg("execute monitor item fail, jobid=%u %s: SPI_connect failed", jobid, commandsql.data))));
+		(errmsg("monitor job, jobid=%u %s: SPI_connect failed", jobid, commandsql.data))));
 	}
 	if (commandsql.data != NULL)
 	{
 		exec_ret = SPI_execute(commandsql.data, false, 0);
-		if (exec_ret != SPI_OK_INSERT)
+		if (exec_ret != SPI_OK_INSERT && exec_ret !=SPI_OK_SELECT)
 		{
 			ereport(ERROR, (errcode(ERRCODE_E_R_I_E_INVALID_SQLSTATE_RETURNED),
-			(errmsg("execute monitor item fail, jobid=%u %s: SPI_execute failed", jobid, commandsql.data))));
+			(errmsg("execute monitor job fail, jobid=%u %s: SPI_execute failed", jobid, commandsql.data))));
 		}
 	}
 	pfree(commandsql.data);
