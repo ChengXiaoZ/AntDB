@@ -93,6 +93,9 @@ typedef struct RemoteQueryState
 	int			current_conn;			/* used to balance load when reading from connections */
 	CombineType combine_type;			/* see CombineType enum */
 	int			command_complete_count; /* count of received CommandComplete messages */
+#ifdef ADB
+	int			command_error_count;	/* count of received Error messages */
+#endif
 	RequestType request_type;			/* see RequestType enum */
 	TupleDesc	tuple_desc;				/* tuple descriptor to be referenced by emitted tuples */
 	int			description_count;		/* count of received RowDescription messages */

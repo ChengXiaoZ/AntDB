@@ -252,6 +252,9 @@ CreateResponseCombiner(int node_count, CombineType combine_type)
 	combiner->conn_count = 0;
 	combiner->combine_type = combine_type;
 	combiner->command_complete_count = 0;
+#ifdef ADB
+	combiner->command_error_count = 0;
+#endif
 	combiner->request_type = REQUEST_TYPE_NOT_DEFINED;
 	combiner->tuple_desc = NULL;
 	combiner->description_count = 0;
@@ -404,6 +407,11 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 	int 			digits = 0;
 	bool			non_fqs_dml;
 
+#ifdef DEBUG_ADB
+	elog(LOG, "[ADB] From %s receive complete(C) message: %s",
+		NameStr(conn->name), msg_body);
+#endif
+
 	/* Is this a DML query that is not FQSed ? */
 	non_fqs_dml = (combiner->ss.ps.plan &&
 					((RemoteQuery*)combiner->ss.ps.plan)->rq_params_internal);
@@ -439,7 +447,7 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 						ereport(ERROR,
 								(errcode(ERRCODE_DATA_CORRUPTED),
 								 errmsg("Write to replicated table returned"
-										"different results from the Datanodes")));
+										" different results from the Datanodes")));
 				}
 				/* Always update the row count. We have initialized it to 0 */
 				combiner->rqs_processed = rowcount;
@@ -455,9 +463,6 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 		}
 		else
 			combiner->combine_type = COMBINE_TYPE_NONE;
-	} else
-	{
-		elog(DEBUG1, "[ADB]Receive complete(C) message: %s", msg_body);
 	}
 
 	/* If response checking is enable only then do further processing */
@@ -786,6 +791,11 @@ HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t
 		offset += strlen(str) + 2;
 	}
 
+#ifdef DEBUG_ADB
+	elog(LOG, "[ADB] From %s receive error(E) message: %s",
+		from, message);
+#endif
+
 	/*
 	 * We may have special handling for some errors, default handling is to
 	 * throw out error with the same message. We can not ereport immediately
@@ -814,7 +824,11 @@ HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t
 	 * If Datanode have sent ErrorResponse it will never send CommandComplete.
 	 * Increment the counter to prevent endless waiting for it.
 	 */
+#ifdef ADB
+	combiner->command_error_count++;
+#else
 	combiner->command_complete_count++;
+#endif
 
 	return message;
 }
@@ -934,7 +948,11 @@ validate_combiner(RemoteQueryState *combiner)
 	/* Check all nodes completed */
 	if ((combiner->request_type == REQUEST_TYPE_COMMAND ||
 		 combiner->request_type == REQUEST_TYPE_QUERY) &&
+#ifdef ADB
+		(combiner->command_error_count + combiner->command_complete_count != combiner->node_count))
+#else
 		 combiner->command_complete_count != combiner->node_count)
+#endif
 		return false;
 
 	/* Check count of description responses */
@@ -1381,13 +1399,16 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 				default:
 					/* Inconsistent responses */
 					{
+#ifdef ADB
 						const char *requestType = RequestTypeAsString(combiner->request_type);
 						const char *resultStr = ResponseResultAsString(result);
 
-						add_error_message(to_receive[i],
-							"Unexpected response: result = %s, request type %s",
-							resultStr, requestType);
-
+						if (to_receive[i]->error == NULL)
+						{
+							add_error_message(to_receive[i],
+								"Unexpected response: result = %s, request type %s",
+								resultStr, requestType);
+						}
 						if (combiner->errorMessage.len == 0)
 						{
 							appendStringInfo(&(combiner->errorMessage),
@@ -1399,6 +1420,7 @@ pgxc_node_receive_responses(const int conn_count, PGXCNodeHandle ** connections,
 						count--;
 						if (i < count)
 							to_receive[i] = to_receive[count];
+#endif
 					}
 			}
 		}
@@ -3639,26 +3661,26 @@ do_query(RemoteQueryState *node)
 	{
 		int i = 0;
 
+#ifdef ADB
+		/*
+		 * No matter any connection has crash down, we still need to deal with
+		 * other connections.
+		 */
+		pgxc_node_receive(regular_conn_count, connections, NULL);
+#else
 		if (pgxc_node_receive(regular_conn_count, connections, NULL))
 		{
-#ifndef ADB
-			pfree(connections);
-			if (primaryconnection)
-				pfree(primaryconnection);
-			if (node->cursor_connections)
-				pfree(node->cursor_connections);
-#else /* ADB */
 			if (node->cursor_connections)
 			{
 				pfree(node->cursor_connections);
 				node->cursor_connections = NULL;
 			}
-#endif /* ADB */
 
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Failed to read response from Datanodes")));
 		}
+#endif
 		/*
 		 * Handle input from the Datanodes.
 		 * If we got a RESPONSE_DATAROW we can break handling to wrap
@@ -3711,9 +3733,28 @@ do_query(RemoteQueryState *node)
 				break;
 			}
 			else
+#ifdef ADB
+			{
+				if (connections[i]->error == NULL)
+				{
+					add_error_message(connections[i],
+						"Unexpected response from node %s", NameStr(connections[i]->name));
+				}
+				if (node->errorMessage.len == 0)
+				{
+					appendStringInfo(&(node->errorMessage),
+						"Unexpected response from node %s", NameStr(connections[i]->name));
+				}
+				/* Stop tracking and move last connection in place */
+				regular_conn_count--;
+				if (i < regular_conn_count)
+					connections[i] = connections[regular_conn_count];
+			}
+#else
 				ereport(ERROR,
 						(errcode(ERRCODE_INTERNAL_ERROR),
 						 errmsg("Unexpected response from Datanode")));
+#endif
 		}
 	}
 
@@ -4097,10 +4138,18 @@ close_node_cursors(PGXCNodeHandle **connections, int conn_count, char *cursor)
 
 	while (conn_count > 0)
 	{
+#ifdef ADB
+		/*
+		 * No matter any connection has crash down, we still need to deal with
+		 * other connections.
+		 */
+		pgxc_node_receive(conn_count, connections, NULL);
+#else
 		if (pgxc_node_receive(conn_count, connections, NULL))
 			ereport(ERROR,
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Failed to close Datanode cursor")));
+#endif
 		i = 0;
 		while (i < conn_count)
 		{
@@ -4117,9 +4166,29 @@ close_node_cursors(PGXCNodeHandle **connections, int conn_count, char *cursor)
 			else
 			{
 				// Unexpected response, ignore?
+#ifdef ADB
+				if (connections[i]->error == NULL)
+				{
+					add_error_message(connections[i],
+						"Unexpected response from node %s", NameStr(connections[i]->name));
+				}
+				if (combiner->errorMessage.len == 0)
+				{
+					appendStringInfo(&(combiner->errorMessage),
+						"Unexpected response from node %s", NameStr(connections[i]->name));
+				}
+				/* Stop tracking and move last connection in place */
+				conn_count--;
+				if (i < conn_count)
+					connections[i] = connections[conn_count];
+#endif
 			}
 		}
 	}
+
+#ifdef ADB
+	pgxc_node_report_error(combiner);
+#endif
 
 	ValidateAndCloseCombiner(combiner);
 }
@@ -4439,8 +4508,16 @@ ExecRemoteUtility(RemoteQuery *node)
 		{
 			int i = 0;
 
+#ifdef ADB
+			/*
+			 * No matter any connection has crash down, we still need to deal with
+			 * other connections.
+			 */
+			pgxc_node_receive(dn_conn_count, pgxc_connections->datanode_handles, NULL);
+#else
 			if (pgxc_node_receive(dn_conn_count, pgxc_connections->datanode_handles, NULL))
 				break;
+#endif
 			/*
 			 * Handle input from the Datanodes.
 			 * We do not expect Datanodes returning tuples when running utility
@@ -4462,6 +4539,26 @@ ExecRemoteUtility(RemoteQuery *node)
 						pgxc_connections->datanode_handles[i] =
 							pgxc_connections->datanode_handles[dn_conn_count];
 				}
+#ifdef ADB
+				else
+				{
+					if (conn->error == NULL)
+					{
+						add_error_message(conn,
+							"Unexpected response from node %s", NameStr(conn->name));
+					}
+					if (remotestate->errorMessage.len == 0)
+					{
+						appendStringInfo(&(remotestate->errorMessage),
+							"Unexpected response from node %s", NameStr(conn->name));
+					}
+					/* Stop tracking and move last connection in place */
+					dn_conn_count--;
+					if (i < dn_conn_count)
+						pgxc_connections->datanode_handles[i] = 
+							pgxc_connections->datanode_handles[dn_conn_count];
+				}
+#else
 				else if (res == RESPONSE_TUPDESC)
 				{
 					ereport(ERROR,
@@ -4474,6 +4571,7 @@ ExecRemoteUtility(RemoteQuery *node)
 							(errcode(ERRCODE_INTERNAL_ERROR),
 							 errmsg("Unexpected response from Datanode")));
 				}
+#endif
 			}
 		}
 	}
@@ -4486,8 +4584,16 @@ ExecRemoteUtility(RemoteQuery *node)
 		{
 			int i = 0;
 
+#ifdef ADB
+			/*
+			 * No matter any connection has crash down, we still need to deal with
+			 * other connections.
+			 */
+			pgxc_node_receive(co_conn_count, pgxc_connections->coord_handles, NULL); 
+#else
 			if (pgxc_node_receive(co_conn_count, pgxc_connections->coord_handles, NULL))
 				break;
+#endif
 
 			while (i < co_conn_count)
 			{
@@ -4502,6 +4608,29 @@ ExecRemoteUtility(RemoteQuery *node)
 						pgxc_connections->coord_handles[i] =
 							 pgxc_connections->coord_handles[co_conn_count];
 				}
+#ifdef ADB
+				else
+				{
+					if (pgxc_connections->coord_handles[i]->error == NULL)
+					{
+						add_error_message(pgxc_connections->coord_handles[i],
+							"Unexpected response from node %s",
+							NameStr(pgxc_connections->coord_handles[i]->name));
+					}
+					if (remotestate->errorMessage.len == 0)
+					{
+						appendStringInfo(&(remotestate->errorMessage),
+							"Unexpected response from node %s",
+							NameStr(pgxc_connections->coord_handles[i]->name));
+					}
+					/* Stop tracking and move last connection in place */
+					co_conn_count--;
+					if (i < co_conn_count)
+						pgxc_connections->coord_handles[i] =
+							 pgxc_connections->coord_handles[co_conn_count];
+				}
+#else
+
 				else if (res == RESPONSE_TUPDESC)
 				{
 					ereport(ERROR,
@@ -4514,6 +4643,7 @@ ExecRemoteUtility(RemoteQuery *node)
 							(errcode(ERRCODE_INTERNAL_ERROR),
 							 errmsg("Unexpected response from coordinator")));
 				}
+#endif
 			}
 		}
 	}
@@ -4616,6 +4746,13 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 
 	while (conn_count > 0)
 	{
+#ifdef ADB
+		/*
+		 * No matter any connection has crash down, we still need to deal with
+		 * other connections.
+		 */
+		pgxc_node_receive(conn_count, connections, NULL);
+#else
 		if (pgxc_node_receive(conn_count, connections, NULL))
 		{
 			for (i = 0; i <= conn_count; i++)
@@ -4625,6 +4762,7 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Failed to close Datanode statement")));
 		}
+#endif
 		i = 0;
 		while (i < conn_count)
 		{
@@ -4641,9 +4779,29 @@ ExecCloseRemoteStatement(const char *stmt_name, List *nodelist)
 			else
 			{
 				connections[i]->state = DN_CONNECTION_STATE_ERROR_FATAL;
+#ifdef ADB
+				if (connections[i]->error == NULL)
+				{
+					add_error_message(connections[i],
+						"Failed to close Datanode %s statement", NameStr(connections[i]->name));
+				}
+				if (combiner->errorMessage.len == 0)
+				{
+					appendStringInfo(&(combiner->errorMessage),
+						"Failed to close Datanode %s statement", NameStr(connections[i]->name));
+				}
+				/* Stop tracking and move last connection in place */
+				conn_count--;
+				if (i < conn_count)
+					connections[i] = connections[conn_count];
+#endif
 			}
 		}
 	}
+	
+#ifdef ADB
+	pgxc_node_report_error(combiner);
+#endif
 
 	ValidateAndCloseCombiner(combiner);
 	pfree_pgxc_all_handles(all_handles);
