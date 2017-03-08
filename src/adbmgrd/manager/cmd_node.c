@@ -1371,7 +1371,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		return;
 	}
 	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype &&
-		AGT_CMD_CLEAN_NODE != cmdtype && !mgr_node->nodeinited)
+		AGT_CMD_CLEAN_NODE != cmdtype && AGT_CMD_GTM_STOP_MASTER != cmdtype && AGT_CMD_GTM_STOP_SLAVE != cmdtype && 
+		AGT_CMD_CN_STOP != cmdtype && AGT_CMD_DN_STOP != cmdtype && !mgr_node->nodeinited)
 	{
 		appendStringInfo(&(getAgentCmdRst->description), "%s \"%s\" has not been initialized", nodetypestr, cndnname);
 		getAgentCmdRst->ret = false;
@@ -1512,13 +1513,13 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	else if (AGT_CMD_GTM_STOP_MASTER == cmdtype || AGT_CMD_GTM_STOP_SLAVE == cmdtype)
 	{
-		appendStringInfo(&infosendmsg, " %s -D %s -m %s -o -i -w -c -l %s/logfile", cmdmode, cndnPath, shutdown_mode, cndnPath);
+		appendStringInfo(&infosendmsg, " %s -D %s -m %s -o -i -w -c", cmdmode, cndnPath, shutdown_mode);
 	}
 	/*stop coordinator/datanode*/
 	else if(AGT_CMD_CN_STOP == cmdtype || AGT_CMD_DN_STOP == cmdtype)
 	{
 		appendStringInfo(&infosendmsg, " %s -D %s", cmdmode, cndnPath);
-		appendStringInfo(&infosendmsg, " -Z %s -m %s -o -i -w -c -l %s/logfile", zmode, shutdown_mode, cndnPath);
+		appendStringInfo(&infosendmsg, " -Z %s -m %s -o -i -w -c", zmode, shutdown_mode);
 	}
 	else if (AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
 	{
@@ -6682,6 +6683,8 @@ Datum mgr_clean_node(PG_FUNCTION_ARGS)
 {
 	char nodetype;
 	char *nodename;
+	char *user;
+	char *address;
 	NameData namedata;
 	List *nodenamelist = NIL;
 	Relation rel_node;
@@ -6690,7 +6693,8 @@ Datum mgr_clean_node(PG_FUNCTION_ARGS)
 	ListCell   *cell;
 	Form_mgr_node mgr_node;
 	ScanKeyData key[2];
-
+	char port_buf[10];
+	int ret;
 	/*ndoe type*/
 	nodetype = PG_GETARG_CHAR(0);
 	nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
@@ -6727,6 +6731,21 @@ Datum mgr_clean_node(PG_FUNCTION_ARGS)
 			heap_close(rel_node, RowExclusiveLock);
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				 ,errmsg("%s \"%s\" already exists in cluster, cannot be cleaned", mgr_nodetype_str(nodetype), nodename)));
+		}
+		/*check node stoped*/
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		sprintf(port_buf, "%d", mgr_node->nodeport);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+			ret = pingNode_user(address, port_buf, AGTM_USER);
+		else
+			ret = pingNode_user(address, port_buf, user);
+		pfree(address);
+		pfree(user);
+		if (ret == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				 ,errmsg("%s \"%s\" is running, cannot be cleaned, stop it first", mgr_nodetype_str(nodetype), nodename)));
 		}
 		heap_endscan(rel_scan);
 	}
