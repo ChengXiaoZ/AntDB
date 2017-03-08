@@ -5180,7 +5180,7 @@ DESCR("mgr stop agent all");
 DATA(insert OID = 4916 ( mgr_stop_agent_hostnamelist      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "1009" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_stop_agent_hostnamelist _null_ _null_ _null_ ));
 DESCR("mgr stop agent hostname list");
 
-DATA(insert OID = 3463 ( mgr_failover_gtm      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 2 0 2249 "2275 16" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_failover_gtm _null_ _null_ _null_ ));
+DATA(insert OID = 3463 ( mgr_failover_gtm      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 3 0 2249 "2275 2275 16" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_failover_gtm _null_ _null_ _null_ ));
 DESCR("mgr failover gtm");
 
 DATA(insert OID = 3460 ( mgr_stop_gtm_extra      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_stop_gtm_extra _null_ _null_ _null_ ));

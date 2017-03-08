@@ -1019,7 +1019,7 @@ revoke execute on function mgr_clean_all() from public;
 revoke execute on function mgr_clean_node("any") from public;
 
 -- failover
-revoke execute on function mgr_failover_gtm(cstring, bool), mgr_failover_one_dn(cstring, cstring, bool) from public;
+revoke execute on function mgr_failover_gtm(cstring, cstring, bool), mgr_failover_one_dn(cstring, cstring, bool) from public;
 
 -- show
 revoke execute on function mgr_show_var_param( "any") from public;
