@@ -382,7 +382,7 @@ int main(int argc, char **argv)
 					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
 						file_location->location);
 					//rename file name
-					rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+					//rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
 
 					/* remove  file from file list*/
 					slist_delete_current(&siter);
@@ -455,7 +455,7 @@ int main(int argc, char **argv)
 				break; 
 		}
 
-		if (update_tables)
+		if (setting->dynamic_mode && update_tables)
 		{
 			update_file_info(setting->input_directory, tables_ptr);
 			table_info_ptr = tables_ptr->info;
