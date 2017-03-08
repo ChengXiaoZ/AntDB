@@ -2840,8 +2840,15 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		{
 			if (dn_e_is_running)
 			{
-				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
-				mgr_add_hbaconf(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+				/* flush datanode extra's pg_hba.conf "host replication postgres slave_ip/32 trust" if datanode extra exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										dn_e_nodeinfo.nodepath,
+										&infosendmsg,
+										dn_e_nodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(dn_e_nodeinfo.nodehost, dn_e_nodeinfo.nodepath);
 			}
 			else
 			{	ereport(ERROR, (errmsg("datanode extra is not running")));}
@@ -2904,6 +2911,25 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 
 		/* step 8: start datanode slave. */
 		mgr_start_node(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		if (dn_e_is_exist)
+		{
+			if (dn_e_is_running)
+			{
+				/* flush datanode slave's pg_hba.conf "host replication postgres extra_ip/32 trust" if datanode slave exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", dn_e_nodeinfo.nodeusername, dn_e_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										appendnodeinfo.nodepath,
+										&infosendmsg,
+										appendnodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
+
+			}
+			else
+			{	ereport(ERROR, (errmsg("datanode extra is not running")));}
+		}
 
 		/* step 9: update datanode master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
@@ -3042,9 +3068,15 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		{
 			if (dn_s_is_running)
 			{
-				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
-				//mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, dn_e_nodeinfo.nodeaddr);
-				mgr_add_hbaconf(CNDN_TYPE_DATANODE_SLAVE, appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+				/* flush datanode slave's pg_hba.conf "host replication postgres slave_ip/32 trust" if datanode slave exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										dn_s_nodeinfo.nodepath,
+										&infosendmsg,
+										dn_s_nodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(dn_s_nodeinfo.nodehost, dn_s_nodeinfo.nodepath);
 			}
 			else
 			{	ereport(ERROR, (errmsg("datanode slave is not running")));}
@@ -3107,6 +3139,25 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 
 		/* step 8: start datanode extra. */
 		mgr_start_node(CNDN_TYPE_DATANODE_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		if (dn_s_is_exist)
+		{
+			if (dn_s_is_running)
+			{
+				/* flush datanode extra's pg_hba.conf "host replication postgres slave_ip/32 trust" if datanode slave exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", dn_s_nodeinfo.nodeusername, dn_s_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										appendnodeinfo.nodepath,
+										&infosendmsg,
+										appendnodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
+
+			}
+			else
+			{	ereport(ERROR, (errmsg("datanode extra is not running")));}
+		}
 
 		/* step 9: update datanode master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
@@ -3382,8 +3433,15 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		{
 			if (agtm_e_is_running)
 			{
-				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
-				mgr_add_hbaconf(GTM_TYPE_GTM_EXTRA, AGTM_USER, appendnodeinfo.nodeaddr);
+				/* flush agtm extra's pg_hba.conf "host replication postgres slave_ip/32 trust" if agtm extra exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										agtm_e_nodeinfo.nodepath,
+										&infosendmsg,
+										agtm_e_nodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(agtm_e_nodeinfo.nodehost, agtm_e_nodeinfo.nodepath);
 			}
 			else
 			{   ereport(ERROR, (errmsg("gtm extra is not running")));}
@@ -3441,6 +3499,24 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 
 		/* step 6: start agtm slave. */
 		mgr_start_node(GTM_TYPE_GTM_SLAVE, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		if (agtm_e_is_exist)
+		{
+			if (agtm_e_is_running)
+			{
+				/*flush agtm slave's pg_hba.conf "host replication postgres extra_ip/32 trust" if agtm extra exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, agtm_e_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										appendnodeinfo.nodepath,
+										&infosendmsg,
+										appendnodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
+			}
+			else
+			{   ereport(ERROR, (errmsg("gtm extra is not running")));}
+		}
 
 		/* step 7: update agtm master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
@@ -3533,8 +3609,15 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		{
 			if (agtm_s_is_running)
 			{
-				/* append "host all postgres ip/32" for agtm slave pg_hba.conf and reload it. */
-				mgr_add_hbaconf(GTM_TYPE_GTM_SLAVE, AGTM_USER, appendnodeinfo.nodeaddr);
+				/* flush agtm slave's pg_hba.conf "host replication postgres slave_ip/32 trust" if agtm slave exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										agtm_s_nodeinfo.nodepath,
+										&infosendmsg,
+										agtm_s_nodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(agtm_s_nodeinfo.nodehost, agtm_s_nodeinfo.nodepath);
 			}
 			else
 			{   ereport(ERROR, (errmsg("gtm slave is not running")));}
@@ -3594,6 +3677,22 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 
 		/* step 6: start agtm extra. */
 		mgr_start_node(GTM_TYPE_GTM_EXTRA, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
+
+		if (agtm_s_is_exist)
+		{
+			if (agtm_s_is_running)
+			{
+				/*flush agtm extra's pg_hba.conf "host replication postgres extra_ip/32 trust" if agtm slave exist */
+				resetStringInfo(&infosendmsg);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, agtm_s_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+										appendnodeinfo.nodepath,
+										&infosendmsg,
+										appendnodeinfo.nodehost,
+										&getAgentCmdRst);
+				mgr_reload_conf(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
+			}
+		}
 
 		/* step 7: update agtm master's postgresql.conf.*/
 		resetStringInfo(&infosendmsg);
