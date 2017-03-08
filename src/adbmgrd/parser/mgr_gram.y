@@ -21,6 +21,8 @@
 #include "access/htup_details.h"
 #include "catalog/indexing.h"
 #include "catalog/mgr_host.h"
+#include "catalog/monitor_job.h"
+#include "catalog/monitor_jobitem.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "funcapi.h"
@@ -97,6 +99,8 @@ static Node* make_whereClause_for_gtm(char * node_type_str, List* node_name_list
 static void check_node_name_isvaild(char node_type, List* node_name_list);
 static void check__name_isvaild(List *node_name_list);
 static void check_host_name_isvaild(List *node_name_list);
+static void check_job_name_isvaild(List *node_name_list);
+static void check_jobitem_name_isvaild(List *node_name_list);
 %}
 
 %pure-parser
@@ -2375,12 +2379,32 @@ ListJobStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("job"), -1));
 			$$ = (Node*)stmt;
 		}
+	|	LIST JOB AConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("job"), -1));
+			stmt->whereClause = make_column_in("name", $3);
+			$$ = (Node*)stmt;
+
+			check_job_name_isvaild($3);
+		}
 	| LIST ITEM
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("jobitem"), -1));
 			$$ = (Node*)stmt;
+		}
+	|	LIST ITEM AConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("jobitem"), -1));
+			stmt->whereClause = make_column_in("item", $3);
+			$$ = (Node*)stmt;
+
+			check_jobitem_name_isvaild($3);
 		}
 		;
 
@@ -2841,3 +2865,83 @@ static void check__name_isvaild(List *node_name_list)
 
 	return;
 }
+
+static void check_job_name_isvaild(List *node_name_list)
+{
+	ListCell *lc = NULL;
+	A_Const *job_name  = NULL;
+	NameData name;
+	Relation rel_job;
+	HeapScanDesc scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+
+	foreach(lc, node_name_list)
+	{
+		job_name = (A_Const *) lfirst(lc);
+		Assert(job_name && IsA(&(job_name->val), String));
+		namestrcpy(&name, strVal(&(job_name->val)));
+
+		ScanKeyInit(&key[0]
+			,Anum_monitor_job_name
+			,BTEqualStrategyNumber, F_NAMEEQ
+			,NameGetDatum(&name));
+
+		rel_job = heap_open(MjobRelationId, AccessShareLock);
+		scan = heap_beginscan(rel_job, SnapshotNow, 1, key);
+
+		if ((tuple = heap_getnext(scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(scan);
+			heap_close(rel_job, AccessShareLock);
+
+			ereport(ERROR, (errmsg("job name \"%s\" does not exist", NameStr(name))));
+		}
+
+		heap_endscan(scan);
+		heap_close(rel_job, AccessShareLock);
+	}
+
+	return;
+}
+
+static void check_jobitem_name_isvaild(List *node_name_list)
+{
+	ListCell *lc = NULL;
+	A_Const *jobitem_name  = NULL;
+	NameData name;
+	Relation rel_jobitem;
+	HeapScanDesc scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+
+	foreach(lc, node_name_list)
+	{
+		jobitem_name = (A_Const *) lfirst(lc);
+		Assert(jobitem_name && IsA(&(jobitem_name->val), String));
+		namestrcpy(&name, strVal(&(jobitem_name->val)));
+
+		ScanKeyInit(&key[0]
+			,Anum_monitor_jobitem_itemname
+			,BTEqualStrategyNumber, F_NAMEEQ
+			,NameGetDatum(&name));
+
+		rel_jobitem = heap_open(MjobitemRelationId, AccessShareLock);
+		scan = heap_beginscan(rel_jobitem, SnapshotNow, 1, key);
+
+		if ((tuple = heap_getnext(scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(scan);
+			heap_close(rel_jobitem, AccessShareLock);
+
+			ereport(ERROR, (errmsg("job item name \"%s\" does not exist", NameStr(name))));
+		}
+
+		heap_endscan(scan);
+		heap_close(rel_jobitem, AccessShareLock);
+	}
+
+	return;
+}
+
+
