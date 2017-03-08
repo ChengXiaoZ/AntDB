@@ -1250,7 +1250,7 @@ ThereAreNoPriorRegisteredSnapshots(void)
 }
 
 #ifdef ADB
-#ifdef DEBUG_ADB
+#ifdef SHOW_GLOBAL_SNAPSHOT
 static void
 OutputGlobalSnapshot(Snapshot snapshot)
 {
@@ -1346,7 +1346,7 @@ SetGlobalSnapshot(StringInfo input_message)
 	}
 
 	GlobalSnapshotSet = true;
-#ifdef DEBUG_ADB
+#ifdef SHOW_GLOBAL_SNAPSHOT
 	OutputGlobalSnapshot(GlobalSnapshot);
 #endif
 }
@@ -1404,7 +1404,7 @@ GetGlobalSnapshot(Snapshot snapshot)
 		 * current process is AutoVacuum process.
 		 */
 		snap = agtm_GetGlobalSnapShot(snapshot);
-#ifdef DEBUG_ADB
+#ifdef SHOW_GLOBAL_SNAPSHOT
 		if (IsAnyAutoVacuumProcess())
 		{
 			elog(LOG, "Auto vacuum process get snapshot from AGTM, and RecentGlobalMin is %u",
@@ -1428,7 +1428,7 @@ GetGlobalSnapshot(Snapshot snapshot)
 	if (cid > snap->curcid)
 		snap->curcid = cid;
 
-#ifdef DEBUG_ADB
+#ifdef SHOW_GLOBAL_SNAPSHOT
 	OutputGlobalSnapshot(snap);
 #endif
 

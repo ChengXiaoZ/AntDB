@@ -248,6 +248,10 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 		WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1);
 	}
 
+#ifdef DEBUG_ADB
+	elog(LOG, "[ADB] prev = %p, next = %p", MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next);
+#endif
+
 	/*
 	 * WalSender has checked our LSN and has removed us from queue. Clean up
 	 * state and leave.  It's OK to reset these shared memory fields without
