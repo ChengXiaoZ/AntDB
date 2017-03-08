@@ -6673,7 +6673,7 @@ Datum mgr_clean_all(PG_FUNCTION_ARGS)
 }
 /*
 * clean the given node: the command format: clean nodetype nodename
-* clean gtm master/slave/extra
+* clean gtm master/slave/extra gtm_name
 * clean coordinator nodename, ...
 * clean datanode master/slave/extra nodename, ...
 */
@@ -6693,15 +6693,7 @@ Datum mgr_clean_node(PG_FUNCTION_ARGS)
 
 	/*ndoe type*/
 	nodetype = PG_GETARG_CHAR(0);
-	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
-	{
-		nodenamelist = mgr_get_nodetype_namelist(nodetype);
-		if (NIL == nodenamelist)
-			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				,errmsg("%s does not exist", mgr_nodetype_str(nodetype))));
-	}
-	else
-		nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
+	nodenamelist = get_fcinfo_namelist("", 1, fcinfo);
 
 	/*check the node not in the cluster*/
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);

@@ -21,15 +21,28 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-CLEAN GTM { MASTER | SLAVE | EXTRA }
+CLEAN GTM { MASTER | SLAVE | EXTRA } node_name
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
     <title>Description</title>
     <para>
-    <command>CLEAN DATANODE</command> clean all the data of the gtm in the cluster. If the gtm is running, it needs to be stopped first.
+    <command>CLEAN DATANODE</command> clean all the data of the given name gtm in the node table. If the gtm is running, it needs to be stopped first.
     </para>
   </refsect1>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name.
+          </para>
+        </listitem>
+      </varlistentry>
+		</variablelist>
 
   <refsect1>
   <title>Examples</title>

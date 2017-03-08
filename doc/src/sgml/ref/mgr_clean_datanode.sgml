@@ -27,7 +27,7 @@ CLEAN DATANODE { MASTER | SLAVE | EXTRA } { node_name [ , ... ] }
   <refsect1>
     <title>Description</title>
     <para>
-    <command>CLEAN DATANODE</command> clean all the data of the datanode in the cluster. If the datanode is running, it needs to be stopped first.
+    <command>CLEAN DATANODE</command> clean all the data of the datanode in the node table. If the datanode is running, it needs to be stopped first.
     </para>
   </refsect1>
 

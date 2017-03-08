@@ -1422,11 +1422,11 @@ CleanAllStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_all", NULL));
 			$$ = (Node*)stmt;
 		}
-	| CLEAN GTM opt_gtm_inner_type
+	| CLEAN GTM opt_gtm_inner_type Ident
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeIntConst($3, -1));
-			args = lappend(args, makeStringConst("gtm", -1));
+			args = lappend(args,makeStringConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
 			$$ = (Node*)stmt;

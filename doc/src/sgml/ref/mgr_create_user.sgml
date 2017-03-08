@@ -33,6 +33,7 @@ CREATE USER <replaceable class="parameter">user_name</replaceable> PASSWORD 'pas
 Administrators.
     </para>
   </refsect1>
+    <title>Parameters</title>
 
   <refsect1>
   <title>Examples</title>
