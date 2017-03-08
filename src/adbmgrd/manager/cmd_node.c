@@ -183,6 +183,8 @@ static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name)
 static void mgr_get_self_address(char *server_address, int server_port, Name self_address);
 static bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodeport, char *address);
 static bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result);
+static char mgr_get_other_type(char nodetype);
+static bool mgr_check_sync_node_exist(Relation rel, Name nodename, char nodetype);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -252,9 +254,9 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	bool if_not_exists = PG_GETARG_BOOL(0);
 	char *nodename = PG_GETARG_CSTRING(2);
 	List *options = (List *)PG_GETARG_POINTER(3);
+
 	nodetype = PG_GETARG_CHAR(1);
 	nodestring = mgr_nodetype_str(nodetype);
-
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
 	Assert(nodename);
 	namestrcpy(&name, nodename);
@@ -338,6 +340,13 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 
 			if(strcmp(str, "true") == 0 || strcmp(str, "on") == 0 || strcmp(str, "t") == 0)
 			{
+				/*check the other slave exist and is sync=t, then this can not be sync=t*/
+				if (mgr_check_sync_node_exist(rel, &name, nodetype))
+				{
+					heap_close(rel, RowExclusiveLock);
+					ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+						,errmsg("not support this node as synchronous node now, its master already has synchronous node")));
+				}
 				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
 				got[Anum_mgr_node_nodesync-1] = true;
 			}else if(strcmp(str, "false") == 0 || strcmp(str, "off") == 0 || strcmp(str, "f") == 0)
@@ -381,7 +390,10 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	{
 		if(CNDN_TYPE_COORDINATOR_SLAVE == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
 		{
-			datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
+			if (!mgr_check_sync_node_exist(rel, &name, nodetype))
+				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
+			else
+				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(ASYNC);
 		}
 		
 		if(CNDN_TYPE_DATANODE_EXTRA == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
@@ -572,6 +584,14 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 
 			if(strcmp(str, "true") == 0 || strcmp(str, "on") == 0 || strcmp(str, "t") == 0)
 			{
+				/*check the other slave exist and is sync=t, then this can not be sync=t*/
+				if (mgr_check_sync_node_exist(rel, &name, nodetype))
+				{
+					heap_freetuple(oldtuple);
+					heap_close(rel, RowExclusiveLock);
+					ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+						,errmsg("not support this node as synchronous node now, its master already has synchronous node")));
+				}
 				datum[Anum_mgr_node_nodesync-1] = CharGetDatum(SYNC);
 				got[Anum_mgr_node_nodesync-1] = true;
 				new_sync = true;
@@ -10625,6 +10645,69 @@ static bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, in
 	return true;
 }
 
+static char mgr_get_other_type(char nodetype)
+{
+	char other_type;
 
+	switch(nodetype)
+	{
+		case GTM_TYPE_GTM_SLAVE:
+			other_type = GTM_TYPE_GTM_EXTRA;
+			break;
+		case GTM_TYPE_GTM_EXTRA:
+			other_type = GTM_TYPE_GTM_SLAVE;
+			break;
+		case CNDN_TYPE_DATANODE_SLAVE:
+			other_type = CNDN_TYPE_DATANODE_EXTRA;
+			break;
+		case CNDN_TYPE_DATANODE_EXTRA:
+			other_type = CNDN_TYPE_DATANODE_SLAVE;
+			break;
+		default:
+			other_type = CNDN_TYPE_NONE_TYPE;
+	}
+	
+	return other_type;
+}
+
+/*
+* check the node has sync slave or extra node
+*/
+static bool mgr_check_sync_node_exist(Relation rel, Name nodename, char nodetype)
+{
+	char other_type;
+	ScanKeyData key[3];
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	bool bget = false;
+
+	if (nodetype == GTM_TYPE_GTM_MASTER || nodetype == CNDN_TYPE_COORDINATOR_MASTER || nodetype == CNDN_TYPE_DATANODE_MASTER)
+		return false;
+	other_type = mgr_get_other_type(nodetype);
+
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(other_type));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodename
+		,BTEqualStrategyNumber, F_NAMEEQ
+		,NameGetDatum(nodename));
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodesync
+		,BTEqualStrategyNumber, F_CHAREQ
+		,NameGetDatum(SYNC));
+	rel_scan = heap_beginscan(rel, SnapshotNow, 3, key);
+
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		bget = true;
+		break;
+	}
+	heap_endscan(rel_scan);
+
+	return bget;
+}
 
 
