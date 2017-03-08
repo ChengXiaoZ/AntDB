@@ -1,56 +1,56 @@
 /* SERVER INFO */
 SERVER_PORT = 15436
-SERVER_IP	=10.20.16.200
+SERVER_IP   = 10.20.16.200
 SERVER_USER = lvcx
-SERVER_DB	= postgres
+SERVER_DB   = postgres
 
 /* AGTM INFO */
 AGTM_PROT = 12998
-AGTM_IP	= 10.1.226.201
+AGTM_IP	  = 10.1.226.201
 AGTM_USER = postgres
-AGTM_DB	= postgres
+AGTM_DB	  = postgres
 
 /* COORDINATOR INFO */
 COORDINATOR_PROT = 15998
-COORDINATOR_IP	= 10.1.226.202
+COORDINATOR_IP	 = 10.1.226.202
 COORDINATOR_USER = adb2.2
-COORDINATOR_DB	= postgres
+COORDINATOR_DB	 = postgres
 
 /* DATANODE INFO */
 DATANODE_VALID = off
-DATANODE_NUM = 2
+DATANODE_NUM   = 2
 
 DATANODE1_PROT = 17998
-DATANODE1_IP	= 10.1.226.202
+DATANODE1_IP   = 10.1.226.202
 DATANODE1_USER = adb2.2
-DATANODE1_DB	= postgres
+DATANODE1_DB   = postgres
 
 DATANODE2_PROT = 17998
-DATANODE2_IP	= 10.1.226.201
+DATANODE2_IP   = 10.1.226.201
 DATANODE2_USER = adb2.2
-DATANODE2_DB	= postgres
+DATANODE2_DB   = postgres
 
 /* THREAD INFO */
 HASH_THREAD_NUM	= 3
 
 /* TEXT INFO */
-TEXT_DELIM = ","
-HASH_DELIM = ","
+TEXT_DELIM   = ","
+HASH_DELIM   = ","
 COPY_OPTIONS = "with (DELIMITER ',')"
-COPY_QUOTEC = "
+COPY_QUOTEC  = "
 COPY_ESCAPEC = NO
 
 /* LOG INFO */
 LOG_LEVEL = INFO
-LOG_PATH = /home/lvcx/build/src/bin/adb_load
+LOG_PATH  = /home/lvcx/build/src/bin/adb_load
 
 /* ERROR FILE */
 ERROR_FILE_DIRECTORY = ./
-HASH_ERROR_FILE = hash_error.txt
-DISPATCH_ERROR_FILE = dispatch_error.txt
-READ_ERROR_FILE	= read_error.txt
+HASH_ERROR_FILE      = hash_error.txt
+DISPATCH_ERROR_FILE  = dispatch_error.txt
+READ_ERROR_FILE	     = read_error.txt
 
 /* OTHER */
 /* on/off */
-PROCESS_BAR = on
+PROCESS_BAR = off
 

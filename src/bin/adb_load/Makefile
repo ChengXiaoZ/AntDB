@@ -39,7 +39,7 @@ adb_load: $(OBJS) | submake-libpgport submake-libpq
 
 install: all installdirs
 	$(INSTALL_PROGRAM) adb_load$(X) '$(DESTDIR)$(bindir)/adb_load$(X)'
-	$(INSTALL_DATA) $(srcdir)/adb_load.sample '$(DESTDIR)$(datadir)/adb_load.sample'
+	$(INSTALL_DATA) $(srcdir)/adb_load.conf.example '$(DESTDIR)$(datadir)/adb_load.conf.example'
 
 test: test_queue test_compute test_queue_pipe test_dispatch test_log test_write_file test_communicate test_read test_properties test_list
 #	test_queue$(X)
