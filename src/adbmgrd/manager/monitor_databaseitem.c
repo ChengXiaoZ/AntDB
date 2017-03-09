@@ -625,21 +625,16 @@ void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *u
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg;
 	StringInfoData buf;
-	char *nodeportstr;
 	
 	resetStringInfo(resultstrdata);
 	initStringInfo(&sendstrmsg);
-	nodeportstr = (char *) palloc(7);
-	memset(nodeportstr, 0, 7*sizeof(char));
-	pg_itoa(nodeport, nodeportstr);
 	/*sequence:user port dbname sqlstr, delimiter by '\0'*/
 	/*user*/
 	appendStringInfoString(&sendstrmsg, user);
 	appendStringInfoCharMacro(&sendstrmsg, '\0');
 	/*port*/
-	appendStringInfoString(&sendstrmsg, nodeportstr);
+	appendStringInfo(&sendstrmsg, "%d", nodeport);
 	appendStringInfoCharMacro(&sendstrmsg, '\0');
-	pfree(nodeportstr);
 	/*dbname*/
 	appendStringInfoString(&sendstrmsg, dbname);
 	appendStringInfoCharMacro(&sendstrmsg, '\0');
