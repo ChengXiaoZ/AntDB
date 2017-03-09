@@ -256,7 +256,7 @@ trime_symbol_copy (const char *src, char **dest)
 	}
 
 	len = j - i + 1;	
-    *dest = (char*)palloc0(len);
+    *dest = (char*)palloc0(len + 1);
     memcpy(*dest, psrc+i, len);	
     *(*dest+len) = '\0';   
 }
