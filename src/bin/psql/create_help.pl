@@ -225,7 +225,7 @@ opendir(DIR, $docdir_mgr)
 foreach my $file (sort readdir DIR)
 {
 	my (@cmdnames, $cmddesc, $cmdsynopsis);
-	$file =~ /^mgr_.*\.sgml$/ or next;
+	$file =~ /^(mgr_|monitor_).*\.sgml$/ or next;
 
 	open(FILE, "$docdir_mgr/$file") or next;
 	my $filecontent = join('', <FILE>);

@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 START GTM ALL
-START GTM { MASTER | SLAVE | EXTRA }
+START GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -32,6 +32,22 @@ START GTM { MASTER | SLAVE | EXTRA }
     <para>
 <command>START GTM</command> start the gtm node type on the ADB cluster.
     </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">node_name</replaceable></term>
+    <listitem>
+     <para>
+      The gtm master, slave or extra name.
+     </para>
+    </listitem>
+   </varlistentry>
+    
+  </variablelist>
   </refsect1>
 
   <refsect1>

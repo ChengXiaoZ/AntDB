@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD JOB</refname>
-    <refpurpose>add one row job information in the job table</refpurpose>
+    <refpurpose>add one row job information in the job table. If using user-defined monitor item, the sql string format likes "insert into tb_name select adbmonitor_job('host_name', 'item_name').</refpurpose>
   </refnamediv>
 
   <indexterm zone="monitor-addjob">
@@ -28,15 +28,15 @@ ADD JOB [IF NOT EXISTS] <replaceable class="parameter">job_name</replaceable> ( 
     NEXTTIME = <replaceable class="parameter">next_time</replaceable>,
     INTERVAL = <replaceable class="parameter">interval</replaceable>,
     STATUS = <replaceable class="parameter">status</replaceable>,
-    COMMAND = <replaceable class="parameter">command</replaceable>,
+    COMMAND = <replaceable class="parameter">sql_string</replaceable>,
     DESC = <replaceable class="parameter">description</replaceable></synopsis>
-  </refsynopsisdiv>
 
+    </refsynopsisdiv>
   <refsect1>
     <title>Description</title>
 
     <para>
-<command>ADD JOB</command> add one row job information in the job table.
+<command>ADD JOB</command> add one row job information in the job table. The value of the column "command" is standard SQL, just support INSERT or SELECT format. If we want to execute batch on the aim server machine, can use the system function "ADBMONITOR_JOB('hostname', 'item_name')". 
     </para>
   </refsect1>
 
@@ -90,11 +90,11 @@ ADD JOB [IF NOT EXISTS] <replaceable class="parameter">job_name</replaceable> ( 
 
       <varlistentry>
         <term>
-          <replaceable class="parameter">command</replaceable>
+          <replaceable class="parameter">sql_string</replaceable>
         </term>
         <listitem>
           <para>
-    SQL, the format likes "INSERT INTO table_name SELECT ADBMONITOR_JOB(host_name, job_item)".
+    The format is standard SQL. If we want to execute arm batch on given server machine, the format likes "INSERT INTO table_name SELECT ADBMONITOR_JOB('host_name', 'job_item')".
           </para>
         </listitem>
       </varlistentry>
@@ -119,7 +119,7 @@ ADD JOB [IF NOT EXISTS] <replaceable class="parameter">job_name</replaceable> ( 
     <para>
 Add job1 in job table:
       <programlisting>
-ADD JOB job1 (NEXTTIME = '2017-02-06 14:00:00', INTERVAL = 30, STATUS =  true, COMMAND = "insert into job_tb1 select ADBMONITOR_JOB('host200', 'item1')", desc =  'job1' );
+ADD JOB job1 (NEXTTIME = '2017-02-06 14:00:00', INTERVAL = 30, STATUS =  true, COMMAND = 'insert into job_tb1 select ADBMONITOR_JOB(''host200'', ''item1'')', desc =  'job1' );
 </programlisting>
     </para>
   </refsect1>

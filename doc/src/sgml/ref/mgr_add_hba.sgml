@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD HBA</refname>
-    <refpurpose>add the content to the hba table</refpurpose>
+    <refpurpose>add the content to the hba table, the hba_value format "conntype database user ip mask method".</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-addhba">

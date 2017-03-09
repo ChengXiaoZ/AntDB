@@ -21,6 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
+LIST ITEM
 LIST ITEM [ <replaceable class="parameter">item_name</replaceable> [, ...] ]
 
 </synopsis>

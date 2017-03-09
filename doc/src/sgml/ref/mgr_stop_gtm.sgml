@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 STOP GTM ALL [ <replaceable class="parameter">stop_mode</replaceable> ]
-STOP GTM { MASTER | SLAVE | EXTRA } [ <replaceable class="parameter">stop_mode</replaceable> ]
+STOP GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> [ <replaceable class="parameter">stop_mode</replaceable> ]
 
 <phrase>where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
 
@@ -38,6 +38,22 @@ STOP GTM { MASTER | SLAVE | EXTRA } [ <replaceable class="parameter">stop_mode</
     <para>
 <command>STOP GTM</command> stop the gtm node on the ADB cluster.
     </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+  <variablelist>
+   <varlistentry>
+    <term><replaceable class="parameter">node_name</replaceable></term>
+    <listitem>
+     <para>
+      The gtm mater, slave or extra name.
+     </para>
+    </listitem>
+   </varlistentry>
+    
+  </variablelist>
   </refsect1>
 
   <refsect1>

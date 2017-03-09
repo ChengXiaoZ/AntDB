@@ -43,6 +43,17 @@ ALTER ITEM [IF NOT EXISTS] <replaceable class="parameter">item_name</replaceable
     <variablelist>
       <varlistentry>
         <term>
+          <replaceable class="parameter">item_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Item name.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
           <replaceable class="parameter">absolute_path</replaceable>
         </term>
         <listitem>

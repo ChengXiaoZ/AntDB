@@ -21,6 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
+LIST JOB
 LIST JOB [ <replaceable class="parameter">job_name</replaceable> [, ...] ]
 
 </synopsis>

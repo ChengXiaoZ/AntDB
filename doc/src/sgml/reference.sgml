@@ -278,7 +278,7 @@
    &mgrAlterCoordinator;
    &mgrAlterDatanode;
    &mgrAlterGtm;
-   &mgrAlterHost; 
+   &mgrAlterHost;
    &mgrAlterUser; 
    &mgrAppendCoordinator;
    &mgrAppendDatanode;
@@ -328,15 +328,26 @@
    &mgrStopCoordinator;
    &mgrStopDatanode;
    &mgrStopGtm;
-   &monitorAddJob;
-   &monitorAddJobItem;
-   &monitorAlterJob;
-   &monitorAlterJobItem;
-   &monitorDropJob;
-   &monitorDropJobItem;
-   &monitorListJob;
-   &monitorListJobItem;
-
 </reference>
 
+<reference id="reference-monitor">
+  <title>ADB Server monitor</title>
+
+  <partintro>
+   <para>
+    This part contains reference information for ADB servers monitor and
+    support utilities.
+   </para>
+  </partintro>
+  
+   &monitorAddJob;
+   &monitorAddJobItem;
+   &monitorAlterJobItem;
+   &monitorAlterJob;
+   &monitorDropJobItem;
+   &monitorDropJob;
+   &monitorListJobItem;
+   &monitorListJob;
+</reference>
+	
 </part>

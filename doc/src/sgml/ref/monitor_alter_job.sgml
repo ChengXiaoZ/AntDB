@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ALTER JOB</refname>
-    <refpurpose>alter one row job information in the job table</refpurpose>
+    <refpurpose>alter one row job information in the job table. The value of the column "command" is standard SQL, just support INSERT or SELECT format. If we want to execute batch on the aim server machine, can use the system function "ADBMONITOR_JOB('hostname', 'item_name')".</refpurpose>
   </refnamediv>
 
   <indexterm zone="monitor-addjob">
@@ -28,7 +28,7 @@ ALTER JOB <replaceable class="parameter">job_name</replaceable> ( <replaceable c
     NEXTTIME = <replaceable class="parameter">next_time</replaceable>,
     INTERVAL = <replaceable class="parameter">interval</replaceable>,
     STATUS = <replaceable class="parameter">status</replaceable>,
-    COMMAND = <replaceable class="parameter">command</replaceable>,
+    COMMAND = <replaceable class="parameter">sql_string</replaceable>,
     DESC = <replaceable class="parameter">description</replaceable></synopsis>
   </refsynopsisdiv>
 
@@ -90,11 +90,11 @@ ALTER JOB <replaceable class="parameter">job_name</replaceable> ( <replaceable c
 
       <varlistentry>
         <term>
-          <replaceable class="parameter">command</replaceable>
+          <replaceable class="parameter">sql_string</replaceable>
         </term>
         <listitem>
           <para>
-    SQL, the format likes "INSERT INTO table_name SELECT ADBMONITOR_JOB(host_name, job_item)".
+    The format is standard SQL. If we want to execute arm batch on given server machine, the format likes "INSERT INTO table_name SELECT ADBMONITOR_JOB('host_name', 'job_item')".
           </para>
         </listitem>
       </varlistentry>

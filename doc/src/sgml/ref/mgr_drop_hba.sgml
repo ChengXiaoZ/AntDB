@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>DROP HBA</refname>
-    <refpurpose>drop the content from the hba table</refpurpose>
+    <refpurpose>drop the content from the hba table. The hba_value format "conntype database user ip mask method".</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-drophba">
