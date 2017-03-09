@@ -151,6 +151,7 @@ static void show_process(int total,	int datanodes, int * thread_send_total, DIST
 #define PROVOLATILE_VOLATILE    'v'   /* can change even within a scan */
 
 #define SUFFIX_SQL     ".sql"
+#define SUFFIX_SCAN    ".scan"
 #define SUFFIX_DOING   ".doing"
 #define SUFFIX_ADBLOAD ".adbload"
 #define SUFFIX_ERROR   ".error"
@@ -248,6 +249,7 @@ int main(int argc, char **argv)
 	Tables *tables_ptr = NULL;
 	TableInfo    *table_info_ptr = NULL;
 	int table_count = 0;
+	bool do_ok = false;
 
 	/* get cmdline param. */
 	setting = cmdline_adb_load_setting(argc, argv, setting);
@@ -371,7 +373,7 @@ int main(int argc, char **argv)
 						file_location->location);
 
 					/* start module */
-					do_replaciate_roundrobin(file_location->location, table_info_ptr);
+					do_ok = do_replaciate_roundrobin(file_location->location, table_info_ptr);
 					/* stop module and clean resource */
 					clean_replaciate_roundrobin();
 
@@ -381,8 +383,15 @@ int main(int argc, char **argv)
 					release_linebuf(linebuff);
 					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
 						file_location->location);
+
 					//rename file name
-					//rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+					if (setting->dynamic_mode || setting->static_mode)
+					{
+						if (do_ok)
+							rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+						else
+							rename_file_suffix(file_location->location, SUFFIX_ERROR);
+					}
 
 					/* remove  file from file list*/
 					slist_delete_current(&siter);
@@ -424,10 +433,17 @@ int main(int argc, char **argv)
 					release_linebuf(linebuff);
 					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
 						file_location->location);
-					//rename file name
-					rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
 
-					/* remove  file from file list*/
+					//rename file name
+					if (setting->dynamic_mode || setting->static_mode)
+					{
+						if (do_ok)
+							rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+						else
+							rename_file_suffix(file_location->location, SUFFIX_ERROR);
+					}
+
+					/* remove file from file list */
 					slist_delete_current(&siter);
 					/* file num  subtract 1 */
 					table_info_ptr->file_nums--;

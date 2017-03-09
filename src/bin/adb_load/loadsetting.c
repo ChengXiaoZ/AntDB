@@ -212,6 +212,15 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 		exit(EXIT_FAILURE);
 	}
 
+	if (setting->input_file != NULL)
+	{
+		if (!file_exists(setting->input_file))
+		{
+			fprintf(stderr, "file \"%s\" is not exist.\n", setting->input_file);
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	return setting;
 }
 
