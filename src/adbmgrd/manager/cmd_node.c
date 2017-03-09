@@ -185,6 +185,8 @@ static bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodep
 static bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result);
 static char mgr_get_other_type(char nodetype);
 static bool mgr_check_sync_node_exist(Relation rel, Name nodename, char nodetype);
+static bool mgr_check_node_path(Relation rel, Oid hostoid, char *path);
+static bool mgr_check_node_port(Relation rel, Oid hostoid, int port);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -252,6 +254,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	ObjectAddress host;
 	Oid cndn_oid;
 	Oid hostoid;
+	int32 port;
 	char nodetype;   /*coordinator or datanode master/slave*/
 	bool if_not_exists = PG_GETARG_BOOL(0);
 	char *nodename = PG_GETARG_CSTRING(2);
@@ -313,7 +316,6 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 			ReleaseSysCache(tuple);
 		}else if(strcmp(def->defname, "port") == 0)
 		{
-			int32 port;
 			if(got[Anum_mgr_node_nodeport-1])
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
@@ -389,6 +391,23 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			, errmsg("option \"port\" must be given")));
+	}
+
+	/*check path not used*/
+	if (mgr_check_node_path(rel, hostoid, pathstr))
+	{
+		heap_close(rel, RowExclusiveLock);
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("on host \"%s\" the path \"%s\" has already been used in node table", hostname.data, pathstr)
+				,errhint("try \"list node\" for more infomation")));
+	}
+
+	if (mgr_check_node_port(rel, hostoid, port))
+	{
+		heap_close(rel, RowExclusiveLock);
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("on host \"%s\" the port \"%d\" has already been used in node table", hostname.data, port)
+				,errhint("try \"list node\" for more infomation")));
 	}
 
 	if(got[Anum_mgr_node_nodesync-1] == false) /* default values for user do not set sync in add slave/extra. */
@@ -511,6 +530,7 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 	//bool if_not_exists = PG_GETARG_BOOL(0);
 	List *options = (List *)PG_GETARG_POINTER(3);
 	char *name_str = PG_GETARG_CSTRING(2);
+	Oid hostoid;
 	Assert(name_str);
 	nodetype = PG_GETARG_CHAR(1);
 	nodestring = mgr_nodetype_str(nodetype);
@@ -530,6 +550,7 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 	Assert(mgr_node);
 	pfree(nodestring);
 	oldport = mgr_node->nodeport;
+	hostoid = mgr_node->nodehost;
 	old_sync = ( 't' == mgr_node->nodesync ? true:false);
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
@@ -618,6 +639,15 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 				,errhint("option is host, port, sync and path")));
 		}
 		datum[Anum_mgr_node_nodetype-1] = CharGetDatum(nodetype);
+	}
+	/*check port*/
+	if (mgr_check_node_port(rel, mgr_node->nodehost, newport))
+	{
+		heap_freetuple(oldtuple);
+		heap_close(rel, RowExclusiveLock);
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("on host \"%s\" the port \"%d\" has already been used in node table", get_hostname_from_hostoid(hostoid), newport)
+				,errhint("try \"list node\" for more infomation")));
 	}
 	/*check this tuple initd or not, if it has inited and in cluster, check whether it can be alter*/		
 	if(mgr_node->nodeincluster)
@@ -10785,5 +10815,69 @@ static bool mgr_check_sync_node_exist(Relation rel, Name nodename, char nodetype
 	}
 	heap_endscan(rel_scan);
 
+	return bget;
+}
+
+/*
+* check the node hostname and path, not allow repeated with others
+*/
+static bool mgr_check_node_path(Relation rel, Oid hostoid, char *path)
+{
+	ScanKeyData key[2];
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	bool bget = false;
+
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodehost
+		,BTEqualStrategyNumber
+		,F_OIDEQ
+		,ObjectIdGetDatum(hostoid));
+	ScanKeyInit(&key[1],
+		Anum_mgr_node_nodepath
+		,BTEqualStrategyNumber
+		,F_TEXTEQ
+		,CStringGetTextDatum(path));
+
+	rel_scan = heap_beginscan(rel, SnapshotNow, 2, key);	
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		bget = true;
+		break;
+	}
+	heap_endscan(rel_scan);
+	
+	return bget;
+}
+
+/*
+* check the node hostname and path, not allow repeated with others
+*/
+static bool mgr_check_node_port(Relation rel, Oid hostoid, int port)
+{
+	ScanKeyData key[2];
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	bool bget = false;
+
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodehost
+		,BTEqualStrategyNumber
+		,F_OIDEQ
+		,ObjectIdGetDatum(hostoid));
+	ScanKeyInit(&key[1],
+		Anum_mgr_node_nodeport
+		,BTEqualStrategyNumber
+		,F_INT4EQ
+		,Int32GetDatum(port));
+
+	rel_scan = heap_beginscan(rel, SnapshotNow, 2, key);	
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		bget = true;
+		break;
+	}
+	heap_endscan(rel_scan);
+	
 	return bget;
 }
