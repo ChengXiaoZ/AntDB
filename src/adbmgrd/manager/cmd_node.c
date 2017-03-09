@@ -242,6 +242,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	DefElem *def;
 	char *str;
 	char *nodestring;
+	char pathstr[MAXPGPATH];
 	NameData name;
 	NameData mastername;
 	Datum datum[Natts_mgr_node];
@@ -250,10 +251,12 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 	ObjectAddress myself;
 	ObjectAddress host;
 	Oid cndn_oid;
+	Oid hostoid;
 	char nodetype;   /*coordinator or datanode master/slave*/
 	bool if_not_exists = PG_GETARG_BOOL(0);
 	char *nodename = PG_GETARG_CSTRING(2);
 	List *options = (List *)PG_GETARG_POINTER(3);
+	NameData hostname;
 
 	nodetype = PG_GETARG_CHAR(1);
 	nodestring = mgr_nodetype_str(nodetype);
@@ -293,7 +296,6 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 
 		if(strcmp(def->defname, "host") == 0)
 		{
-			NameData hostname;
 			if(got[Anum_mgr_node_nodehost-1])
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
@@ -305,7 +307,8 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					, errmsg("host \"%s\" does not exist", defGetString(def))));
 			}
-			datum[Anum_mgr_node_nodehost-1] = ObjectIdGetDatum(HeapTupleGetOid(tuple));
+			hostoid = HeapTupleGetOid(tuple);
+			datum[Anum_mgr_node_nodehost-1] = ObjectIdGetDatum(hostoid);
 			got[Anum_mgr_node_nodehost-1] = true;
 			ReleaseSysCache(tuple);
 		}else if(strcmp(def->defname, "port") == 0)
@@ -331,6 +334,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
 			datum[Anum_mgr_node_nodepath-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_node_nodepath-1] = true;
+			strncpy(pathstr, str, strlen(str)>MAXPGPATH ? MAXPGPATH:strlen(str));
 		}else if(strcmp(def->defname, "sync") == 0)
 		{
 			if(got[Anum_mgr_node_nodesync-1])
@@ -386,6 +390,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			, errmsg("option \"port\" must be given")));
 	}
+
 	if(got[Anum_mgr_node_nodesync-1] == false) /* default values for user do not set sync in add slave/extra. */
 	{
 		if(CNDN_TYPE_COORDINATOR_SLAVE == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
@@ -435,6 +440,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 			heap_freetuple(mastertuple);
 		}
 	}
+	
 	/*the node is not in cluster until config all*/
 	datum[Anum_mgr_node_nodeincluster-1] = BoolGetDatum(false);
 	/* now, node is not initialized*/
@@ -661,6 +667,7 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 	Relation rel;
 	Relation rel_updateparm;
 	HeapTuple tuple;
+	HeapTuple mastertuple;
 	ListCell *lc;
 	Value *val;
 	MemoryContext context, old_context;
@@ -669,14 +676,24 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	char nodetype;
+	char othertype;
 	char *nodestring;
+	char *address;
+	char *masterpath;
+	char port_buf[10];
 	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_masternode;
 	int getnum = 0;
 	int nodenum = 0;
+	int iloop = 0;
+	bool isNull;
+	bool bsync_exist = false;
 	bool if_exists = PG_GETARG_BOOL(0);
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData  infosendmsg;
+	Datum datumPath;
 	List *name_list = (List *)PG_GETARG_POINTER(2);
 	nodetype = PG_GETARG_CHAR(1);
-	nodestring = mgr_nodetype_str(nodetype);
 
 	context = AllocSetContextCreate(CurrentMemoryContext
 			,"DROP NODE"
@@ -698,23 +715,87 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 		{
 			if(if_exists)
 			{
+				nodestring = mgr_nodetype_str(nodetype);
 				ereport(NOTICE,  (errcode(ERRCODE_UNDEFINED_OBJECT),
 					errmsg("%s \"%s\" does not exist, skipping", nodestring, NameStr(name))));
+				pfree(nodestring);
 				continue;
 			}
 			else
 				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					,errmsg("%s \"%s\" does not exist", nodestring, NameStr(name))));
+					,errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), NameStr(name))));
 		}
 		/*check this tuple initd or not, if it has inited and in cluster, cannot be dropped*/
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
 		if(mgr_node->nodeincluster)
 		{
-			heap_freetuple(tuple);
-			heap_close(rel, RowExclusiveLock);
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-					 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be dropped", nodestring, NameStr(name))));
+			/*allow drop gtm slave/extra or datanode slave/extra*/
+			if (CNDN_TYPE_DATANODE_MASTER != mgr_node->nodetype && GTM_TYPE_GTM_MASTER != mgr_node->nodetype && CNDN_TYPE_COORDINATOR_MASTER != mgr_node->nodetype)
+			{
+				/*check the node not running*/
+				address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+				sprintf(port_buf, "%d", mgr_node->nodeport);
+				while (iloop++ < 3)
+				{
+					if (pingNode(address, port_buf) == 0 || pingNode(address, port_buf) == -2)
+					{
+						pfree(address);
+						heap_freetuple(tuple);
+						heap_close(rel, RowExclusiveLock);
+						ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+							,errmsg("the node is running, stop it first")));
+					}
+				}
+				/*if mgr_node->nodesync = SYNC, set its master as async*/
+				othertype = mgr_get_other_type(nodetype);
+				bsync_exist = mgr_check_sync_node_exist(rel, &name, nodetype);
+				if (mgr_node->nodesync == SYNC && (!bsync_exist))
+				{
+					mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
+					if(!HeapTupleIsValid(mastertuple))
+					{
+						heap_close(rel, RowExclusiveLock);
+						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+							, errmsg("datanode master \"%s\" does not exist", NameStr(mgr_node->nodename))));
+					}
+					mgr_masternode = (Form_mgr_node)GETSTRUCT(mastertuple);
+					datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
+					if (isNull)
+					{
+						ReleaseSysCache(mastertuple);
+						heap_close(rel, RowExclusiveLock);
+
+						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+							, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+							, errmsg("column nodepath is null")));
+					}
+					initStringInfo(&(getAgentCmdRst.description));
+					initStringInfo(&infosendmsg);
+					masterpath = TextDatumGetCString(datumPath);
+					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+					nodestring = mgr_nodetype_str(mgr_masternode->nodetype);
+					ereport(LOG, (errmsg("set \"synchronous_standby_names = ''\" in postgresql.conf of the %s \"%s\"", nodestring, NameStr(mgr_masternode->nodename))));
+					mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, masterpath, &infosendmsg, mgr_masternode->nodehost, &getAgentCmdRst);
+					
+					pfree(infosendmsg.data);
+					pfree(getAgentCmdRst.description.data);
+					if (!getAgentCmdRst.ret)
+						ereport(WARNING, (errmsg("set synchronous_standby_names = '' in postgresql.conf of %s \"%s\"fail", nodestring, NameStr(mgr_masternode->nodename))));
+					ReleaseSysCache(mastertuple);
+					pfree(nodestring);
+				}
+				/*check its master has sync node*/
+				if (!bsync_exist)
+					ereport(WARNING, (errmsg("the master of this node has no synchronous node")));
+			}
+			else
+			{
+				heap_freetuple(tuple);
+				heap_close(rel, RowExclusiveLock);
+				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+						 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be dropped", mgr_nodetype_str(nodetype), NameStr(name))));
+			}
 		}
 		/*check the node has been used by its slave or extra*/
 		if (CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype|| GTM_TYPE_GTM_MASTER == mgr_node->nodetype)
@@ -724,14 +805,13 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 				heap_freetuple(tuple);
 				heap_close(rel, RowExclusiveLock);
 				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-						 ,errmsg("%s \"%s\" has been used by slave or extra, cannot be dropped", nodestring, NameStr(name))));
+						 ,errmsg("%s \"%s\" has been used by slave or extra, cannot be dropped", mgr_nodetype_str(nodetype), NameStr(name))));
 			}
 		}
 		nodenum++;
 		/* todo chech used by other */
 		heap_freetuple(tuple);
 	}
-	pfree(nodestring);
 
 	/* now we can delete node(s) */
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
@@ -903,7 +983,7 @@ mgr_init_dn_slave_all(PG_FUNCTION_ARGS)
 	Assert(mgr_node);
 	/*get the master port, master host address*/
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
-	if(!HeapTupleIsValid(tuple))
+	if(!HeapTupleIsValid(mastertuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			, errmsg("datanode master \"%s\" does not exist", NameStr(mgr_node->nodename))));
@@ -980,7 +1060,7 @@ mgr_init_dn_extra_all(PG_FUNCTION_ARGS)
 	Assert(mgr_node);
 	/*get the master port, master host address*/
 	mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
-	if(!HeapTupleIsValid(tuple))
+	if(!HeapTupleIsValid(mastertuple))
 	{
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			, errmsg("datanode master \"%s\" does not exist", NameStr(mgr_node->nodename))));
@@ -6436,7 +6516,9 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	/*for mgr_updateparm systbl, drop the old master param, update slave parm info in the mgr_updateparm systbl*/
 	ereport(LOG, (errmsg("refresh \"param\" table in ADB Manager for node \"%s\"", NameStr(mgr_node->nodename))));
 	mgr_parm_after_gtm_failover_handle(&cndnname, GTM_TYPE_GTM_MASTER, &cndnname, aimtuplenodetype);
-
+	
+	if (!bget)
+		ereport(WARNING, (errmsg("the new gtm master \"%s\" has no slave or extra, it is better to append a new gtm slave node", cndnname.data)));
 	/*update gtm extra nodemasternameoid, refresh gtm extra recovery.conf*/
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
@@ -6630,6 +6712,9 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	/*refresh parm systbl*/
 	mgr_update_parm_after_dn_failover(cndnname, CNDN_TYPE_DATANODE_MASTER, cndnname, aimtuplenodetype);
 
+	if (!bgetextra)
+		ereport(WARNING, (errmsg("the datanode master \"%s\" has no slave or extra, it is better to append a new datanode slave node", cndnname->data)));
+	
 	secondnodetype = (aimtuplenodetype == CNDN_TYPE_DATANODE_SLAVE ? CNDN_TYPE_DATANODE_EXTRA:CNDN_TYPE_DATANODE_SLAVE);
 	/*update datanode extra nodemasternameoid, refresh recovery.conf, restart the node*/
 	ScanKeyInit(&key[0],
@@ -10702,5 +10787,3 @@ static bool mgr_check_sync_node_exist(Relation rel, Name nodename, char nodetype
 
 	return bget;
 }
-
-
