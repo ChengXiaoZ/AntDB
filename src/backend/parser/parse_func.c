@@ -739,8 +739,15 @@ func_select_candidate(int nargs,
 		{
 			if (input_base_typeids[i] != UNKNOWNOID)
 			{
+#ifdef ADB
+				if (current_typeids[i] == input_base_typeids[i] ||
+					IsPreferredType(slot_category[i], current_typeids[i]) ||
+					(IsOracleCoerceFunc() &&
+						slot_category[i] == TypeCategory(current_typeids[i])))
+#else
 				if (current_typeids[i] == input_base_typeids[i] ||
 					IsPreferredType(slot_category[i], current_typeids[i]))
+#endif
 					nmatch++;
 			}
 		}
