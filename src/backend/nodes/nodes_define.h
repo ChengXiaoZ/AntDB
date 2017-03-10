@@ -4220,4 +4220,11 @@ BEGIN_NODE(MgrExtensionDrop)
 END_NODE(MgrExtensionDrop)
 #endif /*NO_NODE_MgrExtensionDrop*/
 
+#ifndef NO_NODE_MgrRemoveNode
+BEGIN_NODE(MgrRemoveNode)
+        NODE_SCALAR(char, nodetype)
+        NODE_NODE(List, names)
+END_NODE(MgrRemoveNode)
+#endif /*NO_NODE_MgrRemoveNode*/
+
 #endif /* ADBMGRD */

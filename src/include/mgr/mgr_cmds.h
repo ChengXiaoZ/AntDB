@@ -182,6 +182,9 @@ extern Datum mgr_clean_all(PG_FUNCTION_ARGS);
 extern Datum mgr_clean_node(PG_FUNCTION_ARGS);
 extern int mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bincluster);
 extern List* mgr_get_nodetype_namelist(char nodetype);
+extern Datum mgr_remove_node_func(PG_FUNCTION_ARGS);
+extern void mgr_remove_node(MgrRemoveNode *node, ParamListInfo params, DestReceiver *dest);
+
 /* mgr_common.c */
 extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);

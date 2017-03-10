@@ -154,7 +154,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt ListJobStmt
-				AddExtensionStmt DropExtensionStmt
+				AddExtensionStmt DropExtensionStmt RemoveNodeStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -188,7 +188,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
-%token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION
+%token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -272,6 +272,7 @@ stmt :
 	|	ListJobStmt
 	| AddExtensionStmt
 	| DropExtensionStmt
+	| RemoveNodeStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2429,6 +2430,22 @@ DropExtensionStmt:
 			$$ = (Node*)node;
 		}
 		;
+RemoveNodeStmt:
+		REMOVE GTM opt_gtm_inner_type ObjList
+		{
+			MgrRemoveNode *node = makeNode(MgrRemoveNode);
+			node->nodetype = $3;
+			node->names = $4;
+			$$ = (Node*)node;
+		}
+	| REMOVE DATANODE opt_dn_inner_type ObjList
+		{
+			MgrRemoveNode *node = makeNode(MgrRemoveNode);
+			node->nodetype = $3;
+			node->names = $4;
+			$$ = (Node*)node;
+		}
+	;
 
 unreserved_keyword:
 	  ACL
@@ -2491,6 +2508,7 @@ unreserved_keyword:
 	| OFF
 	| PARAM
 	| PASSWORD
+	| REMOVE
 	| RESET
 	| REVOKE
 	| RESOLVE_ALARM

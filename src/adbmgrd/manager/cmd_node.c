@@ -697,7 +697,6 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 	Relation rel;
 	Relation rel_updateparm;
 	HeapTuple tuple;
-	HeapTuple mastertuple;
 	ListCell *lc;
 	Value *val;
 	MemoryContext context, old_context;
@@ -706,22 +705,11 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 	HeapScanDesc rel_scan;
 	ScanKeyData key[1];
 	char nodetype;
-	char othertype;
 	char *nodestring;
-	char *address;
-	char *masterpath;
-	char port_buf[10];
 	Form_mgr_node mgr_node;
-	Form_mgr_node mgr_masternode;
 	int getnum = 0;
 	int nodenum = 0;
-	int iloop = 0;
-	bool isNull;
-	bool bsync_exist = false;
 	bool if_exists = PG_GETARG_BOOL(0);
-	GetAgentCmdRst getAgentCmdRst;
-	StringInfoData  infosendmsg;
-	Datum datumPath;
 	List *name_list = (List *)PG_GETARG_POINTER(2);
 	nodetype = PG_GETARG_CHAR(1);
 
@@ -760,72 +748,10 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 		Assert(mgr_node);
 		if(mgr_node->nodeincluster)
 		{
-			/*allow drop gtm slave/extra or datanode slave/extra*/
-			if (CNDN_TYPE_DATANODE_MASTER != mgr_node->nodetype && GTM_TYPE_GTM_MASTER != mgr_node->nodetype && CNDN_TYPE_COORDINATOR_MASTER != mgr_node->nodetype)
-			{
-				/*check the node not running*/
-				address = get_hostaddress_from_hostoid(mgr_node->nodehost);
-				sprintf(port_buf, "%d", mgr_node->nodeport);
-				while (iloop++ < 3)
-				{
-					if (pingNode(address, port_buf) == 0 || pingNode(address, port_buf) == -2)
-					{
-						pfree(address);
-						heap_freetuple(tuple);
-						heap_close(rel, RowExclusiveLock);
-						ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-							,errmsg("the node is running, stop it first")));
-					}
-				}
-				/*if mgr_node->nodesync = SYNC, set its master as async*/
-				othertype = mgr_get_other_type(nodetype);
-				bsync_exist = mgr_check_sync_node_exist(rel, &name, nodetype);
-				if (mgr_node->nodesync == SYNC && (!bsync_exist))
-				{
-					mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
-					if(!HeapTupleIsValid(mastertuple))
-					{
-						heap_close(rel, RowExclusiveLock);
-						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-							, errmsg("datanode master \"%s\" does not exist", NameStr(mgr_node->nodename))));
-					}
-					mgr_masternode = (Form_mgr_node)GETSTRUCT(mastertuple);
-					datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
-					if (isNull)
-					{
-						ReleaseSysCache(mastertuple);
-						heap_close(rel, RowExclusiveLock);
-
-						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-							, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-							, errmsg("column nodepath is null")));
-					}
-					initStringInfo(&(getAgentCmdRst.description));
-					initStringInfo(&infosendmsg);
-					masterpath = TextDatumGetCString(datumPath);
-					mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
-					nodestring = mgr_nodetype_str(mgr_masternode->nodetype);
-					ereport(LOG, (errmsg("set \"synchronous_standby_names = ''\" in postgresql.conf of the %s \"%s\"", nodestring, NameStr(mgr_masternode->nodename))));
-					mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, masterpath, &infosendmsg, mgr_masternode->nodehost, &getAgentCmdRst);
-					
-					pfree(infosendmsg.data);
-					pfree(getAgentCmdRst.description.data);
-					if (!getAgentCmdRst.ret)
-						ereport(WARNING, (errmsg("set synchronous_standby_names = '' in postgresql.conf of %s \"%s\"fail", nodestring, NameStr(mgr_masternode->nodename))));
-					ReleaseSysCache(mastertuple);
-					pfree(nodestring);
-				}
-				/*check its master has sync node*/
-				if (!bsync_exist)
-					ereport(WARNING, (errmsg("the master of this node has no synchronous node")));
-			}
-			else
-			{
-				heap_freetuple(tuple);
-				heap_close(rel, RowExclusiveLock);
-				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-						 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be dropped", mgr_nodetype_str(nodetype), NameStr(name))));
-			}
+			heap_freetuple(tuple);
+			heap_close(rel, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+					 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be dropped", mgr_nodetype_str(nodetype), NameStr(name))));
 		}
 		/*check the node has been used by its slave or extra*/
 		if (CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype|| GTM_TYPE_GTM_MASTER == mgr_node->nodetype)
@@ -10880,4 +10806,188 @@ static bool mgr_check_node_port(Relation rel, Oid hostoid, int port)
 	heap_endscan(rel_scan);
 	
 	return bget;
+}
+
+/*remove node from cluster*/
+void mgr_remove_node(MgrRemoveNode *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_drop())
+	{
+		DirectFunctionCall2(mgr_remove_node_func,
+									CharGetDatum(node->nodetype),
+									PointerGetDatum(node->names));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+/*remove node from cluster*/
+Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
+{
+	char nodetype;
+	char othertype;
+	char *address;
+	char *nodestring;
+	char *masterpath;
+	char port_buf[10];
+	NameData namedata;
+	List *nodenamelist = NIL;
+	Relation rel;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	HeapTuple mastertuple;
+	ListCell   *cell;
+	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_masternode;
+	ScanKeyData key[3];
+	int iloop = 0;
+	bool bsync_exist;
+	bool isNull;
+	Datum datumPath;
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData  infosendmsg;
+	Value *val;	
+	
+	/*ndoe type*/
+	nodetype = PG_GETARG_CHAR(0);
+	if (CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			, errmsg("it does not support remove master node now")));
+	nodenamelist = (List *)PG_GETARG_POINTER(1);
+
+	/*check the node in the cluster*/
+	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	foreach(cell, nodenamelist)
+	{
+		val = lfirst(cell);
+		Assert(val && IsA(val,String));
+		namestrcpy(&namedata, strVal(val));
+		ScanKeyInit(&key[0],
+			Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		ScanKeyInit(&key[1],
+			Anum_mgr_node_nodename
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,NameGetDatum(&namedata));
+		ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,CharGetDatum(true));
+		
+		rel_scan = heap_beginscan(rel, SnapshotNow, 3, key);
+		if ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) == NULL)
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				 ,errmsg("%s \"%s\" does not exist in cluster", mgr_nodetype_str(nodetype), namedata.data)));
+		}
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		sprintf(port_buf, "%d", mgr_node->nodeport);
+		iloop = 0;
+		while (iloop++ < 2)
+		{
+			if (pingNode(address, port_buf) == 0 || pingNode(address, port_buf) == -2)
+			{
+				pfree(address);
+				heap_endscan(rel_scan);
+				heap_close(rel, RowExclusiveLock);
+				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+					,errmsg("\"%s\" is running, stop it first", NameStr(mgr_node->nodename))));
+			}
+		}
+		heap_endscan(rel_scan);
+		pfree(address);
+	}
+
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+
+	foreach(cell, nodenamelist)
+	{
+		val = lfirst(cell);
+		Assert(val && IsA(val,String));
+		namestrcpy(&namedata, strVal(val));
+		ScanKeyInit(&key[0],
+			Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		ScanKeyInit(&key[1],
+			Anum_mgr_node_nodename
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,NameGetDatum(&namedata));
+		ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,CharGetDatum(true));
+		rel_scan = heap_beginscan(rel, SnapshotNow, 3, key);
+		tuple = heap_getnext(rel_scan, ForwardScanDirection);
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		/*if mgr_node->nodesync = SYNC, set its master as async*/
+		othertype = mgr_get_other_type(nodetype);
+		bsync_exist = mgr_check_sync_node_exist(rel, &namedata, nodetype);
+		if (mgr_node->nodesync == SYNC && (!bsync_exist))
+		{
+			mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
+			if(!HeapTupleIsValid(mastertuple))
+			{
+				heap_endscan(rel_scan);
+				heap_close(rel, RowExclusiveLock);
+				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					, errmsg("the master \"%s\" does not exist", NameStr(mgr_node->nodename))));
+			}
+			mgr_masternode = (Form_mgr_node)GETSTRUCT(mastertuple);
+			datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
+			if (isNull)
+			{
+				ReleaseSysCache(mastertuple);
+				heap_close(rel, RowExclusiveLock);
+
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+					, errmsg("column nodepath is null")));
+			}
+			resetStringInfo(&(getAgentCmdRst.description));
+			resetStringInfo(&infosendmsg);
+			masterpath = TextDatumGetCString(datumPath);
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+			nodestring = mgr_nodetype_str(mgr_masternode->nodetype);
+			ereport(LOG, (errmsg("set \"synchronous_standby_names = ''\" in postgresql.conf of the %s \"%s\"", nodestring, NameStr(mgr_masternode->nodename))));
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, masterpath, &infosendmsg, mgr_masternode->nodehost, &getAgentCmdRst);
+			if (!getAgentCmdRst.ret)
+				ereport(WARNING, (errmsg("set synchronous_standby_names = '' in postgresql.conf of %s \"%s\"fail", nodestring, NameStr(mgr_masternode->nodename))));
+			ReleaseSysCache(mastertuple);
+			pfree(nodestring);
+		}
+		/*check its master has sync node*/
+		if (!bsync_exist)
+		{
+			if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA== nodetype)
+				ereport(WARNING, (errmsg("the datanode master \"%s\" has no synchronous slave or extra node", namedata.data)));
+			else
+				ereport(WARNING, (errmsg("the gtm master \"%s\" has no synchronous slave or extra node", namedata.data)));
+		}
+		/*update the tuple*/
+		mgr_node->nodeinited = false;
+		mgr_node->nodeincluster = false;
+		heap_inplace_update(rel, tuple);
+		heap_endscan(rel_scan);
+	}
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+	heap_close(rel, RowExclusiveLock);
+
+	PG_RETURN_BOOL(true);
 }

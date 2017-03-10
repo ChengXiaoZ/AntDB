@@ -174,4 +174,11 @@ typedef struct MgrExtensionDrop
 	char            *name;
 }MgrExtensionDrop;
 
+typedef struct MgrRemoveNode
+{
+	NodeTag         type;
+	char            nodetype;
+	List            *names;
+}MgrRemoveNode;
+
 #endif /* MGR_NODE_H */
