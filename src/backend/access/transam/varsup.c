@@ -368,7 +368,7 @@ GetNewTransactionId(bool isSubXact)
 		return BootstrapTransactionId;
 	}
 
-#if defined(ADB)
+#if defined(ADB) && !defined(ADBLOADER)
 	/*
 	 * The new XID must be got from AGTM when processing mode is normal.
 	 */
