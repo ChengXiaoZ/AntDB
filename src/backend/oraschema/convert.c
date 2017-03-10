@@ -441,9 +441,7 @@ text_todate(PG_FUNCTION_ARGS)
 	if(fmt)
 	{
 		/* it will return timestamp at GMT */
-		result = DirectFunctionCall2(to_timestamp,
-									  PG_GETARG_DATUM(0),
-									  PointerGetDatum(fmt));
+		result = ora_to_timestamp(txt, fmt);
 	}
 	else
 	{
@@ -483,9 +481,7 @@ text_totimestamp(PG_FUNCTION_ARGS)
 	if(fmt)
 	{
 		/* it will return timestamp at GMT */
-		result = DirectFunctionCall2(to_timestamp,
-									  PG_GETARG_DATUM(0),
-									  PointerGetDatum(fmt));
+		result = ora_to_timestamp(txt, fmt);
 
 		/* it will return timestamp at local */
 		result = DirectFunctionCall1(timestamptz_timestamp, result);
@@ -528,9 +524,7 @@ text_totimestamptz(PG_FUNCTION_ARGS)
 	if(fmt)
 	{
 		/* it will return timestamp at GMT */
-		result = DirectFunctionCall2(to_timestamp,
-									  PG_GETARG_DATUM(0),
-									  PointerGetDatum(fmt));
+		result = ora_to_timestamp(txt, fmt);
 	}
 	else
 	{
