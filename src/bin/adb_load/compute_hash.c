@@ -462,6 +462,13 @@ adbLoader_ThreadCleanup(void * argp)
 		pfree(thrinfo->copy_str);
 		thrinfo->copy_str = NULL;
 	}
+
+	/* check current thread state */
+	if (thrinfo->state == THREAD_MEMORY_ERROR || thrinfo->state == THREAD_CONNECTION_ERROR ||
+		thrinfo->state == THREAD_SELECT_ERROR || thrinfo->state == THREAD_COPY_STATE_ERROR ||
+		thrinfo->state == THREAD_MESSAGE_CONFUSION_ERROR || thrinfo->state == THREAD_FIELD_ERROR)
+		set_other_threads_exit();
+
 	/* remove thread info  */
 	pthread_mutex_lock(&RunThreads->mutex);
 	for (flag = 0; flag < RunThreads->hs_thread_count; flag++)
@@ -492,22 +499,31 @@ adbLoader_ThreadCleanup(void * argp)
 	if (ALL_THREADS_EXIT)
 	{
 		bool copy_end = false;
+		bool hapend_error = false;
 		ComputeThreadInfo * exit_thread = NULL;
-		/* check all threads state */
+		/* check all other threads state */
 		for (flag = 0; flag < FinishThreads->hs_thread_count; flag++)
 		{
 			exit_thread = FinishThreads->hs_threads[flag];
-			if (NULL != exit_thread && exit_thread->state != THREAD_MEMORY_ERROR && 
-				exit_thread->state != THREAD_CONNECTION_ERROR && exit_thread->state != THREAD_SELECT_ERROR &&
-				exit_thread->state != THREAD_COPY_STATE_ERROR && exit_thread->state != THREAD_MESSAGE_CONFUSION_ERROR &&
-				exit_thread->state != THREAD_FIELD_ERROR)
-				copy_end = true;
-				
+			if (NULL != exit_thread)
+			{
+				if (exit_thread->state == THREAD_MEMORY_ERROR || exit_thread->state == THREAD_CONNECTION_ERROR ||
+					exit_thread->state == THREAD_SELECT_ERROR || exit_thread->state == THREAD_COPY_STATE_ERROR ||
+					exit_thread->state == THREAD_MESSAGE_CONFUSION_ERROR || exit_thread->state == THREAD_FIELD_ERROR)
+					hapend_error = true;
+			}	
 		}
+
+		if (hapend_error)
+			copy_end = false;
+		else
+			copy_end = true;
+		/* check current thread state */	
 		if (thrinfo->state == THREAD_MEMORY_ERROR || thrinfo->state == THREAD_CONNECTION_ERROR ||
 			thrinfo->state == THREAD_SELECT_ERROR || thrinfo->state == THREAD_COPY_STATE_ERROR ||
 			thrinfo->state == THREAD_MESSAGE_CONFUSION_ERROR || thrinfo->state == THREAD_FIELD_ERROR)
 			copy_end = false;
+
 		if (RunThreads->hs_thread_count == 1 &&
 			((thrinfo->state == THREAD_EXIT_NORMAL) || (thrinfo->state == THREAD_DEAL_COMPLETE) ||
 			(thrinfo->state == THREAD_DEFAULT)))
@@ -528,12 +544,6 @@ adbLoader_ThreadCleanup(void * argp)
 			hash_write_error_message(thrinfo, 
 									"thread exit state not right, file need to redo",
 									NULL, 0, NULL, TRUE);
-
-	if (thrinfo->state == THREAD_MEMORY_ERROR || thrinfo->state == THREAD_CONNECTION_ERROR ||
-			thrinfo->state == THREAD_SELECT_ERROR || thrinfo->state == THREAD_COPY_STATE_ERROR ||
-			thrinfo->state == THREAD_MESSAGE_CONFUSION_ERROR)
-		set_other_threads_exit();
-
 	/* record exit thread */
 	pthread_mutex_lock(&FinishThreads->mutex);
 	FinishThreads->hs_threads[loc] = thrinfo;
