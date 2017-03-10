@@ -1149,7 +1149,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
 		if (ma_isconnected(ma))
 		{
-			appendStringInfoString(&message, "running");
+			appendStringInfoString(&message, "success");
 			ret = 0;
 		}
 		else
@@ -1283,7 +1283,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 		ma = ma_connect_hostoid(HeapTupleGetOid(tup));
 		if (ma_isconnected(ma))
 		{
-			appendStringInfoString(&message, "running");
+			appendStringInfoString(&message, "success");
 			ret = 0;
 		}
 		else
@@ -1399,7 +1399,7 @@ Datum mgr_stop_agent_all(PG_FUNCTION_ARGS)
 	ma = ma_connect_hostoid(HeapTupleGetOid(tup));
 	if(!ma_isconnected(ma))
 	{
-		tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("not running"));
+		tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("success"));
 		ma_close(ma);
 	}else
 	{
@@ -1535,7 +1535,7 @@ Datum mgr_stop_agent_hostnamelist(PG_FUNCTION_ARGS)
 	ma = ma_connect_hostoid(HeapTupleGetOid(tup));
 	if(!ma_isconnected(ma))
 	{
-		tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("not running"));
+		tup_result = build_common_command_tuple(&(mgr_host->hostname), true, _("success"));
 		ReleaseSysCache(tup);
 		ma_close(ma);
 	}else
