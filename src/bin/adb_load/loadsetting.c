@@ -7,39 +7,40 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-static const char*  SERVER_PORT = 			"SERVER_PORT";
-static const char*  SERVER_IP   =			"SERVER_IP";
-static const char*  SERVER_USER = 			"SERVER_USER";
-static const char*  SERVER_DB   =			"SERVER_DB";
+static const char*  SERVER_PORT =		"SERVER_PORT";
+static const char*  SERVER_IP   =		"SERVER_IP";
+static const char*  SERVER_USER =		"SERVER_USER";
+static const char*  SERVER_DB   =		"SERVER_DB";
 
 static const char*  AGTM_PROT   =			"AGTM_PROT";
-static const char*  AGTM_IP   	=			"AGTM_IP";
-static const char*  __AGTM_USER   =			"AGTM_USER";
-static const char*  AGTM_DB   	=			"AGTM_DB";
+static const char*  AGTM_IP     =			"AGTM_IP";
+static const char*  __AGTM_USER =			"AGTM_USER";
+static const char*  AGTM_DB     =			"AGTM_DB";
 
-static const char*  COORDINATOR_PROT =  	"COORDINATOR_PROT";
+static const char*  COORDINATOR_PROT =		"COORDINATOR_PROT";
 static const char*  COORDINATOR_IP   =		"COORDINATOR_IP";
-static const char*  COORDINATOR_USER =  	"COORDINATOR_USER";
+static const char*  COORDINATOR_USER =		"COORDINATOR_USER";
 static const char*  COORDINATOR_DB   =		"COORDINATOR_DB";
 
-static const char*  DATANODE_VALID   =      "DATANODE_VALID";
-static const char*  DATANODE_NUM   	 =		"DATANODE_NUM";
+static const char*  DATANODE_VALID   =		"DATANODE_VALID";
+static const char*  DATANODE_NUM     =		"DATANODE_NUM";
 static const char*  DATANODE1_PROT   =		"DATANODE1_PROT";
-static const char*  DATANODE1_IP   	 =		"DATANODE1_IP";
+static const char*  DATANODE1_IP     =		"DATANODE1_IP";
 static const char*  DATANODE1_USER   =		"DATANODE1_USER";
-static const char*  DATANODE1_DB   	 =		"DATANODE1_DB";
+static const char*  DATANODE1_DB     =		"DATANODE1_DB";
 
-static const char*  HASH_THREAD_NUM  = 		"HASH_THREAD_NUM";
-static const char*  TEXT_DELIM   	 =		"TEXT_DELIM";
-static const char*  HASH_DELIM   	 =		"HASH_DELIM";
-static const char*  COPY_QUOTEC   	 =		"COPY_QUOTEC";
-static const char*  COPY_ESCAPEC   	 =		"COPY_ESCAPEC";
-static const char*  COPY_OPTIONS 	 =		"COPY_OPTIONS";
+static const char*  HASH_THREAD_NUM  =		"HASH_THREAD_NUM";
+static const char*  TEXT_DELIM       =		"TEXT_DELIM";
+static const char*  HASH_DELIM       =		"HASH_DELIM";
+static const char*  COPY_QUOTEC      =		"COPY_QUOTEC";
+static const char*  COPY_ESCAPEC     =		"COPY_ESCAPEC";
+static const char*  COPY_OPTIONS     =		"COPY_OPTIONS";
+
 /* LOG INFO WARNNING, ERROR */
-static const char*	LOG_LEVEL		 =      "LOG_LEVEL";
-static const char*	LOG_PATH		 =		"LOG_PATH";
+static const char* LOG_LEVEL         =		"LOG_LEVEL";
+static const char* LOG_PATH          =		"LOG_PATH";
 
-static const char* PROCESS_BAR		= 		"PROCESS_BAR";
+static const char* PROCESS_BAR       =		"PROCESS_BAR";
 
 /* ERROR FILE */
 // static const char*	HASH_ERROR_FILE  =		"HASH_ERROR_FILE";
@@ -70,6 +71,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 		{"outputdir",  required_argument, NULL, 'o'},
 		{"password",   required_argument, NULL, 'W'},
 		{"static",           no_argument, NULL, 's'},
+		{"singlefile",       no_argument, NULL, 'g'},
 		{"table",      required_argument, NULL, 't'},
 		{"username",   required_argument, NULL, 'U'},
 		{"help",             no_argument, NULL, '?'},
@@ -96,7 +98,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 	}
 
 	setting = (ADBLoadSetting *)palloc0(sizeof(ADBLoadSetting));
-	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:st:U:", long_options, &option_index)) != -1)
+	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:", long_options, &option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -129,6 +131,9 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 		case 's': //static mode
 			setting->static_mode = true;
 			break;
+		case 'g': //single file mode
+			setting->single_file = true;
+			break;
 		case 't': // table
 			setting->table_name = pg_strdup(optarg);
 			break;
@@ -148,19 +153,28 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 		}
 	}
 
-	if (setting->static_mode && setting->dynamic_mode)
+	if (setting->database_name == NULL || setting->user_name == NULL)
 	{
-		fprintf(stderr, "options -s/--static and -y/--dysnamic cannot be used together.\n");
+		fprintf(stderr, "options -d/--dbname and -U/--username you must use.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (!setting->static_mode && !setting->dynamic_mode)
+	if ((setting->single_file && setting->static_mode) ||
+		(setting->static_mode && setting->dynamic_mode)||
+		(setting->single_file && setting->dynamic_mode)||
+		(setting->single_file && setting->static_mode && setting->dynamic_mode))
 	{
-		fprintf(stderr, "you should specify one of the options -s/--static and -y/--dysnamic.\n");
+		fprintf(stderr, "options -s/--static, -y/--dysnamic and -g/--singlefile cannot be used together.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (setting->dynamic_mode == true)
+	if (!setting->single_file && !setting->static_mode && !setting->dynamic_mode)
+	{
+		fprintf(stderr, "you should specify one of the options -g/--singlefile, -s/--static and -y/--dysnamic.\n");
+		exit(EXIT_FAILURE);
+	}
+
+	if (setting->static_mode || setting->dynamic_mode)
 	{
 		if (setting->input_directory == NULL)
 		{
@@ -177,7 +191,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 		}
 	}
 
-	if (setting->dynamic_mode == true)
+	if (setting->static_mode || setting->dynamic_mode)
 	{
 		if (setting->input_file != NULL || setting->table_name != NULL)
 		{
@@ -186,10 +200,13 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv, ADBLoadSetting *
 		}
 	}
 
-	if (setting->database_name == NULL || setting->user_name == NULL)
+	if (setting->single_file)
 	{
-		fprintf(stderr, "options -d/--dbname and -U/--username you must use.\n");
-		exit(EXIT_FAILURE);
+		if (setting->input_file == NULL || setting->table_name == NULL)
+		{
+			fprintf(stderr, "you should use -f/--inputfile or -t/--table option.\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	check_configfile(setting);

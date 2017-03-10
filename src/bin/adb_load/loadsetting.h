@@ -75,19 +75,22 @@ typedef struct ADBLoadSetting
 	char *password;
 	char *table_name;
 	char *program;
+
 	bool  dynamic_mode;
 	bool  static_mode;
+	bool  single_file;
 	bool  process_bar;
+	bool  config_datanodes_valid;
 
 	NodeInfoData	*server_info;
 	NodeInfoData    *agtm_info;	
-	NodeInfoData    *coordinator_info;	
+	NodeInfoData    *coordinator_info;
+
 	NodeInfoData    **datanodes_info;
 	int   datanodes_num;
-	bool  config_datanodes_valid;
+
 	HashConfig *hash_config;
 	LogField *log_field;
-	bool  signal_file;
 } ADBLoadSetting;
 
 extern ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv,  ADBLoadSetting *setting);

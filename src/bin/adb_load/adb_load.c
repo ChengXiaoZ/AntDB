@@ -90,7 +90,7 @@ static void reset_hash_field(TableInfo *table_info);
 static void get_node_count_and_node_list(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void drop_func_to_server(char *serverconninfo, char *drop_func_sql);
 static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info);
-static bool file_exists(char *file);
+//static bool file_exists(char *file);
 static Tables* get_file_info(char *input_dir);
 static bool update_file_info(char *input_dir, Tables *tables);
 
@@ -113,18 +113,18 @@ static void exit_nicely(PGconn *conn);
 void file_name_print(char **file_list, int file_num);
 void tables_print(Tables *tables_ptr);
 
-static Tables *read_table_info(char *fullpath);
-static Tables *get_tables(char **file_name_list, char **file_path_list, int file_num);
-static TableInfo *get_table_info(char**file_name_list, int file_num);
-static void get_special_table_by_sql(void);
-static struct special_table *add_special_table(struct special_table *table_list, char *table_name);
-static int has_special_file(char **file_name_list, int file_nums);
-static int is_special_table(char *table_name);
-static int is_special_file_name(char *file_name);
+//static Tables *read_table_info(char *fullpath);
+//static Tables *get_tables(char **file_name_list, char **file_path_list, int file_num);
+//static TableInfo *get_table_info(char**file_name_list, int file_num);
+//static void get_special_table_by_sql(void);
+//static struct special_table *add_special_table(struct special_table *table_list, char *table_name);
+//static int has_special_file(char **file_name_list, int file_nums);
+//static int is_special_table(char *table_name);
+//static int is_special_file_name(char *file_name);
 //static void str_list_sort(char **file_list, int file_num);
-static int get_file_num(char *fullpath);
-static int is_type_file(char *fullpath);
-static int is_type_dir(char *fullpath);
+//static int get_file_num(char *fullpath);
+//static int is_type_file(char *fullpath);
+//static int is_type_dir(char *fullpath);
 static void tables_list_free(Tables *tables);
 static void table_free(TableInfo *table_info);
 static void clean_hash_field (HashField *hash_field);
@@ -263,40 +263,20 @@ int main(int argc, char **argv)
 
 	setting->program = pg_strdup(argv[0]);
 
-	/*static mode */
-	if (setting->static_mode)
+	if (setting->single_file)
 	{
-		if (setting->input_file != NULL && setting->table_name != NULL) // sigle file
-		{
-			FileLocation *file_location = (FileLocation*)palloc0(sizeof(FileLocation));
-			tables_ptr = (Tables *)palloc0(sizeof(Tables));
-			tables_ptr->table_nums = 1;
+		FileLocation *file_location = (FileLocation*)palloc0(sizeof(FileLocation));
+		tables_ptr = (Tables *)palloc0(sizeof(Tables));
+		tables_ptr->table_nums = 1;
 
-			table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
-			table_info_ptr->table_name = pg_strdup(setting->table_name);
-			table_info_ptr->file_nums = 1;
-			table_info_ptr->next = NULL;
-			file_location->location = pg_strdup(setting->input_file);
-			slist_push_head(&table_info_ptr->file_head, &file_location->next);
-		}
-		else // static mode ,multi file in one directry
-		{
-			/*get tables info from data directory file*/
-			tables_ptr = read_table_info(setting->input_directory);
-			if(tables_ptr == NULL)
-			{
-				ADBLOADER_LOG(LOG_ERROR,"[main] there is no table to store");
-				return 0;
-			}
-
-			/*get special table which the tail of name is Glide line add digit num*/
-			get_special_table_by_sql();
-
-			table_info_ptr = tables_ptr->info;
-			table_count = 0;
-		}
+		table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
+		table_info_ptr->table_name = pg_strdup(setting->table_name);
+		table_info_ptr->file_nums = 1;
+		table_info_ptr->next = NULL;
+		file_location->location = pg_strdup(setting->input_file);
+		slist_push_head(&table_info_ptr->file_head, &file_location->next);
 	}
-	else if (setting->dynamic_mode)// dysnamic mode
+	else if (setting->static_mode || setting->dynamic_mode)
 	{
 		tables_ptr = get_file_info(setting->input_directory);
 		if (tables_ptr == NULL)
@@ -304,6 +284,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "cannot get file information in \"%s\" \n", setting->input_directory);
 			exit(EXIT_FAILURE);
 		}
+
 		table_info_ptr = tables_ptr->info;
 	}
 	else
@@ -317,6 +298,7 @@ int main(int argc, char **argv)
 		get_all_datanode_info(setting);
 		get_conninfo_for_alldatanode(setting);
 	}
+
 	/* init linebuf */
 	init_linebuf(setting->datanodes_num);
 
@@ -337,21 +319,18 @@ int main(int argc, char **argv)
 
 		if (table_info_ptr->file_nums == 0 && table_info_ptr->next == NULL)
 		{
-			if (update_tables) //need update
+			if (update_tables)
 			{
 				update_file_info(setting->input_directory, tables_ptr);
 				table_info_ptr = tables_ptr->info;
 				continue;
 			}
 			else
-			{
 				break;
-			}
 		}
 
 		/*get table info to store in the table_info_ptr*/
 		get_table_attribute(setting, table_info_ptr);
-
 		get_use_datanodes(setting, table_info_ptr);		
 
 		switch(table_info_ptr->distribute_type)
@@ -385,7 +364,7 @@ int main(int argc, char **argv)
 						file_location->location);
 
 					//rename file name
-					if (setting->dynamic_mode || setting->static_mode)
+					if (setting->static_mode || setting->dynamic_mode)
 					{
 						if (do_ok)
 							rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
@@ -393,7 +372,7 @@ int main(int argc, char **argv)
 							rename_file_suffix(file_location->location, SUFFIX_ERROR);
 					}
 
-					/* remove  file from file list*/
+					/* remove file from file list*/
 					slist_delete_current(&siter);
 					/* file num  subtract 1 */
 					table_info_ptr->file_nums--;
@@ -411,7 +390,7 @@ int main(int argc, char **argv)
 			{
 				/*the table may be split to more than one*/
 				slist_foreach_modify (siter, &table_info_ptr->file_head) 
-				{					
+				{
 					FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
 					Assert(NULL != file_location->location);
 					/* begin record error file */
@@ -423,7 +402,7 @@ int main(int argc, char **argv)
 						file_location->location);
 
 					/* start module */
-					do_hash_module(file_location->location,table_info_ptr);
+					do_ok = do_hash_module(file_location->location,table_info_ptr);
 					/* stop module and clean resource */
 					clean_hash_module();
 
@@ -435,7 +414,7 @@ int main(int argc, char **argv)
 						file_location->location);
 
 					//rename file name
-					if (setting->dynamic_mode || setting->static_mode)
+					if (setting->static_mode || setting->dynamic_mode)
 					{
 						if (do_ok)
 							rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
@@ -477,11 +456,8 @@ int main(int argc, char **argv)
 			table_info_ptr = tables_ptr->info;
 		}
 		else
-		{
 			table_info_ptr = table_info_ptr->next;
-		}
 	}
-
 
 	fclose_error_file(); /* close error file */
 
@@ -617,11 +593,23 @@ static Tables* get_file_info(char *input_dir)
 		if(strcmp(dirent_ptr->d_name, ".") == 0 || strcmp(dirent_ptr->d_name, "..") == 0)
 			continue;
 
-		/*stop update file info if have a file END_FILE_NAME(adbload_end) */
-		if (strcmp(dirent_ptr->d_name, END_FILE_NAME) == 0)
+		if (setting->static_mode)
 		{
-			update_tables = false;
-			continue;
+			if (!is_suffix(dirent_ptr->d_name, SUFFIX_SQL))
+			{
+				fprintf(stderr, "invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
+				continue;
+			}
+		}
+
+		if (setting->dynamic_mode)
+		{
+			/*stop update file info if have a file END_FILE_NAME(adbload_end) */
+			if (strcmp(dirent_ptr->d_name, END_FILE_NAME) == 0)
+			{
+				 update_tables = false;
+				 continue;
+			}
 		}
 
 		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir);
@@ -694,7 +682,7 @@ static char *rename_file_name(char *file_name, char *input_dir)
 	char *new_fiel_name = NULL;
 
 	sprintf(old_file_name_path, "%s/%s", input_dir, file_name);
-	sprintf(new_file_name_path, "%s/%s%s", input_dir, file_name, SUFFIX_DOING);
+	sprintf(new_file_name_path, "%s/%s%s", input_dir, file_name, SUFFIX_SCAN);
 
 	if (rename(old_file_name_path, new_file_name_path) < 0)
 	{
@@ -702,8 +690,8 @@ static char *rename_file_name(char *file_name, char *input_dir)
 				old_file_name_path, new_file_name_path, strerror(errno));
 	}
 
-	new_fiel_name = (char *)palloc0(strlen(file_name) + strlen(SUFFIX_DOING) + 1);
-	sprintf(new_fiel_name, "%s%s", file_name, SUFFIX_DOING);
+	new_fiel_name = (char *)palloc0(strlen(file_name) + strlen(SUFFIX_SCAN) + 1);
+	sprintf(new_fiel_name, "%s%s", file_name, SUFFIX_SCAN);
 
 	return new_fiel_name;
 }
@@ -1602,7 +1590,7 @@ static void get_hash_field(const char *conninfo, TableInfo *table_info)
 	PQfinish(conn);
 	return ;
 }
-
+#if 0
 static void get_special_table_by_sql(void)
 {
 	char query[QUERY_MAXLEN];
@@ -1645,6 +1633,8 @@ static void get_special_table_by_sql(void)
 	PQfinish(conn);
 	
 }
+#endif
+#if 0
 static struct special_table *add_special_table(struct special_table *table_list, char *table_name)
 {
 	struct TableName *table_ptr;
@@ -1664,7 +1654,7 @@ static struct special_table *add_special_table(struct special_table *table_list,
 	}
 	return table_list;
 }
-
+#endif
 static char get_distribute_by(const char *conninfo, const char *tablename)
 {
 	char query[QUERY_MAXLEN];
@@ -2179,7 +2169,7 @@ static void exit_nicely(PGconn *conn)
 	PQfinish(conn);
 	exit(1);
 }
-
+#if 0
 /*
  * According to the directory file to get the table infomation from the name of file 
  */
@@ -2290,7 +2280,8 @@ static Tables* read_table_info(char *fullpath)
 
 	return tables_ptr;
 }
-
+#endif
+#if 0
 static Tables * get_tables(char **file_name_list, char **file_path_list, int file_num)
 {
 	TableInfo *table_info_ptr = NULL;
@@ -2339,6 +2330,8 @@ static Tables * get_tables(char **file_name_list, char **file_path_list, int fil
 
 	return tables_ptr;
 }
+#endif
+#if 0
 static TableInfo *get_table_info(char **file_name_list, int file_num)
 {
 	char *table_name;
@@ -2385,7 +2378,8 @@ static TableInfo *get_table_info(char **file_name_list, int file_num)
 	table_info_ptr->next = NULL;
 	return table_info_ptr;
 }
-
+#endif
+#if 0
 static int has_special_file(char **file_name_list, int file_nums)
 {
 	int i = 0;
@@ -2403,15 +2397,17 @@ static int has_special_file(char **file_name_list, int file_nums)
 	return 1;
 }
 
+#endif
+#if 0
 static int is_special_table(char *table_name)
 {
 	return is_special_file_name(table_name);
 }
-
+#endif
 /* if the tail of file_name is underline add digit   reutrn true
    else   return false
 */
-
+#if 0
 static int is_special_file_name(char *file_name)
 {
 	int file_name_len = 0;
@@ -2424,6 +2420,8 @@ static int is_special_file_name(char *file_name)
 	else
 		return 0;
 }
+#endif
+#if 0
 static int get_file_num(char *fullpath)
 {
 	DIR *dir;
@@ -2452,6 +2450,7 @@ static int get_file_num(char *fullpath)
 	closedir(dir);
 	return file_num;
 }
+#endif
 /*
 static void str_list_sort(char **file_list, int file_num)
 {
@@ -2587,7 +2586,7 @@ static void table_free(TableInfo *table_info)
 	pfree(table_info);
 	table_info = NULL;
 }
-
+#if 0
 static int is_type_file(char *fullpath)
 {
 	struct stat statbuf;
@@ -2597,7 +2596,8 @@ static int is_type_file(char *fullpath)
 		return 1;
 	return 0;
 }
-
+#endif
+#if 0
 static int
 is_type_dir(char *fullpath)
 {
@@ -2610,7 +2610,7 @@ is_type_dir(char *fullpath)
 		return 0;
 	return 1;
 }
-
+#endif
 char *
 conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 {
@@ -2800,7 +2800,7 @@ get_file_total_line_num (char *file_path)
 	 fclose(fp);
 	 return n;
 }
-
+#if 0
 bool file_exists(char *file)
 {
     FILE  *f = fopen(file, "r");
@@ -2811,7 +2811,7 @@ bool file_exists(char *file)
     fclose(f);
     return true;
 }
-
+#endif
 static void
 process_bar(int total, int send)
 {	
