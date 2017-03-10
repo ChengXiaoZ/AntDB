@@ -2787,7 +2787,8 @@ get_file_total_line_num (char *file_path)
 	
 	if((fp = fopen(file_path,"r+")) == NULL)
   	{
-	   fprintf(stderr,"open file 1.c error! %s\n",strerror(errno));
+	   fprintf(stderr,"open file \"%s\" error: %s\n", file_path, strerror(errno));
+	   exit(EXIT_FAILURE);
 	}
 
 	 while((ch = fgetc(fp)) != EOF)
@@ -2797,6 +2798,9 @@ get_file_total_line_num (char *file_path)
              n++;
          }
      }
+
+	 n++;
+
 	 fclose(fp);
 	 return n;
 }
