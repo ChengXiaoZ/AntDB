@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>CLEAN GTM</refname>
-    <refpurpose>clean all the data of the gtm in the cluster</refpurpose>
+    <refpurpose>clean all the data of the gtm which not in the cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-cleangtm">
@@ -27,7 +27,7 @@ CLEAN GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</r
   <refsect1>
     <title>Description</title>
     <para>
-    <command>CLEAN DATANODE</command> clean all the data of the given name gtm in the node table. If the gtm is running, it needs to be stopped first.
+    <command>CLEAN GTM</command> clean all the data of the given name gtm in the node table which not in the cluster. If the gtm is running, it needs to be stopped first.
     </para>
   </refsect1>
 
@@ -52,7 +52,7 @@ CLEAN GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</r
  <para>
 Clean the data of gtm_name1:
 <programlisting>
-CLEAN GTM MASTER;
+CLEAN GTM MASTER gtm_name1;
 </programlisting>
 </para>
   </refsect1>

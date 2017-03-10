@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>CLEAN COORDINATOR</refname>
-    <refpurpose>clean all the data of the coordinator in the cluster</refpurpose>
+    <refpurpose>clean all the data of the coordinator which not in the cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-cleancoordinator">
@@ -27,7 +27,7 @@ CLEAN COORDINATOR { node_name [ , ... ] }
   <refsect1>
     <title>Description</title>
     <para>
-    <command>CLEAN COORDINATOR</command> clean all the data of the given name coordinator in the node table. If the coordinator is running, it needs to be stopped first.
+    <command>CLEAN COORDINATOR</command> clean all the data of the given name coordinator which not in the cluster. If the coordinator is running, it needs to be stopped first.
     </para>
   </refsect1>
 

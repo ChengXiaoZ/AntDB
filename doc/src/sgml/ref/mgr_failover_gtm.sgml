@@ -52,21 +52,21 @@ FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replace
     <title>Examples</title>
 
 <para>
-Promote gtm slave or extra to master, which must be synchronized:
+Promote gtm slave or extra  gtm_name1 to master, which must be synchronized:
 <programlisting>
-FAILOVER GTM;
+FAILOVER GTM gtm_name1;
 </programlisting>
  </para>
 <para>
-promote gtm slave or extra to master, no matter it is synchronized or not:
+promote gtm slave or extra gtm_name1 to master, no matter it is synchronized or not:
 <programlisting>
-FAILOVER GTM FORCE;
+FAILOVER GTM gtm_name1 FORCE;
 </programlisting>
   </para>
 <para>
-Promote gtm slave to master, which type is gtm slave:
+Promote gtm slave gtm_name1 to master, which is  synchronized node:
 <programlisting>
-FAILOVER GTM SLAVE;
+FAILOVER GTM SLAVE gtm_name1;
 </programlisting>
   </para>
   </refsect1>

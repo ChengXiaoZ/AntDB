@@ -1,0 +1,60 @@
+<!--
+doc/src/sgml/ref/mgr_remove_datanode.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-REMOVEDATANODE">
+  <refmeta>
+    <refentrytitle>REMOVE DATTANODE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>REMOVE DATANODE</refname>
+    <refpurpose>remove the datanode out of the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-removedatanode">
+    <primary>REMOVE DATANODE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+REMOVE DATANODE { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>REMOVE DATANODE</command> remove the given type datanode out of the cluster. If the type of datanode is running, it needs to be stopped first. The command just remove the type of datanode out of cluster, not delete the parameters information in param table. If you want to drop the type of datanode and its parameters, use "DROP DATANODE" to delete it. It does not support "REMOVE DATANODE MASTER" now.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name.
+          </para>
+        </listitem>
+      </varlistentry>
+		</variablelist>
+	</refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Remove the datanode slave datanode_name1 out of the cluster:
+<programlisting>
+REMOVE DATTANODE SLAVE datanode_name1;
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>

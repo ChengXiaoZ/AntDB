@@ -54,8 +54,8 @@ START GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</r
     <title>Examples</title>
 
     <para>
-Start gtm master:
-      <programlisting>START GTM MASTER;</programlisting>
+Start gtm master gtm_name1:
+      <programlisting>START GTM MASTER gtm_name1;</programlisting>
     </para>
   </refsect1>
 

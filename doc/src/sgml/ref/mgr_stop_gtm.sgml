@@ -60,9 +60,9 @@ STOP GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</re
     <title>Examples</title>
 
     <para>
-Stop gtm master using immediate mode:
+Stop gtm master gtm_name1 using immediate mode:
 <programlisting>
-STOP GTM MASTER MODE I;
+STOP GTM MASTER gtm_name1 MODE I;
 </programlisting>
     </para>
 

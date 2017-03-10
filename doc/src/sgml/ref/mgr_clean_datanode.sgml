@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>CLEAN DATANODE</refname>
-    <refpurpose>clean all the data of the datanode in the cluster</refpurpose>
+    <refpurpose>clean all the data of the datanode which not in the cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-cleandatanode">
@@ -27,7 +27,7 @@ CLEAN DATANODE { MASTER | SLAVE | EXTRA } { node_name [ , ... ] }
   <refsect1>
     <title>Description</title>
     <para>
-    <command>CLEAN DATANODE</command> clean all the data of the datanode in the node table. If the datanode is running, it needs to be stopped first.
+    <command>CLEAN DATANODE</command> clean all the data of the datanode which not in the cluster. If the datanode is running, it needs to be stopped first.
     </para>
   </refsect1>
 

@@ -231,6 +231,8 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrMonitorCoordinator SYSTEM "mgr_monitor_coordinator.sgml">
 <!ENTITY mgrMonitorDatanode SYSTEM "mgr_monitor_datanode.sgml">
 <!ENTITY mgrMonitorGtm      SYSTEM "mgr_monitor_gtm.sgml">
+<!ENTITY mgrRemoveDatanode  SYSTEM "mgr_remove_datanode.sgml">
+<!ENTITY mgrRemoveGtm       SYSTEM "mgr_remove_gtm.sgml">
 <!ENTITY mgrResetCoordinator SYSTEM "mgr_reset_coordinator.sgml">
 <!ENTITY mgrResetDatanode   SYSTEM "mgr_reset_datanode.sgml">
 <!ENTITY mgrResetGtm        SYSTEM "mgr_reset_gtm.sgml">

@@ -1,0 +1,61 @@
+<!--
+doc/src/sgml/ref/mgr_remove_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-REMOVEGTM">
+  <refmeta>
+    <refentrytitle>REMOVE GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>REMOVE GTM</refname>
+    <refpurpose>remove the gtm out of the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-removegtm">
+    <primary>REMOVE GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+REMOVE GTM { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>REMOVE GTM</command> remove the given type gtm out of the cluster. If the type of gtm is running, it needs to be stopped first. The command just remove the type of gtm out of cluster, not delete the parameters information in param table. If you want to drop the type of gtm and its parameters, use "DROP GTM" to delete it.
+		It does not support "REMOVE GTM MASTER" now.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name.
+          </para>
+        </listitem>
+      </varlistentry>
+		</variablelist>
+	</refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Remove the gtm slave gtm_name1 out of the cluster:
+<programlisting>
+REMOVE GTM SLAVE gtm_name1;
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>
