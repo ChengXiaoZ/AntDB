@@ -514,10 +514,23 @@ static char *get_config_file_value(const char *key)
 
 static void print_help(FILE *fd)
 {
-	fprintf(fd, _("adb_load command agen\n"));
+	fprintf(fd, _("adb_load import data to datanode.\n\n"));
 	fprintf(fd, _("Usage:\n"));
-	fprintf(fd, _("  adb_load [OPTION]\n"));
+	fprintf(fd, _("  adb_load [OPTION]...\n"));
 	fprintf(fd, _("\nOptions:\n"));
+	fprintf(fd, _("  -d, --dbname=DBNAME         database name to connect to (no default value)\n"));
+	fprintf(fd, _("  -U, --username=USERNAME     database user name (no default value)\n"));
+	fprintf(fd, _("  -W, --password=PASSWORD     use it when connect to database\n\n"));
+	fprintf(fd, _("  -g, --singlefile 			 import data using single file mode\n"));
+	fprintf(fd, _("  -s, --static     			 import data using static mode\n"));
+	fprintf(fd, _("  -y, --dynamic    			 import data using dynamic mode\n\n"));
+	fprintf(fd, _("  -c, --configfile=CONF_FILE  config file path (default:adb_load.conf on current directory)\n"));
+	fprintf(fd, _("  -i, --inputdir=DATADIR      data file directory\n"));
+	fprintf(fd, _("  -o, --outputdir=OUTDIR      output directory for log file and error file\n\n"));
+	fprintf(fd, _("  -f, --inputfile=DATA_FILE   execute commands for file\n"));
+	fprintf(fd, _("  -t, --table=TABLE_NAME      table name\n\n"));
+	fprintf(fd, _("  -V, --version               output version information, then exit\n"));
+	fprintf(fd, _("  -?, --help                  show this help, then exit\n"));
 }
 
 void free_adb_load_setting(ADBLoadSetting *setting)
