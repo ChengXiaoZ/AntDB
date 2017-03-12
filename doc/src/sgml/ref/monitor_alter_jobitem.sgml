@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ALTER ITEM</refname>
-    <refpurpose>alter one row job item information in the item table</refpurpose>
+    <refpurpose>alter one row job item information in the item table. It used in user-defined monitor, used together with job table</refpurpose>
   </refnamediv>
 
   <indexterm zone="monitor-alterjobitem">

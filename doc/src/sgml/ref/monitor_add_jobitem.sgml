@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD ITEM</refname>
-    <refpurpose>add one row job item information in the item table</refpurpose>
+    <refpurpose>add one row job item information in the item table. It used in user-defined monitor, used together with job table</refpurpose>
   </refnamediv>
 
   <indexterm zone="monitor-addjobitem">

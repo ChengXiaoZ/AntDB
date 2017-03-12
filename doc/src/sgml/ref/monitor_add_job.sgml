@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADD JOB</refname>
-    <refpurpose>add one row job information in the job table. If using user-defined monitor item, the sql string format likes "insert into tb_name select adbmonitor_job('host_name', 'item_name').</refpurpose>
+    <refpurpose>add one row job information in the job table. The input string of "command" column should be in single quote. If using user-defined monitor item, the input of sql string format likes 'insert into tb_name select adbmonitor_job(''host_name'', ''item_name'')', the item_name in job item table</refpurpose>
   </refnamediv>
 
   <indexterm zone="monitor-addjob">
@@ -36,7 +36,7 @@ ADD JOB [IF NOT EXISTS] <replaceable class="parameter">job_name</replaceable> ( 
     <title>Description</title>
 
     <para>
-<command>ADD JOB</command> add one row job information in the job table. The value of the column "command" is standard SQL, just support INSERT or SELECT format. If we want to execute batch on the aim server machine, can use the system function "ADBMONITOR_JOB('hostname', 'item_name')". 
+<command>ADD JOB</command> add one row job information in the job table. The value of the column "command" is standard SQL, just support INSERT or SELECT format. If we want to execute batch on the aim server machine, can use the system function "ADBMONITOR_JOB('hostname', 'item_name')", the item_name in job item table.
     </para>
   </refsect1>
 
@@ -72,7 +72,7 @@ ADD JOB [IF NOT EXISTS] <replaceable class="parameter">job_name</replaceable> ( 
         </term>
         <listitem>
           <para>
-    Interval time.
+    Interval time, unit is seconds.
           </para>
         </listitem>
       </varlistentry>
@@ -94,7 +94,7 @@ ADD JOB [IF NOT EXISTS] <replaceable class="parameter">job_name</replaceable> ( 
         </term>
         <listitem>
           <para>
-    The format is standard SQL. If we want to execute arm batch on given server machine, the format likes "INSERT INTO table_name SELECT ADBMONITOR_JOB('host_name', 'job_item')".
+    The format is standard SQL. If we want to execute arm batch on given server machine, the format input string likes 'INSERT INTO table_name SELECT ADBMONITOR_JOB(''host_name'', ''item_name'')', the item_name in job item table, the input string of "command" column should be in single quote.
           </para>
         </listitem>
       </varlistentry>
