@@ -271,6 +271,13 @@ int main(int argc, char **argv)
 		tables_ptr->table_nums = 1;
 
 		table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
+		if (!is_create_in_adb_cluster(setting->table_name))
+		{
+			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", setting->table_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", setting->table_name);
+			exit(EXIT_FAILURE);
+		}
+
 		table_info_ptr->table_name = pg_strdup(setting->table_name);
 		table_info_ptr->file_nums = 1;
 		table_info_ptr->next = NULL;
