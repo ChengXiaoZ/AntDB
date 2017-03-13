@@ -739,15 +739,8 @@ func_select_candidate(int nargs,
 		{
 			if (input_base_typeids[i] != UNKNOWNOID)
 			{
-#ifdef ADB
-				if (current_typeids[i] == input_base_typeids[i] ||
-					IsPreferredType(slot_category[i], current_typeids[i]) ||
-					(IsOracleCoerceFunc() &&
-						slot_category[i] == TypeCategory(current_typeids[i])))
-#else
 				if (current_typeids[i] == input_base_typeids[i] ||
 					IsPreferredType(slot_category[i], current_typeids[i]))
-#endif
 					nmatch++;
 			}
 		}
@@ -773,6 +766,54 @@ func_select_candidate(int nargs,
 	if (ncandidates == 1)
 		return candidates;
 
+#ifdef ADB
+	/*
+	 * Still too many candidates? Now look for candidates which have same
+	 * category by oracle grammar at the args that will require coercion.
+	 * Keep all candidates if none match.
+	 */
+	if (IsOracleCoerceFunc())
+	{
+		ncandidates = 0;
+		nbestMatch = 0;
+		last_candidate = NULL;
+		for (current_candidate = candidates;
+			 current_candidate != NULL;
+			 current_candidate = current_candidate->next)
+		{
+			current_typeids = current_candidate->args;
+			nmatch = 0;
+			for (i = 0; i < nargs; i++)
+			{
+				if (input_base_typeids[i] != UNKNOWNOID)
+				{
+					if (slot_category[i] == TypeCategory(current_typeids[i]))
+						nmatch++;
+				}
+			}
+
+			if ((nmatch > nbestMatch) || (last_candidate == NULL))
+			{
+				nbestMatch = nmatch;
+				candidates = current_candidate;
+				last_candidate = current_candidate;
+				ncandidates = 1;
+			}
+			else if (nmatch == nbestMatch)
+			{
+				last_candidate->next = current_candidate;
+				last_candidate = current_candidate;
+				ncandidates++;
+			}
+		}
+
+		if (last_candidate)			/* terminate rebuilt list */
+			last_candidate->next = NULL;
+
+		if (ncandidates == 1)
+			return candidates;
+	}
+#endif
 	/*
 	 * Still too many candidates?  Try assigning types for the unknown inputs.
 	 *

@@ -124,7 +124,7 @@ static void ProcessUtilitySlow(Node *parsetree,
 				   ParamListInfo params,
 				   DestReceiver *dest,
 #ifdef PGXC
-							   bool sentToRemote,
+				   bool sentToRemote,
 #endif
 				   char *completionTag);
 #ifdef PGXC
