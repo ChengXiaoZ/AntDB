@@ -562,6 +562,9 @@ static bool update_file_info(char *input_dir, Tables *tables)
 				tail->next = table_info_dynamic;
 		}
 	}
+
+	closedir((DIR*)dir);
+
 	return true;
 }
 
@@ -657,6 +660,9 @@ static Tables* get_file_info(char *input_dir)
 				tail->next = table_info_dynamic;
 		}
 	}
+
+	closedir((DIR*)dir);
+
 	return tables_dynamic;
 }
 
