@@ -330,9 +330,9 @@ static int agtm_try_port_msg(StringInfo s)
 		memcpy(&msg_len, agtm_pq_buf.data + 1, sizeof(msg_len));
 		msg_len = htonl(msg_len);
 		msg_len++;	/* add length of msg type */
-		if(msg_len > 5)
+		if(msg_len > 5 && agtm_pq_buf.len < msg_len)
 			pq_getmessage_noblock(&agtm_pq_buf, msg_len-agtm_pq_buf.len);
-		if(msg_len >= agtm_pq_buf.len)
+		if(agtm_pq_buf.len >= msg_len)
 		{
 			msg_type = agtm_pq_buf.data[0];
 			appendBinaryStringInfo(s, agtm_pq_buf.data+5, msg_len-5);
@@ -345,9 +345,6 @@ static int agtm_try_port_msg(StringInfo s)
 				agtm_pq_buf.len = 0;
 			}
 			return msg_type;
-		}else
-		{
-			Assert(msg_len < agtm_pq_buf.len);
 		}
 	}
 	return 0;
