@@ -596,11 +596,12 @@ static Tables* get_file_info(char *input_dir)
 		if(strcmp(dirent_ptr->d_name, ".") == 0 || strcmp(dirent_ptr->d_name, "..") == 0)
 			continue;
 
-		if (setting->static_mode)
+		if (setting->static_mode || setting->dynamic_mode)
 		{
 			if (!is_suffix(dirent_ptr->d_name, SUFFIX_SQL))
 			{
 				fprintf(stderr, "invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
+				ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
 				continue;
 			}
 		}
