@@ -498,11 +498,12 @@ static bool update_file_info(char *input_dir, Tables *tables)
 
 	while ((dirent_ptr = readdir(dir)) != NULL)
 	{
-		if(strcmp(dirent_ptr->d_name, ".") == 0 ||
-		strcmp(dirent_ptr->d_name, "..") == 0||
-		is_suffix(dirent_ptr->d_name, SUFFIX_ADBLOAD) ||
-		is_suffix(dirent_ptr->d_name, SUFFIX_DOING) ||
-		is_suffix(dirent_ptr->d_name, SUFFIX_ERROR))
+		if(strcmp(dirent_ptr->d_name, ".") == 0          ||
+		   strcmp(dirent_ptr->d_name, "..") == 0         ||
+		   is_suffix(dirent_ptr->d_name, SUFFIX_ADBLOAD) ||
+		   is_suffix(dirent_ptr->d_name, SUFFIX_DOING)   ||
+		   is_suffix(dirent_ptr->d_name, SUFFIX_ERROR)   ||
+		   is_suffix(dirent_ptr->d_name, SUFFIX_SCAN))
 			continue;
 
 		if (strcmp(dirent_ptr->d_name, END_FILE_NAME) == 0)
@@ -514,6 +515,7 @@ static bool update_file_info(char *input_dir, Tables *tables)
 		if (!is_suffix(dirent_ptr->d_name, SUFFIX_SQL))
 		{
 			fprintf(stderr, "invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
 			continue;
 		}
 
