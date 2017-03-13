@@ -2389,6 +2389,11 @@ CommitTransaction(void)
 		 * transaction
 		 */
 	}
+	else if (IS_PGXC_DATANODE && GetForceXidFromGTM())
+	{
+		agtm_CommitTransaction(NULL, false);
+		agtm_Close();
+	}
 #endif
 
 	/* Prevent cancel/die interrupt while cleaning up */
@@ -2945,6 +2950,12 @@ AbortTransaction(void)
 		UnexpectedAbortRemoteXact(s);
 	else
 		NormalAbortRemoteXact(s);
+
+	if (IS_PGXC_DATANODE && GetForceXidFromGTM())
+	{
+		agtm_AbortTransaction(NULL, false);	
+		agtm_Close();
+	}
 #endif
 
 	/* Prevent cancel/die interrupt while cleaning up */

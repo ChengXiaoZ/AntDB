@@ -87,7 +87,7 @@ UnsetGlobalTransactionId(void)
 {
 	GlobalXid = InvalidGlobalTransactionId;
 	GlobalXidSetFromCOOR = false;
-	ForceObtainXidFromAGTM = false;
+	//ForceObtainXidFromAGTM = false;
 }
 
 void
@@ -95,6 +95,17 @@ SetForceObtainXidFromAGTM(bool val)
 {
 	ForceObtainXidFromAGTM = val;
 }
+
+/*
+ * See if we should force using AGTM
+ * Useful for explicit VACUUM FULL
+ */
+bool
+GetForceXidFromGTM(void)
+{
+	return ForceObtainXidFromAGTM;
+}
+
 
 static GlobalTransactionId
 ObtainGlobalTransactionId(bool isSubXact)

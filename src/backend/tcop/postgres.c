@@ -1304,6 +1304,13 @@ exec_simple_query(const char *query_string)
 		int16		format;
 #ifdef ADB
 		const char *query_sql = (const char *)lfirst(sql_item);
+		/*
+		 * By default we do not want Datanodes or client Coordinators to contact GTM directly,
+		 * it should get this information passed down to it.
+		 */
+		if (IS_PGXC_DATANODE || IsConnFromCoord())
+			SetForceObtainXidFromAGTM(false);
+
 #endif 
 
 		/*
@@ -1373,6 +1380,16 @@ exec_simple_query(const char *query_string)
 
 		/* If we got a cancel signal in analysis or planning, quit */
 		CHECK_FOR_INTERRUPTS();
+
+
+#ifdef ADB
+		/* PGXC_DATANODE */
+		/* Force getting Xid from GTM if not autovacuum, but a vacuum or CLUSTER */
+		if (IS_PGXC_DATANODE
+			&& (IsA(parsetree, VacuumStmt) || IsA(parsetree, ClusterStmt))
+			&& IsPostmasterEnvironment)
+		SetForceObtainXidFromAGTM(true);
+#endif
 
 		/*
 		 * Create unnamed portal to run the query or queries in. If there

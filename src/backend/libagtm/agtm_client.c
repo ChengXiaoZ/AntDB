@@ -50,6 +50,9 @@ agtm_Connect(void)
 
 	agtm_Close();
 
+	if (IS_PGXC_DATANODE && GetForceXidFromGTM() && IsDefaultAGtmPortSave)
+		AGtmPort = save_DefaultAGtmPort;
+
 	SaveDefaultAGtmPort(AGtmPort);
 
 	sprintf(port_buf, "%d", AGtmPort);
