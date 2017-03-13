@@ -5213,8 +5213,6 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 	bool nodetypechange = false;
 	Datum datum;
 
-	/*check all coordinators running normal*/
-	mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
 	if(force_get)
 		force = true;
 	if (strcmp(typestr, "slave") == 0)
@@ -6607,8 +6605,6 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	getrefresh = mgr_pqexec_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst, pg_conn, cnoid);
 	if(!getrefresh)
 	{
-		resetStringInfo(&(getAgentCmdRst->description));
-		appendStringInfoString(&(getAgentCmdRst->description),"WARNING: refresh system table of pgxc_node on coordinators fail, please check pgxc_node on every coordinator");
 		getAgentCmdRst->ret = getrefresh;
 		appendStringInfo(&recorderr, "%s\n", (getAgentCmdRst->description).data);
 	}
@@ -10317,6 +10313,7 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	NameData cnnamedata;
 
 	initStringInfo(&recorderr);
+	resetStringInfo(&(getAgentCmdRst->description));
 	prefer_cndn = get_new_pgxc_node(cmd, dnname, nodetype);
 	if(!PointerIsValid(prefer_cndn->coordiantor_list))
 	{
@@ -10345,8 +10342,6 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 		tuple_out = (HeapTuple)lfirst(lc_out);
 		mgr_node_out = (Form_mgr_node)GETSTRUCT(tuple_out);
 		Assert(mgr_node_out);
-		resetStringInfo(&(getAgentCmdRst->description));
-		namestrcpy(&(getAgentCmdRst->nodename), NameStr(mgr_node_out->nodename));
 		datanode_num = 0;
 		foreach(dn_lc, prefer_cndn->datanode_list)
 		{
@@ -10407,7 +10402,6 @@ static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, 
 	pfree(cmdstring.data);
 	if (recorderr.len > 0)
 	{
-		resetStringInfo(&(getAgentCmdRst->description));
 		appendStringInfo(&(getAgentCmdRst->description), "%s", recorderr.data);
 	}
 	pfree(recorderr.data);
