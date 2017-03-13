@@ -600,7 +600,7 @@ static Tables* get_file_info(char *input_dir)
 	if ((dir=opendir(input_dir)) == NULL)
 	{
 		fprintf(stderr, "open dir %s error...\n", input_dir);
-		return NULL;
+		exit(EXIT_FAILURE);
 	}
 
 	tables_dynamic = (Tables *)palloc0(sizeof(Tables));
@@ -612,16 +612,6 @@ static Tables* get_file_info(char *input_dir)
 		if(strcmp(dirent_ptr->d_name, ".") == 0 || strcmp(dirent_ptr->d_name, "..") == 0)
 			continue;
 
-		if (setting->static_mode || setting->dynamic_mode)
-		{
-			if (!is_suffix(dirent_ptr->d_name, SUFFIX_SQL))
-			{
-				fprintf(stderr, "invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
-				ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
-				continue;
-			}
-		}
-
 		if (setting->dynamic_mode)
 		{
 			/*stop update file info if have a file END_FILE_NAME(adbload_end) */
@@ -629,6 +619,16 @@ static Tables* get_file_info(char *input_dir)
 			{
 				 update_tables = false;
 				 continue;
+			}
+		}
+
+		if (setting->static_mode || setting->dynamic_mode)
+		{
+			if (!is_suffix(dirent_ptr->d_name, SUFFIX_SQL))
+			{
+				fprintf(stderr, "invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
+				ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] invalid file name :\"%s/%s\"\n", input_dir, dirent_ptr->d_name);
+				continue;
 			}
 		}
 
@@ -811,7 +811,7 @@ static bool is_suffix(char *str, char *suffix)
 	ptr = strrchr(str, '.');
 	if (ptr == NULL)
 	{
-		fprintf(stderr, "The character \"%c\" is at position:%s\n", '.', str);
+		fprintf(stderr, "The character \"%c\" was not found in \"%s\". \n", '.', str);
 		return false;
 	}
 
