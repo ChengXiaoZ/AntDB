@@ -91,6 +91,7 @@ static void get_node_count_and_node_list(const char *conninfo, char *table_name,
 static void drop_func_to_server(char *serverconninfo, char *drop_func_sql);
 static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info);
 //static bool file_exists(char *file);
+static bool is_create_in_adb_cluster(char *table_name);
 static Tables* get_file_info(char *input_dir);
 static bool update_file_info(char *input_dir, Tables *tables);
 
@@ -519,8 +520,14 @@ static bool update_file_info(char *input_dir, Tables *tables)
 			continue;
 		}
 
+		table_name  = get_table_name(dirent_ptr->d_name);
+		if (!is_create_in_adb_cluster(table_name))
+		{
+			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", table_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", table_name);
+			continue;
+		}
 		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir);
-		table_name     = get_table_name(dirent_ptr->d_name);
 		file_full_path = get_full_path(new_file_name, input_dir);
 
 		ptr = tables->info;
@@ -618,8 +625,15 @@ static Tables* get_file_info(char *input_dir)
 			}
 		}
 
+		table_name = get_table_name(dirent_ptr->d_name);
+		if (!is_create_in_adb_cluster(table_name))
+		{
+			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", table_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", table_name);
+			continue;
+		}
+
 		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir);
-		table_name     = get_table_name(dirent_ptr->d_name);
 		file_full_path = get_full_path(new_file_name, input_dir);
 
 		ptr = tables_dynamic->info;
@@ -667,6 +681,47 @@ static Tables* get_file_info(char *input_dir)
 	closedir((DIR*)dir);
 
 	return tables_dynamic;
+}
+
+static bool is_create_in_adb_cluster(char *table_name)
+{
+	char query[QUERY_MAXLEN];
+	PGconn       *conn;
+	PGresult     *res;
+	int          numtuples;
+
+	conn = PQconnectdb(setting->coordinator_info->connection);
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		fprintf(stderr, "Connection to coordinator failed: %s \n", PQerrorMessage(conn));
+		exit_nicely(conn);
+	}
+
+	sprintf(query, "select pcrelid "
+					"from pgxc_class "
+					"where pcrelid = ( "
+						"select oid "
+						"from pg_class "
+						"where relname = \'%s\');", table_name);
+
+	res = PQexec(conn, query);
+	if ( !res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		fprintf(stderr, "Connection to coordinator failed: %s \n", PQerrorMessage(conn));
+		PQclear(res);
+		exit_nicely(conn);
+	}
+
+	numtuples = PQntuples(res);
+
+	PQclear(res);
+	PQfinish(conn);
+
+
+	if (numtuples == 1) //create table in adb cluster
+		return true;
+	else                // no create table in adb cluster
+		return false;
 }
 
 static char *get_table_name(char *file_name)
