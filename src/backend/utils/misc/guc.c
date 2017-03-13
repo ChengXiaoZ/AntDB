@@ -511,6 +511,7 @@ bool		enable_adb_ha_sync_select;
 char		*adb_ha_param_delimiter;
 bool 		debug_enable_satisfy_mvcc;
 bool		enable_stable_func_shipping;
+bool		enable_pushdown_art;
 char		*AGtmHost;
 int			AGtmPort;
 int			pool_time_out;
@@ -1737,6 +1738,16 @@ static struct config_bool ConfigureNamesBool[] =
 		 	gettext_noop("Can set ON by SET command by superuser.")
 		},
 		&debug_enable_satisfy_mvcc,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_pushdown_art", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("push down query to one datanode if all table are replicated."),
+			NULL
+		},
+		&enable_pushdown_art,
 		false,
 		NULL, NULL, NULL
 	},

@@ -2612,6 +2612,79 @@ pgxc_handle_unsupported_stmts(Query *query)
 	}
 }
 
+#ifdef ADB
+
+extern bool enable_pushdown_art;
+
+ExecNodes *
+pgxc_is_all_replicated_table(Query *query)
+{
+	List *collected_rtable;
+	ListCell *lc;
+	RangeTblEntry *rte;
+	RelationLocInfo *rel_loc_info;
+	int unrep_table_count = 0;
+	int rep_table_count = 0;
+	RelationAccessType rel_access = RELATION_ACCESS_READ;
+	ExecNodes* rel_exec_nodes = NULL;
+
+	if(CMD_SELECT != query->commandType)
+		return NULL;
+
+	if(true == query->hasForUpdate)
+		return NULL;
+
+	//1. collect location info of all tables and find the query that only use replicated table.
+	collected_rtable = pgxc_collect_RTE(query);
+	collected_rtable = list_concat(collected_rtable, query->rtable);
+	foreach(lc, collected_rtable)
+	{
+		rte= (RangeTblEntry *) lfirst(lc);
+		if (rte->rtekind != RTE_RELATION)
+			continue;
+		rel_loc_info = GetRelationLocInfo(rte->relid);
+		if (0 == rel_loc_info)
+			continue;
+		if(LOCATOR_TYPE_REPLICATED == rel_loc_info->locatorType)
+			rep_table_count++;
+		else
+			unrep_table_count++;
+	}
+
+	//case select pg_backend_pid();
+	if (!((0 == unrep_table_count) && ( 0 != rep_table_count)))
+		return NULL;
+
+
+	//2.pushdown sql without volatile functions(without_check_RownumExpr).
+	if (contain_volatile_functions_without_check_RownumExpr((Node *)query))
+		return NULL;
+
+
+	//3. choose one datanode and return ExecNodes.
+	{
+		List *tmp_list = 0;
+		Datum value = (Datum)0;
+		bool null = true;
+		Oid type = InvalidOid;
+		rel_exec_nodes = GetRelationNodes(rel_loc_info,
+										  1,
+										  &value,
+										  &null,
+										  &type,
+										  rel_access);
+
+		tmp_list = rel_exec_nodes->nodeList;
+		rel_exec_nodes->nodeList = GetPreferredReplicationNode(rel_exec_nodes->nodeList);
+		list_free(tmp_list);
+	}
+
+	return rel_exec_nodes;
+}
+
+#endif
+
+
 /*
  * pgxc_FQS_planner
  * The routine tries to see if the statement can be completely evaluated on the
@@ -2653,11 +2726,22 @@ pgxc_FQS_planner(Query *query, int cursorOptions, ParamListInfo boundParams)
 	if (query->utilityStmt &&
 		IsA(query->utilityStmt, DeclareCursorStmt))
 		cursorOptions |= ((DeclareCursorStmt *) query->utilityStmt)->options;
-	/*
-	 * If the query can not be or need not be shipped to the Datanodes, don't
-	 * create any plan here. standard_planner() will take care of it.
-	 */
-	exec_nodes = pgxc_is_query_shippable(query, 0);
+
+#ifdef ADB
+		exec_nodes = NULL;
+	
+		if(enable_pushdown_art)
+			exec_nodes = pgxc_is_all_replicated_table(query);
+		/*
+		 * If the query can not be or need not be shipped to the Datanodes, don't
+		 * create any plan here. standard_planner() will take care of it.
+		 */
+		if (exec_nodes == NULL)
+			exec_nodes = pgxc_is_query_shippable(query, 0);
+#else
+		exec_nodes = pgxc_is_query_shippable(query, 0);
+#endif
+
 	if (exec_nodes == NULL)
 		return NULL;
 
