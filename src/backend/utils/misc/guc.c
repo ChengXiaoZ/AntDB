@@ -516,6 +516,7 @@ char		*AGtmHost;
 int			AGtmPort;
 int			pool_time_out;
 bool		enable_zero_year;
+bool		distribute_by_replication_default;
 #endif
 
 #ifdef AGTM
@@ -1768,6 +1769,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&enable_zero_year,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"distribute_by_replication_default", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Set distribute by replication default."),
+			NULL
+		},
+		&distribute_by_replication_default,
 		false,
 		NULL, NULL, NULL
 	},

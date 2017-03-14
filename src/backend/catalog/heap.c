@@ -88,9 +88,9 @@
 #include "commands/dbcommands.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_func.h"
+
+extern bool distribute_by_replication_default;
 #endif
-
-
 
 /* Potentially set by contrib/pg_upgrade_support functions */
 Oid			binary_upgrade_next_heap_pg_class_oid = InvalidOid;
@@ -1478,6 +1478,11 @@ GetRelationDistributionItems(Oid relid,
 	char local_locatortype = '\0';
 	AttrNumber local_attnum = 0;
 
+#ifdef ADB
+	if (!distributeby && distribute_by_replication_default)
+		local_locatortype = LOCATOR_TYPE_REPLICATED;
+	else
+#endif
 	if (!distributeby)
 	{
 		/*
