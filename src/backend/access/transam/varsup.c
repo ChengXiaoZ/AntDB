@@ -379,11 +379,18 @@ GetNewTransactionId(bool isSubXact)
 		return BootstrapTransactionId;
 	}
 
-#if defined(ADB) && !defined(ADBLOADER)
-	/*
-	 * The new XID must be got from AGTM when processing mode is normal.
-	 */
-	Assert(!(IsUnderPostmaster && IsNormalProcessingMode()));
+#if defined(ADB)
+	if (!isADBLoader)
+	{
+		if (IsUnderAGTM())
+		{
+			/*
+			 * The new XID must be got from AGTM when processing mode is normal.
+			 */
+			Assert(!(IsUnderPostmaster && IsNormalProcessingMode()));
+		}
+	}
+
 #endif
 
 	/* safety check, we should never get this far in a HS slave */
