@@ -681,3 +681,16 @@ CREATE OR REPLACE FUNCTION oracle.sys_extract_utc(timestamp with time zone)
     IMMUTABLE
     STRICT;
 
+/*
+ * Function: mode
+ * Parameter Type: (numeric, numeric)
+ * Add oracle.mod(numeric, numeric) to make sure find oracle.mod if
+ * current grammar is oracle;
+ */
+CREATE OR REPLACE FUNCTION oracle.mod(numeric, numeric)
+    RETURNS numeric
+    AS 'numeric_mod'
+    LANGUAGE INTERNAL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
