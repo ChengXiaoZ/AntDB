@@ -319,22 +319,25 @@ int main(int argc, char **argv)
 		slist_mutable_iter siter;
 		++table_count;
 
-		if (table_info_ptr->file_nums == 0 && table_info_ptr->next != NULL)
+		if (setting->dynamic_mode)
 		{
-			table_info_ptr = table_info_ptr->next;
-			continue;
-		}
-
-		if (table_info_ptr->file_nums == 0 && table_info_ptr->next == NULL)
-		{
-			if (update_tables)
+			if (table_info_ptr->file_nums == 0 && table_info_ptr->next != NULL)
 			{
-				update_file_info(setting->input_directory, tables_ptr);
-				table_info_ptr = tables_ptr->info;
+				table_info_ptr = table_info_ptr->next;
 				continue;
 			}
-			else
-				break;
+
+			if (table_info_ptr->file_nums == 0 && table_info_ptr->next == NULL)
+			{
+				if (update_tables)
+				{
+					update_file_info(setting->input_directory, tables_ptr);
+					table_info_ptr = tables_ptr->info;
+					continue;
+				}
+				else
+					break;
+			}
 		}
 
 		/*get table info to store in the table_info_ptr*/
