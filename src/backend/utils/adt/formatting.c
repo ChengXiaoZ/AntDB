@@ -93,6 +93,7 @@
 #include "utils/pg_locale.h"
 
 #ifdef ADB
+#include <time.h>
 extern bool enable_zero_year;
 
 #define RADIX			"."
@@ -1131,6 +1132,15 @@ static void do_to_timestamp_internal(text *date_txt, text *fmt,
 				struct pg_tm * tm, fsec_t *fsec,
 				void (*DCH_from_char_ptr)(FormatNode *, char *, TmFromChar *));
 static void ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out);
+static void ora_date_check(TmFromChar *out, const char * type);
+
+#define OraCheckYear(out)	ora_date_check((out), "y")
+#define OraCheckMonth(out)	ora_date_check((out), "M")
+#define OraCheckMDay(out)	ora_date_check((out), "dm")
+#define OraCheckYDay(out)	ora_date_check((out), "dy")
+#define OraCheckHour(out)	ora_date_check((out), "h")
+#define OraCheckMinute(out)	ora_date_check((out), "m")
+#define OraCheckSecond(out)	ora_date_check((out), "s")
 #endif
 static char *fill_str(char *str, int c, int max);
 static FormatNode *NUM_cache(int len, NUMDesc *Num, text *pars_str, bool *shouldFree);
@@ -6096,18 +6106,22 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 				from_char_parse_int_len(&out->hh, &s, 2, n);
 				out->clock = CLOCK_12_HOUR;
 				SKIP_THth(s, n->suffix);
+				OraCheckHour(out);
 				break;
 			case DCH_HH24:
 				from_char_parse_int_len(&out->hh, &s, 2, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckHour(out);
 				break;
 			case DCH_MI:
 				from_char_parse_int(&out->mi, &s, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckMinute(out);
 				break;
 			case DCH_SS:
 				from_char_parse_int(&out->ss, &s, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckSecond(out);
 				break;
 			case DCH_MS:		/* millisecond */
 				len = from_char_parse_int_len(&out->ms, &s, 3, n);
@@ -6176,6 +6190,7 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 											MAX_MON_LEN, n);
 
 					from_char_set_int(&out->mm, value + 1, n);
+					OraCheckMonth(out);
 				}
 				break;
 			case DCH_MON:
@@ -6194,10 +6209,12 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 						s += len;
 				}
 				from_char_set_int(&out->mm, value + 1, n);
+				OraCheckMonth(out);
 				break;
 			case DCH_MM:
 				from_char_parse_int(&out->mm, &s, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckMonth(out);
 				break;
 			case DCH_DAY:
 			case DCH_Day:
@@ -6218,14 +6235,17 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 			case DCH_DDD:
 				from_char_parse_int(&out->ddd, &s, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckYDay(out);
 				break;
 			case DCH_IDDD:
 				from_char_parse_int_len(&out->ddd, &s, 3, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckYDay(out);
 				break;
 			case DCH_DD:
 				from_char_parse_int(&out->dd, &s, n);
 				SKIP_THth(s, n->suffix);
+				OraCheckMDay(out);
 				break;
 			case DCH_D:
 				from_char_parse_int(&out->d, &s, n);
@@ -6279,6 +6299,7 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 					out->yysz = 4;
 					s += nch;
 					SKIP_THth(s, n->suffix);
+					OraCheckYear(out);
 				}
 				break;
 			case DCH_YYYY:
@@ -6286,6 +6307,7 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 				from_char_parse_int(&out->year, &s, n);
 				out->yysz = 4;
 				SKIP_THth(s, n->suffix);
+				OraCheckYear(out);
 				break;
 			case DCH_YYY:
 			case DCH_IYY:
@@ -6293,6 +6315,7 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 					out->year = adjust_partial_year_to_2020(out->year);
 				out->yysz = 3;
 				SKIP_THth(s, n->suffix);
+				OraCheckYear(out);
 				break;
 			case DCH_YY:
 			case DCH_IY:
@@ -6300,6 +6323,7 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 					out->year = adjust_partial_year_to_2020(out->year);
 				out->yysz = 2;
 				SKIP_THth(s, n->suffix);
+				OraCheckYear(out);
 				break;
 			case DCH_Y:
 			case DCH_I:
@@ -6307,16 +6331,19 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 					out->year = adjust_partial_year_to_2020(out->year);
 				out->yysz = 1;
 				SKIP_THth(s, n->suffix);
+				OraCheckYear(out);
 				break;
 			case DCH_RM:
 				from_char_seq_search(&value, &s, rm_months_upper,
 									 ALL_UPPER, MAX_RM_LEN, n);
 				from_char_set_int(&out->mm, MONTHS_PER_YEAR - value, n);
+				OraCheckMonth(out);
 				break;
 			case DCH_rm:
 				from_char_seq_search(&value, &s, rm_months_lower,
 									 ALL_LOWER, MAX_RM_LEN, n);
 				from_char_set_int(&out->mm, MONTHS_PER_YEAR - value, n);
+				OraCheckMonth(out);
 				break;
 			case DCH_W:
 				from_char_parse_int(&out->w, &s, n);
@@ -6337,57 +6364,129 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 			(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
 			errmsg("Date format picture ends before converting entire input string")));
 
-	/* check year */
-	if (out->year == 0)
-		ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			errmsg("Invalid year \"%d\"", out->year)));
-	/* check month */
-	if (out->mm	< 1 || out->mm > 12)
-		ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			errmsg("Invalid month \"%d\"", out->mm)));
-	/* check day */
+	/*
+	 * Just like oracle, set default year and month,
+	 * Then we can check day, wday and yday.
+	 */
+	if (out->year == 0 || (out->mm == 0 && out->ddd == 0))
+	{
+		time_t now = time(NULL);
+		struct tm * tm = localtime(&now);
+
+		if (out->year == 0)
+			out->year = tm->tm_year + 1900;
+		if (out->mm == 0 && out->ddd == 0)
+			out->mm = tm->tm_mon + 1;
+	}
+
+	/*
+	 * Check day of month again.
+	 */
+	if (out->dd > 0)
 	{
 		static const int mdays[2][13]= {
 			{0,31,28,31,30,31,30,31,31,30,31,30,31},
 			{0,31,29,31,30,31,30,31,31,30,31,30,31}
 			};
-		int maxday = mdays[isleap(out->year)][out->mm];
-		if (out->dd < 1 || out->dd > maxday)
+		int maxmday = mdays[isleap(out->year)][out->mm];
+		if (out->dd > maxmday)
 			ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				errmsg("Invalid day \"%d\", the day must be between the first and the "
-					"last day of the month", out->dd)));
+				errmsg("the day must be between the first and the last day of the month")));
 	}
-	/* check hour */
-	if (out->clock == CLOCK_12_HOUR)
+
+	/* Check day of year again */
+	if (out->ddd > 0)
 	{
-		if (out->hh < 1 || out->hh > HOURS_PER_DAY / 2)
-				ereport(ERROR,
-					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-					 errmsg("hour \"%d\" is invalid for the 12-hour clock",
-							out->hh),
-					 errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
-	} else
-	{
-		if (out->hh < 0 || out->hh >= HOURS_PER_DAY)
+		if (out->ddd > (isleap(out->year) ? 366 : 365))
 			ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("hour \"%d\" is invalid for the 24-hour clock",
-						out->hh)));
+				errmsg("day of year must be between 1 and 365 (366 for leap year)")));
 	}
-	/* check minute */
-	if (out->mi < 0 || out->mi > MINS_PER_HOUR)
-		ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			 errmsg("Invalid minute \"%d\"", out->mi)));
-	/* check second */
-	if (out->ss < 0 || out->ss > SECS_PER_MINUTE)
-		ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			 errmsg("Invalid second \"%d\"", out->ss)));
-	/* TODO: check  others */
+	/* Check day of week again (do nothing, see above) */
 }
 
+static void ora_date_check(TmFromChar *out, const char * type)
+{
+	AssertArg(out && type);
+
+	switch (type[0])
+	{
+		case 'y':
+			/* check year */
+			if (out->year == 0)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					errmsg("not a valid year: \"%d\"", out->year)));
+			break;
+		case 'M':
+			/* check month */
+			if (out->mm	< 1 || out->mm > 12)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					errmsg("not a valid month: \"%d\"", out->mm)));
+			break;
+		case 'd':
+			/* check day */
+			{
+				switch (type[1])
+				{
+					case 'm':
+						/* check day of month just to make sure it is positive */
+						if (out->dd < 1)
+							ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								errmsg("not a valid day: \"%d\"", out->dd)));
+						break;
+					case 'y':
+						/* check day of year just to make sure it is positive */
+						if (out->ddd < 1)
+							ereport(ERROR,
+								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+								errmsg("day of year must be between 1 and 365 (366 for leap year)")));
+						break;
+					default:
+						Assert(0);
+						break;
+				}
+			}
+			break;
+		case 'h':
+			/* check hour */
+			if (out->clock == CLOCK_12_HOUR)
+			{
+				if (out->hh < 1 || out->hh > HOURS_PER_DAY / 2)
+					ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						errmsg("hour \"%d\" is invalid for the 12-hour clock",
+						out->hh),
+						errhint("Use the 24-hour clock, or give an hour between 1 and 12.")));
+			} else
+			{
+				if (out->hh < 0 || out->hh >= HOURS_PER_DAY)
+					ereport(ERROR,
+						(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+						errmsg("hour \"%d\" is invalid for the 24-hour clock",
+						out->hh)));
+			}
+			break;
+		case 'm':
+			/* check minute */
+			if (out->mi < 0 || out->mi > MINS_PER_HOUR)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					errmsg("not a valid minute: \"%d\"", out->mi)));
+			break;
+		case 's':
+			/* check second */
+			if (out->ss < 0 || out->ss > SECS_PER_MINUTE)
+				ereport(ERROR,
+					(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+					errmsg("not a valid second: \"%d\"", out->ss)));
+			break;
+		default:
+			/* TODO: check  others */
+			break;
+	}
+}
 #endif
