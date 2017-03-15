@@ -11,6 +11,9 @@
 
 typedef pthread_t	Read_ThreadID;
 
+pthread_t g_read_thread_id;
+
+
 #define READFILEBUFSIZE    (8 * BLCKSZ)
 
 typedef struct Read_ThreadInfo
@@ -81,6 +84,9 @@ read_threadMain (void *argp)
 	LineBuffer		 *linebuf;
 	long			 lineno = 0;
 	int 			 flag;
+	/*enble cancel thread. */
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
 	stat(thrinfo->file_path, &statbuf);
 	if (S_ISDIR(statbuf.st_mode))
@@ -107,6 +113,8 @@ read_threadMain (void *argp)
 		{
 			int res;			
 			lineno++;
+
+			pthread_testcancel();
 
 			if (NEED_EXIT)
 			{
@@ -144,6 +152,8 @@ read_threadMain (void *argp)
 		{
 			int res;
 			lineno++;
+
+			pthread_testcancel();
 
 			if (NEED_EXIT)
 			{
@@ -220,15 +230,31 @@ GetReadModule(void)
 void
 SetReadProducerExit(void)
 {
+	int i =0;
+	int pthread_res = 0;
+
 	NEED_EXIT = true;
-	for (;;)
+
+	/*try 3 times*/
+	for(i = 0; i < 3; i++)
 	{
 		if (EXITED)
 			break;
-		/* sleep 5s to wait thread exit */
-		sleep(5);
+
+		/* sleep 2s to wait thread exit */
+		sleep(2);
+	}
+
+	if (!EXITED)
+	{
+		pthread_res = pthread_cancel(g_read_thread_id);
+		if (pthread_res != 0)
+		{
+			fprintf(stderr, "pthread cancel failed.\n");
+		}
 	}
 }
+
 
 static void	 
 read_write_error_message(Read_ThreadInfo  *thrinfo, char * message,			char * error_message, int line_no,
