@@ -1230,10 +1230,12 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 	{
 		long			send_flag;
 		uint32			hash_result;
-		QueueElement	*inner_element; 
+		QueueElement	*inner_element;
+		char *strtok_r_ptr = NULL;
+
 		/* split buff  : falg,hash*/
 		char * buff_tmp = pg_strdup(read_buff);
-		char * field = strtok(buff_tmp, thrinfo->hash_field->hash_delim);
+		char * field = strtok_r(buff_tmp, thrinfo->hash_field->hash_delim, &strtok_r_ptr);
 		if (NULL == field)
 		{
 			/* buffer error */
@@ -1257,7 +1259,7 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 		{
 			send_flag = atol(field);
 		}
-		field = strtok(NULL, thrinfo->hash_field->hash_delim);
+		field = strtok_r(NULL, thrinfo->hash_field->hash_delim, &strtok_r_ptr);
 		if (NULL == field)
 		{
 			ADBLOADER_LOG(LOG_ERROR,
