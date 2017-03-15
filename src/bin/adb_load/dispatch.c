@@ -674,6 +674,12 @@ dispatch_ThreadCleanup (void * argp)
 		thrinfo->conn = NULL;
 	}
 
+	if (thrinfo->agtm_conn)
+	{
+		PQfinish(thrinfo->agtm_conn);
+		thrinfo->agtm_conn = NULL;
+	}
+
 	if (thrinfo->conninfo_datanode)
 	{
 		pfree(thrinfo->conninfo_datanode);
