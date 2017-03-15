@@ -1645,11 +1645,11 @@ create_remotegrouping_plan(PlannerInfo *root, Plan *local_plan)
 	}
 
 	/*
-	 * If group by clause has distribution column in it or if there is only one
+	 * If group by clause has distribution column in it and if there is only one
 	 * datanode involved, the evaluation of aggregates and grouping involves
 	 * only a single datanode.
 	 */
-	if (pgxc_query_has_distcolgrouping(query, remote_scan->exec_nodes) ||
+	if (pgxc_query_has_distcolgrouping(query, remote_scan->exec_nodes) &&
 		list_length(remote_scan->exec_nodes->nodeList) == 1)
 		single_node_grouping = true;
 	else
