@@ -53,7 +53,7 @@ static type* _mutator_##type(type *dest, const type *src,		\
 #define NODE_BITMAPSET(t,m) dest->m = bms_copy(src->m);
 #define NODE_BITMAPSET_ARRAY(t,m,l)	not support yet
 #define NODE_SCALAR_POINT(t,m,l) dest->m = pmemdup(src->m, sizeof(t)*(l));
-#define NODE_STRING(m) dest->m = pstrdup(src->m);
+#define NODE_STRING(m) if(src->m) dest->m = pstrdup(src->m);
 #define NODE_STRUCT(t,m)									\
 	do{														\
 		dest->m = pmemdup(src->m, sizeof(t));				\
