@@ -1232,20 +1232,25 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 		uint32			hash_result;
 		QueueElement	*inner_element; 
 		/* split buff  : falg,hash*/
-		char * field = strtok(read_buff, thrinfo->hash_field->hash_delim);
+		char * buff_tmp = pg_strdup(read_buff);
+		char * field = strtok(buff_tmp, thrinfo->hash_field->hash_delim);
 		if (NULL == field)
 		{
-			/* buffer error */
+			/* buffer error */v
 			ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] get hash restult error: %s",
+							"[HASH][thread id : %ld ] get hash restult error, can't get flag result : %s",
 							thrinfo->thread_id, read_buff);
 			thrinfo->state = THREAD_FIELD_ERROR;
 			/* this error need not to pthread_exit,  improve it*/
 			inner_element = mq_poll(thrinfo->inner_queue);
 			hash_write_error_message(thrinfo,
-									"get hash restult error", "get hash restult error",
+									" get hash restult error, can't get flag result",
+									read_buff,
 									inner_element->lineBuffer->fileline, inner_element->lineBuffer->data, TRUE);
 			pfree(inner_element);
+			PQfreemem(read_buff);
+			if (buff_tmp)
+				pfree(buff_tmp);
 			pthread_exit(thrinfo);
 		}
 		else
@@ -1256,16 +1261,20 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 		if (NULL == field)
 		{
 			ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] get hash restult error: %s",
+							"[HASH][thread id : %ld ] get hash restult error, can't get hash: %s",
 							thrinfo->thread_id, read_buff);
 			/* buffer error */
 			thrinfo->state = THREAD_FIELD_ERROR;
 			/* this error need not to pthread_exit,  improve it*/
 			inner_element = mq_poll(thrinfo->inner_queue);
 			hash_write_error_message(thrinfo,
-									"get hash restult error", "get hash restult error",
+									"get hash restult error, can't get hash",
+									read_buff,
 									inner_element->lineBuffer->fileline, inner_element->lineBuffer->data, TRUE);
 			pfree(inner_element);
+			PQfreemem(read_buff);
+			if (buff_tmp)
+				pfree(buff_tmp);
 			pthread_exit(thrinfo);
 		}
 		else
@@ -1273,7 +1282,7 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 			char *end = field + strlen(field);
 			hash_result = strtol(field, &end, 10);
 		}
-		PQfreemem(read_buff);
+	
 		/* read data from inner queue */
 		inner_element = mq_poll(thrinfo->inner_queue);
 		if (NULL == inner_element)
@@ -1286,6 +1295,9 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 			hash_write_error_message(thrinfo,
 									"message confusion error", "message confusion error",
 									0, NULL, TRUE);
+			PQfreemem(read_buff);
+			if (buff_tmp)
+				pfree(buff_tmp);
 			pthread_exit(thrinfo);
 		}
 		else
@@ -1302,6 +1314,8 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 			inner_element->lineBuffer = NULL;
 			pfree(inner_element);
 		}
+		PQfreemem(read_buff);
+		pfree(buff_tmp);
 	}	
 }
 
