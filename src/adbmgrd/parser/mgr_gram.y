@@ -86,7 +86,6 @@ static void mgr_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 static int mgr_yylex(union YYSTYPE *lvalp, YYLTYPE *llocp,
 		   core_yyscan_t yyscanner);
 List *mgr_parse_query(const char *query_string);
-static ResTarget* make_star_target(int location);
 static Node* make_column_in(const char *col_name, List *values);
 static Node* makeNode_RangeFunction(const char *func_name, List *func_args);
 static Node* make_func_call(const char *func_name, List *func_args);
@@ -2577,22 +2576,6 @@ List *mgr_parse_query(const char *query_string)
 		return NIL;
 
 	return yyextra.parsetree;
-}
-
-static ResTarget* make_star_target(int location)
-{
-	ResTarget *target;
-	ColumnRef *n = makeNode(ColumnRef);
-	n->fields = list_make1(makeNode(A_Star));
-	n->location = -1;
-
-	target = makeNode(ResTarget);
-	target->name = NULL;
-	target->indirection = NIL;
-	target->val = (Node *)n;
-	target->location = -1;
-
-	return target;
 }
 
 static Node* make_column_in(const char *col_name, List *values)
