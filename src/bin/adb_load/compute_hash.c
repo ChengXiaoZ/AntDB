@@ -1236,7 +1236,7 @@ read_data(PGconn *conn, char *read_buff, ComputeThreadInfo	*thrinfo)
 		char * field = strtok(buff_tmp, thrinfo->hash_field->hash_delim);
 		if (NULL == field)
 		{
-			/* buffer error */v
+			/* buffer error */
 			ADBLOADER_LOG(LOG_ERROR,
 							"[HASH][thread id : %ld ] get hash restult error, can't get flag result : %s",
 							thrinfo->thread_id, read_buff);
