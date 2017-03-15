@@ -814,7 +814,7 @@ static bool is_suffix(char *str, char *suffix)
 	ptr = strrchr(str, '.');
 	if (ptr == NULL)
 	{
-		fprintf(stderr, "The character \"%c\" was not found in \"%s\". \n", '.', str);
+		//fprintf(stderr, "The character \"%c\" was not found in \"%s\". \n", '.', str);
 		return false;
 	}
 
