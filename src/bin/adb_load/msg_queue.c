@@ -171,7 +171,7 @@ void
 mq_destory (MessageQueue *queue)
 {
 	Assert(queue != NULL);
-	pthread_mutex_unlock(&queue->queue_mutex);
+	pthread_mutex_lock(&queue->queue_mutex);
 	while(!dlist_is_empty(&queue->queue_head))
 	{
 		dlist_node 	 *node;
