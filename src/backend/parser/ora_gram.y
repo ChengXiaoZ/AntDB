@@ -250,7 +250,7 @@ static Node* make_any_sublink(Node *testexpr, const char *operName, Node *subsel
 	common_table_expr columnDef columnref CreateStmt ctext_expr columnElem
 	ColConstraint ColConstraintElem ConstraintAttr CreateRoleStmt
 	case_default case_expr /*case_when*/ case_when_item c_expr
-	ConstraintElem CreateSeqStmt CreateAsStmt
+	ConstraintElem CreateSeqStmt CreateAsStmt connect_by_clause
 	DeleteStmt DropStmt def_arg
 	ExplainStmt ExplainableStmt explain_option_arg ExclusionWhereClause
 	func_arg_expr func_expr for_locking_item
@@ -258,9 +258,9 @@ static Node* make_any_sublink(Node *testexpr, const char *operName, Node *subsel
 	indirection_el InsertStmt IndexStmt
 	join_outer
 	limit_clause
-	offset_clause opt_collate_clause
+	offset_clause opt_collate_clause opt_start_with_clause
 	SelectStmt select_clause select_no_parens select_with_parens set_expr
-	simple_select select_limit_value select_offset_value
+	simple_select select_limit_value select_offset_value start_with_clause
 	TableElement TypedTableElement table_ref TruncateStmt
 	TransactionStmt
 	UpdateStmt
@@ -360,7 +360,7 @@ static Node* make_any_sublink(Node *testexpr, const char *operName, Node *subsel
 /*
  * same specific token
  */
-%token	ORACLE_JOIN_OP
+%token	ORACLE_JOIN_OP CONNECT_BY
 
 /* Precedence: lowest to highest */
 %right	RETURN_P RETURNING PRIMARY
@@ -2201,6 +2201,13 @@ a_expr:	c_expr
 	| a_expr '=' SOME '(' a_expr ')'			{ $$ = MAKE_ANY_A_EXPR("=", $1, $5, @2); }
 	| a_expr LIKE SOME '(' a_expr ')'			{ $$ = MAKE_ANY_A_EXPR("~~", $1, $5, @2); }
 	| a_expr NOT LIKE SOME '(' a_expr ')'		{ $$ = MAKE_ANY_A_EXPR("!~~", $1, $6, @2); }
+	| PRIOR a_expr								%prec UMINUS
+		{
+			PriorExpr *prior = makeNode(PriorExpr);
+			prior->location = @1;
+			prior->expr = $2;
+			$$ = (Node*)prior;
+		}
 	;
 
 /*
@@ -4860,6 +4867,32 @@ simple_select:
 				n->havingClause = $7;
 				$$ = (Node*)n;
 			}
+		| SELECT opt_distinct target_list from_clause where_clause
+			group_clause having_clause
+			start_with_clause connect_by_clause
+			{
+				SelectStmt *n = makeNode(SelectStmt);
+				n->distinctClause = $2;
+				n->targetList = $3;
+				n->fromClause = $4;
+				n->whereClause = $5;
+				n->groupClause = $6;
+				n->havingClause = $7;
+				$$ = makeConnectByStmt(n, $8, $9, yyscanner);
+			}
+		| SELECT opt_distinct target_list from_clause where_clause
+			group_clause having_clause
+			connect_by_clause opt_start_with_clause
+			{
+				SelectStmt *n = makeNode(SelectStmt);
+				n->distinctClause = $2;
+				n->targetList = $3;
+				n->fromClause = $4;
+				n->whereClause = $5;
+				n->groupClause = $6;
+				n->havingClause = $7;
+				$$ = makeConnectByStmt(n, $9, $8, yyscanner);
+			}
 		| select_clause UNION opt_all select_clause
 			{
 				$$ = makeSetOp(SETOP_UNION, $3, $1, $4);
@@ -4869,20 +4902,6 @@ simple_select:
 				$$ = makeSetOp(SETOP_EXCEPT, $3, $1, $4);
 			}
 		| values_clause { $$ = $1; }
-		/* simple connect by */
-		| SELECT opt_distinct target_list FROM relation_expr opt_alias_clause
-			START WITH columnref '=' AexprConst
-			CONNECT BY opt_prior columnref '=' columnref
-			{
-				if($2)
-					ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("syntax error"),
-							 parser_errposition(@1)));
-				$$ = makeConnectSelect($3, $5, $6
-						,(Node*)makeSimpleA_Expr(AEXPR_OP, "=", $9, $11, @10)
-						,(Node*)makeSimpleA_Expr(AEXPR_OP, "=", $15, $17, @16));
-			}
 		;
 
 sortby: a_expr opt_asc_desc
@@ -4908,9 +4927,16 @@ opt_sort_clause:
 	| /* empty */						{ $$ = NIL; }
 	;
 
-opt_prior:
-	  PRIOR
-	| /* empty */
+opt_start_with_clause:
+	  start_with_clause					{ $$ = $1; }
+	| /* empty */						{ $$ = NULL; }
+	;
+
+start_with_clause: START WITH a_expr		{ $$ = $3; }
+	;
+
+connect_by_clause:
+	CONNECT_BY a_expr	%prec END_P		{ $$ = $2; }
 	;
 
 TableElement:
@@ -5003,15 +5029,7 @@ target_item:
 			}
 		| '*'
 			{
-				ColumnRef *n = makeNode(ColumnRef);
-				n->fields = list_make1(makeNode(A_Star));
-				n->location = @1;
-
-				$$ = makeNode(ResTarget);
-				$$->name = NULL;
-				$$->indirection = NIL;
-				$$->val = (Node *)n;
-				$$->location = @1;
+				$$ = make_star_target(@1);
 			}
 		;
 
@@ -5981,6 +5999,19 @@ static int ora_yylex(YYSTYPE *lvalp, YYLTYPE *lloc, core_yyscan_t yyscanner)
 		cur_token = ORACLE_JOIN_OP;
 		StaticAssertExpr(lengthof(yyextra->lookahead)==2, "change invalid code");
 		yyextra->lookahead[0].token = yyextra->lookahead[1].token = INVALID_TOKEN;
+		break;
+	case CONNECT:
+		if(yyextra->lookahead[0].token == INVALID_TOKEN)
+		{
+			yyextra->lookahead[0].token = core_yylex(&(yyextra->lookahead[0].lval)
+				, &(yyextra->lookahead[0].loc), yyscanner);
+		}
+		if(yyextra->lookahead[0].token != BY)
+			break;
+
+		/* now we have "connect by" token */
+		cur_token = CONNECT_BY;
+		yyextra->lookahead[0].token = INVALID_TOKEN;
 		break;
 	default:
 		break;

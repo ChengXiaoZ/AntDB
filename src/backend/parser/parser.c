@@ -32,12 +32,38 @@
 #include "nodes/parsenodes.h"
 
 #ifdef ADB
+#include "catalog/heap.h" /* SystemAttributeByName */
 #include "lib/stringinfo.h"
+#include "miscadmin.h" /* check_stack_depth */
 #endif
 
 #define parser_yyerror(msg)  scanner_yyerror(msg, yyscanner)
 #define parser_errposition(pos)  scanner_errposition(pos, yyscanner)
 
+#ifdef ADB
+typedef struct ConnectByMutatorContext
+{
+	core_yyscan_t yyscanner;
+	char *base_rel_name;
+	char *prior_rel_name;
+	bool prior;
+}ConnectByMutatorContext;
+
+typedef struct SearchConnectByColumnContext
+{
+	core_yyscan_t yyscanner;
+	List *list;
+	const char *base_rel_name;
+	const char *schema_name;
+	const char *database_name;
+	bool have_star;
+}SearchConnectByColumnContext;
+
+static bool search_columnref(ColumnRef *c, SearchConnectByColumnContext *context);
+static List* make_target_list(SearchConnectByColumnContext *context);
+static Node* mutator_column_table_name(Node *node, ConnectByMutatorContext *context);
+static bool have_prior_expr(Node *node, void *context);
+#endif /* ADB */
 /*
  * raw_parser
  *		Given a query in string form, do lexical and grammatical analysis.
@@ -392,128 +418,333 @@ check_sequence_name(List *names, core_yyscan_t yyscanner, int location)
 	return list_make1(makeStringConst(buf.data, location));
 }
 
-Node *makeConnectSelect(List *target, RangeVar *range, Alias *as, Node *start, Node *connectby)
+Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
+								core_yyscan_t yyscanner)
 {
-	SelectStmt *n,*s1;
-	A_Expr *expr_connect;
-	RangeVar *r;
-	ColumnRef *c;
-	ListCell *lc;
-	ResTarget *res;
-	if(start == NULL || connectby == NULL)
+	SelectStmt *new_select,
+			   *union_all_left,
+			   *union_all_right;
+	CommonTableExpr *common_table;
+	char *base_rel_name;
+	RangeVar *range;
+	List *base_tl;	/* base rel target list */
+	ConnectByMutatorContext context;
+	AssertArg(stmt && connect_by && yyscanner);
+
+	/* have PriorExpr? */
+	if(have_prior_expr(connect_by, NULL) == false)
 	{
-		ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR)
-			,errmsg("not have \"start by\" or \"connect by\"")));
-	}
-	if(!IsA(connectby, A_Expr))
-	{
-		ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR)
-			,errmsg("syntax error")));
-	}
-	expr_connect = (A_Expr*)connectby;
-	if(!IsA(expr_connect->lexpr, ColumnRef) || !IsA(expr_connect->rexpr, ColumnRef))
-	{
-		ereport(ERROR,
-			(errcode(ERRCODE_SYNTAX_ERROR)
-			,errmsg("syntax error")));
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("have no prior expression")));
 	}
 
-	n = makeNode(SelectStmt);
+	/* make new select and have recursive cte */
+	new_select = makeNode(SelectStmt);
+	new_select->withClause = makeNode(WithClause);
+	new_select->withClause->recursive = true;
+	new_select->withClause->location = -1;
 
-	/* make union all left */
-	s1 = makeNode(SelectStmt);
-	res = makeNode(ResTarget);
-	c = makeNode(ColumnRef);
-	c->fields = list_make1(makeNode(A_Star));
-	res->val = (Node*)c;
-	res->location = -1;
-	s1->targetList = list_make1(res);
-	range->alias = as;
-	s1->fromClause = list_make1(range);
-	s1->whereClause = start;
-
-	n->op = SETOP_UNION;
-	n->all = true;
-	n->larg = s1;
-
-	/* make union all right */
-	s1 = makeNode(SelectStmt);
-	res = makeNode(ResTarget);
-	c = makeNode(ColumnRef);
-	c->fields = list_make2(makeString("_c1"), makeNode(A_Star));
-	res->val = (Node*)c;
-	res->location = -1;
-	s1->targetList = list_make1(res);
-
-	/* make from join */
+	/* get base rel name */
+	if(list_length(stmt->fromClause) != 1
+		|| !IsA(linitial(stmt->fromClause), RangeVar))
 	{
-		JoinExpr *join = makeNode(JoinExpr);
-		join->jointype = JOIN_INNER;
-
-		r = copyObject(range);
-		r->alias = makeAlias("_c1", NIL);
-		join->larg = (Node*)r;
-
-		r = makeRangeVar(NULL, pstrdup("t"), -1);
-		r->alias = makeAlias("_c2", NIL);
-		join->rarg = (Node*)r;
-
-		c = (ColumnRef*)(expr_connect->lexpr);
-		c->fields = list_make2(makeString(pstrdup("_c2")), llast(c->fields));
-		c = (ColumnRef*)(expr_connect->rexpr);
-		c->fields = list_make2(makeString(pstrdup("_c1")), llast(c->fields));
-		join->quals = (Node*)expr_connect;
-
-		s1->fromClause = list_make1(join);
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("connect by support one table yet")));
+		base_rel_name = NULL;	/* never run, keep analyze quiet */
+	}else
+	{
+		range = linitial(stmt->fromClause);
+		base_rel_name = range->relname;
+		if(range->alias)
+			base_rel_name = range->alias->aliasname;
 	}
 
-	n->rarg = s1;
-	/*
-	 * for now n is
-	 * select ... from "range" where "start"
-	 *   union all
-	 * select ... from "range","range" AS _c_ where "connect"
-	 *
-	 * next let n to with clause
-	 */
+	/* get using target list */
 	{
-		WithClause *with = makeNode(WithClause);
-		CommonTableExpr *comm = makeNode(CommonTableExpr);
-		comm->ctename = pstrdup("t");
-		comm->ctequery = (Node*)n;
-		comm->location = -1;
-		with->ctes = list_make1(comm);
-		with->recursive = true;
-		with->location = -1;
-		n = makeNode(SelectStmt);
-		n->withClause = with;
+		SearchConnectByColumnContext sc;
+		memset(&sc, 0, sizeof(sc));
+		sc.yyscanner = yyscanner;
+		sc.base_rel_name = base_rel_name;
+		search_columnref((ColumnRef*)(stmt->targetList), &sc);
+		search_columnref((ColumnRef*)(stmt->distinctClause), &sc);
+		search_columnref((ColumnRef*)(stmt->whereClause), &sc);
+		search_columnref((ColumnRef*)(stmt->groupClause), &sc);
+		search_columnref((ColumnRef*)(stmt->havingClause), &sc);
+		base_tl = make_target_list(&sc);
 	}
 
-	/* no n have whit clause (select ... union all select ...) */
-	res = makeNode(ResTarget);
-	c = makeNode(ColumnRef);
-	c->fields = list_make1(makeNode(A_Star));
-	res->val = (Node*)c;
-	res->location = -1;
-	foreach(lc, target)
+	/* when with a group select we let it as a CTE */
+	if(stmt->distinctClause || stmt->groupClause)
 	{
-		res = lfirst(lc);
-		c = (ColumnRef*)(res->val);
-		if(!IsA(c, ColumnRef))
+		common_table = makeNode(CommonTableExpr);
+		common_table->ctename = pstrdup(base_rel_name);
+		common_table->ctequery = (Node*)stmt;
+		common_table->location = -1;
+		new_select->withClause->ctes = list_make1(common_table);
+	}
+
+	/* make select union all left as "select * from base_rel where where_clause*/
+	union_all_left = makeNode(SelectStmt);
+	union_all_left->targetList = base_tl;
+	union_all_left->fromClause = list_make1(makeRangeVar(NULL, base_rel_name, -1));
+	/* add "start with clause" */
+	union_all_left->whereClause = start;
+	/* if base is not a CTE scan append where clause */
+	if(stmt->whereClause && new_select->withClause->ctes == NIL)
+	{
+		if(union_all_left->whereClause)
 		{
-			ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR)
-				, errmsg("syntax error")));
+			/* make AND expr */
+			union_all_left->whereClause = (Node*)
+				makeA_Expr(AEXPR_AND, NIL, union_all_left->whereClause, stmt->whereClause, -1);
+		}else
+		{
+			union_all_left->whereClause = stmt->whereClause;
 		}
-		c->fields = list_make2(makeString("t"), llast(c->fields));
 	}
-	n->targetList = target;
 
-	n->fromClause = list_make1(makeRangeVar(NULL, pstrdup("t"), -1));
+	/* make CTE rel */
+	common_table = makeNode(CommonTableExpr);
+	if(strcmp(base_rel_name, "_CTE1") == 0)
+		common_table->ctename = pstrdup("_CTE2");
+	else
+		common_table->ctename = pstrdup("_CTE1");
+	common_table->location = -1;
 
-	return (Node*)n;
+	/* make union all right as
+	 *   select base_rel.* from base_rel iner join "_CTEn" on "connect by"
+	 */
+	union_all_right = makeNode(SelectStmt);
+	context.yyscanner = yyscanner;
+
+	/* make base rel target list */
+	context.base_rel_name = base_rel_name;
+	context.prior_rel_name = base_rel_name;
+	context.prior = false;
+	union_all_right->targetList =
+		(List*)mutator_column_table_name((Node*)base_tl, &context);
+
+	/* make join */
+	JoinExpr *join = makeNode(JoinExpr);
+	join->jointype = JOIN_INNER;
+	join->larg = (Node*)makeRangeVar(NULL, base_rel_name, -1);
+	join->rarg = (Node*)makeRangeVar(NULL, common_table->ctename, -1);
+
+	/* mutator qual */
+	context.prior_rel_name = common_table->ctename;
+	context.prior = false;
+	join->quals = mutator_column_table_name(connect_by, &context);
+
+	/* if base is not a CTE scan append where clause */
+	if(stmt->whereClause && new_select->withClause->ctes == NIL)
+	{
+		/* use same rel name ot base rel name to modify column */
+		context.prior_rel_name = base_rel_name;
+		union_all_right->whereClause =
+			mutator_column_table_name(stmt->whereClause, &context);
+	}
+
+	union_all_right->fromClause = list_make1(join);
+
+	/* make union all select */
+	common_table->ctequery = makeSetOp(SETOP_UNION, true, (Node*)union_all_left, (Node*)union_all_right);
+	/* and append it to CTEs */
+	new_select->withClause->ctes = lappend(new_select->withClause->ctes, common_table);
+
+	/* make new target list */
+	context.prior_rel_name = context.base_rel_name = common_table->ctename;
+	new_select->targetList =
+		(List*) mutator_column_table_name((Node*)stmt->targetList, &context);
+
+	new_select->fromClause = list_make1(makeRangeVar(NULL, common_table->ctename, -1));
+
+	return (Node*)new_select;
+}
+
+static bool have_prior_expr(Node *node, void *context)
+{
+	if(node == NULL)
+		return false;
+	if(IsA(node, PriorExpr))
+		return true;
+	return node_tree_walker(node, have_prior_expr, context);
+}
+
+static bool search_columnref(ColumnRef *c, SearchConnectByColumnContext *context)
+{
+	ListCell *lc;
+	ColumnRef *c2;
+
+	if(c == NULL)
+		return false;
+
+	check_stack_depth();
+	if(!IsA(c, ColumnRef))
+		return node_tree_walker((Node*)c, search_columnref, context);
+
+	lc = list_head(c->fields);
+	Assert(list_length(c->fields) <= 4);
+	if(list_length(c->fields) > 3)
+	{
+		Assert(IsA(lfirst(lc), String));
+		if(context->database_name == NULL)
+		{
+			context->database_name = strVal(lfirst(lc));
+		}else if(strcmp(context->database_name, strVal(lfirst(lc))) != 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("cross-database references are not implemented"),
+				scanner_errposition(c->location, context->yyscanner)));
+		}
+		lc = lnext(lc);
+	}
+	if(list_length(c->fields) > 2)
+	{
+		Assert(IsA(lfirst(lc), String));
+		if(context->schema_name == NULL)
+		{
+			context->schema_name = strVal(lfirst(lc));
+		}else if(strcmp(context->schema_name, strVal(lfirst(lc))) != 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("different schema name"),
+				err_generic_string(PG_DIAG_SCHEMA_NAME, strVal(lfirst(lc))),
+				scanner_errposition(c->location, context->yyscanner)));
+		}
+		lc = lnext(lc);
+	}
+	if(list_length(c->fields) > 1)
+	{
+		Assert(IsA(lfirst(lc), String));
+		if(strcmp(context->base_rel_name, strVal(lfirst(lc))) != 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("different table name"),
+				err_generic_string(PG_DIAG_TABLE_NAME, strVal(lfirst(lc))),
+				scanner_errposition(c->location, context->yyscanner)));
+		}
+		lc = lnext(lc);
+	}
+	Assert(lnext(lc) == NULL);
+	if(IsA(lfirst(lc), A_Star))
+	{
+		context->have_star = true;
+	}else
+	{
+		const char *name;
+		Assert(IsA(lfirst(lc), String));
+		name = strVal(lfirst(lc));
+		foreach(lc, context->list)
+		{
+			c2 = lfirst(lc);
+			if(strcmp(strVal(llast(c2->fields)), name) == 0)
+				break;
+		}
+		if(lc == NULL)
+			context->list = lappend(context->list, copyObject(c));
+	}
+	return false;
+}
+
+static List* make_target_list(SearchConnectByColumnContext *context)
+{
+	List *new_list;
+	ListCell *lc;
+	ResTarget *rt;
+
+	new_list = NIL;
+	if(context->have_star == false)
+	{
+		/* have no "*" just use all column */
+		foreach(lc, context->list)
+		{
+			rt = makeNode(ResTarget);
+			rt->location = -1;
+			rt->val = lfirst(lc);
+			new_list = lappend(new_list, rt);
+		}
+		return new_list;
+	}else
+	{
+		/* have "*", we select "*" and all system column */
+		ColumnRef *cr;
+		new_list = list_make1(make_star_target(-1));
+		foreach(lc, context->list)
+		{
+			cr = lfirst(lc);
+			Assert(cr);
+			if(SystemAttributeByName(strVal(llast(cr->fields)), true) != NULL)
+			{
+				rt = makeNode(ResTarget);
+				rt->location = -1;
+				rt->val = (Node*)cr;
+				new_list = lappend(new_list, rt);
+			}
+		}
+	}
+
+	if(new_list == NIL)
+	{
+		rt = makeNode(ResTarget);
+		rt->location = -1;
+		rt->val = makeNullAConst(-1);
+		new_list = list_make1(rt);
+	}
+
+	return new_list;
+}
+
+static Node* mutator_column_table_name(Node *node, ConnectByMutatorContext *context)
+{
+	if(node == NULL)
+		return NULL;
+
+	switch(nodeTag(node))
+	{
+	case T_PriorExpr:
+		{
+			Node *new_node;
+			bool prior_save = context->prior;
+			context->prior = true;
+			new_node = mutator_column_table_name(((PriorExpr*)node)->expr, context);
+			context->prior = prior_save;
+			return new_node;
+		}
+	case T_ColumnRef:
+		{
+			const char *name = (context->prior ? context->prior_rel_name : context->base_rel_name);
+			ColumnRef *cr = makeNode(ColumnRef);
+			ColumnRef *src = (ColumnRef*)node;
+			int n = list_length(src->fields);
+			cr->location = src->location;
+			cr->fields = NIL;
+
+			if(n > 1)
+			{
+				ListCell *lc;
+				foreach(lc, src->fields)
+				{
+					--n;
+					if(n != 1)
+						cr->fields = lappend(cr->fields, copyObject(lfirst(lc)));
+					else
+						cr->fields = lappend(cr->fields, makeString(pstrdup(name)));
+				}
+			}else
+			{
+				cr->fields = list_make2(makeString(pstrdup(name)), copyObject(llast(src->fields)));
+			}
+			return (Node*)cr;
+		}
+	case T_RownumExpr:
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("connect by not support rownum yet"),
+			scanner_errposition(((RownumExpr*)node)->location, context->yyscanner)));
+		break;
+	default:
+		break;
+	}
+	return node_tree_mutator(node, mutator_column_table_name, context);
 }
 
 #endif
@@ -1063,3 +1294,18 @@ makeRecursiveViewSelect(char *relname, List *aliases, Node *query)
 	return (Node *) s;
 }
 
+ResTarget* make_star_target(int location)
+{
+	ResTarget *target;
+	ColumnRef *n = makeNode(ColumnRef);
+	n->fields = list_make1(makeNode(A_Star));
+	n->location = -1;
+
+	target = makeNode(ResTarget);
+	target->name = NULL;
+	target->indirection = NIL;
+	target->val = (Node *)n;
+	target->location = -1;
+
+	return target;
+}

@@ -1720,6 +1720,13 @@ BEGIN_NODE(ColumnRefJoin)
 	NODE_NODE(ColumnRef,column)
 END_NODE(ColumnRefJoin)
 #endif /* NO_NODE_ColumnRefJoin */
+
+#ifndef NO_NODE_PriorExpr
+BEGIN_NODE(PriorExpr)
+	NODE_LOCATION(int, location)
+	NODE_NODE(Node, expr)
+END_NODE(PriorExpr)
+#endif /* NO_NODE_PriorExpr */
 #endif /* ADB */
 
 #ifndef NO_NODE_ParamRef

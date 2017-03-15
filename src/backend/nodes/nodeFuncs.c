@@ -1876,6 +1876,8 @@ expression_tree_walker(Node *node,
 #ifdef ADB
 		case T_ColumnRefJoin:
 			return walker(((ColumnRefJoin*)node)->column, context);
+		case T_PriorExpr:
+			return walker(((PriorExpr*)node)->expr, context);
 #endif /* ADB */
 		default:
 			elog(ERROR, "unrecognized node type: %d",
@@ -2595,6 +2597,16 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, crj, ColumnRefJoin);
 				MUTATE(newnode->column, crj->column, ColumnRef *);
+				return (Node*)newnode;
+			}
+			break;
+		case T_PriorExpr:
+			{
+				PriorExpr *pe = (PriorExpr*)node;
+				PriorExpr *newnode;
+
+				FLATCOPY(newnode, pe, PriorExpr);
+				MUTATE(newnode->expr, pe->expr, Node *);
 				return (Node*)newnode;
 			}
 			break;

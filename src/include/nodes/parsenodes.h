@@ -253,6 +253,18 @@ typedef struct ColumnRefJoin
 		struct Var	*var;
 	};
 }ColumnRefJoin;
+
+/*
+ * parse SQL from "prior expr"
+ * using in oracle "connect by"
+ */
+typedef struct PriorExpr
+{
+	NodeTag		type;
+	int			location;
+	Node	   *expr;
+}PriorExpr;
+
 #endif /* ADB */
 
 /*

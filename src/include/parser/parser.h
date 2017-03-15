@@ -61,7 +61,8 @@ extern Node *makeAConst(Value *v, int location);
 extern Node *makeBoolAConst(bool state, int location);
 #ifdef ADB
 extern List *check_sequence_name(List *names, core_yyscan_t yyscanner, int location);
-extern Node *makeConnectSelect(List *target, RangeVar *range, Alias *as, Node *start, Node *connectby);
+extern Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
+								core_yyscan_t yyscanner);
 #endif
 extern void check_qualified_name(List *names, core_yyscan_t yyscanner);
 extern List *check_func_name(List *names, core_yyscan_t yyscanner);
@@ -85,5 +86,5 @@ extern void SplitColQualList(List *qualList,
 							 List **constraintList, CollateClause **collClause,
 							 core_yyscan_t yyscanner);
 extern Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
-
+extern ResTarget* make_star_target(int location);
 #endif   /* PARSER_H */

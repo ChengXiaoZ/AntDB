@@ -404,6 +404,7 @@ typedef enum NodeTag
 	T_ColumnRef,
 #ifdef ADB
 	T_ColumnRefJoin,
+	T_PriorExpr,
 #endif /* ADB */
 	T_ParamRef,
 	T_A_Const,
