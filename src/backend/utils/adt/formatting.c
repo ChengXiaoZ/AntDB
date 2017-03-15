@@ -844,16 +844,16 @@ static const KeyWord DCH_keywords[] = {
 	{"WW", 2, DCH_WW, TRUE, FROM_CHAR_DATE_GREGORIAN},	/* W */
 	{"W", 1, DCH_W, TRUE, FROM_CHAR_DATE_GREGORIAN},
 #ifdef ADB
-	{"XFF1", 4, DCH_XFF1, TRUE, FROM_CHAR_DATE_NONE},	/* X */
-	{"XFF2", 4, DCH_XFF2, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF3", 4, DCH_XFF3, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF4", 4, DCH_XFF4, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF5", 4, DCH_XFF5, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF6", 4, DCH_XFF6, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF7", 4, DCH_XFF7, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF8", 4, DCH_XFF8, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF9", 4, DCH_XFF9, TRUE, FROM_CHAR_DATE_NONE},
-	{"XFF", 3, DCH_XFF, TRUE, FROM_CHAR_DATE_NONE},
+	{"XFF1", 4, DCH_XFF1, FALSE, FROM_CHAR_DATE_NONE},	/* X */
+	{"XFF2", 4, DCH_XFF2, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF3", 4, DCH_XFF3, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF4", 4, DCH_XFF4, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF5", 4, DCH_XFF5, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF6", 4, DCH_XFF6, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF7", 4, DCH_XFF7, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF8", 4, DCH_XFF8, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF9", 4, DCH_XFF9, FALSE, FROM_CHAR_DATE_NONE},
+	{"XFF", 3, DCH_XFF, FALSE, FROM_CHAR_DATE_NONE},
 #endif
 	{"Y,YYY", 5, DCH_Y_YYY, TRUE, FROM_CHAR_DATE_GREGORIAN},	/* Y */
 	{"YYYY", 4, DCH_YYYY, TRUE, FROM_CHAR_DATE_GREGORIAN},
@@ -6352,6 +6352,77 @@ ora_DCH_from_char(FormatNode *node, char *in, TmFromChar *out)
 			case DCH_J:
 				from_char_parse_int(&out->j, &s, n);
 				SKIP_THth(s, n->suffix);
+				break;
+			default:
+				{
+					if ((n->key->id >= DCH_XFF1 && n->key->id <= DCH_XFF) ||
+						(n->key->id >= DCH_FF1 && n->key->id <= DCH_FF))
+					{	
+						int			ns = 0;		/* nanosecond */
+						int			max_precision = 0;
+
+						if (n->key->id >= DCH_XFF1 && n->key->id <= DCH_XFF)
+						{
+							/* skip radix characters */
+							if (!isdigit(*s))
+								s++;
+							if (n->key->id < DCH_XFF)
+								max_precision = n->key->id - DCH_XFF1 + 1;
+						} else
+						if (n->key->id >= DCH_FF1 && n->key->id <= DCH_FF)
+						{
+							if (n->key->id < DCH_FF)
+								max_precision = n->key->id - DCH_FF1 + 1;
+						}
+
+						len = from_char_parse_int_len(&ns, &s, 9, n);
+						if (max_precision > 0 && len > max_precision)
+							ereport(ERROR,
+									(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+									errmsg("the fractional seconds must be between 0 and 999999999")));
+						switch (len)
+						{
+							case 1:
+								out->us = ns * 100000;
+								break;
+							case 2:
+								out->us = ns * 10000;
+								break;
+							case 3:
+								out->us = ns * 1000;
+								break;
+							case 4:
+								out->us = ns * 100;
+								break;
+							case 5:
+								out->us = ns * 10;
+								break;
+							case 6:
+								out->us = ns;
+								break;
+							case 7:
+								elog(WARNING,
+									"TIMESTAMP(7) precision reduced to maximum allowed, 6");
+								out->us = ns / 10;
+								break;
+							case 8:
+								elog(WARNING,
+									"TIMESTAMP(8) precision reduced to maximum allowed, 6");
+								out->us = ns / 100;
+								break;
+							case 9:
+								elog(WARNING,
+									"TIMESTAMP(9) precision reduced to maximum allowed, 6");
+								out->us = ns / 1000;
+								break;
+							default:
+								ereport(ERROR,
+									(errcode(ERRCODE_INVALID_DATETIME_FORMAT),
+									errmsg("date format picture ends before converting entire input string")));
+								break;
+						}
+					}
+				}
 				break;
 		}
 	}
