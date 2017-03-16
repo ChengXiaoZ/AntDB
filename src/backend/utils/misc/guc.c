@@ -3657,7 +3657,7 @@ static struct config_string ConfigureNamesString[] =
 			GUC_REPORT | GUC_NOT_IN_SAMPLE
 		},
 		&nls_date_format,
-		"YYYY-MM-DD",
+		"YYYY-MM-DD HH24:MI:SS",
 		NULL, NULL, NULL
 	},
 
