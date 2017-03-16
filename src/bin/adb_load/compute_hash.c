@@ -656,6 +656,14 @@ hash_threadMain(void *argp)
 				if (FD_ISSET(input_queue->fd[0], &read_fds))
 				{
 					mq_read = true;
+					/* decide inner is full */
+					if (mq_full(inner_queue))
+					{
+						ADBLOADER_LOG(LOG_WARN,
+							"[HASH][thread id : %ld ] hash thread inner queue is full, inner queue size : %d",
+							thrinfo->thread_id, THREAD_QUEUE_SIZE);
+						goto INNER_FULL;
+					}
 					/* need consider one question , input mode put last one line into queue, current thread select 
 					   input_queue->fd[0] is ok, now other thread also detector input_queue->fd[0] is ok too and get last value before 
 					   current thread, this case will lock this postion.
@@ -748,7 +756,7 @@ ENDCOPY:
 			}
 			else
 				conn_write = false;
-
+INNER_FULL:
 			if(FD_ISSET(thrinfo->conn->sock, &read_fds))
 			{
 				conn_read = true;
