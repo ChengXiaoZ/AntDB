@@ -34,7 +34,7 @@ DispatchThreads	*DispatchThreadsRun = &DispatchThreadsData;
 DispatchThreads	DispatchThreadsFinishData;
 DispatchThreads	*DispatchThreadsFinish = &DispatchThreadsFinishData;
 TableType			Table_Type;
-bool				Is_Deal = false;
+static  bool		Is_Deal = false;
 static	bool	    process_bar = false;
 static char 	  **error_message_name = NULL;
 static char		   *g_start_cmd = NULL;
@@ -856,6 +856,8 @@ CleanDispatchResource(void)
 	if (g_start_cmd)
 		pfree(g_start_cmd);
 	g_start_cmd = NULL;
+
+	Is_Deal = false;
 }
 
 DispatchThreads *
