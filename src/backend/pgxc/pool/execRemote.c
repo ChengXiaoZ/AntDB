@@ -4935,6 +4935,9 @@ ExecProcNodeDMLInXC(EState *estate,
 	TupleTableSlot	*temp_slot;
 	bool			dml_returning_on_replicated = false;
 	RemoteQuery		*step = (RemoteQuery *) resultRemoteRel->ss.ps.plan;
+#ifdef ADB
+	uint32			save_rqs_processed = 0;
+#endif
 
 	/*
 	 * If the tuple returned by the previous step was null,
@@ -5002,7 +5005,26 @@ ExecProcNodeDMLInXC(EState *estate,
 			ExecClearTuple(temp_slot);
 			break;
 		}
+
+#ifdef ADB
+		/*
+		 * If we don't save rqs_processed, it will be assigned to 0 when enter
+		 * RemoteQueryNext(see more details) again, and when break the loop,
+		 * the caller will nerver get correct rqs_processed. See ExecInsert.
+		 *
+		 * eg.
+		 *		create table t1(id int, value int) distribute by replication.
+		 *		insert into t1 values(1,1),(2,2),(3,3) returning id;
+		 */
+		if (dml_returning_on_replicated)
+			save_rqs_processed = resultRemoteRel->rqs_processed;
+#endif
 	} while (dml_returning_on_replicated);
+
+#ifdef ADB
+	if (dml_returning_on_replicated)
+		resultRemoteRel->rqs_processed = save_rqs_processed;
+#endif
 
 	/*
 	 * A DML can impact more than one row, e.g. an update without any where
