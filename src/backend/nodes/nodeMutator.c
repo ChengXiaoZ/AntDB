@@ -119,7 +119,7 @@ Node *node_tree_mutator(Node *node, Node *(*mutator)(), void *context)
 			case T_Float:
 			case T_String:
 			case T_BitString:
-				dest->val.val.str = pstrdup(strVal(node));
+				dest->val.val.str = pstrdup(strVal(&(dest->val)));
 				break;
 			case T_Null:
 				break;
