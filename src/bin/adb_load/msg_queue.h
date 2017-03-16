@@ -78,4 +78,6 @@ extern int mq_poll_batch(MessageQueue *queue, QueueElement **element_array, int 
 extern bool mq_empty (MessageQueue *queue);
 
 extern void mq_destory(MessageQueue *queue);
+
+extern bool mq_full (MessageQueue *queue);
 #endif

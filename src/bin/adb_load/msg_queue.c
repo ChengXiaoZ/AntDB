@@ -22,6 +22,12 @@ mq_empty (MessageQueue *queue)
 	return dlist_is_empty(&queue->queue_head);
 }
 
+bool
+mq_full (MessageQueue *queue)
+{
+	return full(queue);
+}
+
 void
 mq_init (MessageQueue *queue, int max_size, char *name)
 {
