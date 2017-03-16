@@ -140,3 +140,15 @@ static void *pmemdup(const void *src, Size size)
 	memcpy(dest, src, size);
 	return dest;
 }
+
+static Node* copy_node_mutator(Node *node, void *context)
+{
+	if(node == NULL)
+		return NULL;
+	return node_tree_mutator(node, copy_node_mutator, NULL);
+}
+
+Node *node_copy(Node *node)
+{
+	return copy_node_mutator(node, NULL);
+}
