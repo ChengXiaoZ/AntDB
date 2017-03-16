@@ -424,7 +424,7 @@ dispatch_threadMain (void *argp)
 				else
 				{
 					mq_read = false;
-					ADBLOADER_LOG(LOG_WARN,
+					ADBLOADER_LOG(LOG_DEBUG,
 								 "[DISPATCH][thread id : %ld] output queue can not read now.\n", thrinfo->thread_id);
 				}
 
@@ -432,7 +432,7 @@ dispatch_threadMain (void *argp)
 			else
 			{
 				conn_write = false;
-				ADBLOADER_LOG(LOG_WARN,
+				ADBLOADER_LOG(LOG_DEBUG,
 							 "[DISPATCH][thread id : %ld] Adb cluster processing data is relatively slow.\n", thrinfo->thread_id);
 			}
 
