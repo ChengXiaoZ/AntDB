@@ -117,7 +117,7 @@ static void		  	  hash_write_error_message(ComputeThreadInfo	*thrinfo, char * me
 										char * hash_error_message, int line_no, char *line_data, bool redo);
 
 
-static const int 	THREAD_QUEUE_SIZE = 200;
+static const int 	THREAD_QUEUE_SIZE = 1200;
 static bool			RECV_END_FLAG = FALSE;
 static bool			ALL_THREADS_EXIT = FALSE;
 static HashThreads	HashThreadsData;
