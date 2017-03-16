@@ -438,6 +438,12 @@ Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
 			errmsg("have no prior expression")));
 	}
 
+	if(stmt->distinctClause || stmt->groupClause || stmt->havingClause || stmt->windowClause)
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+			errmsg("connect by not support distinct group window yet!")));
+	}
+
 	/* make new select and have recursive cte */
 	new_select = makeNode(SelectStmt);
 	new_select->withClause = makeNode(WithClause);
