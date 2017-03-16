@@ -302,6 +302,8 @@ CleanHashResource(void)
 	if (g_start_cmd)
 		pfree(g_start_cmd);
 	g_start_cmd = NULL;
+	RECV_END_FLAG = FALSE;
+	ALL_THREADS_EXIT = FALSE;
 }
 
 void 
@@ -557,12 +559,9 @@ adbLoader_ThreadCleanup(void * argp)
 static void *
 hash_threadMain(void *argp)
 {
-	//int					poll_size;
 	ComputeThreadInfo	*thrinfo = (ComputeThreadInfo*) argp;
 	MessageQueuePipe	*input_queue;
 	MessageQueue		*inner_queue;
-	//MessageQueuePipe	**output_queue;
-	//QueueElementPipe 	**element_batch;
 	char				*copy;
 	PGresult 	 		*res;
 	bool 				mq_read = false;
@@ -576,10 +575,7 @@ hash_threadMain(void *argp)
 	int max_fd;
 	int select_res;
 
-	//poll_size = 0;
-	//element_batch = NULL;
 	input_queue = thrinfo->input_queue;
-	//output_queue = thrinfo->output_queue;
 	inner_queue = (MessageQueue*)palloc0(sizeof(MessageQueue));
 	mq_init(inner_queue, THREAD_QUEUE_SIZE, "inner_queue");
 	thrinfo->inner_queue = inner_queue;
