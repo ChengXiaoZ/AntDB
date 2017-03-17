@@ -2969,7 +2969,7 @@ process_bar(int total, int send)
 	{
 		buf[flag] = '=';
 	}
-	printf("%s [%d/%d][%f%%][%c]\r", buf, send, total, precent, index[send % 4]);
+	printf("%s [%d/%d][%d%%][%c]\r", buf, send, total, precent, index[send % 4]);
 	/* flush cache buffer */
 	fflush(stdout);
 //	printf("\n");
@@ -3002,7 +3002,7 @@ process_bar_multi(int total, int * send , int num)
 		{
 			buf[flag][loc] = '=';
 		}
-		printf("%s [%d][%d/%d][%f%%]\r", buf[flag], flag, send[flag], total, precent);
+		printf("%s [%d][%d/%d][%d%%]\r", buf[flag], flag, send[flag], total, precent);
 		fflush(stdout);
 		printf("\n");
 	}
