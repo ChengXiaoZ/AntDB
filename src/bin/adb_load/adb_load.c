@@ -1478,7 +1478,7 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 
 static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
 {
-	assert(setting != NULL && table_info != NULL && setting->datanodes_num > 0);
+	Assert(setting != NULL && table_info != NULL && setting->datanodes_num > 0);
 
 	NodeInfoData **use_datanodes_info = NULL;
 	int i = 0;
@@ -2969,7 +2969,7 @@ process_bar(int total, int send)
 	{
 		buf[flag] = '=';
 	}
-	printf("%s [%d/%d][%d%%][%c]\r", buf, send, total, precent, index[send % 4]);
+	printf("%s [%d/%d][%d%%][%c]\r", buf, send, total,(int)precent, index[send % 4]);
 	/* flush cache buffer */
 	fflush(stdout);
 //	printf("\n");
@@ -3002,7 +3002,7 @@ process_bar_multi(int total, int * send , int num)
 		{
 			buf[flag][loc] = '=';
 		}
-		printf("%s [%d][%d/%d][%d%%]\r", buf[flag], flag, send[flag], total, precent);
+		printf("%s [%d][%d/%d][%d%%]\r", buf[flag], flag, send[flag], total, (int)precent);
 		fflush(stdout);
 		printf("\n");
 	}
