@@ -187,6 +187,7 @@ static char mgr_get_other_type(char nodetype);
 static bool mgr_check_sync_node_exist(Relation rel, Name nodename, char nodetype);
 static bool mgr_check_node_path(Relation rel, Oid hostoid, char *path);
 static bool mgr_check_node_port(Relation rel, Oid hostoid, int port);
+static bool mgr_try_max_pingnode(char *host, char *port, const int max_times);
 
 #if (Natts_mgr_node != 9)
 #error "need change code"
@@ -2670,12 +2671,15 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	NameData nodename;
 	Oid coordhostoid;
 	int32 coordport;
+	int max_locktry = 600;
+	const int max_pingtry = 60;
+	int ret = 0;
 	char *coordhost;
 	char *temp_file;
+	char nodeport_buf[10];
 	Oid dnhostoid;
 	int32 dnport;
-	PGconn * volatile pg_conn = NULL;
-	PGresult * volatile res = NULL;
+	PGconn * pg_conn = NULL;
 	HeapTuple tup_result;
 	HeapTuple aimtuple = NULL;
 	char coordport_buf[10];
@@ -2762,9 +2766,17 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		/*param table*/
+		resetStringInfo(&(getAgentCmdRst.description));
+		resetStringInfo(&infosendmsg);
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 4: block all the DDL lock */
-		mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, true);
+		if (!mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, true))
+			ereport(ERROR, (errmsg("can not get active coordinator in cluster")));
 		coordhost = get_hostaddress_from_hostoid(coordhostoid);
 		sprintf(coordport_buf, "%d", coordport);
 		pg_conn = PQsetdbLogin(coordhost
@@ -2784,12 +2796,12 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		pfree(coordhost);
 
-		res = PQexec(pg_conn, "select pgxc_lock_for_backup();");
-		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+		ret = mgr_pqexec_boolsql_try_maxnum(&pg_conn, "select pgxc_lock_for_backup();", max_locktry);
+		if (ret < 0)
 		{
 			ereport(ERROR,
 				(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)pg_conn)),
-				errhint("execute command failed: select pgxc_lock_for_backup().")));
+				errhint("try %d times execute command failed: select pgxc_lock_for_backup().", max_locktry)));
 		}
 
 		/* step 5: dumpall catalog message */
@@ -2809,12 +2821,10 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 8: create node on all the coordinator */
 		mgr_create_node_on_all_coord(fcinfo, CNDN_TYPE_DATANODE_MASTER, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-
 		resetStringInfo(&(getAgentCmdRst.description));
 		result = mgr_refresh_pgxc_node(APPEND, CNDN_TYPE_DATANODE_MASTER, appendnodeinfo.nodename, &getAgentCmdRst);
 
 		/* step 9: release the DDL lock */
-		PQclear(res);
 		PQfinish(pg_conn);
 		pg_conn = NULL;
 
@@ -2824,12 +2834,21 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	{
 		if(pg_conn)
 		{
-			PQclear(res);
 			PQfinish(pg_conn);
 			pg_conn = NULL;
 		}
 		PG_RE_THROW();
 	}PG_END_TRY();
+
+	/*wait the node can accept connections*/
+	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	{
+		if (!result)
+			appendStringInfoCharMacro(&(getAgentCmdRst.description), '\n');
+		result = false;
+		appendStringInfo(&(getAgentCmdRst.description), "waiting %d seconds for the new node can accept connections failed", max_pingtry);
+	}
 
 	tup_result = build_common_command_tuple(&nodename, result, getAgentCmdRst.description.data);
 	pfree(getAgentCmdRst.description.data);
@@ -2853,11 +2872,15 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	bool dn_e_is_exist, dn_e_is_running; /*datanode extra status */
 	bool dnmaster_is_running; /* datanode master status */
 	bool is_extra_exist, is_extra_sync;
+	bool result = true;
 	StringInfoData  infosendmsg;
 	StringInfoData primary_conninfo_value;
+	StringInfoData  recorderr;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
+	const int max_pingtry = 60;
+	char nodeport_buf[10];
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -2970,6 +2993,13 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		/*param table*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 7: update datanode slave's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3060,7 +3090,21 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}PG_END_TRY();
 
-	tup_result = build_common_command_tuple(&nodename, true, "success");
+	/*wait the node can accept connections*/
+	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
+	initStringInfo(&recorderr);
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	{
+		result = false;
+		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
+	}
+	if (result)
+		tup_result = build_common_command_tuple(&nodename, true, "success");
+	else
+	{
+		tup_result = build_common_command_tuple(&nodename, result, recorderr.data);
+	}
+	pfree(recorderr.data);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3081,11 +3125,15 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	bool dn_s_is_exist, dn_s_is_running;     /* datanode slave status */
 	bool dnmaster_is_running; 			     /* datanode master status */
 	bool is_slave_exist, is_slave_sync;
+	bool result = true;
 	StringInfoData  infosendmsg;
 	StringInfoData primary_conninfo_value;
+	StringInfoData recorderr;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
+	const int max_pingtry = 60;
+	char nodeport_buf[10];
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -3198,6 +3246,13 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		/*param table*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_EXTRA, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 7: update datanode extra's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -3288,7 +3343,22 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}PG_END_TRY();
 
-	tup_result = build_common_command_tuple(&nodename, true, "success");
+	/*wait the node can accept connections*/
+	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
+	initStringInfo(&recorderr);
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	{
+		result = false;
+		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
+	}
+
+	if (result)
+		tup_result = build_common_command_tuple(&nodename, true, "success");
+	else
+	{
+		tup_result = build_common_command_tuple(&nodename, false, recorderr.data);
+	}
+	pfree(recorderr.data);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3309,15 +3379,18 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	char *temp_file;
 	Oid coordhostoid;
 	int32 coordport;
-	PGconn * volatile pg_conn = NULL;
-	PGresult * volatile res =NULL;
+	PGconn *pg_conn = NULL;
 	HeapTuple aimtuple = NULL;
 	HeapTuple tup_result;
 	char coordport_buf[10];
+	char nodeport_buf[10];
 	NameData nodename;
 	bool result = true;
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
+	int max_locktry = 600;
+	const int max_pingtry = 60;
+	int ret = 0;
 
 	/* get node info for append coordinator master */
 	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
@@ -3386,6 +3459,13 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		/*param table*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 3: update coordinator master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
@@ -3403,7 +3483,8 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		mgr_add_hbaconf_all(appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
 
 		/* step 4: block all the DDL lock */
-		mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, true);
+		if (!mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, true))
+			ereport(ERROR, (errmsg("can not get active coordinator in cluster")));
 		coordhost = get_hostaddress_from_hostoid(coordhostoid);
 		sprintf(coordport_buf, "%d", coordport);
 		pg_conn = PQsetdbLogin(coordhost
@@ -3422,13 +3503,12 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		}
 
 		pfree(coordhost);
-
-		res = PQexec(pg_conn, "select pgxc_lock_for_backup();");
-		if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+		ret = mgr_pqexec_boolsql_try_maxnum(&pg_conn, "select pgxc_lock_for_backup();", max_locktry);
+		if (ret < 0)
 		{
 		ereport(ERROR,
 			(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)pg_conn)),
-			errhint("execute command failed: select pgxc_lock_for_backup().")));
+			errhint("try %d times execute command failed: select pgxc_lock_for_backup().", max_locktry)));
 		}
 
 		/* step 5: dumpall catalog message */
@@ -3453,7 +3533,6 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		resetStringInfo(&(getAgentCmdRst.description));
 		result = mgr_refresh_pgxc_node(APPEND, CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodename, &getAgentCmdRst);
 		/* step 10: release the DDL lock */
-		PQclear(res);
 		PQfinish(pg_conn);
 		pg_conn = NULL;
 
@@ -3463,12 +3542,21 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	{
 		if(pg_conn)
 		{
-			PQclear(res);
 			PQfinish(pg_conn);
 			pg_conn = NULL;
 		}
 		PG_RE_THROW();
 	}PG_END_TRY();
+
+	/*wait the node can accept connections*/
+	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	{
+		if (!result)
+			appendStringInfoCharMacro(&(getAgentCmdRst.description), '\n');
+		result = false;
+		appendStringInfo(&(getAgentCmdRst.description), "waiting %d seconds for the new node can accept connections failed", max_pingtry);
+	}
 
 	tup_result = build_common_command_tuple(&nodename, result, getAgentCmdRst.description.data);
 	pfree(getAgentCmdRst.description.data);
@@ -3484,11 +3572,15 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
 	bool is_extra_exist, is_extra_sync;
+	bool result = true;
 	StringInfoData infosendmsg;
 	StringInfoData primary_conninfo_value;
+	StringInfoData recorderr;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
+	char nodeport_buf[10];
+	const int max_pingtry = 60;
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -3556,6 +3648,13 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		/*param table*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
@@ -3646,8 +3745,21 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	{
 		PG_RE_THROW();
 	}PG_END_TRY();
-
-	tup_result = build_common_command_tuple(&nodename, true, "success");
+	/*wait the node can accept connections*/
+	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
+	initStringInfo(&recorderr);
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	{
+		result = false;
+		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
+	}
+	if (result)
+		tup_result = build_common_command_tuple(&nodename, true, "success");
+	else
+	{
+		tup_result = build_common_command_tuple(&nodename, false, recorderr.data);
+	}
+	pfree(recorderr.data);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3660,11 +3772,15 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
 	bool is_slave_exist, is_slave_sync;
+	bool result = true;
 	StringInfoData  infosendmsg;
 	StringInfoData primary_conninfo_value;
+	StringInfoData recorderr;
 	NameData nodename;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
+	char nodeport_buf[10];
+	const int max_pingtry = 60;
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -3734,6 +3850,13 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+		/*param table*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
@@ -3822,8 +3945,21 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	{
 		PG_RE_THROW();
 	}PG_END_TRY();
-
-	tup_result = build_common_command_tuple(&nodename, true, "success");
+	/*wait the node can accept connections*/
+	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
+	initStringInfo(&recorderr);
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	{
+		result = false;
+		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
+	}
+	if (result)
+		tup_result = build_common_command_tuple(&nodename, true, "success");
+	else
+	{
+		tup_result = build_common_command_tuple(&nodename, false, recorderr.data);
+	}
+	pfree(recorderr.data);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -5721,7 +5857,8 @@ void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnport, Str
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", infosendparamsg);
 	mgr_append_pgconf_paras_str_int("max_wal_senders", MAX_WAL_SENDERS_NUM, infosendparamsg);
 	mgr_append_pgconf_paras_str_int("wal_keep_segments", WAL_KEEP_SEGMENTS_NUM, infosendparamsg);
-	mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendparamsg);	mgr_append_pgconf_paras_str_int("port", cndnport, infosendparamsg);
+	mgr_append_pgconf_paras_str_str("wal_level", WAL_LEVEL_MODE, infosendparamsg);
+	mgr_append_pgconf_paras_str_int("port", cndnport, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("listen_addresses", "*", infosendparamsg);
 	mgr_append_pgconf_paras_str_int("max_prepared_transactions", MAX_PREPARED_TRANSACTIONS_DEFAULT, infosendparamsg);
 	mgr_append_pgconf_paras_str_quotastr("log_destination", "csvlog", infosendparamsg);
@@ -10984,4 +11121,40 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 	heap_close(rel, RowExclusiveLock);
 
 	PG_RETURN_BOOL(true);
+}
+
+/*
+* check the node pingNode ok max_try times
+*/
+
+static bool mgr_try_max_pingnode(char *host, char *port, const int max_times)
+{
+	int ret = 0;
+
+	/*wait the node can accept connections*/
+	fputs(_("waiting for the new node can accept connections..."), stdout);
+	fflush(stdout);
+	while(1)
+	{
+		ret++;
+		if (pingNode(host, port) != 0)
+		{
+			fputs(_("."), stdout);
+			fflush(stdout);
+			pg_usleep(1 * 1000000L);
+		}
+		else
+			break;
+		if (ret > max_times)
+			break;
+	}
+	if (ret > max_times)
+	{
+		fputs(_(" failed\n"), stdout);
+	}
+	else
+		fputs(_(" done\n"), stdout);
+	fflush(stdout);
+
+	return ret < max_times;
 }
