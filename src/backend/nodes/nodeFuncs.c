@@ -1441,6 +1441,11 @@ exprLocation(const Node *expr)
 		case T_RownumExpr:
 			loc = ((const RownumExpr*) expr)->location;
 			break;
+#ifdef ADB
+		case T_LevelExpr:
+			loc = ((const LevelExpr*)expr)->location;
+			break;
+#endif /* ADB */
 		default:
 			/* for any other node type it's just unknown... */
 			loc = -1;
@@ -1589,6 +1594,9 @@ expression_tree_walker(Node *node,
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
 		case T_RownumExpr:
+#ifdef ADB
+		case T_LevelExpr:
+#endif /* ADB */
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 			/* primitive node types with no expression subnodes */
@@ -2116,6 +2124,9 @@ expression_tree_mutator(Node *node,
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
 		case T_RownumExpr:
+#ifdef ADB
+		case T_LevelExpr:
+#endif /* ADB */
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 			return (Node *) copyObject(node);
@@ -2816,6 +2827,9 @@ raw_expression_tree_walker(Node *node,
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
 		case T_RownumExpr:
+#ifdef ADB
+		case T_LevelExpr:
+#endif /* ADB */
 		case T_Integer:
 		case T_Float:
 		case T_String:

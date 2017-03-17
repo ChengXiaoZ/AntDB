@@ -2349,6 +2349,19 @@ BEGIN_NODE(RownumExpr)
 END_NODE(RownumExpr)
 #endif /* NO_NODE_RownumExpr */
 
+#ifdef ADB
+
+/*
+ * oracle level expr
+ */
+#ifndef NO_NODE_LevelExpr
+BEGIN_NODE(LevelExpr)
+	NODE_LOCATION(int, location)
+END_NODE(LevelExpr)
+#endif /* NO_NODE_LevelExpr */
+
+#endif /* ADB */
+
 /*****************************************************************************
  *		Optimizable Statements
  *****************************************************************************/

@@ -1880,6 +1880,19 @@ static RownumExpr* _copyRownumExpr(const RownumExpr *from)
 	return newnode;
 }
 
+#ifdef ADB
+
+static LevelExpr* _copyLevelExpr(const LevelExpr *from)
+{
+	LevelExpr *newnode = makeNode(LevelExpr);
+
+	COPY_LOCATION_FIELD(location);
+
+	return newnode;
+}
+
+#endif /* ADB */
+
 /*
  * _copyTargetEntry
  */
@@ -4746,6 +4759,11 @@ copyObject(const void *from)
 		case T_RownumExpr:
 			retval = _copyRownumExpr(from);
 			break;
+#ifdef ADB
+		case T_LevelExpr:
+			retval = _copyLevelExpr(from);
+			break;
+#endif /* ADB */
 		case T_TargetEntry:
 			retval = _copyTargetEntry(from);
 			break;

@@ -690,6 +690,15 @@ static bool _equalRownumExpr(const RownumExpr *a, const RownumExpr *b)
 	return true;
 }
 
+#ifdef ADB
+
+static bool _equalLevelExpr(const LevelExpr *a, const LevelExpr *b)
+{
+	return true;
+}
+
+#endif /* ADB */
+
 static bool
 _equalTargetEntry(const TargetEntry *a, const TargetEntry *b)
 {
@@ -2738,6 +2747,11 @@ equal(const void *a, const void *b)
 		case T_RownumExpr:
 			retval = _equalRownumExpr(a, b);
 			break;
+#ifdef ADB
+		case T_LevelExpr:
+			retval = _equalLevelExpr(a, b);
+			break;
+#endif /* ABD */
 		case T_TargetEntry:
 			retval = _equalTargetEntry(a, b);
 			break;

@@ -186,6 +186,9 @@ typedef enum NodeTag
 	T_SetToDefault,
 	T_CurrentOfExpr,
 	T_RownumExpr,
+#ifdef ADB
+	T_LevelExpr,
+#endif
 	T_TargetEntry,
 	T_RangeTblRef,
 	T_JoinExpr,

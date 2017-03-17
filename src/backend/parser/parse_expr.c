@@ -184,9 +184,10 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			}
 			break;
 		case T_PriorExpr:
+		case T_LevelExpr:
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("syntax error")
-				,parser_errposition(pstate, ((PriorExpr*)expr)->location)));
+				,parser_errposition(pstate, exprLocation(expr))));
 			break;
 #endif /* ADB */
 		case T_ParamRef:

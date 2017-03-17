@@ -1015,6 +1015,19 @@ typedef struct
 	int			location;		/* token location, or -1 if unknown */
 }RownumExpr;
 
+#ifdef ADB
+
+/*
+ * oracle level expr
+ */
+typedef struct LevelExpr
+{
+	NodeTag		type;
+	int			location;		/* token location, or -1 if unknown */
+}LevelExpr;
+
+#endif /* ADB */
+
 /* Convenience macro to get the output tlist of a CTE's query */
 #define GetCTETargetList(cte) \
 	(AssertMacro(IsA((cte)->ctequery, Query)), \

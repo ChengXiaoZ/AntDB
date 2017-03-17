@@ -1858,6 +1858,11 @@ FigureColnameInternal(Node *node, char **name)
 		case T_RownumExpr:
 			*name = "rownum";
 			return 2;
+#ifdef ADB
+		case T_LevelExpr:
+			*name = "level";
+			return 2;
+#endif /* ADB */
 		default:
 			break;
 	}

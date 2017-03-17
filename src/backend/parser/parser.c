@@ -35,34 +35,54 @@
 #include "catalog/heap.h" /* SystemAttributeByName */
 #include "lib/stringinfo.h"
 #include "miscadmin.h" /* check_stack_depth */
+#include "parser/parse_target.h"
 #endif
 
 #define parser_yyerror(msg)  scanner_yyerror(msg, yyscanner)
 #define parser_errposition(pos)  scanner_errposition(pos, yyscanner)
 
 #ifdef ADB
-typedef struct ConnectByMutatorContext
-{
-	core_yyscan_t yyscanner;
-	char *base_rel_name;
-	char *prior_rel_name;
-	bool prior;
-}ConnectByMutatorContext;
 
-typedef struct SearchConnectByColumnContext
+typedef enum MutatorConnectByExprKind
+{
+	 MCBEK_LEFT = 1
+	,MCBEK_RIGHT
+	,MCBEK_RIGHT_TL
+	,MCBEK_TOP
+	,MCBEK_CLAUSE
+}MutatorConnectByExprKind;
+
+typedef struct ConnectByParseState
 {
 	core_yyscan_t yyscanner;
-	List *list;
+	List *column_list;
+	List *scbp_list;		/* sys_connect_by_path list */
+	List *scbp_as_list;		/* sys_connect_by_path as name list */
 	const char *base_rel_name;
 	const char *schema_name;
 	const char *database_name;
+	const char *cte_name;
+	char *column_level;
+	MutatorConnectByExprKind mutator_kind;
 	bool have_star;
-}SearchConnectByColumnContext;
+	bool have_level;
+}ConnectByParseState;
 
-static bool search_columnref(ColumnRef *c, SearchConnectByColumnContext *context);
-static List* make_target_list(SearchConnectByColumnContext *context);
-static Node* mutator_column_table_name(Node *node, ConnectByMutatorContext *context);
+static bool search_columnref(Node *node, ConnectByParseState *context);
+static void make_scbp_as_list(ConnectByParseState *context);
+static List* make_target_list_base(ConnectByParseState *context);
+static List* make_target_list_left(ConnectByParseState *context);
+static List* make_target_list_right(ConnectByParseState *context);
+static List* make_target_list_top(ConnectByParseState *context, List *old_tl);
+static Node* mutator_connect_by_expr(Node *node, ConnectByParseState *context);
+static bool is_level_expr(Node *node);
+static bool is_sys_connect_by_path_expr(Node *node);
+static void change_expr_to_target(List *list);
+static char* get_unique_as_name(const char *prefix, uint32 *start, List *list);
+static char* get_expr_name(Node *expr, List *expr_list, List *name_list);
 static bool have_prior_expr(Node *node, void *context);
+static Node* make_concat_expr(Node *larg, Node *rarg, int location);
+
 #endif /* ADB */
 /*
  * raw_parser
@@ -425,11 +445,10 @@ Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
 			   *union_all_left,
 			   *union_all_right;
 	CommonTableExpr *common_table;
-	char *base_rel_name;
 	RangeVar *range;
-	List *base_tl;	/* base rel target list */
-	ConnectByMutatorContext context;
+	ConnectByParseState pstate;
 	AssertArg(stmt && connect_by && yyscanner);
+	memset(&pstate, 0, sizeof(pstate));
 
 	/* have PriorExpr? */
 	if(have_prior_expr(connect_by, NULL) == false)
@@ -456,34 +475,31 @@ Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
 			errmsg("connect by support one table yet")));
-		base_rel_name = NULL;	/* never run, keep analyze quiet */
+		pstate.base_rel_name = NULL;	/* never run, keep analyze quiet */
 	}else
 	{
 		range = linitial(stmt->fromClause);
-		base_rel_name = range->relname;
+		pstate.base_rel_name = range->relname;
 		if(range->alias)
-			base_rel_name = range->alias->aliasname;
+			pstate.base_rel_name = range->alias->aliasname;
 	}
 
 	/* get using target list */
-	{
-		SearchConnectByColumnContext sc;
-		memset(&sc, 0, sizeof(sc));
-		sc.yyscanner = yyscanner;
-		sc.base_rel_name = base_rel_name;
-		search_columnref((ColumnRef*)(stmt->targetList), &sc);
-		search_columnref((ColumnRef*)(stmt->distinctClause), &sc);
-		search_columnref((ColumnRef*)(stmt->whereClause), &sc);
-		search_columnref((ColumnRef*)(stmt->groupClause), &sc);
-		search_columnref((ColumnRef*)(stmt->havingClause), &sc);
-		base_tl = make_target_list(&sc);
-	}
+	pstate.yyscanner = yyscanner;
+	search_columnref((Node*)stmt->targetList, &pstate);
+	search_columnref((Node*)stmt->distinctClause, &pstate);
+	search_columnref(stmt->whereClause, &pstate);
+	search_columnref((Node*)stmt->groupClause, &pstate);
+	search_columnref(stmt->havingClause, &pstate);
+	if(pstate.have_level)
+		pstate.column_level = get_unique_as_name("_level_", NULL, pstate.column_list);
+	make_scbp_as_list(&pstate);
 
 	/* when with a group select we let it as a CTE */
 	if(stmt->distinctClause || stmt->groupClause)
 	{
 		common_table = makeNode(CommonTableExpr);
-		common_table->ctename = pstrdup(base_rel_name);
+		common_table->ctename = pstrdup(pstate.base_rel_name);
 		common_table->ctequery = (Node*)stmt;
 		common_table->location = -1;
 		new_select->withClause->ctes = list_make1(common_table);
@@ -491,64 +507,38 @@ Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
 
 	/* make select union all left as "select * from base_rel where where_clause*/
 	union_all_left = makeNode(SelectStmt);
-	union_all_left->targetList = base_tl;
-	union_all_left->fromClause = list_make1(makeRangeVar(NULL, base_rel_name, -1));
-	/* add "start with clause" */
-	union_all_left->whereClause = start;
-	/* if base is not a CTE scan append where clause */
-	if(stmt->whereClause && new_select->withClause->ctes == NIL)
-	{
-		if(union_all_left->whereClause)
-		{
-			/* make AND expr */
-			union_all_left->whereClause = (Node*)
-				makeA_Expr(AEXPR_AND, NIL, union_all_left->whereClause, stmt->whereClause, -1);
-		}else
-		{
-			union_all_left->whereClause = stmt->whereClause;
-		}
-	}
+	union_all_left->targetList = make_target_list_left(&pstate);
+	union_all_left->fromClause = stmt->fromClause;
 
 	/* make CTE rel */
 	common_table = makeNode(CommonTableExpr);
-	if(strcmp(base_rel_name, "_CTE1") == 0)
+	if(strcmp(pstate.base_rel_name, "_CTE1") == 0)
 		common_table->ctename = pstrdup("_CTE2");
 	else
 		common_table->ctename = pstrdup("_CTE1");
 	common_table->location = -1;
+	pstate.cte_name = common_table->ctename;
+
+	/* add "start with clause" */
+	pstate.mutator_kind = MCBEK_LEFT;
+	union_all_left->whereClause = mutator_connect_by_expr(start, &pstate);
 
 	/* make union all right as
 	 *   select base_rel.* from base_rel iner join "_CTEn" on "connect by"
 	 */
 	union_all_right = makeNode(SelectStmt);
-	context.yyscanner = yyscanner;
 
-	/* make base rel target list */
-	context.base_rel_name = base_rel_name;
-	context.prior_rel_name = base_rel_name;
-	context.prior = false;
-	union_all_right->targetList =
-		(List*)mutator_column_table_name((Node*)base_tl, &context);
+	union_all_right->targetList = make_target_list_right(&pstate);
 
 	/* make join */
 	JoinExpr *join = makeNode(JoinExpr);
 	join->jointype = JOIN_INNER;
-	join->larg = (Node*)makeRangeVar(NULL, base_rel_name, -1);
-	join->rarg = (Node*)makeRangeVar(NULL, common_table->ctename, -1);
+	join->larg = linitial(stmt->fromClause);
+	join->rarg = (Node*)makeRangeVar(NULL, pstrdup(common_table->ctename), -1);
 
 	/* mutator qual */
-	context.prior_rel_name = common_table->ctename;
-	context.prior = false;
-	join->quals = mutator_column_table_name(connect_by, &context);
-
-	/* if base is not a CTE scan append where clause */
-	if(stmt->whereClause && new_select->withClause->ctes == NIL)
-	{
-		/* use same rel name ot base rel name to modify column */
-		context.prior_rel_name = base_rel_name;
-		union_all_right->whereClause =
-			mutator_column_table_name(stmt->whereClause, &context);
-	}
+	pstate.mutator_kind = MCBEK_CLAUSE;
+	join->quals = mutator_connect_by_expr(connect_by, &pstate);
 
 	union_all_right->fromClause = list_make1(join);
 
@@ -558,11 +548,12 @@ Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
 	new_select->withClause->ctes = lappend(new_select->withClause->ctes, common_table);
 
 	/* make new target list */
-	context.prior_rel_name = context.base_rel_name = common_table->ctename;
-	new_select->targetList =
-		(List*) mutator_column_table_name((Node*)stmt->targetList, &context);
+	new_select->targetList = make_target_list_top(&pstate, stmt->targetList);
 
 	new_select->fromClause = list_make1(makeRangeVar(NULL, common_table->ctename, -1));
+
+	pstate.mutator_kind = MCBEK_TOP;
+	new_select->whereClause = mutator_connect_by_expr(stmt->whereClause, &pstate);
 
 	return (Node*)new_select;
 }
@@ -576,181 +567,439 @@ static bool have_prior_expr(Node *node, void *context)
 	return node_tree_walker(node, have_prior_expr, context);
 }
 
-static bool search_columnref(ColumnRef *c, SearchConnectByColumnContext *context)
+static Node* make_concat_expr(Node *larg, Node *rarg, int location)
 {
-	ListCell *lc;
-	ColumnRef *c2;
+	FuncCall *func = makeNode(FuncCall);
+	func->location = -1;
+	func->funcname = SystemFuncName("concat");
+	func->args = list_make2(larg, rarg);
+	return (Node*)func;
+}
 
-	if(c == NULL)
+static bool search_columnref(Node *node, ConnectByParseState *context)
+{
+	if(node == NULL)
 		return false;
 
 	check_stack_depth();
-	if(!IsA(c, ColumnRef))
-		return node_tree_walker((Node*)c, search_columnref, context);
 
-	lc = list_head(c->fields);
-	Assert(list_length(c->fields) <= 4);
-	if(list_length(c->fields) > 3)
+	if(is_sys_connect_by_path_expr(node))
 	{
-		Assert(IsA(lfirst(lc), String));
-		if(context->database_name == NULL)
+		ListCell *lc;
+		/* have same sys_connect_by_path ? */
+		foreach(lc, context->scbp_list)
 		{
-			context->database_name = strVal(lfirst(lc));
-		}else if(strcmp(context->database_name, strVal(lfirst(lc))) != 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("cross-database references are not implemented"),
-				scanner_errposition(c->location, context->yyscanner)));
-		}
-		lc = lnext(lc);
-	}
-	if(list_length(c->fields) > 2)
-	{
-		Assert(IsA(lfirst(lc), String));
-		if(context->schema_name == NULL)
-		{
-			context->schema_name = strVal(lfirst(lc));
-		}else if(strcmp(context->schema_name, strVal(lfirst(lc))) != 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("different schema name"),
-				err_generic_string(PG_DIAG_SCHEMA_NAME, strVal(lfirst(lc))),
-				scanner_errposition(c->location, context->yyscanner)));
-		}
-		lc = lnext(lc);
-	}
-	if(list_length(c->fields) > 1)
-	{
-		Assert(IsA(lfirst(lc), String));
-		if(strcmp(context->base_rel_name, strVal(lfirst(lc))) != 0)
-		{
-			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-				errmsg("different table name"),
-				err_generic_string(PG_DIAG_TABLE_NAME, strVal(lfirst(lc))),
-				scanner_errposition(c->location, context->yyscanner)));
-		}
-		lc = lnext(lc);
-	}
-	Assert(lnext(lc) == NULL);
-	if(IsA(lfirst(lc), A_Star))
-	{
-		context->have_star = true;
-	}else
-	{
-		const char *name;
-		Assert(IsA(lfirst(lc), String));
-		name = strVal(lfirst(lc));
-		foreach(lc, context->list)
-		{
-			c2 = lfirst(lc);
-			if(strcmp(strVal(llast(c2->fields)), name) == 0)
+			if(equal(lfirst(lc), node))
 				break;
 		}
 		if(lc == NULL)
-			context->list = lappend(context->list, copyObject(c));
+			context->scbp_list = lappend(context->scbp_list, node);
+	}else if(is_level_expr(node))
+	{
+		context->have_level = true;
+		return false;
+	}else if(IsA(node, ColumnRef))
+	{
+		ListCell *lc;
+		ColumnRef *c2,*c;
+		c = (ColumnRef*)node;
+
+		lc = list_head(c->fields);
+		Assert(list_length(c->fields) <= 4);
+		if(list_length(c->fields) > 3)
+		{
+			Assert(IsA(lfirst(lc), String));
+			if(context->database_name == NULL)
+			{
+				context->database_name = strVal(lfirst(lc));
+			}else if(strcmp(context->database_name, strVal(lfirst(lc))) != 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("cross-database references are not implemented"),
+					scanner_errposition(c->location, context->yyscanner)));
+			}
+			lc = lnext(lc);
+		}
+		if(list_length(c->fields) > 2)
+		{
+			Assert(IsA(lfirst(lc), String));
+			if(context->schema_name == NULL)
+			{
+				context->schema_name = strVal(lfirst(lc));
+			}else if(strcmp(context->schema_name, strVal(lfirst(lc))) != 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("different schema name"),
+					err_generic_string(PG_DIAG_SCHEMA_NAME, strVal(lfirst(lc))),
+					scanner_errposition(c->location, context->yyscanner)));
+			}
+			lc = lnext(lc);
+		}
+		if(list_length(c->fields) > 1)
+		{
+			Assert(IsA(lfirst(lc), String));
+			if(strcmp(context->base_rel_name, strVal(lfirst(lc))) != 0)
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("different table name"),
+					err_generic_string(PG_DIAG_TABLE_NAME, strVal(lfirst(lc))),
+					scanner_errposition(c->location, context->yyscanner)));
+			}
+			lc = lnext(lc);
+		}
+		Assert(lnext(lc) == NULL);
+		if(IsA(lfirst(lc), A_Star))
+		{
+			context->have_star = true;
+		}else
+		{
+			const char *name;
+			Assert(IsA(lfirst(lc), String));
+			name = strVal(lfirst(lc));
+			foreach(lc, context->column_list)
+			{
+				c2 = lfirst(lc);
+				if(strcmp(strVal(llast(c2->fields)), name) == 0)
+					break;
+			}
+			if(lc == NULL)
+				context->column_list = lappend(context->column_list, copyObject(c));
+		}
+		return false;
 	}
-	return false;
+	return node_tree_walker((Node*)node, search_columnref, context);
 }
 
-static List* make_target_list(SearchConnectByColumnContext *context)
+static void make_scbp_as_list(ConnectByParseState *context)
+{
+	char *name;
+	ListCell *lc;
+	unsigned int index;
+
+	index = 1;
+	foreach(lc, context->scbp_list)
+	{
+		name = get_unique_as_name("_scbp", &index, context->column_list);
+		context->scbp_as_list = lappend(context->scbp_as_list, name);
+	}
+}
+
+static List* make_target_list_base(ConnectByParseState *context)
 {
 	List *new_list;
 	ListCell *lc;
-	ResTarget *rt;
 
 	new_list = NIL;
 	if(context->have_star == false)
 	{
 		/* have no "*" just use all column */
-		foreach(lc, context->list)
-		{
-			rt = makeNode(ResTarget);
-			rt->location = -1;
-			rt->val = lfirst(lc);
-			new_list = lappend(new_list, rt);
-		}
-		return new_list;
+		new_list = (List*)node_copy((Node*)context->column_list);
 	}else
 	{
 		/* have "*", we select "*" and all system column */
 		ColumnRef *cr;
 		new_list = list_make1(make_star_target(-1));
-		foreach(lc, context->list)
+		foreach(lc, context->column_list)
 		{
 			cr = lfirst(lc);
 			Assert(cr);
 			if(SystemAttributeByName(strVal(llast(cr->fields)), true) != NULL)
 			{
-				rt = makeNode(ResTarget);
-				rt->location = -1;
-				rt->val = (Node*)cr;
-				new_list = lappend(new_list, rt);
+				new_list = lappend(new_list, cr);
 			}
 		}
-	}
-
-	if(new_list == NIL)
-	{
-		rt = makeNode(ResTarget);
-		rt->location = -1;
-		rt->val = makeNullAConst(-1);
-		new_list = list_make1(rt);
 	}
 
 	return new_list;
 }
 
-static Node* mutator_column_table_name(Node *node, ConnectByMutatorContext *context)
+static List* make_target_list_left(ConnectByParseState *context)
 {
+	List *new_list;
+	ListCell *lc,*lc2;
+	ResTarget *rt;
+	int save_kind = context->mutator_kind;
+	context->mutator_kind = MCBEK_LEFT;
+
+	new_list = make_target_list_base(context);
+
+	if(context->have_level)
+	{
+		rt = makeNode(ResTarget);
+		rt->name = context->column_level;
+		rt->location = -1;
+		rt->val = makeIntConst(1, -1);
+		new_list = lappend(new_list, rt);
+	}
+
+	/* make sys_connect_by_path target */
+	forboth(lc, context->scbp_list, lc2, context->scbp_as_list)
+	{
+		Assert(is_sys_connect_by_path_expr(lfirst(lc)));
+
+		rt = makeNode(ResTarget);
+		rt->location = -1;
+		rt->name = lfirst(lc2);
+		rt->val = mutator_connect_by_expr(lfirst(lc), context);
+		new_list = lappend(new_list, rt);
+	}
+
+	if(new_list == NIL)
+		new_list = list_make1(makeNullAConst(-1));
+
+	change_expr_to_target(new_list);
+
+	context->mutator_kind = save_kind;
+	return new_list;
+}
+
+static List* make_target_list_right(ConnectByParseState *context)
+{
+	ListCell *lc;
+	List *tl;
+	int save_kind = context->mutator_kind;
+	context->mutator_kind = MCBEK_RIGHT_TL;
+	Assert(context->cte_name != NULL);
+
+	tl = make_target_list_base(context);
+	tl = (List*)mutator_connect_by_expr((Node*)tl, context);
+
+	if(context->have_level)
+	{
+		ResTarget *rt = makeNode(ResTarget);
+		LevelExpr level = {T_LevelExpr, -1};
+		rt->location = -1;
+		rt->val = mutator_connect_by_expr((Node*)&level, context);
+		tl = lappend(tl, rt);
+	}
+
+	foreach(lc, context->scbp_list)
+		tl = lappend(tl, mutator_connect_by_expr(lfirst(lc), context));
+
+	if(tl == NIL)
+		tl = list_make1(makeNullAConst(-1));
+
+	context->mutator_kind = save_kind;
+	change_expr_to_target(tl);
+	return tl;
+}
+
+static List* make_target_list_top(ConnectByParseState *context, List *old_tl)
+{
+	List *tl;
+	ListCell *lc;
+	ResTarget *rt;
+	int save_kind = context->mutator_kind;
+	context->mutator_kind = MCBEK_TOP;
+
+	tl = NIL;
+	foreach(lc, old_tl)
+	{
+		rt = (ResTarget*)mutator_connect_by_expr(lfirst(lc), context);
+		Assert(IsA(rt, ResTarget));
+		if(rt->name == NULL)
+			rt->name = FigureColname(((ResTarget*)lfirst(lc))->val);
+		tl = lappend(tl, rt);
+	}
+
+	context->mutator_kind = save_kind;
+	return tl;
+}
+
+static Node* mutator_connect_by_expr(Node *node, ConnectByParseState *context)
+{
+	ColumnRef *cr;
 	if(node == NULL)
 		return NULL;
+	check_stack_depth();
 
-	switch(nodeTag(node))
+	if(is_level_expr(node))
 	{
-	case T_PriorExpr:
+		switch(context->mutator_kind)
 		{
-			Node *new_node;
-			bool prior_save = context->prior;
-			context->prior = true;
-			new_node = mutator_column_table_name(((PriorExpr*)node)->expr, context);
-			context->prior = prior_save;
-			return new_node;
-		}
-	case T_ColumnRef:
-		{
-			const char *name = (context->prior ? context->prior_rel_name : context->base_rel_name);
-			ColumnRef *cr = makeNode(ColumnRef);
-			ColumnRef *src = (ColumnRef*)node;
-			int n = list_length(src->fields);
-			cr->location = src->location;
-			cr->fields = NIL;
-
-			if(n > 1)
-			{
-				ListCell *lc;
-				foreach(lc, src->fields)
-				{
-					--n;
-					if(n != 1)
-						cr->fields = lappend(cr->fields, copyObject(lfirst(lc)));
-					else
-						cr->fields = lappend(cr->fields, makeString(pstrdup(name)));
-				}
-			}else
-			{
-				cr->fields = list_make2(makeString(pstrdup(name)), copyObject(llast(src->fields)));
-			}
+		case MCBEK_LEFT:
+			return makeIntConst(1, -1);
+		case MCBEK_RIGHT:
+		case MCBEK_RIGHT_TL:
+		case MCBEK_CLAUSE:
+			/* cte.level + 1 */
+			cr = makeNode(ColumnRef);
+			cr->location = -1;
+			cr->fields = list_make2(makeString(pstrdup(context->cte_name)),
+						makeString(context->column_level));
+			return (Node*)makeSimpleA_Expr(AEXPR_OP, "+", (Node*)cr, makeIntConst(1, -1), -1);
+		case MCBEK_TOP:
+			cr = makeNode(ColumnRef);
+			cr->location = -1;
+			cr->fields = list_make2(makeString(pstrdup(context->cte_name))
+				, makeString(pstrdup(context->column_level)));
 			return (Node*)cr;
+		default:
+			Assert(false);
 		}
-	case T_RownumExpr:
-		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("connect by not support rownum yet"),
-			scanner_errposition(((RownumExpr*)node)->location, context->yyscanner)));
-		break;
-	default:
-		break;
+	}else if(is_sys_connect_by_path_expr(node))
+	{
+		FuncCall *func = (FuncCall*)node;
+		Assert(IsA(func, FuncCall));
+
+		switch(context->mutator_kind)
+		{
+		case MCBEK_LEFT:
+			return make_concat_expr(mutator_connect_by_expr(llast(func->args), context),
+				mutator_connect_by_expr(linitial(func->args), context), -1);
+		case MCBEK_RIGHT:
+		case MCBEK_RIGHT_TL:
+		case MCBEK_CLAUSE:
+			/* make cte.scbp */
+			cr = makeNode(ColumnRef);
+			cr->location = -1;
+			cr->fields = list_make2(makeString(pstrdup(context->cte_name)),
+							makeString(get_expr_name(node, context->scbp_list, context->scbp_as_list)));
+			/* (cte.scbp || rarg) || larg */
+			return make_concat_expr(
+					/* (cte.scbp || rarg) */
+					 make_concat_expr((Node*)cr, mutator_connect_by_expr(llast(func->args), context), -1)
+					 /* larg */
+					,mutator_connect_by_expr(linitial(func->args), context)
+					, -1 /* location */);
+		case MCBEK_TOP:
+			cr = makeNode(ColumnRef);
+			cr->location = -1;
+			cr->fields = list_make1(makeString(get_expr_name(node, context->scbp_list, context->scbp_as_list)));
+			return (Node*)cr;
+		default:
+			Assert(false);
+		}
+	}else if(IsA(node, ColumnRef))
+	{
+		char *table_name = NULL;
+		cr = palloc(sizeof(ColumnRef));
+		memcpy(cr, node, sizeof(ColumnRef));
+
+		switch(context->mutator_kind)
+		{
+		case MCBEK_LEFT:
+		case MCBEK_RIGHT_TL:
+		case MCBEK_CLAUSE:
+			table_name = pstrdup(context->base_rel_name);
+			break;
+		case MCBEK_TOP:
+		case MCBEK_RIGHT:
+			table_name = pstrdup(context->cte_name);
+			break;
+		default:
+			Assert(false);
+			table_name = NULL;	/* keep compiler quiet */
+		}
+
+		cr->fields = list_make2(makeString(table_name), copyObject(llast(cr->fields)));
+		return (Node*)cr;
+	}else if(IsA(node, PriorExpr))
+	{
+		if(context->mutator_kind != MCBEK_CLAUSE)
+			goto mutator_connect_by_expr_error_;
+		context->mutator_kind = MCBEK_TOP;
+		node = mutator_connect_by_expr(((PriorExpr*)node)->expr, context);
+		context->mutator_kind = MCBEK_CLAUSE;
+		return node;
 	}
-	return node_tree_mutator(node, mutator_column_table_name, context);
+	return node_tree_mutator(node, mutator_connect_by_expr, context);
+
+mutator_connect_by_expr_error_:
+	ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+		errmsg("syntax error"),
+		scanner_errposition(exprLocation(node), context->yyscanner)));
+	return NULL;	/* keep compiler quiet */
+}
+
+static bool is_level_expr(Node *node)
+{
+	if(node != NULL && IsA(node, LevelExpr))
+		return true;
+	return false;
+}
+
+static bool is_sys_connect_by_path_expr(Node *node)
+{
+	if(node != NULL && IsA(node, FuncCall))
+	{
+		FuncCall *func = (FuncCall*)node;
+		if(list_length(func->funcname) == 1
+			&& list_length(func->args) == 2
+			&& func->agg_order == NIL
+			&& func->agg_star == false
+			&& func->agg_distinct == false
+			&& func->func_variadic == false
+			&& func->over == NULL
+			&& IsA(linitial(func->funcname), String)
+			&& strcmp(strVal(linitial(func->funcname)), "sys_connect_by_path") == 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static void change_expr_to_target(List *list)
+{
+	ResTarget *rt;
+	ListCell *lc;
+	foreach(lc, list)
+	{
+		if(!IsA(lfirst(lc), ResTarget))
+		{
+			rt = makeNode(ResTarget);
+			rt->location = -1;
+			rt->val = lfirst(lc);
+			lfirst(lc) = rt;
+		}
+	}
+}
+
+static char* get_unique_as_name(const char *prefix, uint32 *start, List *list)
+{
+	ListCell *lc;
+	ColumnRef *cr;
+	Value *value;
+	char *name;
+	uint32 i;
+	Assert(prefix);
+
+	i = (start == NULL ? 1 : *start);
+	do
+	{
+		name = psprintf("%s%u", prefix, i);
+		foreach(lc, list)
+		{
+			cr = lfirst(lc);
+			Assert(IsA(cr, ColumnRef));
+			value = llast(cr->fields);
+			Assert(IsA(value, String));
+			if(strcmp(strVal(value), name) == 0)
+			{
+				pfree(name);
+				name = NULL;
+				++i;
+				break;
+			}
+		}
+	}while(name == NULL);
+
+	if(start)
+		*start = i;
+	return name;
+}
+
+static char* get_expr_name(Node *expr, List *expr_list, List *name_list)
+{
+	ListCell *lc;
+	ListCell *lc2;
+	forboth(lc, expr_list, lc2, name_list)
+	{
+		if(equal(expr, lfirst(lc)))
+			return lfirst(lc2);
+	}
+	return NULL;
 }
 
 #endif
