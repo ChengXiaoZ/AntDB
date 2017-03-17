@@ -90,6 +90,8 @@ static void reset_hash_field(TableInfo *table_info);
 static void get_node_count_and_node_list(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void drop_func_to_server(char *serverconninfo, char *drop_func_sql);
 static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info);
+static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info);
+
 //static bool file_exists(char *file);
 static bool is_create_in_adb_cluster(char *table_name);
 static Tables* get_file_info(char *input_dir);
@@ -342,7 +344,11 @@ int main(int argc, char **argv)
 
 		/*get table info to store in the table_info_ptr*/
 		get_table_attribute(setting, table_info_ptr);
-		get_use_datanodes(setting, table_info_ptr);		
+
+		if (setting->config_datanodes_valid)
+			get_use_datanodes_from_conf(setting, table_info_ptr);
+		else
+			get_use_datanodes(setting, table_info_ptr);
 
 		switch(table_info_ptr->distribute_type)
 		{
@@ -1468,6 +1474,41 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	PQclear(res);
 	PQfinish(conn);
 
+}
+
+static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
+{
+	assert(setting != NULL && table_info != NULL && setting->datanodes_num > 0);
+
+	NodeInfoData **use_datanodes_info = NULL;
+	int i = 0;
+	int use_datanode_num = 0;
+
+	use_datanode_num = setting->datanodes_num;
+	use_datanodes_info = (NodeInfoData **)palloc0(use_datanode_num * sizeof(NodeInfoData *));
+	for (i = 0; i < use_datanode_num; i++)
+	{
+		use_datanodes_info[i] = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
+	}
+
+	for (i = 0; i < use_datanode_num; i++)
+	{
+		use_datanodes_info[i]->node_oid = setting->datanodes_info[i]->node_oid;
+		use_datanodes_info[i]->node_name = pg_strdup(setting->datanodes_info[i]->node_name);
+		use_datanodes_info[i]->node_host = pg_strdup(setting->datanodes_info[i]->node_host);
+		use_datanodes_info[i]->node_port = pg_strdup(setting->datanodes_info[i]->node_port);
+		use_datanodes_info[i]->user_name = pg_strdup(setting->datanodes_info[i]->user_name);
+		use_datanodes_info[i]->database_name = pg_strdup(setting->datanodes_info[i]->database_name);
+		use_datanodes_info[i]->connection = pg_strdup(setting->datanodes_info[i]->connection);
+	}
+
+	table_info->use_datanodes_num = use_datanode_num;
+	table_info->use_datanodes = use_datanodes_info;
+
+	qsort(table_info->use_datanodes,
+					use_datanode_num,
+					sizeof(NodeInfoData*),
+					adbloader_cmp_nodes);
 }
 
 static void reset_hash_field(TableInfo *table_info)

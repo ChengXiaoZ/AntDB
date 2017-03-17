@@ -24,8 +24,9 @@ static const char*  COORDINATOR_DB   =		"COORDINATOR_DB";
 
 static const char*  DATANODE_VALID   =		"DATANODE_VALID";
 static const char*  DATANODE_NUM     =		"DATANODE_NUM";
-static const char*  DATANODE1_PROT   =		"DATANODE1_PROT";
+static const char*  DATANODE1_NAME   =		"DATANODE1_NAME";
 static const char*  DATANODE1_IP     =		"DATANODE1_IP";
+static const char*  DATANODE1_PROT   =		"DATANODE1_PROT";
 static const char*  DATANODE1_USER   =		"DATANODE1_USER";
 static const char*  DATANODE1_DB     =		"DATANODE1_DB";
 
@@ -414,7 +415,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 	setting->server_info = (ServerNodeInfo *)palloc0(sizeof(ServerNodeInfo)); 
 	setting->agtm_info = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
 	setting->coordinator_info = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
-	
+
 	setting->server_info->node_host = get_config_file_value(SERVER_IP);
 	setting->server_info->node_port = get_config_file_value(SERVER_PORT);
 	setting->server_info->user_name = get_config_file_value(SERVER_USER);
@@ -457,6 +458,8 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		for(i=0; i< setting->datanodes_num; ++i)
 		{
 			sprintf(num_str,"%d",i+1);
+			DATANODE1_NAME = replace_string(DATANODE1_NAME, "1", num_str);
+			setting->datanodes_info[i]->node_name = get_config_file_value(DATANODE1_NAME);
 			DATANODE1_IP = replace_string(DATANODE1_IP, "1", num_str);
 			setting->datanodes_info[i]->node_host = get_config_file_value(DATANODE1_IP);
 			DATANODE1_PROT = replace_string(DATANODE1_PROT, "1", num_str);
