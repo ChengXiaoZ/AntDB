@@ -95,7 +95,7 @@ static bool is_create_in_adb_cluster(char *table_name);
 static Tables* get_file_info(char *input_dir);
 static bool update_file_info(char *input_dir, Tables *tables);
 
-static char *rename_file_name(char *file_name, char *input_dir);
+static char *rename_file_name(char *file_name, char *input_dir, char *suffix);
 static void rename_file_suffix(char *old_file_path, char *suffix);
 
 static char *get_full_path(char *file_name, char *input_dir);
@@ -535,9 +535,18 @@ static bool update_file_info(char *input_dir, Tables *tables)
 		{
 			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", table_name);
 			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", table_name);
+
+			new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir, SUFFIX_ERROR);
+			if (new_file_name != NULL)
+			{
+				pfree(new_file_name);
+				new_file_name = NULL;
+			}
+
 			continue;
 		}
-		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir);
+
+		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir, SUFFIX_SCAN);
 		file_full_path = get_full_path(new_file_name, input_dir);
 
 		ptr = tables->info;
@@ -640,10 +649,18 @@ static Tables* get_file_info(char *input_dir)
 		{
 			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", table_name);
 			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", table_name);
+
+			new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir, SUFFIX_ERROR);
+			if (new_file_name != NULL)
+			{
+				pfree(new_file_name);
+				new_file_name = NULL;
+			}
+
 			continue;
 		}
 
-		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir);
+		new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir, SUFFIX_SCAN);
 		file_full_path = get_full_path(new_file_name, input_dir);
 
 		ptr = tables_dynamic->info;
@@ -749,14 +766,14 @@ static char *get_table_name(char *file_name)
 	return file_name_local;
 }
 
-static char *rename_file_name(char *file_name, char *input_dir)
+static char *rename_file_name(char *file_name, char *input_dir, char *suffix)
 {
 	char old_file_name_path[1024] = {0};
 	char new_file_name_path[1024] = {0};
 	char *new_fiel_name = NULL;
 
 	sprintf(old_file_name_path, "%s/%s", input_dir, file_name);
-	sprintf(new_file_name_path, "%s/%s%s", input_dir, file_name, SUFFIX_SCAN);
+	sprintf(new_file_name_path, "%s/%s%s", input_dir, file_name, suffix);
 
 	if (rename(old_file_name_path, new_file_name_path) < 0)
 	{
@@ -764,8 +781,8 @@ static char *rename_file_name(char *file_name, char *input_dir)
 				old_file_name_path, new_file_name_path, strerror(errno));
 	}
 
-	new_fiel_name = (char *)palloc0(strlen(file_name) + strlen(SUFFIX_SCAN) + 1);
-	sprintf(new_fiel_name, "%s%s", file_name, SUFFIX_SCAN);
+	new_fiel_name = (char *)palloc0(strlen(file_name) + strlen(suffix) + 1);
+	sprintf(new_fiel_name, "%s%s", file_name, suffix);
 
 	return new_fiel_name;
 }
