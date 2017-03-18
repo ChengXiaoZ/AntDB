@@ -491,6 +491,8 @@ Node *makeConnectByStmt(SelectStmt *stmt, Node *start, Node *connect_by,
 	search_columnref(stmt->whereClause, &pstate);
 	search_columnref((Node*)stmt->groupClause, &pstate);
 	search_columnref(stmt->havingClause, &pstate);
+	search_columnref(start, &pstate);
+	search_columnref(connect_by, &pstate);
 	if(pstate.have_level)
 		pstate.column_level = get_unique_as_name("_level_", NULL, pstate.column_list);
 	make_scbp_as_list(&pstate);
