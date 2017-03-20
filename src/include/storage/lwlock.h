@@ -21,7 +21,7 @@
  */
 
 /* Number of partitions of the shared buffer mapping hashtable */
-#define NUM_BUFFER_PARTITIONS  1024
+#define NUM_BUFFER_PARTITIONS  128
 
 /* Number of partitions the shared lock tables are divided into */
 #define LOG2_NUM_LOCK_PARTITIONS  6
