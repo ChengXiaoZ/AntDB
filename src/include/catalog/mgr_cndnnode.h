@@ -16,7 +16,7 @@ CATALOG(mgr_node,4948)
 	NameData	nodename;		/* node name */
 	Oid			nodehost;		/* node hostoid from host*/
 	char		nodetype;		/* node type */
-	char		nodesync;		/* node sync for slave/extra */
+	NameData		nodesync;		/* node sync for slave/extra */
 	int32		nodeport;		/* node port */
 	bool		nodeinited;		/* is initialized */
 	Oid			nodemasternameoid;	/* 0 stands for the node is not slave*/
@@ -69,5 +69,18 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define SHUTDOWN_F  "fast"
 #define SHUTDOWN_I  "immediate"
 #define TAKEPLAPARM_N  "none"
+
+struct enum_sync_state
+{
+	int type;
+	char *name;
+};
+
+typedef enum SYNC_STATE
+{
+	SYNC_STATE_SYNC,
+	SYNC_STATE_ASYNC,
+	SYNC_STATE_POTENTIAL,
+}sync_state;
 
 #endif /* MGR_CNDNNODE_H */

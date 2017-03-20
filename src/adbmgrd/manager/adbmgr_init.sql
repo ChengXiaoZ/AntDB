@@ -60,7 +60,7 @@ CREATE VIEW adbmgr.node AS
     END AS type,
     node_alise.nodename AS mastername,
     mgrnode.nodeport    AS  port,
-    mgrnode.nodesync    AS  sync,
+    mgrnode.nodesync    AS  sync_state,
     mgrnode.nodepath    AS  path,
     mgrnode.nodeinited  AS  initialized,
     mgrnode.nodeincluster AS incluster
