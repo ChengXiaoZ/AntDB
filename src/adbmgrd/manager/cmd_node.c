@@ -198,7 +198,6 @@ static bool mgr_check_node_port(Relation rel, Oid hostoid, int port);
 static bool mgr_try_max_pingnode(char *host, char *port, const int max_times);
 static char mgr_get_master_type(char nodetype);
 static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, bool bincluster);
-static bool mgr_update_one_slave_to_sync_incluster(Relation rel, char mastertype, Name mastername, Oid mastertupleoid, Oid excludeoid, StringInfo infostrparam);
 static void mgr_get_master_sync_string(Oid mastertupleoid, bool bincluster, Oid excludeoid, StringInfo infostrparam);
 
 #if (Natts_mgr_node != 9)
@@ -383,7 +382,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 					{
 						heap_close(rel, RowExclusiveLock);
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-							,errmsg("not support this node as synchronous node now, its master already has \"sync\" node, the node can set sync_state as \"potential\"or \"async\"")));
+							,errmsg("not support this node as synchronous node now, its master already has \"sync\" node, the node can set sync_state as \"potential\" or \"async\"")));
 					}
 					namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_SYNC].name);
 				}
@@ -394,7 +393,10 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 				{
 					/*check the master of node has sync, if it has not ,set this as sync node*/
 					if (!mgr_check_syncstate_node_exist(rel, &name, mastertype, SYNC_STATE_SYNC, InvalidOid))
+					{
+						ereport(NOTICE, (errmsg("the master of this node has no synchronous slave or extra node, make this node as synchronous node")));
 						namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_SYNC].name);
+					}
 					else
 						namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_POTENTIAL].name);
 				}
@@ -655,7 +657,7 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 					{
 						heap_close(rel, RowExclusiveLock);
 						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-							,errmsg("not support this node as synchronous node now, its master already has \"sync\" node, the node can set sync_state as \"potential\"or \"async\"")));
+							,errmsg("not support this node as synchronous node now, its master already has \"sync\" node, the node can set sync_state as \"potential\" or \"async\"")));
 					}
 					namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_SYNC].name);
 					new_sync = SYNC_STATE_SYNC;
@@ -674,6 +676,7 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 					}
 					else
 					{
+						ereport(NOTICE, (errmsg("the master of this node has no synchronous slave or extra node, make this node as synchronous node")));
 						namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_SYNC].name);
 						new_sync = SYNC_STATE_SYNC;
 					}
@@ -3068,6 +3071,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		/* step 6: update datanode slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
@@ -3322,6 +3326,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		/* step 6: update datanode extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_EXTRA, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
@@ -3726,6 +3731,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		/* step 4: update agtm slave's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
@@ -3930,6 +3936,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		/* step 4: update agtm extra's postgresql.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("archive_command", "", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("log_directory", "pg_log", &infosendmsg);
 		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
@@ -10995,54 +11002,52 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 		/*if mgr_node->nodesync = SYNC, set its master as async*/
 		mastertype = mgr_get_master_type(nodetype);
 		selftupleoid = HeapTupleGetOid(tuple);
-		bsync_exist = mgr_check_syncstate_node_exist(rel, &namedata, mastertype, SYNC_STATE_SYNC, selftupleoid);
+		bsync_exist = mgr_check_syncstate_node_exist_incluster(rel, &namedata, mastertype, SYNC_STATE_SYNC, selftupleoid);
 		if (!bsync_exist)
 		{
-			mgr_update_one_slave_to_sync_incluster(rel, mastertype, &namedata, mgr_node->nodemasternameoid, selftupleoid, &infostrparam);
+			mgr_update_one_potential_to_sync(rel, mgr_node->nodemasternameoid, true);
 		}
-		else
+
+		if (strcmp(NameStr(mgr_node->nodesync),sync_state_tab[SYNC_STATE_SYNC].name) == 0 
+				|| strcmp(NameStr(mgr_node->nodesync), sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0)
 		{
-			if (strcmp(NameStr(mgr_node->nodesync),sync_state_tab[SYNC_STATE_SYNC].name) == 0 || strcmp(NameStr(mgr_node->nodesync),sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0)
-			{
 				mgr_get_master_sync_string(mgr_node->nodemasternameoid, true, selftupleoid, &infostrparam);
-			}
 		}
 		
-		if (infostrparam.len != 0)
-		{
-			mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
-			if(!HeapTupleIsValid(mastertuple))
-			{
-				heap_endscan(rel_scan);
-				heap_close(rel, RowExclusiveLock);
-				ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-					, errmsg("the master \"%s\" does not exist", NameStr(mgr_node->nodename))));
-			}
-			mgr_masternode = (Form_mgr_node)GETSTRUCT(mastertuple);
-			datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
-			if (isNull)
-			{
-				ReleaseSysCache(mastertuple);
-				heap_close(rel, RowExclusiveLock);
-
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-					, errmsg("column nodepath is null")));
-			}
-			resetStringInfo(&(getAgentCmdRst.description));
-			resetStringInfo(&infosendmsg);
-			masterpath = TextDatumGetCString(datumPath);
-			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", infostrparam.data, &infosendmsg);
-			nodestring = mgr_nodetype_str(mgr_masternode->nodetype);
-			ereport(LOG, (errmsg("set \"synchronous_standby_names = '%s'\" in postgresql.conf of the %s \"%s\"", infostrparam.data, nodestring, NameStr(mgr_masternode->nodename))));
-			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, masterpath, &infosendmsg, mgr_masternode->nodehost, &getAgentCmdRst);
-			if (!getAgentCmdRst.ret)
-				ereport(WARNING, (errmsg("set synchronous_standby_names = '%s' in postgresql.conf of %s \"%s\"fail", infostrparam.data, nodestring, NameStr(mgr_masternode->nodename))));
-			ReleaseSysCache(mastertuple);
-			pfree(nodestring);
-		}
-		/*check its master has sync node*/
 		if (infostrparam.len == 0)
+			appendStringInfoString(&infostrparam, "");
+		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
+		if(!HeapTupleIsValid(mastertuple))
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("the master \"%s\" does not exist", NameStr(mgr_node->nodename))));
+		}
+		mgr_masternode = (Form_mgr_node)GETSTRUCT(mastertuple);
+		datumPath = heap_getattr(mastertuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isNull);
+		if (isNull)
+		{
+			ReleaseSysCache(mastertuple);
+			heap_close(rel, RowExclusiveLock);
+
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column nodepath is null")));
+		}
+		resetStringInfo(&(getAgentCmdRst.description));
+		resetStringInfo(&infosendmsg);
+		masterpath = TextDatumGetCString(datumPath);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", infostrparam.data, &infosendmsg);
+		nodestring = mgr_nodetype_str(mgr_masternode->nodetype);
+		ereport(LOG, (errmsg("set \"synchronous_standby_names = '%s' in postgresql.conf of the %s \"%s\"", infostrparam.data, nodestring, NameStr(mgr_masternode->nodename))));
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, masterpath, &infosendmsg, mgr_masternode->nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(WARNING, (errmsg("set synchronous_standby_names = '%s' in postgresql.conf of %s \"%s\"fail", infostrparam.data, nodestring, NameStr(mgr_masternode->nodename))));
+		ReleaseSysCache(mastertuple);
+		pfree(nodestring);
+		/*check its master has sync node*/
+		if (strcmp(infostrparam.data, "") == 0)
 		{
 			if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA== nodetype)
 				ereport(WARNING, (errmsg("the datanode master \"%s\" has no synchronous slave or extra node", namedata.data)));
@@ -11144,6 +11149,7 @@ static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, b
 	HeapTuple tuple;
 	HeapScanDesc rel_scan;
 	ScanKeyData key[3];
+	char *nodetypestr;
 
 	namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_POTENTIAL].name);
 	namestrcpy(&sync_state_name_sync, sync_state_tab[SYNC_STATE_SYNC].name);
@@ -11168,74 +11174,13 @@ static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, b
 		Assert(mgr_node);
 		namestrcpy(&(mgr_node->nodesync), sync_state_name_sync.data);
 		heap_inplace_update(rel, tuple);
+		nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
+		ereport(NOTICE, (errmsg("the master of this node has no synchronous slave or extra node, make potential node %s \"%s\" as synchronous node", nodetypestr, NameStr(mgr_node->nodename))));
+		pfree(nodetypestr);
 		break;
 	}
 	heap_endscan(rel_scan);
 
-}
-
-/*
-* update one slave (first find if the master has potential node, if not check the master has async node) node to sync node
-*/
-static bool mgr_update_one_slave_to_sync_incluster(Relation rel, char mastertype, Name mastername, Oid mastertupleoid, Oid excludeoid, StringInfo infostrparam)
-{
-	NameData sync_state_name;
-	Form_mgr_node mgr_node;
-	HeapTuple tuple;
-	HeapScanDesc rel_scan;
-	ScanKeyData key[3];
-	int i = 0;
-	bool bonce = true;
-
-	for(i=0; i<2; i++)
-	{
-		if (i == 0)
-			namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_POTENTIAL].name);
-		else
-			namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_ASYNC].name);
-		ScanKeyInit(&key[0]
-			,Anum_mgr_node_nodemasternameOid
-			,BTEqualStrategyNumber
-			,F_OIDEQ
-			,ObjectIdGetDatum(mastertupleoid));
-		ScanKeyInit(&key[1]
-			,Anum_mgr_node_nodesync
-			,BTEqualStrategyNumber, F_NAMEEQ
-			,NameGetDatum(&sync_state_name));
-		ScanKeyInit(&key[2]
-				,Anum_mgr_node_nodeincluster
-				,BTEqualStrategyNumber
-				,F_BOOLEQ
-				,BoolGetDatum(true));
-		rel_scan = heap_beginscan(rel, SnapshotNow, 3, key);
-		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			Assert(mgr_node);
-			if (HeapTupleGetOid(tuple) == excludeoid)
-				continue;
-			if (infostrparam->len == 0)
-				appendStringInfo(infostrparam, "%s", (mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == CNDN_TYPE_DATANODE_SLAVE) ? "slave":"extra");
-			else
-				appendStringInfo(infostrparam, ",%s", (mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == CNDN_TYPE_DATANODE_SLAVE) ? "slave":"extra");
-			if (bonce)
-			{
-				bonce = false;
-				/*update sync_state to sync*/
-				namestrcpy(&(mgr_node->nodesync), sync_state_tab[SYNC_STATE_SYNC].name);
-				heap_inplace_update(rel, tuple);
-				if (i == 1) 
-					break;
-			}
-		}
-		heap_endscan(rel_scan);
-		
-		if (!bonce)
-			break;
-	}
-	
-	
-	return (bonce!=true);
 }
 
 /*
