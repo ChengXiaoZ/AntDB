@@ -1782,7 +1782,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(aimtuple, GTM_TYPE_GTM_MASTER, &infosendmsg);
+		mgr_add_parameters_hbaconf((mgr_node->nodemasternameoid == 0) ? HeapTupleGetOid(aimtuple):mgr_node->nodemasternameoid
+			, GTM_TYPE_GTM_MASTER, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
 	/*when init, 1. update gtm system table's column to set initial is true 2. refresh postgresql.conf*/
@@ -1800,7 +1801,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(aimtuple, GTM_TYPE_GTM_MASTER, &infosendmsg);
+		mgr_add_parameters_hbaconf((mgr_node->nodemasternameoid == 0)? HeapTupleGetOid(aimtuple):mgr_node->nodemasternameoid
+			, GTM_TYPE_GTM_MASTER, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 		/*refresh recovry.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
@@ -1823,7 +1825,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(aimtuple, nodetype, &infosendmsg);
+		mgr_add_parameters_hbaconf((mgr_node->nodemasternameoid == 0)? HeapTupleGetOid(aimtuple):mgr_node->nodemasternameoid
+			, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
 	/*failover execute success*/
@@ -2758,7 +2761,6 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	int32 dnport;
 	PGconn * pg_conn = NULL;
 	HeapTuple tup_result;
-	HeapTuple aimtuple = NULL;
 	char coordport_buf[10];
 	GetAgentCmdRst getAgentCmdRst;
 	bool result = true;
@@ -2834,7 +2836,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 3: update datanode master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+		mgr_add_parameters_hbaconf(appendnodeinfo.nodemasteroid, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
@@ -3460,7 +3462,6 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	Oid coordhostoid;
 	int32 coordport;
 	PGconn *pg_conn = NULL;
-	HeapTuple aimtuple = NULL;
 	HeapTuple tup_result;
 	char coordport_buf[10];
 	char nodeport_buf[10];
@@ -3549,7 +3550,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 
 		/* step 3: update coordinator master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(aimtuple, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+		mgr_add_parameters_hbaconf(appendnodeinfo.nodemasteroid, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
@@ -6023,105 +6024,88 @@ void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoi
 /*
 * the parameters which need refresh for pg_hba.conf
 * gtm : include all gtm master/slave/extra ip and all coordinators ip and datanode masters/slave/extra ip
+*        replication include slave/extra ip
 * coordinator: include all coordinators ip
-* datanode master: include all coordinators ip and the master's slave ip and extra ip
+* datanode: include all coordinators ip, replication include slave/extra ip
 */
-void mgr_add_parameters_hbaconf(HeapTuple aimtuple, char nodetype, StringInfo infosendhbamsg)
+void mgr_add_parameters_hbaconf(Oid mastertupleoid, char nodetype, StringInfo infosendhbamsg)
 {
 	Relation rel_node;
 	HeapScanDesc rel_scan;
-	Oid hostoid;
 	char *cnuser;
 	char *cnaddress;
 	Form_mgr_node mgr_node;
 	HeapTuple tuple;
-	Oid masterOid;
+	ScanKeyData key[1];
 	
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
 	/*get all coordinator master ip*/
 	if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
 	{
-		rel_node = heap_open(NodeRelationId, AccessShareLock);
-		rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
+		ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+		rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
 		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
-			/*hostoid*/
-			hostoid = mgr_node->nodehost;
-			/*get coordinator address*/
-			cnaddress = get_hostaddress_from_hostoid(hostoid);
+			/*get address*/
+			cnaddress = get_hostaddress_from_hostoid(mgr_node->nodehost);
 			if (CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
 				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
 			pfree(cnaddress);
 		}
 		heap_endscan(rel_scan);
-		heap_close(rel_node, AccessShareLock);
-	} /*get all coordinator master ip*/
-	else if (CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
+	}
+	else
 	{
-		rel_node = heap_open(NodeRelationId, AccessShareLock);
-		rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
 		/*for datanode or gtm replication*/
+		rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
 		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 			Assert(mgr_node);
-			/*hostoid*/
-			hostoid = mgr_node->nodehost;
-			/*database user for this coordinator*/
-			cnuser = get_hostuser_from_hostoid(hostoid);
-			/*get coordinator address*/
-			cnaddress = get_hostaddress_from_hostoid(hostoid);
-			if ( ((CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype || CNDN_TYPE_DATANODE_EXTRA == mgr_node->nodetype) && CNDN_TYPE_DATANODE_MASTER == nodetype)
-				|| ((GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTRA == mgr_node->nodetype) && GTM_TYPE_GTM_MASTER == nodetype) )
+			if (mastertupleoid != 0 && (mastertupleoid == mgr_node->nodemasternameoid))
 			{
-				if(HeapTupleIsValid(aimtuple))
-				{
-					masterOid = HeapTupleGetOid(aimtuple);
-					if (masterOid == mgr_node->nodemasternameoid)
-					{
-						if (GTM_TYPE_GTM_MASTER == nodetype)
-							mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
-						else
-							mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
-					}
-				}
-			}
-			pfree(cnuser);
-			pfree(cnaddress);
-		}
-		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-		{
-			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-			Assert(mgr_node);
-			if (CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
-			{
-				/*hostoid*/
-				hostoid = mgr_node->nodehost;
+				/*database user*/
+				cnuser = get_hostuser_from_hostoid(mgr_node->nodehost);
 				/*get address*/
-				cnaddress = get_hostaddress_from_hostoid(hostoid);
-				if (GTM_TYPE_GTM_MASTER == nodetype)
-					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
+				cnaddress = get_hostaddress_from_hostoid(mgr_node->nodehost);
+				if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
 				else
-					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
-				pfree(cnaddress);
-			}
-			else if ((CNDN_TYPE_DATANODE_MASTER == mgr_node->nodetype || CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype 
-				|| CNDN_TYPE_DATANODE_EXTRA == mgr_node->nodetype) && GTM_TYPE_GTM_MASTER == nodetype)
-			{
-				/*hostoid*/
-				hostoid = mgr_node->nodehost;
-				/*get address*/
-				cnaddress = get_hostaddress_from_hostoid(hostoid);
-				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", cnuser, cnaddress, 32, "trust", infosendhbamsg);
+				pfree(cnuser);
 				pfree(cnaddress);
 			}
 		}
 		heap_endscan(rel_scan);
-		heap_close(rel_node, AccessShareLock);
+		/*for allow connect*/
+		rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, NULL);
+		while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+			Assert(mgr_node);
+			cnaddress = get_hostaddress_from_hostoid(mgr_node->nodehost);
+			if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+			{
+				if (mgr_node->nodetype != GTM_TYPE_GTM_SLAVE || mgr_node->nodetype != GTM_TYPE_GTM_EXTRA)
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, cnaddress, 32, "trust", infosendhbamsg);
+			}
+			else
+			{
+				if (CNDN_TYPE_COORDINATOR_MASTER == mgr_node->nodetype)
+					mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", cnaddress, 32, "trust", infosendhbamsg);
+			}
+			pfree(cnaddress);
+		}
+		heap_endscan(rel_scan);
 	}
-
-
+		
+	heap_close(rel_node, AccessShareLock);
 }
 /*
 * add one line content to infosendhbamsg, which will send to agent to refresh pg_hba.conf, the word in this line interval by '\0',donot change the order
@@ -8509,7 +8493,8 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 		cndnpath = TextDatumGetCString(datumpath);
 		resetStringInfo(&(getAgentCmdRst.description));
 		resetStringInfo(&infosendmsg);
-		mgr_add_parameters_hbaconf(tuple, mgr_node->nodetype, &infosendmsg);
+		mgr_add_parameters_hbaconf((mgr_node->nodemasternameoid == 0)? HeapTupleGetOid(tuple):mgr_node->nodemasternameoid
+			, mgr_node->nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnpath, &infosendmsg, hostoid, &getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 		{
