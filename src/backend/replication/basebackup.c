@@ -34,6 +34,7 @@
 #include "utils/elog.h"
 #include "utils/ps_status.h"
 #include "pgtar.h"
+#include "postmaster/syslogger.h"
 
 typedef struct
 {
@@ -840,6 +841,15 @@ sendDir(char *path, int basepathlen, bool sizeonly, List *tablespaces)
 	{
 		/* Skip special stuff */
 		if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+			continue;
+		if (strcmp(de->d_name, Log_directory) == 0
+				&& strcmp("base", Log_directory) != 0 && strcmp("global", Log_directory) != 0 
+				&&strcmp("pg_clog", Log_directory) != 0 && strcmp("pg_multixact", Log_directory) != 0
+				&&strcmp("pg_notify", Log_directory) != 0 && strcmp("pg_serial", Log_directory) != 0
+				&&strcmp("pg_snapshots", Log_directory) != 0 && strcmp("pg_stat", Log_directory) != 0
+				&&strcmp("pg_stat_tmp", Log_directory) != 0 && strcmp("pg_subtrans", Log_directory) != 0
+				&&strcmp("pg_tblspc", Log_directory) != 0 && strcmp("pg_twophase", Log_directory) != 0
+				&&strcmp("pg_xlog", Log_directory) != 0 && strcmp(PG_TEMP_FILES_DIR, Log_directory) != 0)
 			continue;
 
 		/* Skip temporary files */
