@@ -32,6 +32,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 #include "utils/fmgroids.h"    /* For F_NAMEEQ	*/
+#include "executor/spi.h"
 
 
 typedef struct StartAgentInfo
@@ -571,11 +572,39 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 	bool success = false;
 	char *password = PG_GETARG_CSTRING(0);
 	StringInfoData buf;
+	NameData resnamedata;
+	NameData restypedata;
+	int ret;
 
 	initStringInfo(&buf);
 
 	if (SRF_IS_FIRSTCALL())
 	{
+		/*check all node stop*/
+		if (!mgr_check_cluster_stop(&resnamedata, &restypedata))
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("%s \"%s\" still running, please stop it before deploy", restypedata.data, resnamedata.data)
+				,errhint("try \"monitor all\" for more information")));			
+
+
+		/*check the agent all stop*/
+		if ((ret = SPI_connect()) < 0)
+			ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+		ret = SPI_execute("select nodename from mgr_monitor_agent_all() where  status = true limit 1;", false, 0);
+		if (ret != SPI_OK_SELECT)
+			ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
+		if (SPI_processed > 0 && SPI_tuptable != NULL)
+		{
+			namestrcpy(&resnamedata, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
+			SPI_freetuptable(SPI_tuptable);
+			SPI_finish();
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("on host \"%s\" the agent still running, please stop it before deploy", resnamedata.data)
+				,errhint("try \"monitor agent all\" for more information")));			
+		}
+		SPI_freetuptable(SPI_tuptable);
+		SPI_finish();
+
 		MemoryContext oldcontext;
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -659,24 +688,70 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 	InitDeployInfo *info = NULL;
 	FuncCallContext *funcctx = NULL;
 	ListCell **lcp = NULL;
+	ListCell *lc = NULL;
 	FILE volatile *tar = NULL;
-	char *str_path = NULL;
 	HeapTuple out;
 	Value *hostname;
 	bool success = false;
+	bool isnull = false;
 	HeapTuple tuple;
 	char *password = PG_GETARG_CSTRING(0);
-	List *hostname_list = NIL;
-	NameData name;
 	char *str_addr;
+	char *str_path = NULL;
+	List *hostname_list = NIL;
+	List *host_list = NIL;
+	NameData name;
+	NameData resnamedata;
+	NameData restypedata;
 	Datum datum;
-	bool isnull = false;
 	StringInfoData buf;
+	StringInfoData sqlstr;
+	StringInfoData namestr;
+	int ret;
 
 	initStringInfo(&buf);
 
 	if (SRF_IS_FIRSTCALL())
 	{
+		/*check all node stop*/
+		if (!mgr_check_cluster_stop(&resnamedata, &restypedata))
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("%s \"%s\" still running, please stop it before deploy", restypedata.data, resnamedata.data)
+				,errhint("try \"monitor all\" for more information")));			
+
+		/*check the agent all stop*/
+		if ((ret = SPI_connect()) < 0)
+			ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+		initStringInfo(&sqlstr);
+		initStringInfo(&namestr);
+		host_list = DecodeTextArrayToValueList(PG_GETARG_DATUM(1));
+		check_host_name_isvaild(host_list);
+		foreach(lc, host_list)
+		{
+			hostname = (Value *)lfirst(lc);
+			if (namestr.len == 0)
+				appendStringInfo(&namestr, "%s", strVal(hostname));
+			else
+				appendStringInfo(&namestr, ",%s", strVal(hostname));
+		}
+		appendStringInfo(&sqlstr, "select nodename from mgr_monitor_agent_hostlist('{%s}') where  status = true limit 1;", namestr.data);
+		pfree(namestr.data);
+		ret = SPI_execute(sqlstr.data, false, 0);
+		pfree(sqlstr.data);
+		if (ret != SPI_OK_SELECT)
+			ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
+		if (SPI_processed > 0 && SPI_tuptable != NULL)
+		{
+			namestrcpy(&resnamedata, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
+			SPI_freetuptable(SPI_tuptable);
+			SPI_finish();
+			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("on host \"%s\" the agent still running, please stop it before deploy", resnamedata.data)
+				,errhint("try \"monitor agent all\" for more information")));			
+		}
+		SPI_freetuptable(SPI_tuptable);
+		SPI_finish();
+
 		MemoryContext oldcontext;
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -687,7 +762,6 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 
 		hostname_list = DecodeTextArrayToValueList(PG_GETARG_DATUM(1));
 		check_host_name_isvaild(hostname_list);
-
 		*(info->lcp) = list_head(hostname_list);
 		funcctx->user_fctx = info;
 		MemoryContextSwitchTo(oldcontext);
@@ -1781,4 +1855,30 @@ static void check_host_name_isvaild(List *host_name_list)
 
 	FreeTupleDesc(host_desc);
 	return;
+}
+
+/*
+* check all node stop in cluster
+*/
+bool mgr_check_cluster_stop(Name nodename, Name nodetypestr)
+{
+	int ret;
+	bool bresult = true;
+
+	/*check all node stop*/
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+	ret = SPI_execute("select nodename, nodetype from mgr_monitor_all() where status = true;", false, 0);
+	if (ret != SPI_OK_SELECT)
+		ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
+	if (SPI_processed > 0 && SPI_tuptable != NULL)
+	{
+		namestrcpy(nodename, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
+		namestrcpy(nodetypestr, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 2));
+		bresult = false;
+	}
+	SPI_freetuptable(SPI_tuptable);
+	SPI_finish();
+	
+	return bresult;
 }

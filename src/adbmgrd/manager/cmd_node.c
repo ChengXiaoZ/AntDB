@@ -444,7 +444,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 		heap_close(rel, RowExclusiveLock);
 		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("on host \"%s\" the path \"%s\" has already been used in node table", hostname.data, pathstr)
-				,errhint("try \"list node\" for more infomation")));
+				,errhint("try \"list node\" for more information")));
 	}
 
 	if (mgr_check_node_port(rel, hostoid, port))
@@ -452,7 +452,7 @@ Datum mgr_add_node_func(PG_FUNCTION_ARGS)
 		heap_close(rel, RowExclusiveLock);
 		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("on host \"%s\" the port \"%d\" has already been used in node table", hostname.data, port)
-				,errhint("try \"list node\" for more infomation")));
+				,errhint("try \"list node\" for more information")));
 	}
 
 	if(got[Anum_mgr_node_nodesync-1] == false) /* default values for user do not set sync in add slave/extra. */
@@ -704,7 +704,7 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 		heap_close(rel, RowExclusiveLock);
 		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("on host \"%s\" the port \"%d\" has already been used in node table", get_hostname_from_hostoid(hostoid), newport)
-				,errhint("try \"list node\" for more infomation")));
+				,errhint("try \"list node\" for more information")));
 	}
 	/*check this tuple initd or not, if it has inited and in cluster, check whether it can be alter*/		
 	if(mgr_node->nodeincluster)
@@ -896,7 +896,7 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 }
 
 /*
-* execute init gtm master, send infomation to agent to init gtm master 
+* execute init gtm master, send information to agent to init gtm master 
 */
 Datum 
 mgr_init_gtm_master(PG_FUNCTION_ARGS)
@@ -908,7 +908,7 @@ mgr_init_gtm_master(PG_FUNCTION_ARGS)
 }
 
 /*
-* execute init gtm slave, send infomation to agent to init gtm slave 
+* execute init gtm slave, send information to agent to init gtm slave 
 */
 Datum 
 mgr_init_gtm_slave(PG_FUNCTION_ARGS)
@@ -919,7 +919,7 @@ mgr_init_gtm_slave(PG_FUNCTION_ARGS)
 	return mgr_runmode_cndn(GTM_TYPE_GTM_SLAVE, AGT_CMD_GTM_SLAVE_INIT, nodenamelist, TAKEPLAPARM_N, fcinfo);
 }
 /*
-* execute init gtm extra, send infomation to agent to init gtm extra 
+* execute init gtm extra, send information to agent to init gtm extra 
 */
 Datum 
 mgr_init_gtm_extra(PG_FUNCTION_ARGS)
@@ -964,7 +964,7 @@ mgr_init_dn_master(PG_FUNCTION_ARGS)
 }
 
 /*
-*	execute init datanode slave all, send infomation to agent to init 
+*	execute init datanode slave all, send information to agent to init 
 */
 Datum 
 mgr_init_dn_slave_all(PG_FUNCTION_ARGS)
@@ -1041,7 +1041,7 @@ mgr_init_dn_slave_all(PG_FUNCTION_ARGS)
 }
 
 /*
-*	execute init datanode extra all, send infomation to agent to init 
+*	execute init datanode extra all, send information to agent to init 
 */
 Datum 
 mgr_init_dn_extra_all(PG_FUNCTION_ARGS)
@@ -6995,41 +6995,15 @@ char *mgr_nodetype_str(char nodetype)
 */
 Datum mgr_clean_all(PG_FUNCTION_ARGS)
 {
-	Relation rel_node;
-	Form_mgr_node mgr_node;
-	ScanKeyData key[1];
-	HeapScanDesc rel_scan;
-	StringInfoData strinfoport;
-	HeapTuple tuple;
-	int ismasterrunning;
-	char *hostaddress;
+	NameData resnamedata;
+	NameData restypedata;
 
-	/*check the cluster running or not, if it is running, stop the dbcluster first*/
-	ScanKeyInit(&key[0],
-		Anum_mgr_node_nodetype
-		,BTEqualStrategyNumber
-		,F_CHAREQ
-		,CharGetDatum(GTM_TYPE_GTM_MASTER));
-	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_node);
-		hostaddress = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		initStringInfo(&strinfoport);
-		appendStringInfo(&strinfoport, "%d", mgr_node->nodeport);
-		ismasterrunning = pingNode(hostaddress, strinfoport.data);
-		pfree(hostaddress);
-		pfree(strinfoport.data);
-		if (0 == ismasterrunning)
-		{
-			ereport(ERROR, (errmsg("The ADB cluster is still running. Please stop it first!")));
-		}
-		break;
-	}
-	heap_endscan(rel_scan);
-	heap_close(rel_node, RowExclusiveLock);
+	/*check all node stop*/
+	if (!mgr_check_cluster_stop(&resnamedata, &restypedata))
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+			,errmsg("%s \"%s\" still running, please stop it before clean all", restypedata.data, resnamedata.data)
+			,errhint("try \"monitor all\" for more information")));			
+
 	/*clean gtm master/slave/extra, clean coordinator, clean datanode master/slave/extra*/
 	return mgr_prepare_clean_all(fcinfo);
 }

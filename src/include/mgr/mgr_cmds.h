@@ -81,6 +81,7 @@ extern bool ssh2_deplory_tar(const char *hostname,
 							const char *path,
 							FILE *tar,
 							StringInfo message);
+extern bool mgr_check_cluster_stop(Name nodename, Name nodetypestr);
 
 /*parm commands, in cmd_parm.c*/
 extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceiver *dest);
