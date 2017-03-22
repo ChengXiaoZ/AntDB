@@ -76,7 +76,7 @@ static FILE* make_tar_package(void);
 static void append_file_to_tar(FILE *tar, const char *path, const char *name);
 static bool host_is_localhost(const char *name);
 static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo msg, const char *password);
-static void get_pghome(char *pghome);
+static void get_adbhome(char *adbhome);
 static void check_host_name_isvaild(List *host_name_list);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
@@ -109,7 +109,7 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 	struct addrinfo *addrs;
 	bool isnull[Natts_mgr_host];
 	bool got[Natts_mgr_host];
-	char pghome[MAXPGPATH]={0};
+	char adbhome[MAXPGPATH]={0};
 	char abuf[INET_ADDRSTRLEN];
 	const char *ipstr;
 	struct sockaddr_in *sinp;
@@ -200,17 +200,17 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 			}
 			datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_host_hostaddr-1] = true;
-		}else if(strcmp(def->defname, "pghome") == 0)
+		}else if(strcmp(def->defname, "adbhome") == 0)
 		{
-			if(got[Anum_mgr_host_hostpghome-1])
+			if(got[Anum_mgr_host_hostadbhome-1])
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
 			if(str[0] != '/' || str[0] == '\0')
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
-			datum[Anum_mgr_host_hostpghome-1] = PointerGetDatum(cstring_to_text(str));
-			got[Anum_mgr_host_hostpghome-1] = true;
+			datum[Anum_mgr_host_hostadbhome-1] = PointerGetDatum(cstring_to_text(str));
+			got[Anum_mgr_host_hostadbhome-1] = true;
 		}else if(strcmp(def->defname, "agentport") == 0)
 		{
 			int32 port;
@@ -227,7 +227,7 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" not recognized", def->defname)
-				,errhint("option is user,port,protocol,agentport,address and pghome")));
+				,errhint("option is user,port,protocol,agentport,address and adbhome")));
 		}
 	}
 
@@ -268,10 +268,10 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 		datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(ipstr));
 		pg_freeaddrinfo_all(AF_UNSPEC, addrs);
 	}
-	if(got[Anum_mgr_host_hostpghome-1] == false)
+	if(got[Anum_mgr_host_hostadbhome-1] == false)
 	{
-		get_pghome(pghome);
-		datum[Anum_mgr_host_hostpghome-1] = PointerGetDatum(cstring_to_text(pghome));
+		get_adbhome(adbhome);
+		datum[Anum_mgr_host_hostadbhome-1] = PointerGetDatum(cstring_to_text(adbhome));
 	}
 	if(got[Anum_mgr_host_hostagentport-1] == false)
 	{
@@ -491,17 +491,17 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 					,errmsg("invalid value for parameter \"%s\"", "address")));
 			datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_host_hostaddr-1] = true;
-		}else if(strcmp(def->defname, "pghome") == 0)
+		}else if(strcmp(def->defname, "adbhome") == 0)
 		{
-			if(got[Anum_mgr_host_hostpghome-1])
+			if(got[Anum_mgr_host_hostadbhome-1])
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("conflicting or redundant options")));
 			str = defGetString(def);
 			if(str[0] != '/' || str[0] == '\0')
 				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 					,errmsg("invalid absoulte path: \"%s\"", str)));
-			datum[Anum_mgr_host_hostpghome-1] = PointerGetDatum(cstring_to_text(str));
-			got[Anum_mgr_host_hostpghome-1] = true;
+			datum[Anum_mgr_host_hostadbhome-1] = PointerGetDatum(cstring_to_text(str));
+			got[Anum_mgr_host_hostadbhome-1] = true;
 		}else if(strcmp(def->defname, "agentport") == 0)
 		{
 			int32 port;
@@ -518,14 +518,14 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 				,errmsg("option \"%s\" not recognized", def->defname)
-				,errhint("option is user,port,protocol,agentport, address and pghome")));
+				,errhint("option is user,port,protocol,agentport, address and adbhome")));
 		}
 	}
 
 	/*check the tuple has been used or not*/
 	if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
 	{
-		if (got[Anum_mgr_host_hostpghome-1] || got[Anum_mgr_host_hostuser-1]
+		if (got[Anum_mgr_host_hostadbhome-1] || got[Anum_mgr_host_hostuser-1]
 			|| got[Anum_mgr_host_hostport-1] || got[Anum_mgr_host_hostproto-1] || got[Anum_mgr_host_hostagentport-1])
 		{
 			ReleaseSysCache(tuple);
@@ -623,21 +623,21 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 	}
 	str_addr = TextDatumGetCString(datum);
 
-	datum = heap_getattr(tuple, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isnull);
+	datum = heap_getattr(tuple, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_host), &isnull);
 	if(isnull)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-			, errmsg("column _hostpghome is null")));
+			, errmsg("column _hostadbhome is null")));
 	}
 	str_path = TextDatumGetCString(datum);
 
 	if (success)
 	{
-		char pghome[MAXPGPATH];
-		get_pghome(pghome);
+		char adbhome[MAXPGPATH];
+		get_adbhome(adbhome);
 
-		if (host_is_localhost(str_addr) && (strcmp(pghome, str_path) == 0))
+		if (host_is_localhost(str_addr) && (strcmp(adbhome, str_path) == 0))
 		{
 			resetStringInfo(&buf);
 			appendStringInfoString(&buf, "skip localhost");
@@ -739,21 +739,21 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 	}
 	str_addr = TextDatumGetCString(datum);
 
-	datum = heap_getattr(tuple, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isnull);
+	datum = heap_getattr(tuple, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_host), &isnull);
 	if(isnull)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-			, errmsg("column _hostpghome is null")));
+			, errmsg("column _hostadbhome is null")));
 	}
 	str_path = TextDatumGetCString(datum);
 
 	if (success)
 	{
-		char pghome[MAXPGPATH];
-		get_pghome(pghome);
+		char adbhome[MAXPGPATH];
+		get_adbhome(adbhome);
 
-		if (host_is_localhost(str_addr) && (strcmp(pghome, str_path) == 0))
+		if (host_is_localhost(str_addr) && (strcmp(adbhome, str_path) == 0))
 		{
 			resetStringInfo(&buf);
 			appendStringInfoString(&buf, "skip localhost");
@@ -776,7 +776,7 @@ static FILE* make_tar_package(void)
 	FILE volatile *fd;
 	DIR volatile *dir;
 	struct dirent *item;
-	char pghome[MAXPGPATH];
+	char adbhome[MAXPGPATH];
 
 	fd = NULL;
 	dir = NULL;
@@ -786,21 +786,21 @@ static FILE* make_tar_package(void)
 		fd = tmpfile();
 
 		/* get package directory */
-		get_pghome(pghome);
+		get_adbhome(adbhome);
 
 		/* enum dirent */
-		dir = opendir(pghome);
+		dir = opendir(adbhome);
 		if(dir == NULL)
 		{
 			ereport(ERROR, (errcode_for_file_access(),
-				errmsg("Can not open directory \"%s\" for read", pghome)));
+				errmsg("Can not open directory \"%s\" for read", adbhome)));
 		}
 		while((item = readdir((DIR*)dir)) != NULL)
 		{
 			if(strcmp(item->d_name, "..") != 0
 				&& strcmp(item->d_name, ".") != 0)
 			{
-				append_file_to_tar((FILE*)fd, pghome, item->d_name);
+				append_file_to_tar((FILE*)fd, adbhome, item->d_name);
 			}
 		}
 	}PG_CATCH();
@@ -1034,20 +1034,20 @@ static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo 
 			, errmsg("column hostaddr is null")));
 	}
 	str_addr = TextDatumGetCString(datum);
-	datum = heap_getattr(tup, Anum_mgr_host_hostpghome, desc, &isnull);
+	datum = heap_getattr(tup, Anum_mgr_host_hostadbhome, desc, &isnull);
 	if(isnull)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-			, errmsg("column _hostpghome is null")));
+			, errmsg("column _hostadbhome is null")));
 	}
 	str_path = TextDatumGetCString(datum);
 
 	if(host_is_localhost(str_addr))
 	{
-		char pghome[MAXPGPATH];
-		get_pghome(pghome);
-		if(strcmp(pghome, str_path) == 0)
+		char adbhome[MAXPGPATH];
+		get_adbhome(adbhome);
+		if(strcmp(adbhome, str_path) == 0)
 		{
 			appendStringInfoString(msg, "skip localhost");
 			return true;
@@ -1068,16 +1068,16 @@ static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo 
 			, tar, msg);
 }
 
-static void get_pghome(char *pghome)
+static void get_adbhome(char *adbhome)
 {
 	if(my_exec_path[0] == '\0')
 	{
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-			,errmsg("can not get the pghome path")));
+			,errmsg("can not get the adbhome path")));
 	}
-	strcpy(pghome, my_exec_path);
-	get_parent_directory(pghome);
-	get_parent_directory(pghome);
+	strcpy(adbhome, my_exec_path);
+	get_parent_directory(adbhome);
+	get_parent_directory(adbhome);
 }
 
 /*
@@ -1155,7 +1155,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 		else
 		{
 			/* get exec path */
-			datumpath = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_host), &isNull);
 			if(isNull)
 			{
 				ReleaseSysCache(tup);
@@ -1164,7 +1164,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 				pfree(exec_path.data);
 				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-					, errmsg("column hostpghome is null")));
+					, errmsg("column hostadbhome is null")));
 			}
 			appendStringInfoString(&exec_path, TextDatumGetCString(datumpath));
 			if(exec_path.data[exec_path.len] != '/')
@@ -1289,7 +1289,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 		else
 		{
 			/* get exec path */
-			datumpath = heap_getattr(tup, Anum_mgr_host_hostpghome, RelationGetDescr(info->rel_host), &isNull);
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_host), &isNull);
 			if(isNull)
 			{
 				ReleaseSysCache(tup);
@@ -1298,7 +1298,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 				pfree(exec_path.data);
 				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 					, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-					, errmsg("column hostpghome is null")));
+					, errmsg("column hostadbhome is null")));
 			}
 			appendStringInfoString(&exec_path, TextDatumGetCString(datumpath));
 			if(exec_path.data[exec_path.len] != '/')

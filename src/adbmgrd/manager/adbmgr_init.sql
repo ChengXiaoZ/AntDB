@@ -10,7 +10,7 @@ CREATE VIEW adbmgr.host AS
     END AS protocol,
     hostagentport  AS agentport,
     hostaddr AS address,
-    hostpghome AS pghome
+    hostadbhome AS adbhome
   FROM pg_catalog.mgr_host order by 1;
 
 CREATE VIEW adbmgr.parm AS

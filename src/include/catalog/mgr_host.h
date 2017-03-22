@@ -19,7 +19,7 @@ CATALOG(mgr_host,4908)
 	int32		hostagentport;	/* agent port */
 #ifdef CATALOG_VARLEN
 	text		hostaddr;		/* host address */
-	text		hostpghome; 	/*host home*/
+	text		hostadbhome; 	/*host home*/
 #endif /* CATALOG_VARLEN */
 } FormData_mgr_host;
 
@@ -41,7 +41,7 @@ typedef FormData_mgr_host *Form_mgr_host;
 #define Anum_mgr_host_hostproto			4
 #define Anum_mgr_host_hostagentport		5
 #define Anum_mgr_host_hostaddr			6
-#define Anum_mgr_host_hostpghome		7
+#define Anum_mgr_host_hostadbhome		7
 
 #define HOST_PROTOCOL_TELNET			't'
 #define HOST_PROTOCOL_SSH				's'
