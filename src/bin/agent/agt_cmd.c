@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <pwd.h>
+#include <sys/stat.h>
+
 #include "agent.h"
 #include "agt_msg.h"
 #include "agt_utility.h"
@@ -49,6 +51,7 @@ extern bool get_system_info(StringInfo hostinfostring);
 extern bool get_platform_type_info(StringInfo hostinfostring);
 
 static void cmd_rm_temp_file(StringInfo msg);
+static void cmd_check_dir_exist(StringInfo msg);
 static void cmd_clean_node_folder(StringInfo buf);
 static void cmd_stop_agent(void);
 static void cmd_get_showparam_values(char cmdtype, StringInfo buf);
@@ -162,10 +165,51 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_GET_BATCH_JOB:
 		cmd_get_batch_job_result(cmd_type, buf);
 		break;
+	case AGT_CMD_CHECK_DIR_EXIST:
+		cmd_check_dir_exist(buf);
+		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
 			,errmsg("unknown agent command %d", cmd_type)));
 	}
+}
+
+static void cmd_check_dir_exist(StringInfo msg)
+{
+	const char *dir_path = NULL;
+	StringInfoData output;
+	struct stat stat_buf;
+
+	initStringInfo(&output);
+	dir_path = agt_getmsgstring(msg);
+
+	Assert(dir_path != NULL);
+
+	if (stat(dir_path, &stat_buf) != 0)
+	{
+		/* data directory does not exist */
+		if (errno == ENOENT)
+		{
+			appendStringInfoString(&output, "success");
+			agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+			agt_flush();
+			pfree(output.data);
+			return ;
+		}
+	}
+
+	/* data directory exist */
+	if (S_ISDIR(stat_buf.st_mode))
+	{
+		if ((chmod(dir_path, 0700))!= 0)
+			appendStringInfoString(&output, "append master node: chmod fail.");
+	}
+
+	appendStringInfoString(&output, "success");
+	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
+	agt_flush();
+	pfree(output.data);
+	return ;
 }
 
 static void cmd_rm_temp_file(StringInfo msg)

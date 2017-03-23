@@ -96,6 +96,7 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,bool status               
                                                         ,const char *description);
 static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinfo);
+static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir);
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg);
@@ -2818,6 +2819,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 		}
 
 		/* step 1: init workdir */
+		mgr_check_dir_exist_and_priv(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
 		mgr_append_init_cndnmaster(&appendnodeinfo);
 
 		/* step 2: update datanode master's postgresql.conf. */
@@ -3068,6 +3070,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
 		/* step 5: basebackup for datanode master using pg_basebackup command. */
+		mgr_check_dir_exist_and_priv(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
 		mgr_pgbasebackup(CNDN_TYPE_DATANODE_SLAVE, &appendnodeinfo, &parentnodeinfo);
 
 		/* step 6: update datanode slave's postgresql.conf. */
@@ -3323,6 +3326,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		mgr_reload_conf(parentnodeinfo.nodehost, parentnodeinfo.nodepath);
 
 		/* step 5: basebackup for datanode master using pg_basebackup command. */
+		mgr_check_dir_exist_and_priv(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
 		mgr_pgbasebackup(CNDN_TYPE_DATANODE_EXTRA, &appendnodeinfo, &parentnodeinfo);
 
 		/* step 6: update datanode extra's postgresql.conf. */
@@ -3525,6 +3529,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		}
 
 		/* step 1: init workdir */
+		mgr_check_dir_exist_and_priv(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
 		mgr_append_init_cndnmaster(&appendnodeinfo);
 
 		/* step 2: update coordinator master's postgresql.conf. */
@@ -3727,6 +3732,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
 		/* step 3: basebackup for datanode master using pg_basebackup command. */
+		mgr_check_dir_exist_and_priv(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
 		mgr_pgbasebackup(GTM_TYPE_GTM_SLAVE, &appendnodeinfo, &agtm_m_nodeinfo);
 
 		/* step 4: update agtm slave's postgresql.conf. */
@@ -3932,6 +3938,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		mgr_reload_conf(agtm_m_nodeinfo.nodehost, agtm_m_nodeinfo.nodepath);
 
 		/* step 3: basebackup for datanode master using pg_basebackup command. */
+		mgr_check_dir_exist_and_priv(appendnodeinfo.nodehost, appendnodeinfo.nodepath);
 		mgr_pgbasebackup(GTM_TYPE_GTM_EXTRA, &appendnodeinfo, &agtm_m_nodeinfo);
 
 		/* step 4: update agtm extra's postgresql.conf. */
@@ -5368,6 +5375,53 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
 	pfree(hostaddr);
+}
+
+static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir)
+{
+	ManagerAgent *ma;
+	StringInfoData buf;
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+
+	/* connection agent */
+	ma = ma_connect_hostoid(hostoid);
+	if (!ma_isconnected(ma))
+	{
+		/* report error message */
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
+		pfree(getAgentCmdRst.description.data);
+		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+						get_hostname_from_hostoid(hostoid))));
+		return;
+	}
+
+	/*send cmd*/
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_CHECK_DIR_EXIST);
+	ma_sendstring(&buf, dir);
+	ma_endmessage(&buf, ma);
+	if (!ma_flush(ma, true))
+	{
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		pfree(getAgentCmdRst.description.data);
+		ma_close(ma);
+		ereport(ERROR, (errmsg("%s.\n", ma_last_error_msg(ma))));
+		return;
+	}
+
+	/*check the receive msg*/
+	mgr_recv_msg(ma, &getAgentCmdRst);
+	ma_close(ma);
+
+	if (!getAgentCmdRst.ret)
+		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
+
+	return;
 }
 
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo)
