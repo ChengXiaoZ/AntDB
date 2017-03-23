@@ -1681,6 +1681,53 @@ ListNodeStmt:
 
 			check__name_isvaild($6);
 		}
+	| LIST NODE COORDINATOR
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			List *args = list_make1(makeStringConst("coordinator", -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
+	|	LIST NODE DATANODE
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			List *args = list_make1(makeStringConst("datanode master", -1));
+			args = lappend(args,makeStringConst("datanode slave", -1));
+			args = lappend(args,makeStringConst("datanode extra", -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
+	|	LIST NODE DATANODE MASTER
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			List *args = list_make1(makeStringConst("datanode master", -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
+	|	LIST NODE DATANODE SLAVE
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			List *args = list_make1(makeStringConst("datanode slave", -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
+	|	LIST NODE DATANODE EXTRA
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			List *args = list_make1(makeStringConst("datanode extra", -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
 	;
 InitNodeStmt:
 /*	INIT GTM MASTER 
@@ -2456,8 +2503,6 @@ unreserved_keyword:
 	| CHECK_USER
 	| CLEAN
 /*	| CONFIG */
-	| COORDINATOR
-	| DATANODE
 	| DEPLOY
 	| DROP
 	| EXISTS
@@ -2534,6 +2579,8 @@ reserved_keyword:
 	| ON
 	| CREATE
 	| GRANT
+	| COORDINATOR
+	| DATANODE
 	;
 
 %%
