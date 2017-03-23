@@ -21,6 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
+LIST NODE COORDINATOR
+LIST NODE DATANODE [ MASTER | SLAVE | EXTRA ]
 LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">node_name</replaceable> [, ...] ]
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
@@ -30,7 +32,7 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     TYPE
     MASTERNAME
     PORT
-    SYNC
+    SYNC_STATE
     PATH
     INITIALIZED
     INCLUSTER
@@ -86,10 +88,10 @@ LIST NODE  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><literal>SYNC</literal></term>
+    <term><literal>SYNC_STATE</literal></term>
     <listitem>
      <para>
-      Synchronous mode, the value of SYNC equal on,t or true is synchronous,the value of SYNC equal off,f or false is asynchronous.
+      The value of SYNC_STATE can be "sync", "async", "potential". If synchronous slave down ,and the potential slave will as the synchronous slave.
       </para>
     </listitem>
   </varlistentry>

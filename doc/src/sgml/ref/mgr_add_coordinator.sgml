@@ -27,7 +27,7 @@ ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</repl
 
     HOST = <replaceable class="parameter">IP_address</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
-    SYNC = <replaceable class="parameter">sync_mode</replaceable>,
+    SYNC_STATE = <replaceable class="parameter">sync_mode</replaceable>,
     PATH = <replaceable class="parameter">pg_data</replaceable>
 </synopsis>
   </refsynopsisdiv>
@@ -78,11 +78,11 @@ ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</repl
       </varlistentry> 
       <varlistentry>
         <term>
-          <replaceable class="parameter">SYNC</replaceable>
+          <replaceable class="parameter">SYNC_STATE</replaceable>
         </term>
         <listitem>
           <para>
-    Synchronous mode, the value of SYNC equal on, t or true is synchronous, the value of SYNC equal off, f or false is asynchronous.
+    The value of SYNC_STATE can be "sync", "async", "potential". If synchronous slave down ,and the potential slave will as the synchronous slave.
           </para>
         </listitem>
       </varlistentry> 

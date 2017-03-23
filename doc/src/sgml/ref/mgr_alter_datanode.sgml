@@ -28,7 +28,7 @@ ALTER DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_na
     HOST = <replaceable class="parameter">IP_address</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
     PATH = <replaceable class="parameter">pg_data</replaceable>,
-    SYNC = <replaceable class="parameter">sync_mode</replaceable>   
+    SYNC_STATE = <replaceable class="parameter">sync_mode</replaceable>   
 </synopsis>
   </refsynopsisdiv>
 
@@ -79,11 +79,11 @@ ALTER DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_na
 
       <varlistentry>
         <term>
-          <replaceable class="parameter">SYNC</replaceable>
+          <replaceable class="parameter">SYNC_STATE</replaceable>
         </term>
         <listitem>
           <para>
-           Synchronous mode,the value of SYNC equal (on,t,true) is synchronous,the value of SYNC equal (off, f, false) is asynchronous.
+           The value of SYNC_STATE can be "sync", "async", "potential". If synchronous slave down ,and the potential slave will as the synchronous slave.
           </para>
         </listitem>
       </varlistentry>

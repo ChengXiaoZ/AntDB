@@ -31,7 +31,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     PROTOCOL
     AGENTPORT
     ADDRESS
-    PGHOME
+    ADBHOME
 </synopsis>
 </refsynopsisdiv>
   <refsect1>
@@ -96,7 +96,7 @@ LIST HOST  [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
     </listitem>
   </varlistentry>
   <varlistentry>
-    <term><literal>PGHOME</literal></term>
+    <term><literal>ADBHOME</literal></term>
     <listitem>
      <para>
       ADB programs install absolute path.

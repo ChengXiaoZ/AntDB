@@ -27,7 +27,7 @@ ADD HOST [IF NOT EXISTS] <replaceable class="parameter">host_name</replaceable> 
 
     ADDRESS = <replaceable class="parameter">host_address</replaceable>,
     AGENTPORT = <replaceable class="parameter">agent_port_number</replaceable>,
-    PGHOME = <replaceable class="parameter">adb_home_path</replaceable>,
+    ADBHOME = <replaceable class="parameter">adb_home_path</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
     PROTOCOL = <replaceable class="parameter">protocol_type</replaceable>,
     USER = <replaceable class="parameter">user_name</replaceable></synopsis>
@@ -130,7 +130,7 @@ ADD HOST [IF NOT EXISTS] <replaceable class="parameter">host_name</replaceable> 
     <para>
 Add host_name1(user name is "user_name") to cluster:
       <programlisting>
-ADD HOST host_name1(USER=user_name, PROTOCOL=ssh, ADDRESS='10.1.226.202', AGENTPORT=5440, PGHOME='/opt/ADB/install');
+ADD HOST host_name1(USER=user_name, PROTOCOL=ssh, ADDRESS='10.1.226.202', AGENTPORT=5440, ADBHOME='/opt/ADB/install');
 </programlisting>
     </para>
   </refsect1>
