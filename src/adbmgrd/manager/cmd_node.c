@@ -5248,7 +5248,7 @@ static void mgr_get_agtm_host_and_port(StringInfo infosendmsg)
 
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
-	agtm_host = get_hostname_from_hostoid(mgr_node->nodehost);
+	agtm_host = get_hostaddress_from_hostoid(mgr_node->nodehost);
     
 	mgr_append_pgconf_paras_str_quotastr("agtm_host", agtm_host, infosendmsg);
 	mgr_append_pgconf_paras_str_int("agtm_port", mgr_node->nodeport, infosendmsg);
