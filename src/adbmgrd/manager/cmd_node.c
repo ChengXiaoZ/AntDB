@@ -97,6 +97,7 @@ static HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,const char *description);
 static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinfo);
 static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir);
+static void pfree_AppendNodeInfo(AppendNodeInfo nodeinfo);
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg);
@@ -2932,7 +2933,13 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	}
 
 	tup_result = build_common_command_tuple(&nodename, result, getAgentCmdRst.description.data);
+
 	pfree(getAgentCmdRst.description.data);
+	pfree_AppendNodeInfo(appendnodeinfo);
+	pfree_AppendNodeInfo(agtm_m_nodeinfo);
+	pfree_AppendNodeInfo(agtm_s_nodeinfo);
+	pfree_AppendNodeInfo(agtm_e_nodeinfo);
+
 	return HeapTupleGetDatum(tup_result);
 }
 
@@ -3188,7 +3195,14 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	{
 		tup_result = build_common_command_tuple(&nodename, result, recorderr.data);
 	}
+
 	pfree(recorderr.data);
+	pfree_AppendNodeInfo(appendnodeinfo);
+	pfree_AppendNodeInfo(parentnodeinfo);
+	pfree_AppendNodeInfo(agtm_m_nodeinfo);
+	pfree_AppendNodeInfo(agtm_s_nodeinfo);
+	pfree_AppendNodeInfo(agtm_e_nodeinfo);
+	pfree_AppendNodeInfo(dn_e_nodeinfo);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3444,7 +3458,13 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	{
 		tup_result = build_common_command_tuple(&nodename, false, recorderr.data);
 	}
+
 	pfree(recorderr.data);
+	pfree_AppendNodeInfo(appendnodeinfo);
+	pfree_AppendNodeInfo(parentnodeinfo);
+	pfree_AppendNodeInfo(agtm_m_nodeinfo);
+	pfree_AppendNodeInfo(agtm_s_nodeinfo);
+	pfree_AppendNodeInfo(dn_s_nodeinfo);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3645,7 +3665,12 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	}
 
 	tup_result = build_common_command_tuple(&nodename, result, getAgentCmdRst.description.data);
+
 	pfree(getAgentCmdRst.description.data);
+	pfree_AppendNodeInfo(appendnodeinfo);
+	pfree_AppendNodeInfo(agtm_m_nodeinfo);
+	pfree_AppendNodeInfo(agtm_s_nodeinfo);
+	pfree_AppendNodeInfo(agtm_e_nodeinfo);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -3848,7 +3873,11 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	{
 		tup_result = build_common_command_tuple(&nodename, false, recorderr.data);
 	}
+
 	pfree(recorderr.data);
+	pfree_AppendNodeInfo(appendnodeinfo);
+	pfree_AppendNodeInfo(agtm_m_nodeinfo);
+	pfree_AppendNodeInfo(agtm_e_nodeinfo);
 
 	return HeapTupleGetDatum(tup_result);
 }
@@ -4052,9 +4081,40 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	{
 		tup_result = build_common_command_tuple(&nodename, false, recorderr.data);
 	}
+
 	pfree(recorderr.data);
+	pfree_AppendNodeInfo(appendnodeinfo);
+	pfree_AppendNodeInfo(agtm_m_nodeinfo);
+	pfree_AppendNodeInfo(agtm_s_nodeinfo);
 
 	return HeapTupleGetDatum(tup_result);
+}
+
+static void pfree_AppendNodeInfo(AppendNodeInfo nodeinfo)
+{
+	if (nodeinfo.nodename != NULL)
+	{
+		pfree(nodeinfo.nodename);
+		nodeinfo.nodename = NULL;
+	}
+
+	if (nodeinfo.nodepath != NULL)
+	{
+		pfree(nodeinfo.nodepath);
+		nodeinfo.nodepath = NULL;
+	}
+
+	if (nodeinfo.nodeaddr != NULL)
+	{
+		pfree(nodeinfo.nodeaddr);
+		nodeinfo.nodeaddr = NULL;
+	}
+
+	if (nodeinfo.nodeusername != NULL)
+	{
+		pfree(nodeinfo.nodeusername);
+		nodeinfo.nodeusername = NULL;
+	}
 }
 
 static char *get_temp_file_name()
@@ -4203,10 +4263,10 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
 
-	nodeinfo->nodename = NameStr(mgr_node->nodename);
+	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	nodeinfo->nodetype = mgr_node->nodetype;
-	nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-	nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	nodeinfo->nodeaddr = pstrdup(get_hostaddress_from_hostoid(mgr_node->nodehost));
+	nodeinfo->nodeusername = pstrdup(get_hostuser_from_hostoid(mgr_node->nodehost));
 	nodeinfo->nodeport = mgr_node->nodeport;
 	nodeinfo->nodehost = mgr_node->nodehost;
 	nodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -4223,7 +4283,7 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
 	}
-	nodeinfo->nodepath = TextDatumGetCString(datumPath);
+	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
 	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 
 	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport))
@@ -5349,8 +5409,8 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	Assert(mgr_node);
 
 	appendnodeinfo->nodetype = mgr_node->nodetype;
-	appendnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-	appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	appendnodeinfo->nodeaddr = pstrdup(get_hostaddress_from_hostoid(mgr_node->nodehost));
+	appendnodeinfo->nodeusername = pstrdup(get_hostuser_from_hostoid(mgr_node->nodehost));
 	appendnodeinfo->nodeport = mgr_node->nodeport;
 	appendnodeinfo->nodehost = mgr_node->nodehost;
 	appendnodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -5368,7 +5428,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
 	}
-	appendnodeinfo->nodepath = TextDatumGetCString(datumPath);
+	appendnodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
 	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 
 	heap_endscan(info->rel_scan);
