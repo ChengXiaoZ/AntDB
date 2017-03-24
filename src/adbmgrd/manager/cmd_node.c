@@ -2766,6 +2766,12 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	char coordport_buf[10];
 	GetAgentCmdRst getAgentCmdRst;
 	bool result = true;
+
+	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_e_nodeinfo, 0, sizeof(AppendNodeInfo));
+
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
 	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
@@ -2971,6 +2977,13 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	char nodeport_buf[10];
 	Oid mastertupleoid;
 	Relation rel;
+
+	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&parentnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_e_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&dn_e_nodeinfo, 0, sizeof(AppendNodeInfo));
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -3235,6 +3248,12 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	Oid mastertupleoid;
 	Relation rel;
 
+	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&parentnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&dn_s_nodeinfo, 0, sizeof(AppendNodeInfo));
+
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
 	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
@@ -3497,6 +3516,11 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	const int max_pingtry = 60;
 	int ret = 0;
 
+	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_e_nodeinfo, 0, sizeof(AppendNodeInfo));
+
 	/* get node info for append coordinator master */
 	appendnodeinfo.nodename = PG_GETARG_CSTRING(0);
 	Assert(appendnodeinfo.nodename);
@@ -3694,6 +3718,10 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	const int max_pingtry = 60;
 	Oid mastertupleoid;
 	Relation rel;
+
+	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_e_nodeinfo, 0, sizeof(AppendNodeInfo));
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
@@ -3901,6 +3929,10 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	const int max_pingtry = 60;
 	Oid mastertupleoid;
 	Relation rel;
+
+	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
