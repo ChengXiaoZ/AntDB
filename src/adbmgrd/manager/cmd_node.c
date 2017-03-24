@@ -3229,6 +3229,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	AppendNodeInfo parentnodeinfo;
 	AppendNodeInfo agtm_m_nodeinfo;
 	AppendNodeInfo agtm_s_nodeinfo;
+	AppendNodeInfo agtm_e_nodeinfo;
 	AppendNodeInfo dn_s_nodeinfo;
 	bool agtm_m_is_exist, agtm_m_is_running; /* agtm master status */
 	bool agtm_s_is_exist, agtm_s_is_running; /* agtm slave status */
@@ -3252,6 +3253,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	memset(&parentnodeinfo, 0, sizeof(AppendNodeInfo));
 	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
 	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));
+	memset(&agtm_e_nodeinfo, 0, sizeof(AppendNodeInfo));
 	memset(&dn_s_nodeinfo, 0, sizeof(AppendNodeInfo));
 
 	initStringInfo(&(getAgentCmdRst.description));
@@ -3279,7 +3281,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 		mgr_get_parent_appendnodeinfo(appendnodeinfo.nodemasteroid, &parentnodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_MASTER, &agtm_m_is_exist, &agtm_m_is_running, &agtm_m_nodeinfo);
 		get_nodeinfo(GTM_TYPE_GTM_SLAVE, &agtm_s_is_exist, &agtm_s_is_running, &agtm_s_nodeinfo);
-		get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &dn_s_nodeinfo);
+		get_nodeinfo(GTM_TYPE_GTM_EXTRA, &agtm_e_is_exist, &agtm_e_is_running, &agtm_e_nodeinfo);
 		get_nodeinfo_byname(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE,
 							&dn_s_is_exist, &dn_s_is_running, &dn_s_nodeinfo);
 		mastertupleoid = appendnodeinfo.nodemasteroid;
@@ -3483,6 +3485,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	pfree_AppendNodeInfo(parentnodeinfo);
 	pfree_AppendNodeInfo(agtm_m_nodeinfo);
 	pfree_AppendNodeInfo(agtm_s_nodeinfo);
+	pfree_AppendNodeInfo(agtm_e_nodeinfo);
 	pfree_AppendNodeInfo(dn_s_nodeinfo);
 
 	return HeapTupleGetDatum(tup_result);
@@ -4166,7 +4169,6 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	Datum datumPath;
-	char * hostaddr;
 	bool isNull = false;
 
 	*is_exist = true;
@@ -4196,7 +4198,7 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 				,F_NAMEEQ
 				,CStringGetDatum(node_name));
 
-	info = palloc(sizeof(*info));
+	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
 	info->lcp =NULL;
@@ -4214,7 +4216,7 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
 
-	nodeinfo->nodename = NameStr(mgr_node->nodename);
+	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	nodeinfo->nodetype = mgr_node->nodetype;
 	nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
@@ -4234,8 +4236,7 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
 	}
-	nodeinfo->nodepath = TextDatumGetCString(datumPath);
-	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
 
 	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport))
 		*is_running = false;
@@ -4243,17 +4244,15 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-	pfree(hostaddr);
 }
 
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
 {
-	InitNodeInfo *info;
+	InitNodeInfo *info = NULL;
 	ScanKeyData key[3];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	Datum datumPath;
-	char * hostaddr;
 	bool isNull = false;
 
 	*is_exist = true;
@@ -4277,7 +4276,7 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 				,F_CHAREQ
 				,CharGetDatum(node_type));
 
-	info = palloc(sizeof(*info));
+	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 3, key);
 	info->lcp =NULL;
@@ -4297,8 +4296,8 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 
 	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	nodeinfo->nodetype = mgr_node->nodetype;
-	nodeinfo->nodeaddr = pstrdup(get_hostaddress_from_hostoid(mgr_node->nodehost));
-	nodeinfo->nodeusername = pstrdup(get_hostuser_from_hostoid(mgr_node->nodehost));
+	nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	nodeinfo->nodeport = mgr_node->nodeport;
 	nodeinfo->nodehost = mgr_node->nodehost;
 	nodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -4316,7 +4315,6 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 			, errmsg("column nodepath is null")));
 	}
 	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
-	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 
 	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport))
 		*is_running = false;
@@ -4324,7 +4322,6 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-	pfree(hostaddr);
 }
 
 static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo)
@@ -4414,7 +4411,7 @@ static void mgr_make_sure_all_running(char node_type)
 				,F_CHAREQ
 				,CharGetDatum(node_type));
 
-	info = palloc(sizeof(*info));
+	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 3, key);
 	info->lcp = NULL;
@@ -4475,7 +4472,6 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	HeapTuple mastertuple;
 	Form_mgr_node mgr_node;
 	Datum datumPath;
-	char * hostaddr;
 	bool isNull = false;
 
 	noderelation = heap_open(NodeRelationId, AccessShareLock);
@@ -4493,7 +4489,7 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	mgr_node = (Form_mgr_node)GETSTRUCT(mastertuple);
 	Assert(mgr_node);
 
-	parentnodeinfo->nodename = NameStr(mgr_node->nodename);
+	parentnodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	parentnodeinfo->nodetype = mgr_node->nodetype;
 	parentnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	parentnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
@@ -4515,12 +4511,10 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 			, errmsg("column nodepath is null")));
 	}
 
-	parentnodeinfo->nodepath = TextDatumGetCString(datumPath);
-	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	parentnodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
 
 	ReleaseSysCache(mastertuple);
 	heap_close(noderelation, AccessShareLock);
-	pfree(hostaddr);
 }
 
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
@@ -5372,7 +5366,6 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	Datum datumPath;
-    char * hostaddr;
 	bool isNull = false;
 
 	ScanKeyInit(&key[0]
@@ -5400,7 +5393,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 				,CharGetDatum(node_type));
 
 
-	info = palloc(sizeof(*info));
+	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
 	info->lcp =NULL;
@@ -5441,8 +5434,8 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	Assert(mgr_node);
 
 	appendnodeinfo->nodetype = mgr_node->nodetype;
-	appendnodeinfo->nodeaddr = pstrdup(get_hostaddress_from_hostoid(mgr_node->nodehost));
-	appendnodeinfo->nodeusername = pstrdup(get_hostuser_from_hostoid(mgr_node->nodehost));
+	appendnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	appendnodeinfo->nodeport = mgr_node->nodeport;
 	appendnodeinfo->nodehost = mgr_node->nodehost;
 	appendnodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -5461,12 +5454,10 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 			, errmsg("column nodepath is null")));
 	}
 	appendnodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
-	hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-	pfree(hostaddr);
 }
 
 static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir)
