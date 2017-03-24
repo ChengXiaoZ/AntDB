@@ -206,6 +206,7 @@ extern void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstr
 char *get_hostaddress_from_hostoid(Oid hostOid);
 char *get_hostname_from_hostoid(Oid hostOid);
 char *get_hostuser_from_hostoid(Oid hostOid);
+bool mgr_get_active_node(Name nodename, char nodetype);
 
 /* get msg from agent */
 bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);

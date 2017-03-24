@@ -17,6 +17,7 @@
 #include "executor/spi.h"
 #include "../../interfaces/libpq/libpq-fe.h"
 #include "utils/fmgroids.h"
+#include "executor/spi.h"
 
 #define MAXLINE (8192-1)
 #define MAXPATH (512-1)
@@ -720,4 +721,33 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 		}
 	}
 	pfree(recvbuf.data);
+}
+
+/*
+* get active coordinator node name
+*/
+bool mgr_get_active_node(Name nodename, char nodetype)
+{
+	int ret;
+	bool bresult = false;
+	StringInfoData sqlstr;
+
+	/*check all node stop*/
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+	initStringInfo(&sqlstr);
+	appendStringInfo(&sqlstr, "select nodename from mgr_monitor_nodetype_all(%d) where status = true;", nodetype);
+	ret = SPI_execute(sqlstr.data, false, 0);
+	pfree(sqlstr.data);
+	if (ret != SPI_OK_SELECT)
+		ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
+	if (SPI_processed > 0 && SPI_tuptable != NULL)
+	{
+		namestrcpy(nodename, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
+		bresult = true;
+	}
+	SPI_freetuptable(SPI_tuptable);
+	SPI_finish();
+	
+	return bresult;
 }

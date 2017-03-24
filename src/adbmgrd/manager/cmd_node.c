@@ -5228,7 +5228,7 @@ static bool mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 		pfree(info);
 		return false;
 	}
-	appendnodeinfo->tupleoid = HeapTupleGetOid(tuple);
+
 	if (hostoid)
 		*hostoid = mgr_node->nodehost;
 	if (hostport)
@@ -10300,81 +10300,100 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 {
 	Oid coordhostoid;
 	int32 coordport;
-	AppendNodeInfo appendnodeinfo;
 	char *coordhost;
 	char coordport_buf[10];
-	char *current_user;
+	char *connect_user;
 	char cnpath[1024];
-	struct passwd *pwd;
 	int try = 0;
 	const int maxnum = 15;
 	NameData self_address;
+	NameData nodename;
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData infosendmsg;
 	Datum datumPath;
 	Relation rel_node;
 	HeapTuple tuple;
+	Form_mgr_node mgr_node;
 	bool isNull;
-
-	pwd = getpwuid(getuid());
-	current_user = pwd->pw_name;
-	appendnodeinfo.nodeaddr = NULL;
-	appendnodeinfo.nodeusername = current_user;
-	if (!mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, false))
+	bool breload = false;
+	
+	/*get active coordinator to connect*/
+	if (!mgr_get_active_node(&nodename, CNDN_TYPE_COORDINATOR_MASTER))
 		ereport(ERROR, (errmsg("can not get active coordinator in cluster")));
-	coordhost = get_hostaddress_from_hostoid(coordhostoid);
-	/*get the adbmanager ip*/
-	mgr_get_self_address(coordhost, coordport, &self_address);
-	/*set adbmanager ip to the coordinator*/
-	tuple = SearchSysCache1(NODENODEOID, appendnodeinfo.tupleoid);
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodename.data, CNDN_TYPE_COORDINATOR_MASTER);
 	if(!(HeapTupleIsValid(tuple)))
 	{
-		ereport(ERROR, (errmsg("node oid \"%u\" not exist", appendnodeinfo.tupleoid)
+		ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", nodename.data)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errcode(ERRCODE_UNDEFINED_OBJECT)));
-	}
-	initStringInfo(&(getAgentCmdRst.description));
-	initStringInfo(&infosendmsg);
-	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	}	
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	coordhostoid = mgr_node->nodehost;
+	coordport = mgr_node->nodeport;
+	coordhost = get_hostaddress_from_hostoid(coordhostoid);
+	connect_user = get_hostuser_from_hostoid(coordhostoid);
+	*cnoid = HeapTupleGetOid(tuple);
+
+	/*get the adbmanager ip*/
+	mgr_get_self_address(coordhost, coordport, &self_address);
+
+	/*set adbmanager ip to the coordinator if need*/
 	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
 	if (isNull)
 	{
-		ReleaseSysCache(tuple);
+		heap_freetuple(tuple);
 		heap_close(rel_node, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
 			, errmsg("column nodepath is null")));
 	}
 	strncpy(cnpath, TextDatumGetCString(datumPath), 1024);
-	ReleaseSysCache(tuple);
+	heap_freetuple(tuple);
 	heap_close(rel_node, AccessShareLock);
-	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", self_address.data,
-										32, "trust", &infosendmsg);
-	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cnpath, &infosendmsg, coordhostoid, &getAgentCmdRst);
-	mgr_reload_conf(coordhostoid, cnpath);
-	pfree(infosendmsg.data);
-	if (!getAgentCmdRst.ret)
-		ereport(ERROR, (errmsg("set ADB Manager ip to %s coordinator %s/pg_hba,conf fail %s", coordhost, cnpath, getAgentCmdRst.description.data)));
-	pfree(getAgentCmdRst.description.data);
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
 
-	*cnoid = appendnodeinfo.tupleoid;
 	sprintf(coordport_buf, "%d", coordport);
-	*pg_conn = PQsetdbLogin(coordhost
-							,coordport_buf
-							,NULL, NULL
-							,DEFAULT_DB
-							,current_user
-							,NULL);
-
+	for (try = 0; try < 2; try++)
+	{
+		*pg_conn = PQsetdbLogin(coordhost
+								,coordport_buf
+								,NULL, NULL
+								,DEFAULT_DB
+								,connect_user
+								,NULL);
+		if (try != 0)
+			break;
+		if (PQstatus((PGconn*)*pg_conn) != CONNECTION_OK)
+		{
+			breload = true;
+			PQfinish(*pg_conn);
+			resetStringInfo(&infosendmsg);
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, DEFAULT_DB, connect_user, self_address.data, 31, "trust", &infosendmsg);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cnpath, &infosendmsg, coordhostoid, &getAgentCmdRst);
+			mgr_reload_conf(coordhostoid, cnpath);
+			if (!getAgentCmdRst.ret)
+			{
+				pfree(infosendmsg.data);
+				ereport(ERROR, (errmsg("set ADB Manager ip \"%s\" to %s coordinator %s/pg_hba,conf fail %s", self_address.data, coordhost, cnpath, getAgentCmdRst.description.data)));
+			}
+		}
+		else
+			break;
+	}
+	try = 0;
 	if (*pg_conn == NULL || PQstatus((PGconn*)*pg_conn) != CONNECTION_OK)
 	{
+		pfree(infosendmsg.data);
+		pfree(getAgentCmdRst.description.data);
 		ereport(ERROR,
 			(errmsg("Fail to connect to coordinator %s", PQerrorMessage((PGconn*)*pg_conn)),
 			errhint("coordinator info(host=%s port=%d dbname=%s user=%s)",
-				coordhost, coordport, DEFAULT_DB, appendnodeinfo.nodeusername)));
+				coordhost, coordport, DEFAULT_DB, connect_user)));
 	}
-	pfree(coordhost);
 
+	/*lock cluster*/
 	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
 	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxnum);
 	if (try < 0)
@@ -10383,6 +10402,23 @@ static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 			(errmsg("sql error:  %s\n", PQerrorMessage((PGconn*)*pg_conn)),
 			errhint("execute command failed: \"SELECT PG_PAUSE_CLUSTER()\".")));
 	}
+	/*remove the add line from coordinator pg_hba.conf*/
+	if (breload)
+	{
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_send_conf_parameters(AGT_CMD_CNDN_DELETE_PGHBACONF
+								,cnpath
+								,&infosendmsg
+								,coordhostoid
+								,&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+			ereport(WARNING, (errmsg("remove ADB Manager ip \"%s\" from %s coordinator %s/pg_hba,conf fail %s", self_address.data, coordhost, cnpath, getAgentCmdRst.description.data)));
+		mgr_reload_conf(coordhostoid, cnpath);
+	}
+	pfree(coordhost);
+	pfree(connect_user);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
 }
 
 static void mgr_unlock_cluster(PGconn **pg_conn)
