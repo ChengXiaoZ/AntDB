@@ -2164,6 +2164,24 @@ retry1:
 	 */
 	FrontendProtocol = proto;
 
+#ifdef AGTM
+	/*
+	 * Protocol must be bigger than 3 while under AGTM environment, as it must
+	 * parse message len. see agtm_try_port_msg.
+	 */
+	if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("unsupported frontend protocol %u.%u: server supports %u.0 to %u.%u",
+						PG_PROTOCOL_MAJOR(proto), PG_PROTOCOL_MINOR(proto),
+						PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST),
+						PG_PROTOCOL_MAJOR(PG_PROTOCOL_LATEST),
+						PG_PROTOCOL_MINOR(PG_PROTOCOL_LATEST))));
+		return STATUS_ERROR;
+	}
+#endif
+
 	/* Check we can handle the protocol the frontend is using. */
 
 	if (PG_PROTOCOL_MAJOR(proto) < PG_PROTOCOL_MAJOR(PG_PROTOCOL_EARLIEST) ||
