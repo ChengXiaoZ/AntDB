@@ -189,7 +189,6 @@ extern void mgr_remove_node(MgrRemoveNode *node, ParamListInfo params, DestRecei
 /* mgr_common.c */
 extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);
-extern int pingNode(char *host, char *port);
 extern int pingNode_user(char *host, char *port, char *user);
 extern bool is_valid_ip(char *ip);
 extern bool	mgr_check_host_in_use(Oid hostoid);

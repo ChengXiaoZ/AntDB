@@ -2742,6 +2742,13 @@ internal_ping(PGconn *conn)
 		return PQPING_REJECT;
 
 	/*
+	* Report PQPING_NO_RESPONSE if the node running and the user is not the use we given.
+	* So if we use "user, port, address" string to monitor the node, the node does not running
+	*/
+	if ((conn->status == CONNECTION_BAD) && (strlen(conn->last_sqlstate) == 5))
+			return PQPING_NO_RESPONSE;
+
+	/*
 	 * Any other SQLSTATE can be taken to indicate that the server is up.
 	 * Presumably it didn't like our username, password, or database name; or
 	 * perhaps it had some transient failure, but that should not be taken as

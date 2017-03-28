@@ -116,7 +116,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 static bool mgr_start_one_gtm_master(void);
 static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, PGconn **pg_conn, Oid cnoid);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
-static bool is_node_running(char *hostaddr, int32 hostport);
+static bool is_node_running(char *hostaddr, int32 hostport, char *user);
 static void mgr_make_sure_all_running(char node_type);
 static char *get_temp_file_name(void);
 static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
@@ -197,7 +197,7 @@ static bool mgr_check_syncstate_node_exist(Relation rel, Name mastername, char m
 static bool mgr_check_syncstate_node_exist_incluster(Relation rel, Name mastername, char mastertype, int sync_state_type, Oid excludeoid);
 static bool mgr_check_node_path(Relation rel, Oid hostoid, char *path);
 static bool mgr_check_node_port(Relation rel, Oid hostoid, int port);
-static bool mgr_try_max_pingnode(char *host, char *port, const int max_times);
+static bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times);
 static char mgr_get_master_type(char nodetype);
 static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, bool bincluster);
 static void mgr_get_master_sync_string(Oid mastertupleoid, bool bincluster, Oid excludeoid, StringInfo infostrparam);
@@ -1126,6 +1126,7 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	char *cndnPath;
 	char *cndnnametmp;
 	char *nodetypestr;
+	char *user;
 	char nodetype;
 	Oid hostOid;
 	Oid	masteroid;
@@ -1179,7 +1180,9 @@ void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCm
 	/*if datanode master doesnot running, first make it running*/
 	initStringInfo(&strinfocoordport);
 	appendStringInfo(&strinfocoordport, "%d", masterport);
-	ismasterrunning = pingNode(masterhostaddress, strinfocoordport.data);
+	user = get_hostuser_from_hostoid(mgr_node->nodehost);
+	ismasterrunning = pingNode_user(masterhostaddress, strinfocoordport.data, user);
+	pfree(user);
 	pfree(strinfocoordport.data);	
 	if(ismasterrunning != 0)
 	{
@@ -1641,7 +1644,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		/*check it need start gtm master*/
 		initStringInfo(&strinfoport);
 		appendStringInfo(&strinfoport, "%d", masterport);
-		ismasterrunning = pingNode(masterhostaddress, strinfoport.data);
+		ismasterrunning = pingNode_user(masterhostaddress, strinfoport.data, AGTM_USER);
 		pfree(masterhostaddress);
 		pfree(strinfoport.data);	
 		if(ismasterrunning != 0)
@@ -2189,8 +2192,10 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	is_valid = is_valid_ip(host_addr);
 	if (is_valid)
 	{
-		ret = pingNode_user(host_addr, port.data, user);
-
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			ret = pingNode_user(host_addr, port.data, AGTM_USER);
+		else
+			ret = pingNode_user(host_addr, port.data, user);
 		switch (ret)
 		{
 			case PQPING_OK:
@@ -2221,6 +2226,7 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 
 	pfree(port.data);
 	pfree(host_addr);
+	pfree(user);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
@@ -2270,7 +2276,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 		Assert(mgr_node);
 
 		/* if node type is datanode master ,datanode slave ,datanode extra. */
-		if (mgr_node->nodetype == 'd' || mgr_node->nodetype == 'b' || mgr_node->nodetype == 'n')
+		if (mgr_node->nodetype == CNDN_TYPE_DATANODE_MASTER || mgr_node->nodetype == CNDN_TYPE_DATANODE_SLAVE || mgr_node->nodetype == CNDN_TYPE_DATANODE_EXTRA)
 		{
 			host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 			user = get_hostuser_from_hostoid(mgr_node->nodehost);
@@ -2308,6 +2314,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 						,ret == 0 ? true:false
 						,error_str);
 
+			pfree(user);
 			pfree(port.data);
 			pfree(host_addr);
 			SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -2334,7 +2341,6 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	char *host_addr;
-	char *user;
 	bool is_valid = false;
 	const char *error_str = NULL;
 	int ret = 0;
@@ -2368,17 +2374,16 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 		Assert(mgr_node);
 
 		/* if node type is gtm master ,gtm slave ,gtm extra. */
-		if (mgr_node->nodetype == 'g' || mgr_node->nodetype == 'p' || mgr_node->nodetype == 'e')
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
 		{
 			host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-			user = get_hostuser_from_hostoid(mgr_node->nodehost);
 			initStringInfo(&port);
 			appendStringInfo(&port, "%d", mgr_node->nodeport);
 
 			is_valid = is_valid_ip(host_addr);
 			if (is_valid)
 			{
-				ret = pingNode_user(host_addr, port.data, user);
+				ret = pingNode_user(host_addr, port.data, AGTM_USER);
 				switch (ret)
 				{
 					case PQPING_OK:
@@ -2519,7 +2524,10 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	is_valid = is_valid_ip(host_addr);
 	if (is_valid)
 	{
-		ret = pingNode_user(host_addr, port.data, user);
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			ret = pingNode_user(host_addr, port.data, AGTM_USER);
+		else
+			ret = pingNode_user(host_addr, port.data, user);
 		switch (ret)
 		{
 			case PQPING_OK:
@@ -2547,6 +2555,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 				,ret == 0 ? true:false
 				,error_str);
 
+	pfree(user);
 	pfree(port.data);
 	pfree(host_addr);
 	heap_freetuple(tup);
@@ -2624,7 +2633,10 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	is_valid = is_valid_ip(host_addr);
 	if (is_valid)
 	{
-		ret = pingNode_user(host_addr, port.data, user);
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			ret = pingNode_user(host_addr, port.data, AGTM_USER);
+		else
+			ret = pingNode_user(host_addr, port.data, user);
 		switch (ret)
 		{
 			case PQPING_OK:
@@ -2645,13 +2657,14 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	}
 	else
 		error_str = "could not establish host connection";
-
+	
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
 				,error_str);
 
+	pfree(user);
 	pfree(port.data);
 	pfree(host_addr);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
@@ -2930,7 +2943,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 	/*wait the node can accept connections*/
 	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
-	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, appendnodeinfo.nodeusername, max_pingtry))
 	{
 		if (!result)
 			appendStringInfoCharMacro(&(getAgentCmdRst.description), '\n');
@@ -3015,7 +3028,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 							&dn_e_is_exist, &dn_e_is_running, &dn_e_nodeinfo);
 		mastertupleoid = appendnodeinfo.nodemasteroid;
 		/* step 1: make sure datanode master, agtm master or agtm slave is running. */
-		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport, parentnodeinfo.nodeusername);
 		if (!dnmaster_is_running)
 			ereport(ERROR, (errmsg("datanode master \"%s\" is not running", parentnodeinfo.nodename)));
 
@@ -3169,7 +3182,6 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 			Assert(infostrparam.len != 0);
 			appendStringInfo(&infostrparam, ",%s", "slave");	
 		}
-			appendStringInfo(&infostrparam, "%s", "slave");
 		if (infostrparam.len == 0)
 			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 		else
@@ -3197,7 +3209,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	/*wait the node can accept connections*/
 	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
 	initStringInfo(&recorderr);
-	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, appendnodeinfo.nodeusername, max_pingtry))
 	{
 		result = false;
 		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
@@ -3286,7 +3298,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 							&dn_s_is_exist, &dn_s_is_running, &dn_s_nodeinfo);
 		mastertupleoid = appendnodeinfo.nodemasteroid;
 		/* step 1: make sure datanode master, agtm master or agtm slave is running. */
-		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport);
+		dnmaster_is_running = is_node_running(parentnodeinfo.nodeaddr, parentnodeinfo.nodeport, parentnodeinfo.nodeusername);
 		if (!dnmaster_is_running)
 			ereport(ERROR, (errmsg("datanode master \"%s\" is not running", parentnodeinfo.nodename)));
 
@@ -3467,7 +3479,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	/*wait the node can accept connections*/
 	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
 	initStringInfo(&recorderr);
-	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, appendnodeinfo.nodeusername, max_pingtry))
 	{
 		result = false;
 		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
@@ -3683,7 +3695,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 
 	/*wait the node can accept connections*/
 	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
-	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, appendnodeinfo.nodeusername, max_pingtry))
 	{
 		if (!result)
 			appendStringInfoCharMacro(&(getAgentCmdRst.description), '\n');
@@ -3893,7 +3905,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	/*wait the node can accept connections*/
 	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
 	initStringInfo(&recorderr);
-	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, appendnodeinfo.nodeusername, max_pingtry))
 	{
 		result = false;
 		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
@@ -4105,7 +4117,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	/*wait the node can accept connections*/
 	sprintf(nodeport_buf, "%d", appendnodeinfo.nodeport);
 	initStringInfo(&recorderr);
-	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, max_pingtry))
+	if (!mgr_try_max_pingnode(appendnodeinfo.nodeaddr, nodeport_buf, appendnodeinfo.nodeusername, max_pingtry))
 	{
 		result = false;
 		appendStringInfo(&recorderr, "waiting %d seconds for the new node can accept connections failed", max_pingtry);
@@ -4219,7 +4231,10 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	nodeinfo->nodetype = mgr_node->nodetype;
 	nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-	nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		nodeinfo->nodeusername = pstrdup(AGTM_USER);
+	else
+		nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	nodeinfo->nodeport = mgr_node->nodeport;
 	nodeinfo->nodehost = mgr_node->nodehost;
 	nodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -4238,7 +4253,7 @@ static void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist,
 	}
 	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
 
-	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport))
+	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport, nodeinfo->nodeusername))
 		*is_running = false;
 
 	heap_endscan(info->rel_scan);
@@ -4297,7 +4312,10 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	nodeinfo->nodetype = mgr_node->nodetype;
 	nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-	nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		nodeinfo->nodeusername = pstrdup(AGTM_USER);
+	else
+		nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	nodeinfo->nodeport = mgr_node->nodeport;
 	nodeinfo->nodehost = mgr_node->nodehost;
 	nodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -4316,7 +4334,7 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	}
 	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
 
-	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport))
+	if ( !is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport, nodeinfo->nodeusername))
 		*is_running = false;
 
 	heap_endscan(info->rel_scan);
@@ -4390,6 +4408,7 @@ static void mgr_make_sure_all_running(char node_type)
 	Form_mgr_node mgr_node;
 	char * hostaddr = NULL;
 	char *nodetype_str = NULL;
+	char *user;
 	NameData nodetypestr_data;
 	NameData nodename;
 
@@ -4422,8 +4441,11 @@ static void mgr_make_sure_all_running(char node_type)
 		Assert(mgr_node);
 
 		hostaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-
-		if (!is_node_running(hostaddr, mgr_node->nodeport))
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			user = pstrdup(AGTM_USER);
+		else
+			user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		if (!is_node_running(hostaddr, mgr_node->nodeport, user))
 		{
 			nodetype_str = mgr_nodetype_str(mgr_node->nodetype);
 			namestrcpy(&nodename, NameStr(mgr_node->nodename));
@@ -4431,10 +4453,12 @@ static void mgr_make_sure_all_running(char node_type)
 			heap_close(info->rel_node, AccessShareLock);
 			pfree(info);
 			pfree(hostaddr);
+			pfree(user);
 			namestrcpy(&nodetypestr_data, nodetype_str);
 			pfree(nodetype_str);
 			ereport(ERROR, (errmsg("%s \"%s\" is not running", nodetypestr_data.data,nodename.data)));
 		}
+		pfree(user);
 	}
 
 	heap_endscan(info->rel_scan);
@@ -4447,7 +4471,7 @@ static void mgr_make_sure_all_running(char node_type)
 	return;
 }
 
-static bool is_node_running(char *hostaddr, int32 hostport)
+static bool is_node_running(char *hostaddr, int32 hostport, char *user)
 {
 	StringInfoData port;
 	int ret;
@@ -4455,7 +4479,7 @@ static bool is_node_running(char *hostaddr, int32 hostport)
 	initStringInfo(&port);
 	appendStringInfo(&port, "%d", hostport);
 
-	ret = pingNode(hostaddr, port.data);
+	ret = pingNode_user(hostaddr, port.data, user);
 	if (ret != 0)
 	{
 		pfree(port.data);
@@ -4492,7 +4516,10 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	parentnodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
 	parentnodeinfo->nodetype = mgr_node->nodetype;
 	parentnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-	parentnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		parentnodeinfo->nodeusername = pstrdup(AGTM_USER);
+	else
+		parentnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	parentnodeinfo->nodeport = mgr_node->nodeport;
 	parentnodeinfo->nodehost = mgr_node->nodehost;
 
@@ -5208,6 +5235,7 @@ static bool mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	char * host;
+	char *user;
 	char coordportstr[19];
 	bool isNull;
 	bool bget = false;
@@ -5237,12 +5265,18 @@ static bool mgr_get_active_hostoid_and_port(char node_type, Oid *hostoid, int32 
 		/* check the coordinator active */
 		sprintf(coordportstr, "%d", mgr_node->nodeport);
 		host = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		if(PQPING_OK != pingNode(host, coordportstr))
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			user = pstrdup(AGTM_USER);
+		else
+			user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		if(PQPING_OK != pingNode_user(host, coordportstr, user))
 		{
 			if (host)
 				pfree(host);
+			pfree(user);
 			continue;
 		}
+		pfree(user);
 		pfree(host);
 		bget = true;
 		break;
@@ -5435,7 +5469,10 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 
 	appendnodeinfo->nodetype = mgr_node->nodetype;
 	appendnodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-	appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		appendnodeinfo->nodeusername = pstrdup(AGTM_USER);
+	else
+		appendnodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
 	appendnodeinfo->nodeport = mgr_node->nodeport;
 	appendnodeinfo->nodehost = mgr_node->nodehost;
 	appendnodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
@@ -5610,6 +5647,7 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 	GetAgentCmdRst getAgentCmdRst;
 	char *nodestring;
 	char *host_addr;
+	char *user;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	int ret;
@@ -5637,7 +5675,9 @@ static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		initStringInfo(&port);
 		appendStringInfo(&port, "%d", mgr_node->nodeport);
-		ret = pingNode(host_addr, port.data);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		ret = pingNode_user(host_addr, port.data, user);
+		pfree(user);
 		pfree(port.data);
 		pfree(host_addr);
 		if(ret != 0)
@@ -6538,7 +6578,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	}
 	while(1)
 	{
-		if (pingNode(address, nodeport_buf) != 0)
+		if (pingNode_user(address, nodeport_buf, AGTM_USER) != 0)
 		{
 			fputs(_("."), stdout);
 			fflush(stdout);
@@ -6909,6 +6949,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	char *cndnPathtmp;
 	char *strtmp;
 	char *address;
+	char *user;
 	char secondnodetype;
 	char coordport_buf[10];
 	int maxtry = 15;
@@ -6927,6 +6968,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	fputs(_("waiting for the new master can accept connections..."), stdout);
 	fflush(stdout);
 	/*check recovery finish*/
+	user = get_hostuser_from_hostoid(mgr_node->nodehost);
 	while(1)
 	{
 		if (mgr_check_node_recovery_finish(mgr_node->nodetype, mgr_node->nodehost, mgr_node->nodeport, address))
@@ -6937,7 +6979,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	}
 	while(1)
 	{
-		if (pingNode(address, coordport_buf) != 0)
+		if (pingNode_user(address, coordport_buf, user) != 0)
 		{
 			fputs(_("."), stdout);
 			fflush(stdout);
@@ -6949,6 +6991,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	fputs(_(" done\n"), stdout);
 	fflush(stdout);
 
+	pfree(user);
 	/*refresh pgxc_node on all coordiantors*/
 	getrefresh = mgr_pqexec_refresh_pgxc_node(FAILOVER, mgr_node->nodetype, NameStr(mgr_node->nodename), getAgentCmdRst, pg_conn, cnoid);
 	if(!getrefresh)
@@ -7602,6 +7645,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 	HeapTuple aimtuple;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
+	char *user;
 	char *host_addr = NULL;
 	char node_type = CNDN_TYPE_NONE_TYPE;
 	/*
@@ -7618,7 +7662,11 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		initStringInfo(&port);
 		appendStringInfo(&port, "%d", mgr_node->nodeport);
-		ret = pingNode(host_addr, port.data);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			ret = pingNode_user(host_addr, port.data, AGTM_USER);
+		else
+			ret = pingNode_user(host_addr, port.data, user);
 		if(ret == 0)
 			bslave_running = true;
 		else
@@ -7630,10 +7678,12 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 
 		bslave_incluster = mgr_node->nodeincluster;
 		bslave_exist = true;
+		pfree(user);
 		pfree(port.data);
 		pfree(host_addr);
 		heap_freetuple(aimtuple);
-	}		
+	}
+
 	aimtuple = mgr_get_tuple_node_from_name_type(rel_node, node_name, extra_type);
 	if (HeapTupleIsValid(aimtuple))
 	{
@@ -7642,7 +7692,11 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		initStringInfo(&port);
 		appendStringInfo(&port, "%d", mgr_node->nodeport);
-		ret = pingNode(host_addr, port.data);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			ret = pingNode_user(host_addr, port.data, AGTM_USER);
+		else
+			ret = pingNode_user(host_addr, port.data, user);
 		if(ret == 0)
 			bextra_running = true;
 		else
@@ -7653,6 +7707,7 @@ static Datum get_failover_node_type(char *node_name, char slave_type, char extra
 			bextra_sync = false;
 		bextra_incluster = mgr_node->nodeincluster;
 		bextra_exist = true;
+		pfree(user);
 		pfree(port.data);
 		pfree(host_addr);
 		heap_freetuple(aimtuple);
@@ -7792,6 +7847,7 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 	ListCell *lc_out, *lc_in, *cn_lc, *dn_lc;
 	Datum host_addr;
 	char *host_address;
+	char *user;
 	struct host *host_info = NULL;
 	List *host_list = NIL;/*store cn and dn base on host*/
 	struct tuple_cndn *leave_cndn = NULL;/*store the left cn and dn which */
@@ -7857,10 +7913,18 @@ static struct tuple_cndn *get_new_pgxc_node(pgxc_node_operator cmd, char *node_n
 				resetStringInfo(&str_port);
 				appendStringInfo(&str_port, "%d", mgr_node->nodeport);
 				/*iust init ,but haven't alter the mgr_node table*/
-				if(PQPING_OK == pingNode(host_address, str_port.data))
+				if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+					user = pstrdup(AGTM_USER);
+				else
+					user = get_hostuser_from_hostoid(mgr_node->nodehost);
+				if(PQPING_OK == pingNode_user(host_address, str_port.data, user))
+				{
+					pfree(user);
 					temp_tuple = heap_copytuple(tup);
+				}
 				else 
 				{
+					pfree(user);
 					pfree(host_address);
 					continue;
 				}
@@ -11045,7 +11109,8 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 	GetAgentCmdRst getAgentCmdRst;
 	StringInfoData  infosendmsg;
 	StringInfoData infostrparam;
-	Value *val;	
+	Value *val;
+	char *user;
 	
 	/*ndoe type*/
 	nodetype = PG_GETARG_CHAR(0);
@@ -11091,14 +11156,20 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 		iloop = 0;
 		while (iloop++ < 2)
 		{
-			if (pingNode(address, port_buf) == 0 || pingNode(address, port_buf) == -2)
+			if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+				user = pstrdup(AGTM_USER);
+			else
+				user = get_hostuser_from_hostoid(mgr_node->nodehost);
+			if (pingNode_user(address, port_buf, user) == 0 || pingNode_user(address, port_buf, user) == -2)
 			{
+				pfree(user);
 				pfree(address);
 				heap_endscan(rel_scan);
 				heap_close(rel, RowExclusiveLock);
 				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 					,errmsg("\"%s\" is running, stop it first", NameStr(mgr_node->nodename))));
 			}
+			pfree(user);
 		}
 		heap_endscan(rel_scan);
 		pfree(address);
@@ -11206,7 +11277,7 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 * check the node pingNode ok max_try times
 */
 
-static bool mgr_try_max_pingnode(char *host, char *port, const int max_times)
+static bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times)
 {
 	int ret = 0;
 
@@ -11216,7 +11287,7 @@ static bool mgr_try_max_pingnode(char *host, char *port, const int max_times)
 	while(1)
 	{
 		ret++;
-		if (pingNode(host, port) != 0)
+		if (pingNode_user(host, port, user) != 0)
 		{
 			fputs(_("."), stdout);
 			fflush(stdout);

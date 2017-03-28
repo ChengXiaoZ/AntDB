@@ -293,49 +293,6 @@ bool mgr_recv_msg_for_monitor(ManagerAgent *ma, bool *ret, StringInfo agentRstSt
 	return initdone;
 }
 
-/* ping someone node for monitor */
-int pingNode(char *host, char *port)
-{
-	PGPing status;
-	char conninfo[MAXLINE+1];
-	char editBuf[MAXPATH+1];
-	int retry;
-	conninfo[0] = 0;
-
-	if (host)
-	{
-		snprintf(editBuf, MAXPATH, "host = '%s' ", host);
-		strncat(conninfo, editBuf, MAXLINE);
-	}
-
-	if (port)
-	{
-		snprintf(editBuf, MAXPATH, "port = %d ", atoi(port));
-		strncat(conninfo, editBuf, MAXLINE);
-	}
-
-	if (conninfo[0])
-	{
-		elog(DEBUG1, "Ping node string: %s.\n",conninfo);
-		for (retry = RETRY; retry; retry--)
-		{
-			status = PQping(conninfo);
-			if (status == PQPING_REJECT)
-				return -2;
-			else if (status == PQPING_OK)
-				return 0;
-			else
-			{
-				myUsleep(SLEEP_MICRO);
-				continue;
-			}
-		}
-		return 1;
-	}
-	else
-		return -1;
-}
-
 bool is_valid_ip(char *ip)
 {
 	FILE *pPipe;
