@@ -1443,6 +1443,7 @@ static int mgr_get_parm_unit_type(char *nodename, char *parmunit)
 	}
 	else if (strcmp(parmunit, "8kB") ==0)
 	{
+		/*these parameters effect by configure*/
 		if (strcmp(nodename, "wal_buffers") ==0)
 		{
 			return GUC_UNIT_XBLOCKS;
@@ -1453,10 +1454,21 @@ static int mgr_get_parm_unit_type(char *nodename, char *parmunit)
 		}
 		else
 			return GUC_UNIT_KB;
-		
 	}
 	else
-		return 0;
+	{
+		/*these parameters effect by configure*/
+		if (strcmp(nodename, "wal_buffers") ==0)
+		{
+			return GUC_UNIT_XBLOCKS;
+		}
+		else if (strcmp(nodename, "wal_segment_size") ==0)
+		{
+			return (GUC_UNIT_XBLOCKS | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE);
+		}
+		else
+			return 0;
+	}
 }
 
 /*check enum type of parm's value is right*/
