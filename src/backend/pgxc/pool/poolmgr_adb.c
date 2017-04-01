@@ -310,7 +310,8 @@ PoolManagerInit()
 	 */
 	pqsignal(SIGINT, StatementCancelHandler);
 	pqsignal(SIGTERM, die);
-	pqsignal(SIGQUIT, pooler_quickdie);
+	/* pqsignal(SIGQUIT, pooler_quickdie); */
+	pqsignal(SIGQUIT, SIG_IGN);
 	pqsignal(SIGHUP, SIG_IGN);
 	/* TODO other signal handlers */
 
