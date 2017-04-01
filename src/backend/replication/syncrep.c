@@ -249,7 +249,10 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 	}
 
 #ifdef DEBUG_ADB
-	elog(LOG, "[ADB] prev = %p, next = %p", MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next);
+	if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
+		elog(LOG, "[ADB] It is impossible. [lsn] %X/%X [prev] %p [next] %p",
+				  (uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
+				  MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next);
 #endif
 
 	/*
@@ -304,6 +307,12 @@ SyncRepQueueInsert(int mode)
 		SHMQueueInsertAfter(&(proc->syncRepLinks), &(MyProc->syncRepLinks));
 	else
 		SHMQueueInsertAfter(&(WalSndCtl->SyncRepQueue[mode]), &(MyProc->syncRepLinks));
+
+#ifdef DEBUG_ADB
+	elog(LOG, "[ADB] Insert [lsn] %X/%X [prev] %p [next] %p",
+			  (uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
+			  MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next);
+#endif
 }
 
 /*
@@ -570,6 +579,12 @@ SyncRepWakeQueue(bool all, int mode)
 		 * Remove thisproc from queue.
 		 */
 		SHMQueueDelete(&(thisproc->syncRepLinks));
+
+#ifdef DEBUG_ADB
+		elog(LOG, "[ADB] Delete [lsn] %X/%X [prev] %p [next] %p",
+				  (uint32) (thisproc->waitLSN >> 32), (uint32) thisproc->waitLSN,
+				  thisproc->syncRepLinks.prev, thisproc->syncRepLinks.next);
+#endif
 
 		/*
 		 * Wake only when we have set state and removed from queue.
