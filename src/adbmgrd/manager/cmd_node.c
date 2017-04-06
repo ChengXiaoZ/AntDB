@@ -3525,12 +3525,12 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	char nodeport_buf[10];
 	NameData nodename;
 	bool result = true;
-	initStringInfo(&(getAgentCmdRst.description));
-	initStringInfo(&infosendmsg);
 	int max_locktry = 600;
 	const int max_pingtry = 60;
 	int ret = 0;
 
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
 	memset(&appendnodeinfo, 0, sizeof(AppendNodeInfo));
 	memset(&agtm_m_nodeinfo, 0, sizeof(AppendNodeInfo));
 	memset(&agtm_s_nodeinfo, 0, sizeof(AppendNodeInfo));

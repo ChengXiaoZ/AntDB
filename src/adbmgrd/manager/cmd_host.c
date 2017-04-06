@@ -575,6 +575,7 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 	NameData resnamedata;
 	NameData restypedata;
 	int ret;
+	MemoryContext oldcontext;
 
 	initStringInfo(&buf);
 
@@ -605,7 +606,6 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 		SPI_freetuptable(SPI_tuptable);
 		SPI_finish();
 
-		MemoryContext oldcontext;
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
@@ -708,6 +708,7 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 	StringInfoData sqlstr;
 	StringInfoData namestr;
 	int ret;
+	MemoryContext oldcontext;
 
 	initStringInfo(&buf);
 
@@ -752,7 +753,6 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 		SPI_freetuptable(SPI_tuptable);
 		SPI_finish();
 
-		MemoryContext oldcontext;
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		info = palloc(sizeof(*info));
