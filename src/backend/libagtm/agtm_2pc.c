@@ -8,6 +8,7 @@
 #include "libpq/libpq-fe.h"
 #include "libpq/libpq-int.h"
 #include "pgxc/pgxc.h"
+#include "storage/ipc.h"
 #include "utils/guc.h"
 
 #define FAILED 0
@@ -236,7 +237,7 @@ void agtm_BeginTransaction(void)
 	if (!IsUnderAGTM())
 		return ;
 
-	if (!GetForceXidFromGTM() && ((!IS_PGXC_COORDINATOR || IsConnFromCoord())))
+	if (!GetForceXidFromAGTM() && ((!IS_PGXC_COORDINATOR || IsConnFromCoord())))
 		return;
 
 	if (TopXactBeginAGTM())
@@ -291,7 +292,7 @@ void agtm_CommitTransaction(const char *prepared_gid, bool missing_ok)
 	if (!IsUnderAGTM())
 		return ;
 
-	if (!GetForceXidFromGTM() && ((!IS_PGXC_COORDINATOR || IsConnFromCoord())))
+	if (!GetForceXidFromAGTM() && ((!IS_PGXC_COORDINATOR || IsConnFromCoord())))
 		return ;
 
 	/*
@@ -345,7 +346,7 @@ void agtm_AbortTransaction(const char *prepared_gid, bool missing_ok)
 	if (!IsUnderAGTM())
 		return;
 
-	if (!GetForceXidFromGTM() && ((!IS_PGXC_COORDINATOR || IsConnFromCoord())))
+	if (!GetForceXidFromAGTM() && ((!IS_PGXC_COORDINATOR || IsConnFromCoord())))
 		return ;
 
 	/*
@@ -353,6 +354,9 @@ void agtm_AbortTransaction(const char *prepared_gid, bool missing_ok)
 	 * does not begin at AGTM.
 	 */
 	if (!TopXactBeginAGTM() && !prepared_gid)
+		return ;
+
+	if (proc_exit_inprogress)
 		return ;
 
 	initStringInfo(&abort_cmd);

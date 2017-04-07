@@ -50,7 +50,7 @@ agtm_Connect(void)
 
 	agtm_Close();
 
-	if (IS_PGXC_DATANODE && GetForceXidFromGTM() && IsDefaultAGtmPortSave)
+	if (IS_PGXC_DATANODE && GetForceXidFromAGTM() && IsDefaultAGtmPortSave)
 		AGtmPort = save_DefaultAGtmPort;
 
 	SaveDefaultAGtmPort(AGtmPort);

@@ -2389,7 +2389,7 @@ CommitTransaction(void)
 		 * transaction
 		 */
 	}
-	else if (IS_PGXC_DATANODE && GetForceXidFromGTM())
+	else if (IS_PGXC_DATANODE && GetForceXidFromAGTM())
 	{
 		agtm_CommitTransaction(NULL, false);
 		agtm_Close();
@@ -2951,7 +2951,7 @@ AbortTransaction(void)
 	else
 		NormalAbortRemoteXact(s);
 
-	if (IS_PGXC_DATANODE && GetForceXidFromGTM())
+	if (IS_PGXC_DATANODE && GetForceXidFromAGTM())
 	{
 		agtm_AbortTransaction(NULL, false);	
 		agtm_Close();

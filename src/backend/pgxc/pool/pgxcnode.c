@@ -2070,7 +2070,10 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 
 	/* Invalid connection state, return error */
 	if (handle->state != DN_CONNECTION_STATE_IDLE)
+	{
+		add_error_message(handle, "Invalid connection state: %d", handle->state);
 		return EOF;
+	}
 
 #ifdef DEBUG_ADB
 	initStringInfo(&buf);

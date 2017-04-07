@@ -165,6 +165,7 @@ extern void AdjustTransactionId(TransactionId least_xid);
 extern void SetGlobalTransactionId(GlobalTransactionId gxid);
 extern void UnsetGlobalTransactionId(void);
 extern void SetForceObtainXidFromAGTM(bool val);
+extern bool GetForceXidFromAGTM(void);
 extern TransactionId GetNewGlobalTransactionId(bool isSubXact);
 extern int TransactionLogFetch(TransactionId transactionId);
 #endif

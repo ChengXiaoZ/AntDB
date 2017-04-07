@@ -150,6 +150,7 @@ extern List *AddRemoteQueryNode(List *stmts, const char *queryString,
 #ifdef ADB
 extern List *AddRemoteParseTree(List *stmts, const char *queryString, const Node *parseTree,
 								RemoteQueryExecType remoteExecType, bool is_temp);
+extern ExecNodes *pgxc_is_all_replicated_table(Query *query);
 #endif
 extern bool pgxc_query_contains_temp_tables(List *queries);
 extern bool pgxc_query_contains_utility(List *queries);

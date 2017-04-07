@@ -2333,6 +2333,9 @@ pgxc_node_remote_abort(const char *gid, bool missing_ok)
 	SetSendCommandId(false);
 
 #ifdef ADB
+	if (proc_exit_inprogress)
+		return ;
+
 	initStringInfo(&command);
 	if (remoteXactState.status == RXACT_PREPARED)
 	{

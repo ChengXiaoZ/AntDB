@@ -101,11 +101,10 @@ SetForceObtainXidFromAGTM(bool val)
  * Useful for explicit VACUUM FULL
  */
 bool
-GetForceXidFromGTM(void)
+GetForceXidFromAGTM(void)
 {
 	return ForceObtainXidFromAGTM;
 }
-
 
 static GlobalTransactionId
 ObtainGlobalTransactionId(bool isSubXact)
