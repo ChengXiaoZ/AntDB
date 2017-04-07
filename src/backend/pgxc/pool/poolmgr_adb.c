@@ -276,7 +276,7 @@ static List* pool_get_nodeid_list(StringInfo buf);
 static void on_exit_pooler(int code, Datum arg);
 
 /* check slot state */
-#if 1
+#if 0
 static void check_all_slot_list(void)
 {
 	HASH_SEQ_STATUS hash_database_stats;
