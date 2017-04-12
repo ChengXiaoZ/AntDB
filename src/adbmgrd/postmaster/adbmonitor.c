@@ -1458,7 +1458,7 @@ print_workers(void)
 	{
 		if (OidIsValid(workers[i].wi_job))
 		{
-			elog(DEBUG1, "Launcher find workers[%d] %d is running",
+			elog(LOG, "Launcher find workers[%d] %d is running",
 				i, workers[i].wi_job);
 		}
 	}

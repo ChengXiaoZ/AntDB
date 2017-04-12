@@ -1484,7 +1484,7 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 		/* TODO handle other possible responses */
 		msg_type = get_message(conn, &msg_len, &msg);
 #ifdef DEBUG_ADB
-		ereport(DEBUG1,
+		ereport(LOG,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("[process] %d [handle] %s [sock] %d [state] %s "
 					   "[msg_type] %c [combiner] %p [request_type] %s",
