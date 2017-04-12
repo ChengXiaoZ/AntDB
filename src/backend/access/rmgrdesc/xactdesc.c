@@ -189,6 +189,13 @@ xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "xid assignment xtop %u: ", xlrec->xtop);
 		xact_desc_assignment(buf, xlrec);
 	}
+#ifdef AGTM
+	else if (info == XLOG_XACT_XID_ASSIGNMENT)
+	{
+		TransactionId xid = *(TransactionId *) rec;
+		appendStringInfo(buf, "xid assignment by AGTM %u: ", xid);
+	}
+#endif
 	else
 		appendStringInfo(buf, "UNKNOWN");
 }

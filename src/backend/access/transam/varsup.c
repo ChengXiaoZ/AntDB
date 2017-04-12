@@ -71,6 +71,27 @@ AdjustTransactionId(TransactionId least_xid)
 	}
 	LWLockRelease(XidGenLock);
 }
+
+static void
+WriteXidAssignmentXLog(TransactionId xid, bool flush)
+{
+	XLogRecData	rdata[1];
+	XLogRecPtr	recptr;
+
+	Assert(TransactionIdIsValid(xid));
+
+	START_CRIT_SECTION();
+	rdata[0].data = (char *) &xid;
+	rdata[0].len = sizeof(xid);
+	rdata[0].buffer = InvalidBuffer;
+	rdata[0].next = NULL;
+
+	recptr = XLogInsert(RM_XACT_ID, XLOG_XACT_XID_ASSIGNMENT, rdata);
+	if (flush)
+		XLogFlush(recptr);
+
+	END_CRIT_SECTION();
+}
 #endif
 
 #ifdef ADB
@@ -563,7 +584,16 @@ GetNewTransactionId(bool isSubXact)
 
 	LWLockRelease(XidGenLock);
 
+#ifdef AGTM
+	/*
+	 * Write ahead xid assignment xlog to ensure that the same xid
+	 * will never be assigned two times.
+	 */
+	WriteXidAssignmentXLog(xid, true);
+#endif
+
 	elog(DEBUG1, "Return new local xid: %u", xid);
+
 	return xid;
 }
 

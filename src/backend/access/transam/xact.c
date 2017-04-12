@@ -5657,6 +5657,16 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 			ProcArrayApplyXidAssignment(xlrec->xtop,
 										xlrec->nsubxacts, xlrec->xsub);
 	}
+#ifdef AGTM
+	else if (info == XLOG_XACT_XID_ASSIGNMENT)
+	{
+		TransactionId xid = * (TransactionId *) XLogRecGetData(record);
+
+		Assert(TransactionIdIsValid(xid));
+		TransactionIdAdvance(xid);
+		AdjustTransactionId(xid);
+	}
+#endif
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }

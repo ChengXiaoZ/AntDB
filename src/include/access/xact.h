@@ -111,6 +111,9 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 #define XLOG_XACT_ABORT_PREPARED	0x40
 #define XLOG_XACT_ASSIGNMENT		0x50
 #define XLOG_XACT_COMMIT_COMPACT	0x60
+#ifdef AGTM
+#define XLOG_XACT_XID_ASSIGNMENT	0x70
+#endif
 
 typedef struct xl_xact_assignment
 {
