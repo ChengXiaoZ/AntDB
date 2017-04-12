@@ -65,8 +65,17 @@ AdjustTransactionId(TransactionId least_xid)
 
 	while (TransactionIdPrecedes(ShmemVariableCache->nextXid, least_xid))
 	{
-		ExtendCLOG(ShmemVariableCache->nextXid);
-		ExtendSUBTRANS(ShmemVariableCache->nextXid);
+		/*
+		 * ADBQ
+		 * Is here anything wrong if we annotate these code?
+
+		if (!RecoveryInProgress())
+		{
+			ExtendCLOG(ShmemVariableCache->nextXid);
+			ExtendSUBTRANS(ShmemVariableCache->nextXid);
+		}
+
+		 */
 		TransactionIdAdvance(ShmemVariableCache->nextXid);
 	}
 	LWLockRelease(XidGenLock);
