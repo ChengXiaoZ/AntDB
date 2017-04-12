@@ -31,6 +31,7 @@ SUBDIRS = \
 		passwordcheck	\
 		pg_archivecleanup \
 		pg_buffercache	\
+		pg_fix			\
 		pg_freespacemap \
 		pg_standby	\
 		pg_stat_statements \
