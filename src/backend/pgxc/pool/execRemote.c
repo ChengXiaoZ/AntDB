@@ -408,8 +408,9 @@ HandleCommandComplete(RemoteQueryState *combiner, char *msg_body, size_t len, PG
 	bool			non_fqs_dml;
 
 #ifdef DEBUG_ADB
-	elog(LOG, "[ADB] From %s receive complete(C) message: %s",
-		NameStr(conn->name), msg_body);
+	adb_ereport(LOG,
+		(errmsg("[ADB] From %s receive complete(C) message: %s",
+			NameStr(conn->name), msg_body)));
 #endif
 
 	/* Is this a DML query that is not FQSed ? */
@@ -792,8 +793,9 @@ HandleError(const char *from, RemoteQueryState *combiner, char *msg_body, size_t
 	}
 
 #ifdef DEBUG_ADB
-	elog(LOG, "[ADB] From %s receive error(E) message: %s",
-		from, message);
+	adb_ereport(LOG,
+		(errmsg("[ADB] From %s receive error(E) message: %s",
+			from, message)));
 #endif
 
 	/*
@@ -1484,19 +1486,14 @@ handle_response(PGXCNodeHandle * conn, RemoteQueryState *combiner)
 		/* TODO handle other possible responses */
 		msg_type = get_message(conn, &msg_len, &msg);
 #ifdef DEBUG_ADB
-		ereport(LOG,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("[process] %d [handle] %s [sock] %d [state] %s "
-					   "[msg_type] %c [combiner] %p [request_type] %s",
-					   MyProcPid,
-					   NameStr(conn->name),
-					   conn->sock,
-					   DNConnectionStateAsString(conn->state),
-					   msg_type,
-					   combiner,
-					   combiner ? RequestTypeAsString(combiner->request_type) :
-					   "UNKNOWN REQUEST TYPE")
-				));
+		adb_ereport(LOG,
+			(errmsg("[process] %d [handle] %s [sock] %d [state] %s "
+					"[msg_type] %c [combiner] %p [request_type] %s",
+					MyProcPid, NameStr(conn->name), conn->sock,
+					DNConnectionStateAsString(conn->state),
+					msg_type, combiner,
+					combiner ? RequestTypeAsString(combiner->request_type) :
+				   "UNKNOWN REQUEST TYPE")));
 #endif
 		switch (msg_type)
 		{
@@ -1633,16 +1630,11 @@ is_data_node_ready(PGXCNodeHandle * conn)
 
 		msg_type = get_message(conn, &msg_len, &msg);
 #ifdef DEBUG_ADB
-		ereport(DEBUG1,
-				(errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("[process] %d [handle] %s [sock] %d [state] %s "
-					   "[msg_type] %c",
-					   MyProcPid,
-					   NameStr(conn->name),
-					   conn->sock,
-					   DNConnectionStateAsString(conn->state),
-					   msg_type)
-				));
+		adb_ereport(LOG, 
+			(errmsg("[process] %d [handle] %s [sock] %d [state] %s "
+					"[msg_type] %c",
+					MyProcPid, NameStr(conn->name),	conn->sock,
+					DNConnectionStateAsString(conn->state),	msg_type)));
 #endif
 		switch (msg_type)
 		{

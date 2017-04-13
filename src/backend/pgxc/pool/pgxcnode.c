@@ -1921,22 +1921,30 @@ pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *query,
 	if (query)
 	{
 #ifdef DEBUG_ADB
-		StringInfoData buf;
-		initStringInfo(&buf);
-		appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
-
-		elog(LOG, "[ADB]Send to [node] %s [sock] %d [query] %s",
-			NameStr(handle->name), handle->sock, query);
-
-		MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
-		snprintf(handle->last_query, DEBUG_BUF_SIZE, "%s", query);
-
-		if (pgxc_node_send_parse(handle, statement, buf.data, num_params, param_types))
+		if (ADB_DEBUG)
 		{
+			StringInfoData buf;
+			initStringInfo(&buf);
+			appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
+
+			adb_ereport(LOG, 
+				(errmsg("[ADB]Send to [node] %s [sock] %d [query] %s",
+					NameStr(handle->name), handle->sock, query)));
+
+			MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
+			snprintf(handle->last_query, DEBUG_BUF_SIZE, "%s", query);
+
+			if (pgxc_node_send_parse(handle, statement, buf.data, num_params, param_types))
+			{
+				pfree(buf.data);
+				return EOF;
+			}
 			pfree(buf.data);
-			return EOF;
+		} else
+		{
+			if (pgxc_node_send_parse(handle, statement, query, num_params, param_types))
+				return EOF;
 		}
-		pfree(buf.data);
 #else
 		if (pgxc_node_send_parse(handle, statement, query, num_params, param_types))
 			return EOF;
@@ -2077,14 +2085,18 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 
 #ifdef DEBUG_ADB
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
-	query = buf.data;
+	if (ADB_DEBUG)
+	{
+		appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
+		query = buf.data;
 
-	elog(LOG, "[ADB]Send to [node] %s [sock] %d [query] %s",
-		NameStr(handle->name), handle->sock, query);
+		adb_ereport(LOG, 
+			(errmsg("[ADB]Send to [node] %s [sock] %d [query] %s",
+				NameStr(handle->name), handle->sock, query)));
 
-	MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
-	snprintf(handle->last_query, DEBUG_BUF_SIZE, "%s", query);
+		MemSet(handle->last_query, 0, DEBUG_BUF_SIZE);
+		snprintf(handle->last_query, DEBUG_BUF_SIZE, "%s", query);
+	}
 #endif
 
 	strLen = strlen(query) + 1;

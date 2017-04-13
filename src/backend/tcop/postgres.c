@@ -1521,7 +1521,7 @@ exec_simple_query(const char *query_string)
 		 * aborted by error will not send an EndCommand report at all.)
 		 */
 #if defined(ADB) && defined(DEBUG_ADB)
-		if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
+		if (ADB_DEBUG && (!IS_PGXC_COORDINATOR || IsConnFromCoord()))
 		{
 			StringInfoData buf;
 
@@ -2519,7 +2519,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 		/* Send appropriate CommandComplete to client */
 #if defined(ADB) && defined(DEBUG_ADB)
-		if (!IS_PGXC_COORDINATOR || IsConnFromCoord())
+		if (ADB_DEBUG && (!IS_PGXC_COORDINATOR || IsConnFromCoord()))
 		{
 			StringInfoData buf;
 

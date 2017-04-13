@@ -247,14 +247,15 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 		 */
 		WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1);
 	}
-#ifdef AGTM
+
 #ifdef DEBUG_ADB
 	if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
-		elog(LOG, "[ADB] It is impossible. [lsn] %X/%X [prev] %p [next] %p",
-				  (uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
-				  MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next);
+		adb_ereport(LOG, 
+			(errmsg("[ADB] It is impossible. [lsn] %X/%X [prev] %p [next] %p",
+				(uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
+				MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next)));
 #endif
-#endif
+
 
 	/*
 	 * WalSender has checked our LSN and has removed us from queue. Clean up
@@ -309,12 +310,11 @@ SyncRepQueueInsert(int mode)
 	else
 		SHMQueueInsertAfter(&(WalSndCtl->SyncRepQueue[mode]), &(MyProc->syncRepLinks));
 
-#ifdef AGTM
 #ifdef DEBUG_ADB
-	elog(LOG, "[ADB] Insert [lsn] %X/%X [prev] %p [next] %p",
-			  (uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
-			  MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next);
-#endif
+	adb_ereport(LOG, 
+		(errmsg("[ADB] Insert [lsn] %X/%X [prev] %p [next] %p",
+			(uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
+			MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next)));
 #endif
 }
 
@@ -583,12 +583,11 @@ SyncRepWakeQueue(bool all, int mode)
 		 */
 		SHMQueueDelete(&(thisproc->syncRepLinks));
 
-#ifdef AGTM
 #ifdef DEBUG_ADB
-		elog(LOG, "[ADB] Delete [lsn] %X/%X [prev] %p [next] %p",
-				  (uint32) (thisproc->waitLSN >> 32), (uint32) thisproc->waitLSN,
-				  thisproc->syncRepLinks.prev, thisproc->syncRepLinks.next);
-#endif
+		adb_ereport(LOG,
+			(errmsg("[ADB] Delete [lsn] %X/%X [prev] %p [next] %p",
+				(uint32) (thisproc->waitLSN >> 32), (uint32) thisproc->waitLSN,
+				thisproc->syncRepLinks.prev, thisproc->syncRepLinks.next)));
 #endif
 		/*
 		 * Wake only when we have set state and removed from queue.

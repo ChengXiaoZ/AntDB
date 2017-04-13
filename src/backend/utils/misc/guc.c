@@ -518,6 +518,9 @@ int			pool_time_out;
 bool		enable_zero_year;
 bool		distribute_by_replication_default;
 #endif
+#ifdef DEBUG_ADB
+bool		ADB_DEBUG;
+#endif
 
 #ifdef AGTM
 extern int agtm_listen_port;
@@ -1779,6 +1782,19 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&distribute_by_replication_default,
+		false,
+		NULL, NULL, NULL
+	},
+#endif
+
+#ifdef DEBUG_ADB
+	{
+		{"adb_debug", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Emit ADB debugging output."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&ADB_DEBUG,
 		false,
 		NULL, NULL, NULL
 	},

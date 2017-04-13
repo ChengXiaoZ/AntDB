@@ -159,7 +159,8 @@ AddAdbHaSyncLog(TimestampTz create_time,
 	(void)MemoryContextSwitchTo(oldContext);
 
 #ifdef DEBUG_ADB
-	MemoryContextStats(AdbHaSyncLogContext);
+	if (ADB_DEBUG)
+		MemoryContextStats(AdbHaSyncLogContext);
 #endif
 	MemoryContextResetAndDeleteChildren(AdbHaSyncLogContext);
 }

@@ -1455,7 +1455,6 @@ elog_finish(int elevel, const char *fmt,...)
 	errfinish(0);
 }
 
-
 /*
  * Functions to allow construction of error message strings separately from
  * the ereport() call itself.
@@ -1529,7 +1528,7 @@ EmitErrorReport(void)
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
 #if defined(ADB) && defined(DEBUG_ADB)
-	if (edata->elevel >= ERROR && edata->message)
+	if (ADB_DEBUG && edata->elevel >= ERROR && edata->message)
 	{
 		StringInfoData new_message;
 		initStringInfo(&new_message);
