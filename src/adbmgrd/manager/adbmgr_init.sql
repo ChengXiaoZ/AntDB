@@ -670,10 +670,11 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
                                            end 
                                            || ':' || '{' || '"node_name"' || ':' || '"' || f.nodename || '"' || ',' 
                                                          || '"node_port"' || ':' ||        f.nodeport        || ','
-                                                         || '"node_ip"'   || ':' || '"' || f.hostaddr || '"' ||
+                                                         || '"node_ip"'   || ':' || '"' || f.hostaddr || '"' || ','
+                                                         || '"sync_state"'|| ':' || '"' || f.nodesync || '"' ||
                                                      '}'
                                     from(
-                                            select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid, h.hostaddr
+                                            select n.nodename,n.oid,n.nodetype,n.nodesync,n.nodeport,n.nodemasternameoid, h.hostaddr
                                             from mgr_node n, mgr_host h
                                             where n.nodemasternameoid = '0' and 
                                                   n.nodename = x.nodename  and 
@@ -684,7 +685,7 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
                                             
                                             union all
                                             
-                                            select t2.nodename,t2.oid,t2.nodetype,t2.nodeport,t2.nodemasternameoid,t2.hostaddr
+                                            select t2.nodename,t2.oid,t2.nodetype,t2.nodesync,t2.nodeport,t2.nodemasternameoid,t2.hostaddr
                                             from (
                                                     select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid,h.hostaddr
                                                     from mgr_node n,mgr_host h
@@ -697,7 +698,7 @@ CREATE VIEW adbmgr.get_datanode_node_topology AS
                                                 ) t1
                                                 left join 
                                                 (
-                                                    select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid,h.hostaddr
+                                                    select n.nodename,n.oid,n.nodetype,n.nodesync,n.nodeport,n.nodemasternameoid,h.hostaddr
                                                     from mgr_node n,mgr_host h
                                                     where h.oid = n.nodehost and
                                                           n.nodeincluster = true and
@@ -733,10 +734,11 @@ CREATE VIEW adbmgr.get_agtm_node_topology AS
                                         end 
                                         || ':' || '{' || '"node_name"' || ':' || '"' || f.nodename || '"' || ',' 
                                                       || '"node_port"' || ':' ||        f.nodeport        || ','
-                                                      || '"node_ip"'   || ':' || '"' || f.hostaddr || '"' ||
+                                                      || '"node_ip"'   || ':' || '"' || f.hostaddr || '"' || ','
+                                                      || '"sync_state"'|| ':' || '"' || f.nodesync || '"' ||
                                                 '}'
                                     from(
-                                        select n.nodename,n.oid,n.nodetype,n.nodeport,n.nodemasternameoid, h.hostaddr
+                                        select n.nodename,n.oid,n.nodetype,n.nodesync,n.nodeport,n.nodemasternameoid, h.hostaddr
                                         from mgr_node n, mgr_host h
                                         where n.nodeincluster = true and
                                               n.nodeinited = true and
