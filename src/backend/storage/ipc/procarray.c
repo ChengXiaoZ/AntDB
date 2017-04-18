@@ -3234,6 +3234,14 @@ KnownAssignedXidsAdd(TransactionId from_xid, TransactionId to_xid,
 	Assert(head >= 0 && head <= pArray->maxKnownAssignedXids);
 	Assert(tail >= 0 && tail < pArray->maxKnownAssignedXids);
 
+#ifdef DEBUG_ADB
+	adb_ereport(LOG,
+		(errmsg("head %d, tail %d, from %u, to %u, nxid %d, num %d, max %d",
+		 head, tail, from_xid, to_xid, nxids,
+		 pArray->numKnownAssignedXids,
+		 pArray->maxKnownAssignedXids)));
+#endif
+
 	/*
 	 * Verify that insertions occur in TransactionId sequence.  Note that even
 	 * if the last existing element is marked invalid, it must still have a

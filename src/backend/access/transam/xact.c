@@ -5664,8 +5664,15 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 		TransactionId xid = * (TransactionId *) XLogRecGetData(record);
 
 		Assert(TransactionIdIsValid(xid));
-		TransactionIdAdvance(xid);
-		AdjustTransactionId(xid);
+
+		if (TransactionIdFollowsOrEquals(xid,
+										 ShmemVariableCache->nextXid))
+		{
+			LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+			ShmemVariableCache->nextXid = xid;
+			TransactionIdAdvance(ShmemVariableCache->nextXid);
+			LWLockRelease(XidGenLock);
+		}
 	}
 #endif
 	else
