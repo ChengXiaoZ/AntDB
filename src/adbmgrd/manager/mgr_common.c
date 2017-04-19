@@ -350,8 +350,8 @@ int pingNode_user(char *host, char *port, char *user)
 		strncat(conninfo, editBuf, MAXLINE);
 	}
 
-	/*timeout set 2s*/
-	snprintf(editBuf, MAXPATH,"connect_timeout=2");
+	/*timeout set 10s, when the cluster at high press, it should enlarge the value*/
+	snprintf(editBuf, MAXPATH,"connect_timeout=10");
 	strncat(conninfo, editBuf, MAXLINE);
 
 	if (conninfo[0])
@@ -360,6 +360,8 @@ int pingNode_user(char *host, char *port, char *user)
 		for (retry = RETRY; retry; retry--)
 		{
 			ret = PQping(conninfo);
+			if (PQPING_OK != ret)
+				ret = PQping(conninfo);
 			switch (ret)
 			{
 				case PQPING_OK:
