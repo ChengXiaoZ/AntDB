@@ -348,16 +348,13 @@ agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 	return xid_status;
 }
 
-Datum sync_agtm_xid(PG_FUNCTION_ARGS)
+void
+agtm_SyncXidWithAGTM(TransactionId *local_xid, TransactionId *agtm_xid)
 {
-	PGresult		*res = NULL;
-	StringInfoData	buf;
+	PGresult	   *res = NULL;
 	TransactionId	lxid,	/* local xid */
 					axid;	/* agtm xid */
-	TupleDesc		tupdesc;
-	Datum			values[3];
-	bool			isnull[3];
-	NameData		nodename;
+	StringInfoData	buf;
 
 	PG_TRY();
 	{
@@ -373,11 +370,28 @@ Datum sync_agtm_xid(PG_FUNCTION_ARGS)
 
 		agtm_use_result_end(&buf);
 		PQclear(res);
+
+		if (local_xid)
+			*local_xid = lxid;
+		if (agtm_xid)
+			*agtm_xid = axid;
 	} PG_CATCH();
 	{
 		PQclear(res);
 		PG_RE_THROW();
 	} PG_END_TRY();
+}
+
+Datum sync_agtm_xid(PG_FUNCTION_ARGS)
+{
+	TransactionId	lxid,	/* local xid */
+					axid;	/* agtm xid */
+	TupleDesc		tupdesc;
+	Datum			values[3];
+	bool			isnull[3];
+	NameData		nodename;
+
+	agtm_SyncXidWithAGTM(&lxid, &axid);
 
 	tupdesc = CreateTemplateTupleDesc(3, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "node",

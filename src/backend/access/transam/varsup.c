@@ -80,6 +80,11 @@ AdjustTransactionId(TransactionId least_xid)
 		 */
 		if (TransactionIdPrecedes(ShmemVariableCache->nextXid, least_xid))
 		{
+#ifdef DEBUG_ADB
+			adb_ereport(LOG,
+				(errmsg("AGTM adjust nextXid from %u to %u",
+				 ShmemVariableCache->nextXid, least_xid)));
+#endif
 			prev_nextXid = ShmemVariableCache->nextXid;
 			ShmemVariableCache->nextXid = least_xid;
 		}

@@ -401,7 +401,7 @@ int main(int argc, char * const argv[])
 			case 'n':
 				if (sscanf(optarg, "%d", &config.stop_after_records) != 1)
 				{
-					fatal_log("%s: could not parse limit \"%s\"\n",
+					fatal_log("%s: could not parse limit \"%s\"",
 						progname, optarg);
 				}
 				if (config.stop_after_records <= 0)
@@ -420,7 +420,7 @@ int main(int argc, char * const argv[])
 			case 'x':
 				if (sscanf(optarg, "%u", &config.start_xid) != 1)
 				{
-					fatal_log("%s: could not parse \"%s\" as a valid xid\n",
+					fatal_log("%s: could not parse \"%s\" as a valid xid",
 						progname, optarg);
 				}
 
@@ -435,7 +435,7 @@ int main(int argc, char * const argv[])
 
 	if ((optind + 2) < argc)
 	{
-		fatal_log("%s: too many command-line arguments (first is \"%s\")\n",
+		fatal_log("%s: too many command-line arguments (first is \"%s\")",
 			progname, argv[optind + 2]);
 	}
 
@@ -444,7 +444,7 @@ int main(int argc, char * const argv[])
 		/* validate path points to directory */
 		if (!verify_directory(config.inpath))
 		{
-			fatal_log("%s: path \"%s\" cannot be opened: %s\n",
+			fatal_log("%s: path \"%s\" cannot be opened: %s",
 				progname, config.inpath, strerror(errno));
 		}
 	}
