@@ -171,6 +171,12 @@ extern void performDeletion(const ObjectAddress *object,
 extern void performMultipleDeletions(const ObjectAddresses *objects,
 						 DropBehavior behavior, int flags);
 
+#ifdef ADB
+extern void performRenameSchema(const ObjectAddress *object,
+						  const char *oldname,
+						  const char *newname);
+#endif
+
 extern void deleteWhatDependsOn(const ObjectAddress *object,
 					bool showNotices);
 
