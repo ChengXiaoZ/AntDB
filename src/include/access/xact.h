@@ -113,6 +113,15 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 #define XLOG_XACT_COMMIT_COMPACT	0x60
 #ifdef AGTM
 #define XLOG_XACT_XID_ASSIGNMENT	0x70
+
+typedef struct xl_xid_assignment
+{
+	bool			assign;			/* assign or unassign */
+	int				nxids;			/* number of assigned or unassigned XIDs */
+	TransactionId	xids[1];		/* assigned or unassigned XIDs */
+} xl_xid_assignment;
+
+#define MinSizeOfXidAssignment offsetof(xl_xid_assignment, xids)
 #endif
 
 typedef struct xl_xact_assignment

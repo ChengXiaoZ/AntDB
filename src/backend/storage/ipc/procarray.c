@@ -3236,7 +3236,7 @@ KnownAssignedXidsAdd(TransactionId from_xid, TransactionId to_xid,
 
 #ifdef DEBUG_ADB
 	adb_ereport(LOG,
-		(errmsg("head %d, tail %d, from %u, to %u, nxid %d, num %d, max %d",
+		(errmsg("[Add]head %d, tail %d, from %u, to %u, nxid %d, num %d, max %d",
 		 head, tail, from_xid, to_xid, nxids,
 		 pArray->numKnownAssignedXids,
 		 pArray->maxKnownAssignedXids)));
@@ -3433,6 +3433,16 @@ KnownAssignedXidsRemove(TransactionId xid)
 	Assert(TransactionIdIsValid(xid));
 
 	elog(trace_recovery(DEBUG4), "remove KnownAssignedXid %u", xid);
+
+#ifdef DEBUG_ADB
+	adb_ereport(LOG,
+		(errmsg("[Remove]head %d, tail %d, remove %u, num %d, max %d",
+		 procArray->headKnownAssignedXids,
+		 procArray->tailKnownAssignedXids,
+		 xid,
+		 procArray->numKnownAssignedXids,
+		 procArray->maxKnownAssignedXids)));
+#endif
 
 	/*
 	 * Note: we cannot consider it an error to remove an XID that's not
@@ -3780,6 +3790,63 @@ KnownAssignedXidsReset(void)
 
 	LWLockRelease(ProcArrayLock);
 }
+
+#ifdef AGTM
+/*
+ * ProcAssignedXids
+ *		Process WAL log of assigned xids.
+ *
+ * Note:
+ *		Make sure nextXid is beyond any XID mentioned in the record.
+ * We don't expect anyone else to modify nextXid, hence we don't need to
+ * hold a lock while checking this. We still acquire the lock to modify
+ * it, though.
+ */
+void
+ProcAssignedXids(int nxids, TransactionId *xids)
+{
+	TransactionId	max_xid;
+	int				i;
+
+	Assert(nxids > 0);
+
+	max_xid = xids[0];
+	Assert(TransactionIdIsValid(max_xid));
+	for (i = 1; i < nxids; i++)
+	{
+		Assert(TransactionIdIsValid(xids[i]));
+		if (TransactionIdPrecedes(max_xid, xids[i]))
+			max_xid = xids[i];
+	}
+
+	if (TransactionIdFollowsOrEquals(max_xid,
+									 ShmemVariableCache->nextXid))
+	{
+		LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+		ShmemVariableCache->nextXid = max_xid;
+		TransactionIdAdvance(ShmemVariableCache->nextXid);
+		LWLockRelease(XidGenLock);
+	}
+}
+
+/*
+ * ProcUnassignedXids
+ *		Process WAL log of unassigned xids.
+ *
+ * Note:
+ *		Remove any XID mentioned in the record from KnownAssignedXids
+ *	to avoid "too many KnownAssignedXids", see KnownAssignedXidsAdd.
+ */
+void
+ProcUnassignedXids(int nxids, TransactionId *xids)
+{
+	LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+
+	KnownAssignedXidsRemoveTree(InvalidTransactionId, nxids, xids);
+
+	LWLockRelease(ProcArrayLock);
+}
+#endif
 
 #ifdef ADB
 #define SNAPSHOT_ENLARGE_STEP 32

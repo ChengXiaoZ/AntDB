@@ -5661,18 +5661,12 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 #ifdef AGTM
 	else if (info == XLOG_XACT_XID_ASSIGNMENT)
 	{
-		TransactionId xid = * (TransactionId *) XLogRecGetData(record);
+		xl_xid_assignment	*xlrec = (xl_xid_assignment *) XLogRecGetData(record);
 
-		Assert(TransactionIdIsValid(xid));
-
-		if (TransactionIdFollowsOrEquals(xid,
-										 ShmemVariableCache->nextXid))
-		{
-			LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
-			ShmemVariableCache->nextXid = xid;
-			TransactionIdAdvance(ShmemVariableCache->nextXid);
-			LWLockRelease(XidGenLock);
-		}
+		if (xlrec->assign)
+			ProcAssignedXids(xlrec->nxids, xlrec->xids);
+		else
+			ProcUnassignedXids(xlrec->nxids, xlrec->xids);
 	}
 #endif
 	else
