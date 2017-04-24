@@ -83,7 +83,7 @@ extern bool CountOtherDBBackends(Oid databaseId,
 extern void XidCacheRemoveRunningXids(TransactionId xid,
 						  int nxids, const TransactionId *xids,
 						  TransactionId latestXid);
-#ifdef AGTM
+#if defined(ADB) || defined(AGTM)
 extern void ProcAssignedXids(int nxids, TransactionId *xids);
 extern void ProcUnassignedXids(int nxids, TransactionId *xids);
 #endif

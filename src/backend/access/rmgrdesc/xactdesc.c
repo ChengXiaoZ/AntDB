@@ -189,7 +189,7 @@ xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "xid assignment xtop %u: ", xlrec->xtop);
 		xact_desc_assignment(buf, xlrec);
 	}
-#ifdef AGTM
+#if defined(ADB) || defined(AGTM)
 	else if (info == XLOG_XACT_XID_ASSIGNMENT)
 	{
 		int i;
