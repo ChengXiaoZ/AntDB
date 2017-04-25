@@ -245,6 +245,42 @@ void agtm_RenameSequence(const char * seqName, const char * database,
 		(errmsg("rename sequence %s rename to %s", seqName, newName)));
 }
 
+extern void
+agtm_RenameSeuqneceByDataBase(const char * oldDatabase,
+											const char * newDatabase)
+{
+	int				oldNameSize;
+	int				newNameSize;
+	StringInfoData	buf;
+
+	PGresult 		*res;
+
+	Assert(oldDatabase != NULL && newDatabase != NULL);
+
+	if(!IsUnderAGTM())
+		return;
+
+	oldNameSize = strlen(oldDatabase);
+	newNameSize = strlen(newDatabase);
+	agtm_send_message(AGTM_MSG_SEQUENCE_RENAME_BYDB,
+					"%d%d %p%d %d%d %p%d",
+					oldNameSize, 4,
+					oldDatabase, oldNameSize,
+					newNameSize, 4,
+					newDatabase, newNameSize);
+
+	res = agtm_get_result(AGTM_MSG_SEQUENCE_RENAME_BYDB);
+	Assert(res);
+	agtm_use_result_type(res, &buf, AGTM_MSG_SEQUENCE_RENAME_BYDB_RESULT);
+
+	agtm_use_result_end(&buf);
+	PQclear(res);
+	ereport(DEBUG1,
+		(errmsg("alter sequence on agtm by database rename old name :%s, new name :%s ",
+				oldDatabase , newDatabase)));
+	
+}
+
 Timestamp
 agtm_GetTimestamptz(void)
 {

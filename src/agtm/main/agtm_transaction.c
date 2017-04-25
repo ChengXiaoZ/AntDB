@@ -466,6 +466,44 @@ ProcessSequenceRename(StringInfo message, StringInfo output)
 	return output;
 }
 
+StringInfo
+ProcessSequenceRenameByDatabase(StringInfo message, StringInfo output)
+{
+	char * oldDataBase = NULL;
+	char * newDataBase = NULL;
+	int	   oldNameSize = 0;
+	int	   newNameSize = 0;
+
+	MemoryContext sequece_Context;
+	MemoryContext oldctx = NULL;
+
+	sequece_Context = AllocSetContextCreate(CurrentMemoryContext,
+											 "sequence deal",
+											 ALLOCSET_DEFAULT_MINSIZE,
+											 ALLOCSET_DEFAULT_INITSIZE,
+											 ALLOCSET_DEFAULT_MAXSIZE);
+
+	oldctx = MemoryContextSwitchTo(sequece_Context);
+
+	oldNameSize = pq_getmsgint(message, sizeof(oldNameSize));
+	oldDataBase = pnstrdup(pq_getmsgbytes(message, oldNameSize), oldNameSize);
+	newNameSize = pq_getmsgint(message, sizeof(newNameSize));
+	newDataBase = pnstrdup(pq_getmsgbytes(message, newNameSize), newNameSize);
+
+	if(oldNameSize == 0 || oldDataBase == NULL ||
+		newNameSize == 0 || newDataBase == NULL )
+		ereport(ERROR,
+			(errmsg("sequence database name is null")));
+
+	UpdateSequenceDbExist(oldDataBase, newDataBase);
+	(void)MemoryContextSwitchTo(oldctx);
+	MemoryContextDelete(sequece_Context);
+
+	/* Respond to the client */
+	pq_sendint(output, AGTM_MSG_SEQUENCE_RENAME_BYDB_RESULT, 4);
+	return output;
+}
+
 static	void parse_seqFullName_to_details(StringInfo message, char ** dbName, 
 							char ** schemaName, char ** sequenceName)
 {

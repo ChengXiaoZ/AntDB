@@ -55,5 +55,7 @@ extern Oid SequenceSystemClassOid(const char* database,
 extern void UpdateSequenceInfo(const char* database,
 				const char* schema, const char* sequence, const char * value, AgtmNodeTag type);
 
+extern void UpdateSequenceDbExist(const char* oldName, const char* newName);
+
 #endif
 

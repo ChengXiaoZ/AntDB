@@ -86,6 +86,10 @@ extern Datum sync_agtm_xid(PG_FUNCTION_ARGS);
 extern void agtm_RenameSequence(const char * seqName, const char * database,
 							const char * schema, const char* newName, SequenceRenameType type);
 
+/* this function only called when alter database XXX rename to XXX happened*/
+extern void agtm_RenameSeuqneceByDataBase(const char * oldDatabase,
+											const char * newDatabase);
+
 /*
  * get next Sequence from AGTM
  */
