@@ -23,6 +23,7 @@
 #include "dispatch.h"
 #include "lib/ilist.h"
 #include "utility.h"
+
 #include "properties.h"
 
 typedef struct tables
@@ -480,7 +481,6 @@ int main(int argc, char **argv)
 
 	if(table_count != tables_ptr->table_nums) /*check again*/
 	{
-		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate: %d");
 		return 0;
 	}
 	tables_list_free(tables_ptr);
@@ -1014,13 +1014,6 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 			{
 				DispatchThreadInfo *dispatch_thread = NULL;
 				dispatch_thread = dispatch_exit->send_threads[flag];
-				if (NULL != dispatch_thread)
-				{
-					if (dispatch_thread->state != DISPATCH_THREAD_EXIT_NORMAL)
-						ADBLOADER_LOG(LOG_WARN,
-							"[MAIN][Tthread main] dispatch thread error, table name :%s, connection : %s",
-							dispatch_thread->thread_id, dispatch_thread->table_name, dispatch_thread->conninfo_datanode);
-				}
 			}
 			if (dispatch_exit->send_thread_cur == dispatch_exit->send_thread_count)
 				dispatch_finish = true;
@@ -1478,11 +1471,13 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 
 static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
 {
-	Assert(setting != NULL && table_info != NULL && setting->datanodes_num > 0);
-
 	NodeInfoData **use_datanodes_info = NULL;
 	int i = 0;
 	int use_datanode_num = 0;
+
+	Assert(setting != NULL);
+	Assert(table_info != NULL);
+	Assert(setting->datanodes_num > 0);
 
 	use_datanode_num = setting->datanodes_num;
 	use_datanodes_info = (NodeInfoData **)palloc0(use_datanode_num * sizeof(NodeInfoData *));

@@ -17,8 +17,11 @@ static bool *bit_all_marked = NULL;
 static bool *bit_all_unmarked = NULL;
 
 static void destroy_linebuf(LineBuffer *buf);
-static bool appendLineBufInfoVA(LineBuffer *buf, int *need
-				, const char *fmt, va_list args);
+static bool appendLineBufInfoVA(LineBuffer *buf,
+								int *need,
+								const char *fmt,
+								va_list args)
+__attribute__((format(PG_PRINTF_ATTRIBUTE, 3, 0)));
 
 void init_linebuf(int max_node)
 {

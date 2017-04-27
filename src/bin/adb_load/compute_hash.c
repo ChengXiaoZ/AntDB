@@ -621,7 +621,6 @@ hash_threadMain(void *argp)
 	{
 		if (thrinfo->exit)
 		{
-			ADBLOADER_LOG(LOG_INFO, "[HASH]hash thread : %d exit", thrinfo->thread_id);
 			thrinfo->state = THREAD_EXIT_BY_OTHERS;
 			pthread_exit(thrinfo);
 		}
@@ -912,7 +911,7 @@ prepare_hash_field (LineBuffer **	element_batch, int size,
 				element_inner->lineBuffer = lineBuffer;
 				/* lineno begin from zero */
 				element_inner->lineBuffer->lineno = thrinfo->send_seq;
-				thrinfo->send_seq++;				
+				thrinfo->send_seq++;
 				mq_put_element(inner_queue, element_inner);
 			}
 		}
@@ -936,9 +935,6 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 	}
 	memcpy(line, lineBuffer->data, lineBuffer->len);
 	line[lineBuffer->len] = '\0';
-	ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] get line : %s , thread id : %ld ",
-						thrinfo->thread_id, line);
 	buf = get_field_quote(fields, line,thrinfo->hash_field->field_loc, thrinfo->hash_field->delim,
 		thrinfo->hash_field->quotec, thrinfo->hash_field->escapec, thrinfo->hash_field->field_nums, thrinfo);
 //	buf = get_field(fields, line, thrinfo->hash_field->field_loc,
@@ -957,9 +953,6 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 	line = NULL;
 	free_buff(fields, thrinfo->hash_field->field_nums);
 
-	ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] hash line : %s , thread id : %ld ",
-						thrinfo->thread_id, buf->data);
 	return buf;
 }
 
@@ -1435,8 +1428,6 @@ restart_hash_stream (ComputeThreadInfo *thrinfo)
 	mq_init(queue, THREAD_QUEUE_SIZE, "tmp_queue");
 	if (!mq_empty(thrinfo->inner_queue))
 	{
-		ADBLOADER_LOG(LOG_INFO, "[HASH]thrinfo->send_seq is : %ld, now restart sequence",
-					thrinfo->thread_id, thrinfo->send_seq);
 		thrinfo->send_seq = 0; /* restart sequence */
 	}
 
@@ -1547,8 +1538,6 @@ restart_hash_stream (ComputeThreadInfo *thrinfo)
 		}
 		pthread_exit(thrinfo);
 	}
-	ADBLOADER_LOG(LOG_INFO, "[HASH]restart_hash_stream function complete, now thrinfo->send_seq is : %ld",
-					thrinfo->thread_id, thrinfo->send_seq);
 	/* destory tmp_queue */
 	mq_destory(queue);
 }
@@ -1610,8 +1599,6 @@ print_struct (HashComputeInfo * hash_computeInfo, HashField * hash_field)
 	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] field num: %d ", hash_field->field_nums);
 	for (flag = 0; flag < hash_field->field_nums; flag ++)
 	{
-		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] field loc :%d, field type",
-				hash_field->field_loc[flag], hash_field->field_type[flag]);
 	}
 	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ]  file delim : %s, hash result delim : %s",
 		hash_field->delim, hash_field->hash_delim);
