@@ -66,6 +66,14 @@ static bool announce_next_takeover = true;
 
 static int	SyncRepWaitMode = SYNC_REP_NO_WAIT;
 
+#ifdef ADB
+bool	rep_max_avail_flag; 
+int	rep_max_avail_lsn_lag;
+char*	rep_read_archive_path;
+bool	rep_read_archive_path_flag;
+#endif
+
+
 static void SyncRepQueueInsert(int mode);
 static void SyncRepCancelWait(void);
 static int	SyncRepWakeQueue(bool all, int mode);
@@ -106,6 +114,13 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 	if (!SyncRepRequested() || !SyncStandbysDefined())
 		return;
 
+#ifdef ADB
+	if(rep_max_avail_flag)
+	{
+		if(!LiveSyncWalSenderExists())
+			return;
+	}
+#endif
 	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	Assert(WalSndCtl != NULL);
 
@@ -127,6 +142,17 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 		return;
 	}
 
+#ifdef ADB
+	if(rep_max_avail_flag)
+	{
+		if((XactCommitLSN - WalSndCtl->lsn[mode]) 
+			> rep_max_avail_lsn_lag)
+		{
+			LWLockRelease(SyncRepLock);
+			return;
+		}
+	}	
+#endif
 	/*
 	 * Set our waitLSN so WALSender will know when to wake us, and add
 	 * ourselves to the queue.
@@ -732,3 +758,45 @@ assign_synchronous_commit(int newval, void *extra)
 			break;
 	}
 }
+
+#ifdef ADB
+void
+WakeUpAllWakedBackend(void)
+{
+	int	i = 0;
+	if (WalSndCtl->sync_standbys_defined)
+    {
+    	LWLockAcquire(SyncRepLock, LW_EXCLUSIVE);
+		for (i = 0; i < NUM_SYNC_REP_WAIT_MODE; i++)
+        	SyncRepWakeQueue(true, i);
+		LWLockRelease(SyncRepLock);
+	}
+}
+
+bool
+LiveSyncWalSenderExists(void)
+{
+	volatile WalSndCtlData *walsndctl = WalSndCtl;
+	bool    isfind = false;
+	int     i = 0;
+	if(!WalSndCtl->sync_standbys_defined)
+		return isfind;
+
+	LWLockAcquire(SyncRepLock, LW_SHARED);
+
+    for (i = 0; i < max_wal_senders; i++)
+    {
+    	/* use volatile pointer to prevent code rearrangement */
+        volatile WalSnd *walsnd = &walsndctl->walsnds[i];
+        if (walsnd->pid != 0 && walsnd->sync_standby_priority > 0)
+        {
+			isfind = true;
+			break;
+		}
+	}
+	
+	LWLockRelease(SyncRepLock);
+	
+	return isfind;
+}
+#endif

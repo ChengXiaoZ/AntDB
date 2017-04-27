@@ -34,6 +34,16 @@
 /* user-settable parameters for synchronous replication */
 extern char *SyncRepStandbyNames;
 
+#ifdef ADB
+extern bool	rep_max_avail_flag; 
+extern int	rep_max_avail_lsn_lag;
+extern char*	rep_read_archive_path;
+extern bool	rep_read_archive_path_flag;
+
+extern bool LiveSyncWalSenderExists(void);
+extern void WakeUpAllWakedBackend(void);
+#endif
+
 /* called by user backend */
 extern void SyncRepWaitForLSN(XLogRecPtr XactCommitLSN);
 

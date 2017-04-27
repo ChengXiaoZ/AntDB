@@ -174,6 +174,12 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 		*logSegNo = (uint64) log * XLogSegmentsPerXLogId + seg; \
 	} while (0)
 
+#ifdef ADB
+#define ArchiveXLogFilePath(path, tli, logSegNo)		\
+	snprintf(path, MAXPGPATH, "%s/%08X%08X%08X", rep_read_archive_path,tli,			\
+			 (uint32) ((logSegNo) / XLogSegmentsPerXLogId), 				\
+			 (uint32) ((logSegNo) % XLogSegmentsPerXLogId))
+#endif
 #define XLogFilePath(path, tli, logSegNo)	\
 	snprintf(path, MAXPGPATH, XLOGDIR "/%08X%08X%08X", tli,				\
 			 (uint32) ((logSegNo) / XLogSegmentsPerXLogId),				\

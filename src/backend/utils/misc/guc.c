@@ -1785,6 +1785,24 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+	{
+		{"rep_max_avail_flag", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable replication max avail available level"),
+			NULL
+		},
+		&rep_max_avail_flag,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"rep_read_archive_path_flag", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Find xlog in rep_read_archive_path in wal sender."),
+			NULL
+		},
+		&rep_read_archive_path_flag,
+		false,
+		NULL, NULL, NULL
+	},		
 #endif
 
 #ifdef DEBUG_ADB
@@ -2937,6 +2955,17 @@ static struct config_int ConfigureNamesInt[] =
 		10, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
+
+
+	{
+		{"rep_max_avail_lsn_lag", PGC_POSTMASTER, CONN_AUTH_SETTINGS,
+			gettext_noop("Sets the maximum lsn lag under replication max available level."),
+			NULL
+		},
+		&rep_max_avail_lsn_lag,
+		8192, 1, 8192*10,
+		NULL, NULL, NULL
+	},		
 #endif /* ADB */
 #endif /* PGXC */
 #ifdef AGTM
@@ -3709,6 +3738,16 @@ static struct config_string ConfigureNamesString[] =
 		"$&#$",
 		NULL, NULL, NULL
 	},
+	{
+		{"rep_read_archive_path", PGC_USERSET, CLIENT_CONN_LOCALE,
+			gettext_noop("archive xlog path"),
+			NULL,
+			GUC_IS_NAME | GUC_REPORT
+		},
+		&rep_read_archive_path,
+		"",
+		NULL,NULL,NULL
+	},	
 #endif
 
 	/* End-of-list marker */

@@ -1239,6 +1239,11 @@ WalSndKill(int code, Datum arg)
 	 * for this.
 	 */
 	walsnd->pid = 0;
+
+#ifdef ADB
+	if(rep_max_avail_flag)
+		WakeUpAllWakedBackend();
+#endif
 }
 
 /*
@@ -1322,6 +1327,14 @@ retry:
 			XLogFilePath(path, curFileTimeLine, sendSegNo);
 
 			sendFile = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
+
+#ifdef ADB
+			if (rep_read_archive_path_flag && (sendFile < 0))
+			{
+            	ArchiveXLogFilePath(path, curFileTimeLine, sendSegNo);
+                sendFile = BasicOpenFile(path, O_RDONLY | PG_BINARY, 0);
+			}
+#endif
 			if (sendFile < 0)
 			{
 				/*

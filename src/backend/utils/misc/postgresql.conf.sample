@@ -658,6 +658,10 @@
 #include_if_exists = 'exists.conf'	# include file only if it exists
 #include = 'special.conf'		# include file
 
+rep_max_avail_flag = off
+rep_max_avail_lsn_lag = 8192
+rep_read_archive_path = ''
+rep_read_archive_path_flag = off
 
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
