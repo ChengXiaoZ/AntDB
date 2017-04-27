@@ -1,0 +1,45 @@
+<!--
+doc/src/sgml/ref/mgr_monitor_ha.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-MONITORHA">
+  <refmeta>
+    <refentrytitle>MONITOR HA</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>MONITOR HA</refname>
+    <refpurpose>show all slave or extra nodes streaming replication with master</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-monitorha">
+    <primary>MONITOR HA</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+<command>MONITOR HA</command>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>	
+    <para>
+      Show all slave or extra nodes streaming replication with master.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>	
+    <para>
+      Show all slave or extra nodes streaming replication with master:
+<programlisting>
+MONITOR HA;
+</programlisting>
+    </para>
+  </refsect1>
+
+</refentry>

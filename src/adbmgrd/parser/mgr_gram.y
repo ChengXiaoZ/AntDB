@@ -181,7 +181,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE ACL
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
-%token<keyword>	HOST MONITOR PARAM HBA
+%token<keyword>	HOST MONITOR PARAM HBA HA
 %token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
 %token<keyword> PASSWORD CLEAN RESET WHERE ROW_ID
 %token<keyword> START AGENT STOP FAILOVER
@@ -701,6 +701,13 @@ MonitorStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_agent_hostlist", arg));
 			$$ = (Node*)stmt;
 		}
+		| MONITOR HA
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_ha", NULL));
+			$$ = (Node*)stmt;
+		}		
 		;
 
 hostname_list:

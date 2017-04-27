@@ -27,6 +27,7 @@
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
+static TupleDesc ha_replication_tuple_desc = NULL;
 static void myUsleep(long microsec);
 
 TupleDesc get_common_command_tuple_desc(void)
@@ -119,6 +120,70 @@ TupleDesc get_list_acl_command_tuple_desc(void)
 	}
 	Assert(common_list_acl_tuple_desc);
 	return common_list_acl_tuple_desc;
+}
+/*hba replication tuple desc*/
+HeapTuple build_ha_replication_tuple(const Name type, const Name nodename, const Name app, const Name client_addr, const Name state, const Name sent_location, const Name replay_location, const Name sync_state, const Name master_location, const Name sent_delay, const Name replay_delay)
+{
+	Datum datums[11];
+	bool nulls[11];
+	TupleDesc desc;
+	int i = 0;
+	AssertArg(type && nodename && app && client_addr && state && sent_location && replay_location && sync_state && master_location && sent_delay && replay_delay);
+	desc = get_ha_replication_tuple_desc();
+
+	AssertArg(desc && desc->natts == 11);
+	while(i<11)
+	{
+		AssertArg(desc->attrs[i]->atttypid == NAMEOID);
+		nulls[i] = false;
+		i++;
+	}
+
+	datums[0] = NameGetDatum(type);
+	datums[1] = NameGetDatum(nodename);
+	datums[2] = NameGetDatum(app);
+	datums[3] = NameGetDatum(client_addr);
+	datums[4] = NameGetDatum(state);
+	datums[5] = NameGetDatum(sent_location);
+	datums[6] = NameGetDatum(replay_location);
+	datums[7] = NameGetDatum(sync_state);
+	datums[8] = NameGetDatum(master_location);
+	datums[9] = NameGetDatum(sent_delay);
+	datums[10] = NameGetDatum(replay_delay);
+	return heap_form_tuple(desc, datums, nulls);
+}
+
+TupleDesc get_ha_replication_tuple_desc(void)
+{
+	if(ha_replication_tuple_desc == NULL)
+	{
+		MemoryContext volatile old_context = MemoryContextSwitchTo(TopMemoryContext);
+		TupleDesc volatile desc = NULL;
+		PG_TRY();
+		{
+			desc = CreateTemplateTupleDesc(11, false);
+			TupleDescInitEntry(desc, (AttrNumber) 1, "type", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 2, "nodename", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 3, "application_name", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 4, "client_addr", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 5, "state", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 6, "sent_location", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 7, "replay_location", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 8, "sync_state", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 9, "master_location", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 10, "sent_delay", NAMEOID, -1, 0);
+			TupleDescInitEntry(desc, (AttrNumber) 11, "replay_delay", NAMEOID, -1, 0);
+			ha_replication_tuple_desc = BlessTupleDesc(desc);
+		}PG_CATCH();
+		{
+			if(desc)
+				FreeTupleDesc(desc);
+			PG_RE_THROW();
+		}PG_END_TRY();
+		(void)MemoryContextSwitchTo(old_context);
+	}
+	Assert(ha_replication_tuple_desc);
+	return ha_replication_tuple_desc;
 }
 
 /*get the the address of host in table host*/

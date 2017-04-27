@@ -34,7 +34,6 @@
 #include "utils/fmgroids.h"    /* For F_NAMEEQ	*/
 #include "executor/spi.h"
 
-
 typedef struct StartAgentInfo
 {
 	Relation		rel_host;
@@ -1882,3 +1881,6 @@ bool mgr_check_cluster_stop(Name nodename, Name nodetypestr)
 	
 	return bresult;
 }
+
+
+

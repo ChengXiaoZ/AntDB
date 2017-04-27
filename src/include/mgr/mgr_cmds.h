@@ -185,7 +185,7 @@ extern int mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bin
 extern List* mgr_get_nodetype_namelist(char nodetype);
 extern Datum mgr_remove_node_func(PG_FUNCTION_ARGS);
 extern void mgr_remove_node(MgrRemoveNode *node, ParamListInfo params, DestReceiver *dest);
-
+extern Datum mgr_monitor_ha(PG_FUNCTION_ARGS);
 /* mgr_common.c */
 extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);
@@ -212,6 +212,8 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
 bool mgr_recv_msg_for_monitor(ManagerAgent	*ma, bool *ret, StringInfo agentRstStr);
 extern List *monitor_get_dbname_list(char *user, char *address, int port);
 extern void monitor_get_one_node_user_address_port(Relation rel_node, int *agentport, char **user, char **address, int *coordport, char nodetype);
+extern HeapTuple build_ha_replication_tuple(const Name type, const Name nodename, const Name app, const Name client_addr, const Name state, const Name sent_location, const Name replay_location, const Name sync_state, const Name master_location, const Name sent_delay, const Name replay_delay);
+extern TupleDesc get_ha_replication_tuple_desc(void);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);

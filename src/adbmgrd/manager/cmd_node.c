@@ -43,7 +43,7 @@
 #include "nodes/makefuncs.h"
 
 #define DEFAULT_DB "postgres"
-#define MAX_PREPARED_TRANSACTIONS_DEFAULT	100
+#define MAX_PREPARED_TRANSACTIONS_DEFAULT	120
 #define PG_DUMPALL_TEMP_FILE "/tmp/pg_dumpall_temp"
 #define MAX_WAL_SENDERS_NUM	5
 #define WAL_KEEP_SEGMENTS_NUM	32
@@ -11439,5 +11439,104 @@ static void mgr_get_master_sync_string(Oid mastertupleoid, bool bincluster, Oid 
 	heap_close(rel, AccessShareLock);
 }
 
+/*monitor ha, get the diff between master and slave, extra*/
+Datum mgr_monitor_ha(PG_FUNCTION_ARGS)
+{
+	InitNodeInfo *info;
+	StringInfoData resultstrdata;
+	HeapTuple mastertuple;
+	HeapTuple out;
+	HeapTuple tuple;
+	HeapTuple hosttuple;
+	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_node_m;
+	Form_mgr_host mgr_host;
+	NameData name[11];
+	FuncCallContext *funcctx;
+	ScanKeyData key[1];
+	int i = 0;
+	char *ptr;
+	char *address;
+	char *sql_slave = "select application_name, client_addr, state, pg_xlogfile_name_offset(sent_location) as sent_location , pg_xlogfile_name_offset(replay_location) as replay_location, sync_state,            pg_xlogfile_name_offset(pg_current_xlog_insert_location()) as master_location, pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_insert_location(),sent_location)) sent_delay,pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location)) replay_delay  from pg_stat_replication where application_name='slave';";
+ char *sql_extra = "select application_name, client_addr, state, pg_xlogfile_name_offset(sent_location) as sent_location , pg_xlogfile_name_offset(replay_location) as replay_location, sync_state,            pg_xlogfile_name_offset(pg_current_xlog_insert_location()) as master_location, pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_insert_location(),sent_location)) sent_delay,pg_size_pretty(pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location)) replay_delay  from pg_stat_replication where application_name='extra';";
+	
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
+		info = palloc(sizeof(*info));
+		info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+		ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+		info->lcp =NULL;
 
+		/* save info */
+		funcctx->user_fctx = info;
+
+		MemoryContextSwitchTo(oldcontext);
+	}
+	funcctx = SRF_PERCALL_SETUP();
+	Assert(funcctx);
+	info = funcctx->user_fctx;
+	Assert(info);
+
+	initStringInfo(&resultstrdata);
+	while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if (GTM_TYPE_GTM_SLAVE != mgr_node->nodetype && GTM_TYPE_GTM_EXTRA != mgr_node->nodetype
+		&& CNDN_TYPE_DATANODE_SLAVE != mgr_node->nodetype && CNDN_TYPE_DATANODE_EXTRA != mgr_node->nodetype)
+			continue;
+		/*get master port, ip, and agent_port*/
+		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(mgr_node->nodemasternameoid));
+		mgr_node_m = (Form_mgr_node)GETSTRUCT(mastertuple);
+		Assert(mgr_node_m);
+		hosttuple = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node_m->nodehost));
+		mgr_host = (Form_mgr_host)GETSTRUCT(hosttuple);
+		address = get_hostaddress_from_hostoid(mgr_node_m->nodehost);
+		resetStringInfo(&resultstrdata);
+		if (GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || CNDN_TYPE_DATANODE_SLAVE == mgr_node->nodetype)
+			monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, mgr_host->hostagentport, sql_slave, (GTM_TYPE_GTM_SLAVE == mgr_node->nodetype)? AGTM_USER:NameStr(mgr_host->hostuser), address, mgr_node_m->nodeport, DEFAULT_DB, &resultstrdata);
+		else
+			monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, mgr_host->hostagentport, sql_extra, (GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)? AGTM_USER:NameStr(mgr_host->hostuser), address, mgr_node_m->nodeport, DEFAULT_DB, &resultstrdata);
+		pfree(address);
+		ReleaseSysCache(mastertuple);
+		ReleaseSysCache(hosttuple);
+		if (mgr_node->nodetype == GTM_TYPE_GTM_SLAVE)
+			namestrcpy(&name[0], "gtm slave");
+		else if (mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			namestrcpy(&name[0], "gtm extra");
+		else if (mgr_node->nodetype == CNDN_TYPE_DATANODE_SLAVE)
+			namestrcpy(&name[0], "datanode slave");
+		else if (mgr_node->nodetype == CNDN_TYPE_DATANODE_EXTRA)
+			namestrcpy(&name[0], "datanode extra");
+		else
+			namestrcpy(&name[0], "unknown nodetype");
+		
+		namestrcpy(&name[1], NameStr(mgr_node->nodename));
+		ptr = resultstrdata.data;
+		for(i=0; i<9; i++)
+		{
+			if (*ptr)
+				namestrcpy(&name[i+2], ptr);
+			else
+				namestrcpy(&name[i+2], "");
+			if (*ptr)
+				ptr = ptr+strlen(name[i+2].data)+1;
+		}
+		out = build_ha_replication_tuple(&name[0], &name[1],&name[2],&name[3],&name[4],&name[5],&name[6],&name[7],&name[8],&name[9],&name[10]);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(out));
+	}
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(resultstrdata.data);
+	SRF_RETURN_DONE(funcctx);
+}

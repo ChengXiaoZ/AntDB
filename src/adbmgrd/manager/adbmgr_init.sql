@@ -1291,7 +1291,7 @@ INSERT INTO adbmgr.parm VALUES ('*', 'max_identifier_length', '63', 'internal', 
 INSERT INTO adbmgr.parm VALUES ('*', 'max_index_keys', '32', 'internal', 'integer', '', '32', '32', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_locks_per_transaction', '64', 'postmaster', 'integer', '', '10', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_pred_locks_per_transaction', '64', 'postmaster', 'integer', '', '10', '2147483647', NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'max_prepared_transactions', '100', 'postmaster', 'integer', '', '0', '536870911', NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'max_prepared_transactions', '120', 'postmaster', 'integer', '', '0', '536870911', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_stack_depth', '2048', 'superuser', 'integer', 'kB', '100', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_standby_archive_delay', '30000', 'sighup', 'integer', 'ms', '-1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_standby_streaming_delay', '30000', 'sighup', 'integer', 'ms', '-1', '2147483647', NULL);
