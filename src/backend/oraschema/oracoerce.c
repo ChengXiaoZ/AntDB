@@ -26,6 +26,7 @@
 #include "oraschema/oracoerce.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_oper.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 
 #define ORA_MIN(A, B) ((B)<(A)?(B):(A))
@@ -196,6 +197,11 @@ static const OraCoercePath OraCoerceFunction[] =
 
 	ORA_COERCE3(NUMERICOID, FLOAT4OID, NUMERICTOFLOAT4OID)						/* numeric -> float4 */
 	ORA_COERCE3(NUMERICOID, FLOAT8OID, NUMERICTOFLOAT8OID)						/* numeric -> float8 */
+
+	ORA_COERCE3(INT4OID, INT2OID, F_I4TOI2)										/* int4 -> int2 */
+	ORA_COERCE3(INT8OID, INT2OID, F_INT82)										/* int8 -> int2 */
+	ORA_COERCE3(INT8OID, INT4OID, F_INT84)										/* int8 -> int4 */
+	ORA_COERCE3(FLOAT8OID, FLOAT4OID, F_DTOF)									/* float8 -> float4 */
 };
 
 static const int NumOraCoerceFunction = lengthof(OraCoerceFunction);
