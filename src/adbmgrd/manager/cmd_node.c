@@ -4363,9 +4363,10 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 	}
 	else if (nodetype == CNDN_TYPE_DATANODE_SLAVE || nodetype == CNDN_TYPE_DATANODE_EXTRA)
 	{
-		appendStringInfo(&sendstrmsg, " -h %s -p %d -D %s -Xs -Fp -R", 
+		appendStringInfo(&sendstrmsg, " -h %s -p %d -U %s -D %s -Xs -Fp -R", 
 									get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
 									,parentnodeinfo->nodeport
+									,get_hostuser_from_hostoid(parentnodeinfo->nodehost)
 									,appendnodeinfo->nodepath);
 	}
 
