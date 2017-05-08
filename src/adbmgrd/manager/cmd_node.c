@@ -11532,6 +11532,8 @@ Datum mgr_monitor_ha(PG_FUNCTION_ARGS)
 			if (*ptr)
 				ptr = ptr+strlen(name[i+2].data)+1;
 		}
+		if (strcmp(NameStr(name[4]), "") == 0)
+			namestrcpy(&name[4], "down");
 		out = build_ha_replication_tuple(&name[0], &name[1],&name[2],&name[3],&name[4],&name[5],&name[6],&name[7],&name[8],&name[9],&name[10]);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(out));
 	}

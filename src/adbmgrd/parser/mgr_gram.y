@@ -705,10 +705,35 @@ MonitorStmt:
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_monitor_ha", NULL));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("ha"), -1));
 			$$ = (Node*)stmt;
-		}		
-		;
+		}
+		| MONITOR HA '(' targetList ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = $4;
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("ha"), -1));
+			$$ = (Node*)stmt;
+		}
+	| MONITOR HA AConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("ha"), -1));
+			stmt->whereClause = make_column_in("nodename", $3);
+			$$ = (Node*)stmt;
+			check__name_isvaild($3);
+		}
+	| MONITOR HA'(' targetList ')' AConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = $4;
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("ha"), -1));
+			stmt->whereClause = make_column_in("nodename", $6);
+			$$ = (Node*)stmt;
+			check__name_isvaild($6);
+		}
+	;
 
 hostname_list:
 			hostname

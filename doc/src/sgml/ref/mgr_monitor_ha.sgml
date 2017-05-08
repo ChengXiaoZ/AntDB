@@ -21,7 +21,22 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-<command>MONITOR HA</command>
+MONITOR HA
+MONITOR HA [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replaceable class="parameter">node_name</replaceable> [, ...] ]
+
+<phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
+
+    TYPE
+    NODENAME
+    APPLICATION_NAME
+    CLIENT_ADDR
+    STATE
+    SENT_LOCATION
+    REPLAY_LOCATION
+    SYNC_STATE
+    MASTER_LOCATION
+    SENT_DELAY
+    REPLAY_DEPLAY
 </synopsis>
   </refsynopsisdiv>
 
@@ -31,6 +46,98 @@ ADB documentation
       Show all slave or extra nodes streaming replication with master.
     </para>
   </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+  <varlistentry>
+    <term><literal>TYPE</literal></term>
+    <listitem>
+     <para>
+      Node type.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>NODENAME</literal></term>
+    <listitem>
+     <para>
+    	Node name.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>APPLICATION_NAME</literal></term>
+    <listitem>
+     <para>
+    	Application name.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>CLIENT_ADDR</literal></term>
+    <listitem>
+     <para>
+    	Client address.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>STATE</literal></term>
+    <listitem>
+     <para>
+    	Stream replication state.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>SENT_LOCATION</literal></term>
+    <listitem>
+     <para>
+    	Send location.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>REPLAY_LOCATION</literal></term>
+    <listitem>
+     <para>
+    	Replay location.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>SYNC_STATE</literal></term>
+    <listitem>
+     <para>
+    	Sync state.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>MASTER_LOCATION</literal></term>
+    <listitem>
+     <para>
+    	Master location.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>SENT_DELAY</literal></term>
+    <listitem>
+     <para>
+    	Send delay.
+     </para>
+    </listitem>
+  </varlistentry>
+  <varlistentry>
+    <term><literal>REPLAY_DEPLAY</literal></term>
+    <listitem>
+     <para>
+    	Replay delay.
+     </para>
+    </listitem>
+  </varlistentry>
 
   <refsect1>
     <title>Examples</title>	
