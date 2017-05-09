@@ -2092,9 +2092,9 @@ CopyFromErrorCallback(void *arg)
 			char	   *attval;
 
 			attval = limit_printout_length(cstate->cur_attval);
-			errcontext("COPY %s, line %d, column %s: \"%s\"",
+			errcontext("COPY %s, line %d, column %s: \"%s\" \nLINEVALUE:%s",
 					   cstate->cur_relname, cstate->cur_lineno,
-					   cstate->cur_attname, attval);
+					   cstate->cur_attname, attval, cstate->line_buf.data);
 			pfree(attval);
 		}
 		else if (cstate->cur_attname)
@@ -2128,8 +2128,9 @@ CopyFromErrorCallback(void *arg)
 			}
 			else
 			{
-				errcontext("COPY %s, line %d",
-						   cstate->cur_relname, cstate->cur_lineno);
+				errcontext("COPY %s, line %d\nLINEVALUE:%s",
+						   cstate->cur_relname, cstate->cur_lineno,
+                           cstate->line_buf.data);
 			}
 		}
 	}
