@@ -2860,10 +2860,7 @@ free_hash_info(HashComputeInfo *hash_info)
 static void
 free_read_info(ReadInfo *read_info)
 {
-	int output_queue_total = 0;
-	int i = 0;
-
-	Assert(read_info != NULL);
+    Assert(read_info != NULL);
 
 	/* free filepath */
 	pg_free(read_info->filepath);
@@ -2877,11 +2874,14 @@ free_read_info(ReadInfo *read_info)
 		pg_free(read_info->input_queue);
 		read_info->input_queue = NULL;
 	}
-#endif
+
 
 	/* free output queue memory */
 	if (read_info->output_queue != NULL)
 	{
+		int output_queue_total = 0;
+	    int i = 0;
+        
 		output_queue_total = read_info->datanodes_num * read_info->threads_num_per_datanode;
 		for (i = 0; i < output_queue_total; i++)
 		{
@@ -2891,6 +2891,7 @@ free_read_info(ReadInfo *read_info)
 		pg_free(read_info->output_queue);
 		read_info->output_queue = NULL;
 	}
+#endif
 
 	/* free start_cmd */
 	pg_free(read_info->start_cmd);
