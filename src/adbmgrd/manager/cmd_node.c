@@ -89,6 +89,11 @@ struct tuple_cndn
 	List *coordiantor_list;
 	List *datanode_list;
 };
+
+extern void mgr_clean_hba_table(char *coord_name, char *values);
+void mgr_reload_conf(Oid hostoid, char *nodepath);
+
+  
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc get_common_command_tuple_desc_for_monitor(void);
 static HeapTuple build_common_command_tuple_for_monitor(const Name name
@@ -160,7 +165,6 @@ static void mgr_manage_clean(char command_type, char *user_list_str);
 static void mgr_manage_list(char command_type, char *user_list_str);
 static void mgr_check_username_valid(List *username_list);
 static void mgr_check_command_valid(List *command_list);
-void mgr_reload_conf(Oid hostoid, char *nodepath);
 static List *get_username_list(void);
 static void mgr_get_acl_by_username(char *username, StringInfo acl);
 static bool mgr_acl_flush(char *username);
@@ -184,7 +188,6 @@ static bool mgr_has_func_priv(char *rolename, char *funcname, char *priv_type);
 static List *get_username_list(void);
 static Oid mgr_get_role_oid_or_public(const char *rolname);
 static void mgr_priv_all(char command_type, char *username_list_str);
-extern void mgr_clean_hba_table(void);
 static void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
 static void mgr_unlock_cluster(PGconn **pg_conn);
 static bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
@@ -881,6 +884,11 @@ Datum mgr_drop_node_func(PG_FUNCTION_ARGS)
 				{
 					mgr_update_one_potential_to_sync(rel, mastertupleoid, false);
 				}
+			}
+			/*if the node is coordinator, so it's need to update the hba table*/
+			if( CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+			{
+				mgr_clean_hba_table(NameStr(mgr_node->nodename), NULL);
 			}
 			heap_freetuple(tuple);
 		}
@@ -7360,7 +7368,7 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 		/* end of row */
 		heap_endscan(info->rel_scan);
 		heap_close(info->rel_node, RowExclusiveLock);
-		mgr_clean_hba_table();/*clean the contxt of hba table*/
+		mgr_clean_hba_table("*",NULL);/*clean the contxt of hba table*/
 		pfree(info);
 		SRF_RETURN_DONE(funcctx);
 	}

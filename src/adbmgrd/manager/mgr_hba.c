@@ -70,7 +70,7 @@ typedef struct TableInfo
 static TupleDesc common_command_tuple_desc = NULL;
 
 /*--------------------------------------------------------------------*/
-void mgr_clean_hba_table(void);
+void mgr_clean_hba_table(char *coord_name, char *values);
 /*--------------------------------------------------------------------*/
 	
 extern void mgr_reload_conf(Oid hostoid, char *nodepath);
@@ -719,9 +719,12 @@ static void drop_hba_nodename_value(char *coord_name, char *hbavalue, GetAgentCm
 }
 
 /*
-we will to check coord_name,
-coord_name = "*" we delete all the hba table;
-else if coord_name is valid ,we will delete the table according to it;
+if coord_name = "*"
+	we delete all the hba table;
+else if coord_name is valid and the values is NULL
+	we will delete the table where coord_name is equal to coordinator name
+else 
+	we will delete the table by coord_name and values
 */
 static void delete_table_hba(char *coord_name, char *values)
 {
@@ -729,21 +732,23 @@ static void delete_table_hba(char *coord_name, char *values)
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
 	ScanKeyData scankey[2];	
-	bool is_check_value = true;
+	bool is_check_value = false;
 	Assert(coord_name);
 	
-	if(values == NULL)
-		is_check_value = false;
 	ScanKeyInit(&scankey[0]
 			,Anum_mgr_hba_nodename
 			,BTEqualStrategyNumber
 			,F_NAMEEQ
 			,CStringGetDatum(coord_name));
-	ScanKeyInit(&scankey[1]
-			,Anum_mgr_hba_value
-			,BTEqualStrategyNumber
-			,F_TEXTEQ
-			,CStringGetTextDatum(values));
+	if(values != NULL)
+	{
+		is_check_value = true;
+		ScanKeyInit(&scankey[1]
+				,Anum_mgr_hba_value
+				,BTEqualStrategyNumber
+				,F_TEXTEQ
+				,CStringGetTextDatum(values));
+	}
 	rel = heap_open(HbaRelationId, RowExclusiveLock);
 	if(strcmp(coord_name, "*") == 0)
 	{
@@ -770,21 +775,9 @@ static void delete_table_hba(char *coord_name, char *values)
 	heap_close(rel, RowExclusiveLock);
 }
 
-void mgr_clean_hba_table(void)
+void mgr_clean_hba_table(char *coord_name, char *values)
 {
-	Relation rel;
-	HeapTuple tuple;
-	HeapScanDesc  rel_scan;
-	/*Traverse all the coordinator in the node table*/
-	rel = heap_open(HbaRelationId, RowExclusiveLock);
-	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		simple_heap_delete(rel, &tuple->t_self);
-		CatalogUpdateIndexes(rel, tuple);
-	}
-	heap_endscan(rel_scan);
-	heap_close(rel, RowExclusiveLock);
+	delete_table_hba(coord_name, values);
 }
 
 /*
