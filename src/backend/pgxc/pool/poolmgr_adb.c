@@ -617,14 +617,20 @@ static void PoolerLoop(void)
 			for(;;)
 			{
 				new_socket = accept(server_fd, NULL, NULL);
-				/* receive signal quit, close new connection */
-				if (signal_quit)
-				{
-					closesocket(new_socket);
-					continue;
-				}
+
+				if(new_socket == PGINVALID_SOCKET)
+					break;
 				else
-					agent_create(new_socket);
+				{
+					/* receive signal quit, close new connection */
+					if (signal_quit)
+					{
+						closesocket(new_socket);
+						continue;
+					}
+					else
+						agent_create(new_socket);
+				}
 			}
 		}
 		cur_time = time(NULL);
