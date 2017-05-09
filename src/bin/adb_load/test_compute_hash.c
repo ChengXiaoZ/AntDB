@@ -53,7 +53,7 @@ int main(int argc, char **argv)
 	field->field_nums = 2;
 	field->field_loc = loc;
 	field->field_type = type;
-	field->node_nums = 2;
+	field->datanodes_num = 2;
 	field->node_list = node;
 	field->delim = ",";
 	field->hash_delim = ",";
@@ -62,7 +62,7 @@ int main(int argc, char **argv)
 	field->has_qoute = true;
 
 	fopen_error_file(NULL);
-	InitHashCompute(thread_nums, func_name, conninfo, input_queue,
+	init_hash_compute(thread_nums, func_name, conninfo, input_queue,
 		output_queue, output_queue_size, field);
 
 	mq_pipe_put(input_queue, NULL);

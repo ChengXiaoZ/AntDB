@@ -29,29 +29,55 @@ static struct enum_name message_name_tab[] =
 	{-1, NULL}
 };
 
-DispatchThreads	DispatchThreadsData;
-DispatchThreads	*DispatchThreadsRun = &DispatchThreadsData;
-DispatchThreads	DispatchThreadsFinishData;
-DispatchThreads	*DispatchThreadsFinish = &DispatchThreadsFinishData;
-TableType			Table_Type;
-static  bool		Is_Deal = false;
-static	bool	    process_bar = false;
-static char 	  **error_message_name = NULL;
-static char		   *g_start_cmd = NULL;
-static int 			error_message_max;
-
-static int		  dispatch_threadsCreate(DispatchInfo *dispatch);
-static void		* dispatch_threadMain (void *argp);
-static void		* dispatch_ThreadMainWrapper (void *argp);
-static void		  dispatch_ThreadCleanup (void * argp);
-static PGconn	* reconnect (DispatchThreadInfo *thrinfo);
-static char		* create_copy_string (char *table_name, char *copy_options);
-static void		  deal_after_thread_exit(void);
-static void 	  build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo);
-static void		  dispatch_init_error_nametabs(void);
-static char	 	* dispatch_util_message_name (DispatchThreadWorkState state);
-static void		  dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
+DispatchThreads  DispatchThreadsData;
+DispatchThreads *DispatchThreadsRun = &DispatchThreadsData;
+DispatchThreads  DispatchThreadsFinishData;
+DispatchThreads *DispatchThreadsFinish = &DispatchThreadsFinishData;
+TableType    Table_Type;
+static bool Is_Deal = false;
+static bool process_bar = false;
+static char **error_message_name = NULL;
+static char *g_start_cmd = NULL;
+static int error_message_max;
+static char *get_linevalue_from_pqerrormsg(char *pqerrormsg);
+static int dispatch_threadsCreate(DispatchInfo *dispatch);
+static void *dispatch_threadMain (void *argp);
+static void *dispatch_ThreadMainWrapper (void *argp);
+static void dispatch_ThreadCleanup (void * argp);
+static PGconn *reconnect (DispatchThreadInfo *thrinfo);
+static char *create_copy_string (char *table_name, char *copy_options);
+//static void deal_after_thread_exit(void);
+static void build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo);
+static void dispatch_init_error_nametabs(void);
+static char *dispatch_util_message_name (DispatchThreadWorkState state);
+static void dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 										char * dispatch_error_message, int line_no, char *line_data, bool redo);
+
+
+static bool datanode_can_write(int fd, fd_set *set);
+static bool datanode_can_read(int fd, fd_set *set);
+static bool output_queue_can_read(int fd, fd_set *set);
+static void put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, MessageQueuePipe *output_queue);
+static void put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback);
+static int get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback);
+
+
+#define FOR_GET_DATA_FROM_OUTPUT_QUEUE()     \
+for (;;)                                     \
+{                                            \
+    lineBuffer = mq_pipe_poll(output_queue); \
+    if (lineBuffer == NULL)                  \
+    {                                        \
+        thrinfo->need_redo = true;           \
+        pthread_exit(thrinfo);               \
+    }                                        \
+    else                                     \
+    {                                        \
+        release_linebuf(lineBuffer);         \
+        continue;                            \
+    }                                        \
+}
+
 
 static void
 dispatch_init_error_nametabs(void)
@@ -89,26 +115,28 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			char * dispatch_error_message, int line_no, char *line_data, bool redo)
 {
 	LineBuffer *error_buffer = NULL;
+    
 	if (thrinfo)
 		error_buffer = format_error_info(message, DISPATCH, dispatch_error_message,
 									line_no, line_data);
 	else
 		error_buffer = format_error_info(message, DISPATCH, NULL, line_no, line_data);
 
-	if (NULL != thrinfo)
+	if (thrinfo != NULL)
 	{
-		appendLineBufInfoString(error_buffer, "more infomation : connection :");
+		appendLineBufInfoString(error_buffer, "connection infomation :");
 		appendLineBufInfoString(error_buffer, thrinfo->conninfo_datanode);
 		appendLineBufInfoString(error_buffer, "\n");
 	}
 
 	if (redo)
 	{
+#if 0
 		if (Table_Type == TABLE_DISTRIBUTE)
 		{
 			appendLineBufInfoString(error_buffer, "\n");
 			appendLineBufInfoString(error_buffer, "suggest : ");
-			if (thrinfo)				
+			if (thrinfo)
 				appendLineBufInfoString(error_buffer, g_start_cmd);
 				
 			else if (thrinfo == NULL && dispatch_error_message != NULL)
@@ -118,14 +146,15 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 		else if(Table_Type == TABLE_REPLICATION)
 		{
 			appendLineBufInfoString(error_buffer, "\n");
-			appendLineBufInfoString(error_buffer, "suggest : ");				
+			appendLineBufInfoString(error_buffer, "suggest : ");
 			appendLineBufInfoString(error_buffer, "set config file DATANODE_VALID = on, remain this datanode info \n");
-			if (thrinfo)				
+			if (thrinfo)
 				appendLineBufInfoString(error_buffer, g_start_cmd);
 			else if (thrinfo == NULL && dispatch_error_message != NULL)
 				appendLineBufInfoString(error_buffer, dispatch_error_message);
 			appendLineBufInfoString(error_buffer, "\n");
 		}
+#endif
 	}
 	else
 	{
@@ -143,20 +172,23 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 }
 
 int
-InitDispatch(DispatchInfo *dispatch_info, TableType type)
+init_dispatch_threads(DispatchInfo *dispatch_info, TableType type)
 {
-	int		res;
+	int res;
+
 	Assert(dispatch_info != NULL);
+
 	if (dispatch_info->process_bar)
 		process_bar = true;
-		
-	res = dispatch_threadsCreate(dispatch_info);
+
 	Table_Type = type;
+	res = dispatch_threadsCreate(dispatch_info);
+
 	return res;
 }
 
 int
-StopDispatch (void)
+stop_dispatch (void)
 {
 	int flag;
 	pthread_mutex_lock(&DispatchThreadsRun->mutex);
@@ -167,6 +199,8 @@ StopDispatch (void)
 			thread_info->exit = true;
 	}
 	pthread_mutex_unlock(&DispatchThreadsRun->mutex);
+
+#if 0
 	/* wait thread exit */
 	for (;;)
 	{
@@ -179,88 +213,320 @@ StopDispatch (void)
 		/* sleep 5s */
 		sleep(5);
 	}
+#endif
+
 	return DISPATCH_OK;
 }
 
 static int
 dispatch_threadsCreate(DispatchInfo  *dispatch)
 {
-	int flag;
+	int i = 0;
+	int j = 0;
+	int dispatch_threads_total = 0;
 	DatanodeInfo *datanode_info = dispatch->datanode_info;
-	Assert(NULL != dispatch && NULL != dispatch->conninfo_agtm && NULL != dispatch->output_queue
-		&& dispatch->thread_nums > 0 && NULL != dispatch->datanode_info);
-	if(pthread_mutex_init(&DispatchThreadsRun->mutex, NULL) != 0 ||
+
+	Assert(dispatch != NULL);
+	Assert(dispatch->conninfo_agtm != NULL);
+	Assert(dispatch->output_queue != NULL);
+	Assert(dispatch->datanodes_num > 0);
+	Assert(dispatch->datanode_info != NULL);
+
+	if (pthread_mutex_init(&DispatchThreadsRun->mutex, NULL) != 0 ||
 		pthread_mutex_init(&DispatchThreadsFinish->mutex, NULL) != 0)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not initialize dispatch mutex: %s",
 						strerror(errno));
 
 		dispatch_write_error_message(NULL, 
-									"Can not initialize dispatch mutex ,file need to redo",
+									"Can not initialize dispatch mutex",
 									g_start_cmd, 0 , NULL, true);
 		exit(1);
 	}
 
-	DispatchThreadsRun->send_thread_count = dispatch->thread_nums;
-	DispatchThreadsRun->send_threads = (DispatchThreadInfo **)palloc0(sizeof(DispatchThreadInfo *) * dispatch->thread_nums);
-	DispatchThreadsFinish->send_thread_count = dispatch->thread_nums;
-	DispatchThreadsFinish->send_threads = (DispatchThreadInfo **)palloc0(sizeof(DispatchThreadInfo *) * dispatch->thread_nums);
-	for (flag = 0; flag < dispatch->thread_nums; flag++)
-	{
-		DispatchThreadInfo *thrinfo = (DispatchThreadInfo*)palloc0(sizeof(DispatchThreadInfo ));
-		if (NULL == thrinfo)
-		{
-			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not malloc memory to DispatchThreadInfo");
+	dispatch_threads_total = dispatch->datanodes_num * dispatch->threads_num_per_datanode;
+	DispatchThreadsRun->send_thread_count = dispatch_threads_total;
+	DispatchThreadsRun->send_threads = (DispatchThreadInfo **)palloc0(sizeof(DispatchThreadInfo *) * dispatch_threads_total);
+	DispatchThreadsFinish->send_thread_count = dispatch_threads_total;
+	DispatchThreadsFinish->send_threads = (DispatchThreadInfo **)palloc0(sizeof(DispatchThreadInfo *) * dispatch_threads_total);
 
-			dispatch_write_error_message(NULL, 
-										"Can not malloc memory to DispatchThreadInfo ,file need to redo",
-										g_start_cmd, 0 , NULL, true);
-			exit(1);
-		}
-		thrinfo->conninfo_datanode = pg_strdup(datanode_info->conninfo[flag]);
-		thrinfo->output_queue = dispatch->output_queue[flag];
-		thrinfo->table_name = pg_strdup(dispatch->table_name);
-		thrinfo->conninfo_agtm = pg_strdup(dispatch->conninfo_agtm);
-		if (NULL != dispatch->copy_options)
-			thrinfo->copy_options = pg_strdup(dispatch->copy_options);
-		else
-			thrinfo->copy_options = NULL;
-		thrinfo->thr_startroutine = dispatch_threadMain;
-		if ((pthread_create(&thrinfo->thread_id, NULL, dispatch_ThreadMainWrapper, thrinfo)) < 0)
+	for (i = 0; i < dispatch->datanodes_num; i++)
+	{
+		for (j = 0; j < dispatch->threads_num_per_datanode; j++)
 		{
-			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] create dispatch thread error");
-			dispatch_write_error_message(NULL, 
-										"create dispatch thread error",
-										g_start_cmd, 0 , NULL, true);
-			/* stop start thread */
-			StopDispatch();
-			return DISPATCH_ERROR;
+			DispatchThreadInfo *thrinfo = (DispatchThreadInfo *)palloc0(sizeof(DispatchThreadInfo));
+			if (thrinfo == NULL)
+			{
+				ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not malloc memory to DispatchThreadInfo");
+
+				dispatch_write_error_message(NULL, 
+											"Can not malloc memory to DispatchThreadInfo",
+											g_start_cmd, 0 , NULL, true);
+				exit(1);
+			}
+
+			thrinfo->conninfo_datanode = pg_strdup(datanode_info->conninfo[i]);
+			thrinfo->table_name = pg_strdup(dispatch->table_name);
+			thrinfo->conninfo_agtm = pg_strdup(dispatch->conninfo_agtm);
+			if (dispatch->copy_options != NULL)
+				thrinfo->copy_options = pg_strdup(dispatch->copy_options);
+			else
+				thrinfo->copy_options = NULL;
+		
+			thrinfo->thr_startroutine = dispatch_threadMain;
+
+			thrinfo->output_queue = dispatch->output_queue[i * dispatch->threads_num_per_datanode + j];
+			if ((pthread_create(&thrinfo->thread_id, NULL, dispatch_ThreadMainWrapper, thrinfo)) < 0)
+			{
+				ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] create dispatch thread error");
+				dispatch_write_error_message(NULL, 
+											"create dispatch thread error",
+											g_start_cmd, 0 , NULL, true);
+				/* stop start thread */
+				stop_dispatch();
+
+				return DISPATCH_ERROR;
+			}
+
+			DispatchThreadsRun->send_thread_cur++;
+			DispatchThreadsRun->send_threads[i * dispatch->threads_num_per_datanode + j] = thrinfo;
+			ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread main ] create dispatch thread : %ld ", thrinfo->thread_id);
 		}
-		DispatchThreadsRun->send_thread_cur++;
-		DispatchThreadsRun->send_threads[flag] = thrinfo;
-		ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread main ] create dispatch thread : %ld ",thrinfo->thread_id);
 	}
+
 	return DISPATCH_OK;
 }
 
 static void *
+dispatch_ThreadMainWrapper (void *argp)
+{
+	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
+	pthread_detach(thrinfo->thread_id);
+	pthread_cleanup_push(dispatch_ThreadCleanup, thrinfo);
+	thrinfo->thr_startroutine(thrinfo);
+	pthread_cleanup_pop(1);
+
+	return thrinfo;
+}
+
+static bool
+datanode_can_write(int fd, fd_set *set)
+{
+	int res = 0;
+	res = FD_ISSET(fd, set);
+	return (res > 0 ? true : false);
+}
+
+static bool
+datanode_can_read(int fd, fd_set *set)
+{
+	int res = 0;
+	res = FD_ISSET(fd, set);
+	return (res > 0 ? true : false);
+}
+
+static bool
+output_queue_can_read(int fd, fd_set *set)
+{
+	int res = 0;
+	res = FD_ISSET(fd, set);
+	return (res > 0 ? true : false);
+}
+
+static void
+put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, MessageQueuePipe *output_queue)
+{
+	int send = 0;
+	
+	/* send data to ADB*/
+	send = PQputCopyData(thrinfo->conn, lineBuffer->data, lineBuffer->len);
+
+	ADBLOADER_LOG(LOG_DEBUG,
+		"[DISPATCH][thread id : %ld ] send data: %s from queue num:%s \n",
+		thrinfo->thread_id, lineBuffer->data, output_queue->name);
+
+	if (process_bar)
+		thrinfo->send_total++;
+
+	if (send < 0)
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+		"[DISPATCH][thread id : %ld ] send copy data error : %s ",
+			thrinfo->thread_id, lineBuffer->data);
+
+        ADBLOADER_LOG(LOG_ERROR,
+                    "[DISPATCH][thread id : %ld ] send copy data error message: %s ",
+                    thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
+
+        
+		/* check connection state */
+		if (PQstatus(thrinfo->conn) != CONNECTION_OK)
+		{
+			/* reconnect */
+			reconnect(thrinfo);
+			send = PQputCopyData(thrinfo->conn, lineBuffer->data, lineBuffer->len);
+			if (send < 0)
+			{
+				ADBLOADER_LOG(LOG_ERROR,
+							"[DISPATCH][thread id : %ld ] send copy data error again : %s ",
+							thrinfo->thread_id, lineBuffer->data);
+				PQfinish(thrinfo->conn);
+				thrinfo->conn = NULL;
+				thrinfo->state = DISPATCH_THREAD_SEND_ERROR;
+
+				dispatch_write_error_message(thrinfo, 
+											"PQputCopyData error",
+											PQerrorMessage(thrinfo->conn), lineBuffer->fileline,
+											lineBuffer->data, true);
+			}
+		}
+	}
+
+	/* flush data every time to get error data quickly */
+	PQflush(thrinfo->conn);
+	release_linebuf(lineBuffer);
+
+	return;
+}
+
+static void
+put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback)
+{
+	PGresult *res = NULL;
+
+	ADBLOADER_LOG(LOG_DEBUG,
+		"[DISPATCH][thread id : %ld ] dispatch file is complete, exit thread",
+		thrinfo->thread_id);
+
+	if (need_rollback == true ? (PQputCopyEnd(thrinfo->conn, "rollback") == 1):
+								(PQputCopyEnd(thrinfo->conn, NULL) == 1))
+	{
+		res = PQgetResult(thrinfo->conn);
+		if (PQresultStatus(res) == PGRES_COMMAND_OK)
+		{
+			ADBLOADER_LOG(LOG_INFO,
+						"[DISPATCH][thread id : %ld ] copy end ok", thrinfo->thread_id);
+			thrinfo->state = DISPATCH_THREAD_EXIT_NORMAL;
+			thrinfo->need_redo = true;
+		}
+		else
+		{
+			ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] send copy end sucess, get some error message : %s,PQresultStatus(res):%d \n",
+					thrinfo->thread_id, PQerrorMessage(thrinfo->conn), PQresultStatus(res));
+			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+			thrinfo->need_redo = true;
+		}
+	}
+	else
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+						"[DISPATCH][thread id : %ld ] send copy end error", thrinfo->thread_id);
+		thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+		thrinfo->need_redo = true;
+	}
+
+	if (thrinfo->state == DISPATCH_THREAD_COPY_END_ERROR)
+	{
+		char *linedata = NULL;
+		dispatch_write_error_message(thrinfo, 
+									"thread send copy end error",
+									PQerrorMessage(thrinfo->conn), 0,
+									NULL, true);
+
+		linedata = get_linevalue_from_pqerrormsg(PQerrorMessage(thrinfo->conn));
+		fwrite_adb_load_error_data(linedata);
+		pg_free(linedata);
+		linedata = NULL;
+	}
+
+	PQfinish(thrinfo->conn);
+	thrinfo->conn = NULL;
+
+	pthread_exit(thrinfo);
+	return;
+}
+
+static int
+get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback)
+{
+	PGresult   *res = NULL;
+	char       *read_buff = NULL;
+
+	res = PQgetResult(thrinfo->conn);
+	if (PQresultStatus(res) == PGRES_COPY_IN)
+	{
+		int result;
+		result = PQgetCopyData(thrinfo->conn, &read_buff, 0);
+		if (result == -2)
+		{
+			char *linedata = NULL;
+			
+			if (PQputCopyEnd(thrinfo->conn, NULL) == 1)
+			{
+				res = PQgetResult(thrinfo->conn);
+				Assert(PQresultStatus(res) != PGRES_COMMAND_OK);
+
+				ADBLOADER_LOG(LOG_ERROR,
+							"[DISPATCH][thread id : %ld ] copy end error, may be copy data error: %s, PQresultStatus(res):%d\n",
+							thrinfo->thread_id, PQerrorMessage(thrinfo->conn), PQresultStatus(res));
+
+				if (PQresultStatus(res) == PGRES_FATAL_ERROR)
+				{
+					dispatch_write_error_message(thrinfo, 
+												"datanode backend processing closed the connection unexpectedly, please check datanode running or not.",
+												PQerrorMessage(thrinfo->conn), 0 , NULL, true);
+
+					thrinfo->state = DISPATCH_GET_BACKEND_FATAL_ERROR;
+					*need_rollback = true;
+				}else
+				{
+					dispatch_write_error_message(thrinfo, 
+												"thread receive error message from ADB",
+												PQerrorMessage(thrinfo->conn), 0 , NULL, true);
+
+					thrinfo->state = DISPATCH_THREAD_COPY_DATA_ERROR;
+					*need_rollback = true;
+				}
+
+				linedata = get_linevalue_from_pqerrormsg(PQerrorMessage(thrinfo->conn));
+				fwrite_adb_load_error_data(linedata);
+				pg_free(linedata);
+				linedata = NULL;
+				reconnect(thrinfo);
+				return -1;
+			}
+		}
+	}
+	else
+	{
+		reconnect(thrinfo);
+		return -1;
+	}
+
+	return 0;
+}
+
+static void *
 dispatch_threadMain (void *argp)
-{	
-	DispatchThreadInfo	*thrinfo = (DispatchThreadInfo*) argp;
-	MessageQueuePipe	*output_queue;
-	char 				*read_buff = NULL;
-	LineBuffer 			*lineBuffer = NULL;
-	PGresult 	 		*res;
+{
+	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
+	MessageQueuePipe    *output_queue = NULL;
+	char                *read_buff = NULL;
+	LineBuffer          *lineBuffer = NULL;
 
-	bool 				 mq_read = false;
-	bool 				 conn_read = false;
-	bool 				 conn_write = false;	
-	fd_set 				 read_fds;
-	fd_set 				 write_fds;
-	int 				 max_fd;
-	int 				 select_res;
+	bool                 mq_read = false;
+	bool                 conn_read = false;
+	bool                 conn_write = false;
+	bool                 need_rollback = false;
+	int                  max_fd;
+	int                  select_res;
+	fd_set               read_fds;
+	fd_set               write_fds;
 
-	Assert(NULL != thrinfo->conninfo_agtm && NULL != thrinfo->conninfo_datanode);
+	Assert(thrinfo->conninfo_agtm != NULL);
+	Assert(thrinfo->conninfo_datanode != NULL);
+
 	output_queue = thrinfo->output_queue;
 
 	build_communicate_agtm_and_datanode(thrinfo);
@@ -274,17 +540,19 @@ dispatch_threadMain (void *argp)
 		if (thrinfo->exit)
 		{
 			thrinfo->state = DISPATCH_THREAD_KILLED_BY_OTHERTHREAD;
-			dispatch_write_error_message(thrinfo, 
-									"thread killed by others ,file need to redo",
-									NULL, 0, NULL, true);
+			/*
+			dispatch_write_error_message(thrinfo, "thread killed by others",
+									    NULL, 0, NULL, true);
+			*/
+			thrinfo->need_redo = true;
 			pthread_exit(thrinfo);
 		}
 
-		mq_read 	= false;
-		conn_read 	= false;
-		conn_write	= false;
-		read_buff	= NULL;
-		lineBuffer 	= NULL;
+		mq_read     = false;
+		conn_read   = false;
+		conn_write  = false;
+		read_buff   = NULL;
+		lineBuffer  = NULL;
 
 		FD_ZERO(&read_fds);	
 		FD_SET(thrinfo->conn->sock, &read_fds);
@@ -299,208 +567,9 @@ dispatch_threadMain (void *argp)
 
 		ADBLOADER_LOG(LOG_DEBUG, "[DISPATCH][thread id : %ld ] dispatch max fd : %d",
 			thrinfo->thread_id, max_fd);
+
 		select_res = select(max_fd, &read_fds, &write_fds, NULL, NULL);
-		if (select_res > 0)
-		{
-			if(FD_ISSET(thrinfo->conn->sock, &read_fds))
-			{
-				conn_read = true;
-				res = PQgetResult(thrinfo->conn);
-				if (PQresultStatus(res) == PGRES_COPY_IN)
-				{
-					int result;
-					result = PQgetCopyData(thrinfo->conn, &read_buff, 0);
-					if (result == -2)
-					{
-						if (PQputCopyEnd(thrinfo->conn, NULL) == 1)
-						{
-							res = PQgetResult(thrinfo->conn);
-							Assert(PQresultStatus(res) != PGRES_COMMAND_OK);							
-							ADBLOADER_LOG(LOG_ERROR,
-										"[DISPATCH][thread id : %ld ] copy end error, may be copy data error: %s",
-										thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
-
-							dispatch_write_error_message(thrinfo, 
-														"thread receive error message form ADB ,file need to redo",
-														PQerrorMessage(thrinfo->conn), 0 , NULL, true);
-							thrinfo->state = DISPATCH_THREAD_COPY_DATA_ERROR;
-						}
-					}
-				}
-				PQfinish(thrinfo->conn);
-				thrinfo->conn = NULL;
-				pthread_exit(thrinfo);
-			}
-			else
-				conn_read = false;
-
-			if (FD_ISSET(thrinfo->conn->sock,&write_fds) > 0)
-			{
-				conn_write = true;
-				if (FD_ISSET(output_queue->fd[0], &read_fds))
-				{
-					mq_read = true;
-					lineBuffer = mq_pipe_poll(output_queue);
-					if (NULL != lineBuffer)
-					{
-						int send;
-						/* send data to ADB*/
-						send = PQputCopyData(thrinfo->conn, lineBuffer->data, lineBuffer->len);
-						if (process_bar)
-							thrinfo->send_total++;
-
-						if (send < 0)
-						{
-							ADBLOADER_LOG(LOG_ERROR,
-							"[DISPATCH][thread id : %ld ] send copy data error : %s ",
-								thrinfo->thread_id, lineBuffer->data);
-							/* check connection state */
-							if (PQstatus(thrinfo->conn) != CONNECTION_OK)
-							{
-								/* reconnect */
-								reconnect(thrinfo);
-								send = PQputCopyData(thrinfo->conn, lineBuffer->data, lineBuffer->len);
-								if (send < 0)
-								{
-									ADBLOADER_LOG(LOG_ERROR,
-												"[DISPATCH][thread id : %ld ] send copy data error again : %s ",
-												thrinfo->thread_id, lineBuffer->data);
-									PQfinish(thrinfo->conn);
-									thrinfo->conn = NULL;
-									thrinfo->state = DISPATCH_THREAD_SEND_ERROR;
-
-									dispatch_write_error_message(thrinfo, 
-																"PQputCopyData error ,file need to redo",
-																PQerrorMessage(thrinfo->conn), lineBuffer->fileline,
-																lineBuffer->data, true);
-									pthread_exit(thrinfo);
-								}
-							}
-
-						}
-						/* flush data every time to get error data quickly */
-						PQflush(thrinfo->conn);
-					}
-					else
-					{						
-						ADBLOADER_LOG(LOG_DEBUG,
-							"[DISPATCH][thread id : %ld ] dispatch file is complete, exit thread",
-							thrinfo->thread_id);
-						if (PQputCopyEnd(thrinfo->conn, NULL) == 1)
-						{
-							res = PQgetResult(thrinfo->conn);
-							if (PQresultStatus(res) == PGRES_COMMAND_OK)
-							{
-								ADBLOADER_LOG(LOG_INFO,
-											"[DISPATCH][thread id : %ld ] copy end ok", thrinfo->thread_id);
-								thrinfo->state = DISPATCH_THREAD_EXIT_NORMAL;
-							}
-							else
-							{
-								ADBLOADER_LOG(LOG_ERROR,
-										"[DISPATCH][thread id : %ld ] send copy end sucess, get some error message : %s",
-										thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
-								thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
-							}
-						}
-						else
-						{
-							ADBLOADER_LOG(LOG_ERROR,
-											"[DISPATCH][thread id : %ld ] send copy end error", thrinfo->thread_id);
-							thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;						
-						}
-						if (thrinfo->state == DISPATCH_THREAD_COPY_END_ERROR)
-						{
-							dispatch_write_error_message(thrinfo, 
-														"thread send copy end error ,file need to redo",
-														PQerrorMessage(thrinfo->conn), 0,
-														NULL, true);
-						}
-						PQfinish(thrinfo->conn);
-						thrinfo->conn = NULL;
-						pthread_exit(thrinfo);
-					}
-				}
-				else
-				{
-					mq_read = false;
-					ADBLOADER_LOG(LOG_DEBUG,
-								 "[DISPATCH][thread id : %ld] output queue can not read now.\n", thrinfo->thread_id);
-				}
-
-			}
-			else
-			{
-				conn_write = false;
-				ADBLOADER_LOG(LOG_DEBUG,
-							 "[DISPATCH][thread id : %ld] Adb cluster processing data is relatively slow.\n", thrinfo->thread_id);
-			}
-
-
-			if (conn_write && !mq_read && !conn_read)
-			{
-				FD_ZERO(&read_fds);
-				FD_SET(thrinfo->conn->sock, &read_fds);
-				FD_SET(output_queue->fd[0], &read_fds);
-				select_res = select(max_fd, &read_fds, NULL, NULL, NULL);
-				if (select_res > 0)
-					continue;
-				else
-				{
-					/* exception handling */
-					if (errno != EINTR && errno != EWOULDBLOCK)
-					{
-						ADBLOADER_LOG(LOG_ERROR,
-								"[DISPATCH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
-									thrinfo->thread_id);
-
-						thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
-
-						dispatch_write_error_message(thrinfo, 
-													"select connect server socket return < 0, network may be not well ,file need to redo",
-													NULL, 0, NULL, true);
-						pthread_exit(thrinfo);
-					}
-				}
-			}
-
-			/* now conn can't read and can't write */
-			if (!conn_read && !conn_write)
-			{
-				if (PQstatus(thrinfo->conn) != CONNECTION_OK)
-				{	
-					/* reconnect */
-					reconnect(thrinfo);
-					continue;					
-				}
-	
-				FD_ZERO(&read_fds);	
-				FD_SET(thrinfo->conn->sock, &read_fds);
-				FD_ZERO(&write_fds);
-				FD_SET(thrinfo->conn->sock, &write_fds);
-				select_res = select(max_fd, &read_fds, &write_fds, NULL, NULL);
-				if (select_res > 0)
-					continue;
-				else
-				{
-					/* exception handling */
-					if (errno != EINTR && errno != EWOULDBLOCK)
-					{
-						ADBLOADER_LOG(LOG_ERROR,
-								"[DISPATCH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
-									thrinfo->thread_id);
-						thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
-
-						dispatch_write_error_message(thrinfo, 
-													"select connect server socket return < 0, network may be not well ,file need to redo",
-													NULL, 0, NULL, true);
-						pthread_exit(thrinfo);
-					}
-				}
-			}			
-			
-		}
-		else
+		if (select_res < 0)
 		{
 			if (errno != EINTR && errno != EWOULDBLOCK)
 			{
@@ -511,107 +580,222 @@ dispatch_threadMain (void *argp)
 					thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
 
 					dispatch_write_error_message(thrinfo, 
-												"select connect server socket return < 0, network may be not well ,file need to redo",
+												"select connect datanode socket return < 0, network may be not well ,file need to redo",
 												NULL, 0, NULL, true);
-					pthread_exit(thrinfo);
+					continue;
 			}
 
 			if (PQstatus(thrinfo->conn) != CONNECTION_OK)
-			{	
+			{
 				/* reconnect */
 				reconnect(thrinfo);
 				continue;
 			}
 		}
+        
+		if (datanode_can_read(thrinfo->conn->sock, &read_fds))
+		{
+			int result = 0;
+			result = get_data_from_datanode(thrinfo, &need_rollback);
+			if (result == -1)
+				continue;
+		}
+
+		if (datanode_can_write(thrinfo->conn->sock, &write_fds))
+		{
+			if (output_queue_can_read(output_queue->fd[0], &read_fds))
+			{
+				lineBuffer = mq_pipe_poll(output_queue);
+				if (lineBuffer != NULL)
+				{
+					put_data_to_datanode(thrinfo, lineBuffer, output_queue);
+				}
+				else // threads end flag
+				{
+#if 0
+				    int i;
+				    for (i = 0; i < 5; i++)
+                    {
+                        get_data_from_datanode(thrinfo, &need_rollback);
+                        sleep(2);
+                    }
+#endif
+					put_copy_end_to_datanode(thrinfo, need_rollback);
+				} 
+			}
+			else
+			{
+				ADBLOADER_LOG(LOG_DEBUG,
+								"[DISPATCH][thread id : %ld] output queue can not read now.\n", thrinfo->thread_id);
+			}
+		}
+		else
+		{
+			ADBLOADER_LOG(LOG_DEBUG,
+							"[DISPATCH][thread id : %ld] Adb cluster processing data is relatively slow.\n", thrinfo->thread_id);
+		}
+
+
+
+		if (datanode_can_write(thrinfo->conn->sock, &write_fds) &&
+			!datanode_can_read(thrinfo->conn->sock, &read_fds) &&
+			!output_queue_can_read(output_queue->fd[0], &read_fds))
+		{
+			FD_ZERO(&read_fds);
+			FD_SET(thrinfo->conn->sock, &read_fds);
+			FD_SET(output_queue->fd[0], &read_fds);
+			select_res = select(max_fd, &read_fds, NULL, NULL, NULL);
+			if (select_res > 0)
+				continue;
+			else
+			{
+				/* exception handling */
+				if (errno != EINTR && errno != EWOULDBLOCK)
+				{
+					ADBLOADER_LOG(LOG_ERROR,
+							"[DISPATCH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
+								thrinfo->thread_id);
+			
+					thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
+			
+					dispatch_write_error_message(thrinfo, 
+												"select connect server socket return < 0, network may be not well ,file need to redo",
+												NULL, 0, NULL, true);
+			
+				}
+			}
+		}
+
+		/* now conn can't read and can't write */
+		if ( !datanode_can_write(thrinfo->conn->sock, &write_fds) &&
+			!datanode_can_read(thrinfo->conn->sock, &read_fds))
+		{
+			if (PQstatus(thrinfo->conn) != CONNECTION_OK)
+			{   
+				/* reconnect */
+				reconnect(thrinfo);
+				continue;
+			}
+
+			FD_ZERO(&read_fds); 
+			FD_SET(thrinfo->conn->sock, &read_fds);
+			FD_ZERO(&write_fds);
+			FD_SET(thrinfo->conn->sock, &write_fds);
+			select_res = select(max_fd, &read_fds, &write_fds, NULL, NULL);
+			if (select_res > 0)
+				continue;
+			else
+			{
+				/* exception handling */
+				if (errno != EINTR && errno != EWOULDBLOCK)
+				{
+					ADBLOADER_LOG(LOG_ERROR,
+							"[DISPATCH][thread id : %ld ] select connect datanode socket return < 0, network may be not well, exit thread",
+								thrinfo->thread_id);
+					thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
+
+					dispatch_write_error_message(thrinfo, 
+												"select connect datanode socket return < 0, network may be not well ,file need to redo",
+												NULL, 0, NULL, true);
+
+					FOR_GET_DATA_FROM_OUTPUT_QUEUE();
+				}
+			}
+		}
 	}
+
 	return thrinfo;
 }
 
 static void 
 build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 {
-	char		*agtm_port;
-	PGresult 	*res;
-	char		*copy = NULL;
-	Assert(NULL != thrinfo->conninfo_agtm && NULL != thrinfo->conninfo_datanode);
+	char     *agtm_port = NULL;
+	PGresult *res = NULL;
+	char     *copy = NULL;
+
+	Assert(thrinfo->conninfo_agtm != NULL);
+	Assert(thrinfo->conninfo_datanode != NULL);
 
 	thrinfo->conn = PQconnectdb(thrinfo->conninfo_datanode);
-
-	if (NULL == thrinfo->conn)
+	if (thrinfo->conn == NULL)
 	{
-		ADBLOADER_LOG(LOG_ERROR,
-					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
 		thrinfo->state = DISPATCH_THREAD_CONNECTION_DATANODE_ERROR;
 
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
 		dispatch_write_error_message(thrinfo, 
-									"memory allocation failed,file need to redo",
+									"memory allocation failed",
 									NULL, 0, NULL, true);
 		pthread_exit(thrinfo);
 	}
 
 	if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 	{
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_DATANODE_ERROR;
+		
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH] Connection to database failed: %s, thread id is : %ld",
 					PQerrorMessage(thrinfo->conn), thrinfo->thread_id);
-		thrinfo->state = DISPATCH_THREAD_CONNECTION_DATANODE_ERROR;
-
 		dispatch_write_error_message(thrinfo, 
-									"Connection to database failed,file need to redo",
-									PQerrorMessage(thrinfo->conn), 0,
-									NULL, true);
+									"Connection to database failed",
+									PQerrorMessage(thrinfo->conn), 0, NULL, true);
 
 		PQfinish(thrinfo->conn);
 		thrinfo->conn = NULL;
+
 		pthread_exit(thrinfo);
 	}
 
-	thrinfo->agtm_conn = PQconnectdb(thrinfo->conninfo_agtm );
-	if (NULL == thrinfo->agtm_conn)
+	thrinfo->agtm_conn = PQconnectdb(thrinfo->conninfo_agtm);
+	if (thrinfo->agtm_conn == NULL)
 	{
-		ADBLOADER_LOG(LOG_ERROR,
-					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
 		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
 
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
 		dispatch_write_error_message(thrinfo, 
-									"memory allocation failed,file need to redo",
+									"memory allocation failed",
 									NULL, 0, NULL, true);
+
 		pthread_exit(thrinfo);
 	}
 
 	if (PQstatus((PGconn*)thrinfo->agtm_conn) != CONNECTION_OK)
 	{
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
+
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
 					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->agtm_conn));
-		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
-
 		dispatch_write_error_message(thrinfo, 
-									"connect to agtm error,file need to redo",
+									"connect to agtm error",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
 
 		PQfinish(thrinfo->agtm_conn);
 		thrinfo->agtm_conn = NULL;
+
 		pthread_exit(thrinfo);
 	}
 	else
 		agtm_port = (char*)PQparameterStatus(thrinfo->agtm_conn, "agtm_port");
 
-	Assert(NULL != thrinfo->conn);
+	Assert(thrinfo->conn != NULL);
 	if (pqSendAgtmListenPort(thrinfo->conn, atoi(agtm_port)) < 0)
 	{
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
+
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] could not send agtm port: %s",
 					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));		
-
 		dispatch_write_error_message(thrinfo, 
-									"could not send agtm port,file need to redo",
+									"could not send agtm port",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
 
 		PQfinish(thrinfo->conn);
 		thrinfo->conn = NULL;
-		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
+
 		pthread_exit(thrinfo);
 	}
 
@@ -627,33 +811,24 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 		thrinfo->state = DISPATCH_THREAD_COPY_STATE_ERROR;
 
 		dispatch_write_error_message(thrinfo, 
-									"PQresultStatus is not PGRES_COPY_IN,file need to redo",
+									"PQresultStatus is not PGRES_COPY_IN",
 									PQerrorMessage(thrinfo->conn), 0,
 									NULL, true);
 		pthread_exit(thrinfo);
 	}
 
 	thrinfo->copy_str = copy;
-}
 
-static void *
-dispatch_ThreadMainWrapper (void *argp)
-{
-	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
-	pthread_detach(thrinfo->thread_id);
-	pthread_cleanup_push(dispatch_ThreadCleanup, thrinfo);
-	thrinfo->thr_startroutine(thrinfo);
-	pthread_cleanup_pop(1);
-
-	return thrinfo;
+	return;
 }
 
 static void 
 dispatch_ThreadCleanup (void * argp)
 {
-	int					 flag;
-	int					 current_run_thread = 0;
-	int					 current_exit_thread = 0;
+	int flag;
+	int current_run_thread = 0;
+	int current_exit_thread = 0;
+
 	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
 
 	pthread_mutex_lock(&DispatchThreadsRun->mutex);
@@ -670,55 +845,43 @@ dispatch_ThreadCleanup (void * argp)
 	}
 	pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 
+#if 0
+	/*exit other dispatch threads, if anyone dispatch thread state is not "DISPATCH_THREAD_EXIT_NORMAL" */
 	if (thrinfo->state != DISPATCH_THREAD_EXIT_NORMAL)
 	{
 		ADBLOADER_LOG(LOG_INFO,
 							"[DISPATCH][thread id : %ld ] current exit unnormal", thrinfo->thread_id);
 		deal_after_thread_exit();
 	}
+#endif
 
 	/* close socket */
-	if (thrinfo->conn)
+	if (thrinfo->conn != NULL)
 	{
 		PQfinish(thrinfo->conn);
 		thrinfo->conn = NULL;
 	}
 
-	if (thrinfo->agtm_conn)
+	if (thrinfo->agtm_conn != NULL)
 	{
 		PQfinish(thrinfo->agtm_conn);
 		thrinfo->agtm_conn = NULL;
 	}
 
-	if (thrinfo->conninfo_datanode)
-	{
-		pfree(thrinfo->conninfo_datanode);
-		thrinfo->conninfo_datanode = NULL;
-	}
+	pg_free(thrinfo->conninfo_datanode);
+	thrinfo->conninfo_datanode = NULL;
 
-	if (thrinfo->conninfo_agtm)
-	{
-		pfree(thrinfo->conninfo_agtm);
-		thrinfo->conninfo_agtm = NULL;
-	}
+	pg_free(thrinfo->conninfo_agtm);
+	thrinfo->conninfo_agtm = NULL;
 
-	if (thrinfo->table_name)
-	{
-		pfree(thrinfo->table_name);
-		thrinfo->table_name = NULL;
-	}
+	pg_free(thrinfo->table_name);
+	thrinfo->table_name = NULL;
 
-	if (thrinfo->copy_str)
-	{
-		pfree(thrinfo->copy_str);
-		thrinfo->copy_str = NULL;
-	}
+	pg_free(thrinfo->copy_str);
+	thrinfo->copy_str = NULL;
 
-	if (thrinfo->copy_options)
-	{
-		pfree(thrinfo->copy_options);
-		thrinfo->copy_options = NULL;
-	}
+	pg_free(thrinfo->copy_options);
+	thrinfo->copy_options = NULL;
 
 	ADBLOADER_LOG(LOG_INFO,
 	"[DISPATCH][thread id : %ld ] thread exit, total threads is : %d, current thread number: %d, current exit thread number: %d, state :%s",
@@ -735,23 +898,30 @@ dispatch_ThreadCleanup (void * argp)
 
 static PGconn *
 reconnect(DispatchThreadInfo *thrinfo)
-{	
+{
 	int times = 3;
-	Assert(thrinfo->conn != NULL && thrinfo->conninfo_datanode != NULL);
-	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread id : %ld ] connction begin reconnect",
+    
+	Assert(thrinfo->conn != NULL);
+    Assert(thrinfo->conninfo_datanode != NULL);
+    
+	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread id : %ld ] begin reconnect",
 				thrinfo->thread_id);
+    
 	PQfinish(thrinfo->conn);
+    PQfinish(thrinfo->agtm_conn);
+    
+    build_communicate_agtm_and_datanode(thrinfo);
+#if 0
 	while (times > 0)
 	{
 		thrinfo->conn = PQconnectdb(thrinfo->conninfo_datanode);
-		/* memory allocation failed */
-		if (NULL == thrinfo->conn)
+		if (thrinfo->conn == NULL)
 		{
 			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread id : %ld ] memory allocation failed",
 				thrinfo->thread_id);
 
 			dispatch_write_error_message(thrinfo, 
-										"memory allocation failed,file need to redo",
+										"memory allocation failed",
 										NULL, 0,
 										NULL, true);
 			pthread_exit(thrinfo);
@@ -763,12 +933,16 @@ reconnect(DispatchThreadInfo *thrinfo)
 			PQfinish(thrinfo->conn);
 			thrinfo->conn = NULL;
 			times--; 
-			sleep (5);
+			sleep(5);
 			continue;
 		}
 		else
-			break;		
+        {
+            break; 
+        }
+
 	}
+    
 	if (times == 0)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread id : %ld ] connect error : %s, connect string : %s ",
@@ -776,33 +950,40 @@ reconnect(DispatchThreadInfo *thrinfo)
 		thrinfo->conn = NULL;
 
 		dispatch_write_error_message(thrinfo, 
-									"connect error,file need to redo",
+									"connect error",
 									NULL, 0,
 									NULL, true);
 		pthread_exit(thrinfo);
 	}
-	return thrinfo->conn;
+#endif
+    return thrinfo->conn;
 }
 
 static char *
 create_copy_string (char *table_name, char *copy_options)
 {
-	LineBuffer	*buf;
-	char		*result;	
-	Assert(NULL != table_name);
+	LineBuffer *buf = NULL;
+	char       *result = NULL;
+
+	Assert(table_name != NULL);
+
 	buf = get_linebuf();
 	appendLineBufInfo(buf, "%s", "COPY  ");
 	appendLineBufInfo(buf, "%s", table_name);
 	appendLineBufInfo(buf, "%s", " FROM STDIN ");
-	if (NULL != copy_options)
+
+	if (copy_options != NULL)
 		appendLineBufInfo(buf, "%s", copy_options);
+
 	result = (char*)palloc0(buf->len + 1);
 	memcpy(result, buf->data, buf->len);
 	result[buf->len] = '\0';
+
 	release_linebuf(buf);
 	return result;
 }
 
+#if 0
 static void
 deal_after_thread_exit(void)
 {
@@ -815,33 +996,36 @@ deal_after_thread_exit(void)
 			for (flag = 0; flag < DispatchThreadsRun->send_thread_count; flag++)
 			{
 				DispatchThreadInfo *thread_info = DispatchThreadsRun->send_threads[flag];
-				if (NULL != thread_info)
+				if (thread_info != NULL)
 				{
 					ADBLOADER_LOG(LOG_INFO,
 							"[DISPATCH][thread id : %ld ] table type is distribute, current exit unnormal,kill other threads",
 							thread_info->thread_id);
-					thread_info->exit = true;					
+					thread_info->exit = true;
 					thread_info->state = DISPATCH_THREAD_KILLED_BY_OTHERTHREAD;
 				}
 			}
 			pthread_mutex_unlock(&DispatchThreadsRun->mutex);
 			Is_Deal = true;
-		}		
+		}
 	}
 }
+#endif
 
 void 
 CleanDispatchResource(void)
 {
-	int flag;
+	int flag = 0;
+
 	Assert(DispatchThreadsRun->send_thread_cur == 0);
-	if (NULL != DispatchThreadsRun->send_threads)
+
+	if (DispatchThreadsRun->send_threads != NULL)
 		pfree(DispatchThreadsRun->send_threads);
 
 	for (flag = 0; flag < DispatchThreadsFinish->send_thread_count; flag++)
 	{
 		DispatchThreadInfo *thread_info  = DispatchThreadsFinish->send_threads[flag];
-		if (NULL != thread_info)
+		if (thread_info != NULL)
 		{
 			pfree(thread_info);
 			thread_info = NULL;
@@ -863,15 +1047,17 @@ CleanDispatchResource(void)
 	if (process_bar)
 		process_bar = false;
 
-	if (g_start_cmd)
+	if (g_start_cmd != NULL)
+	{
 		pfree(g_start_cmd);
-	g_start_cmd = NULL;
+		g_start_cmd = NULL;
+	}
 
 	Is_Deal = false;
 }
 
 DispatchThreads *
-GetDispatchExitThreads(void)
+get_dispatch_exit_threads(void)
 {
 	return DispatchThreadsFinish;
 }
@@ -885,7 +1071,7 @@ GetSendCount(int * thread_send_num)
 	for (flag = 0; flag < DispatchThreadsRun->send_thread_count; flag++)
 	{
 		DispatchThreadInfo *thread_info = DispatchThreadsRun->send_threads[flag];
-		if (NULL != thread_info)
+		if (thread_info != NULL)
 		{
 			thread_send_num[flag] = thread_info->send_total;
 		}
@@ -896,7 +1082,7 @@ GetSendCount(int * thread_send_num)
 	for (flag = 0; flag < DispatchThreadsFinish->send_thread_count; flag++)
 	{
 		DispatchThreadInfo *thread_info = DispatchThreadsFinish->send_threads[flag];
-		if (NULL != thread_info)
+		if (thread_info != NULL)
 		{
 			Assert(thread_send_num[flag] == 0);
 			thread_send_num[flag] = thread_info->send_total;
@@ -908,10 +1094,29 @@ GetSendCount(int * thread_send_num)
 void
 SetDispatchFileStartCmd(char * start_cmd)
 {
-	Assert(NULL != start_cmd);
-	if (g_start_cmd)
+	Assert(start_cmd != NULL);
+
+	if (g_start_cmd != NULL)
+	{
 		pfree(g_start_cmd);
-	g_start_cmd = NULL;
+		g_start_cmd = NULL;
+	}
+
 	g_start_cmd = pg_strdup(start_cmd);
+
+	return;
 }
+
+static char *
+get_linevalue_from_pqerrormsg(char *pqerrormsg)
+{
+    char *tmp = NULL;
+    
+    tmp = strstr(pqerrormsg,"LINEVALUE:");
+    if (tmp == NULL)
+        return NULL;
+    else
+        return pstrdup(tmp + 10);
+}
+
 

@@ -22,4 +22,13 @@ __attribute__((format(PG_PRINTF_ATTRIBUTE, 5, 6)));
 #define ADBLOADER_LOG(type, fmt, args...) \
 	adbloader_log_type(type, __FILE__, __FUNCTION__, __LINE__, fmt, ##args)
 
+
+//==================================================================
+
+extern FILE *adb_load_error_data_fd;
+extern void fopen_adb_load_error_data(char *path, char *tablename);
+extern void fwrite_adb_load_error_data(char *linedata);
+extern void fclose_adb_load_error_data(void);
+extern void check_db_load_error_data(char *path, char *tablename);
+
 #endif

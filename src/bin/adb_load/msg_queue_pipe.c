@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "msg_queue_pipe.h"
 #include "adbloader_log.h"
@@ -13,7 +14,7 @@ static ssize_t writen (int fd, const void *ptr, size_t n);
 ssize_t
 readn (int fd, void *buf, size_t n)
 {
-	size_t	 nleft;
+	size_t nleft;
 	ssize_t nread;
 	char *ptr;
 
@@ -83,12 +84,14 @@ writen (int fd, const void *buf, size_t n)
 void
 mq_pipe_init (MessageQueuePipe *queue, char *name)
 {
-	Assert(queue != NULL && NULL != name);
+	Assert(queue != NULL && name != NULL);
+
 	if(pthread_mutex_init(&queue->read_queue_mutex, NULL) != 0)
 	{
 		fprintf(stderr, "Can not initialize mutex:%s\n", strerror(errno));
 		exit(1);
 	}
+
 	if(queue->write_lock)
 	{
 		if(pthread_mutex_init(&queue->write_queue_mutex, NULL) != 0)
@@ -97,6 +100,7 @@ mq_pipe_init (MessageQueuePipe *queue, char *name)
 			exit(1);
 		}
 	}
+
 	queue->name = (char *)palloc0(strlen(name) + 1);
 	sprintf(queue->name, "%s", name);
 	queue->name[strlen(name)] = '\0';
@@ -105,13 +109,19 @@ mq_pipe_init (MessageQueuePipe *queue, char *name)
 		fprintf(stderr, "create pipe error \n");
 		exit(1);
 	}
+
+	fcntl(queue->fd[0], F_SETFL, O_NOATIME);
+
+	return;
 }
 
 int
 mq_pipe_put (MessageQueuePipe *queue, LineBuffer* lineBuffer)
 {
-	int num;
+	int num = 0;
+ 
 	Assert(queue != NULL);
+
 	if (queue->write_lock)
 		pthread_mutex_lock(&queue->write_queue_mutex);
 	num = writen(queue->fd[1], (void*)&lineBuffer, sizeof(LineBuffer*));
@@ -125,6 +135,7 @@ mq_pipe_put (MessageQueuePipe *queue, LineBuffer* lineBuffer)
 							lineBuffer->data);
 		return -1;
 	}
+
 	return num;
 }
 
@@ -178,9 +189,9 @@ mq_pipe_poll (MessageQueuePipe *queue)
 	num = readn(queue->fd[0], (void*)&lineBuffer, sizeof(LineBuffer*));
 	pthread_mutex_unlock(&queue->read_queue_mutex);
 	if( num > 0 && num != sizeof(LineBuffer*))
-	{	
+	{
 		/* read failed ,some can't read */
-		return NULL;	
+		return NULL;
 	}
 	if (num < 0)
 	{
@@ -194,12 +205,14 @@ mq_pipe_poll (MessageQueuePipe *queue)
 void
 mq_pipe_destory(MessageQueuePipe *queue)
 {
-	Assert(NULL != queue);
+	Assert(queue != NULL);
+
 	close(queue->fd[0]);
 	close(queue->fd[1]);
-	pfree(queue->name);
+
+	pg_free(queue->name);
 	queue->name = NULL;
-	pfree(queue);
-	queue = NULL;
+
+	return;
 }
 

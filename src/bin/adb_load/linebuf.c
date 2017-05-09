@@ -70,7 +70,7 @@ LineBuffer* get_linebuf(void)
 		node = dlist_pop_head_node(&buf_head);
 		pthread_mutex_unlock(&buf_mutex);
 		buf = dlist_container(LineBuffer, dnode, node);
-		memset(buf->data, '\0', DEFAULT_BUF_LEN);
+		memset(buf->data, 0, DEFAULT_BUF_LEN);
 		buf->len = 0;		
 	}else
 	{

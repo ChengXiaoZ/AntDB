@@ -21,20 +21,19 @@ static char path[MAXPGPATH] = {0};
 FILE *err_data_fd = NULL;
 //static pthread_mutex_t write_file = PTHREAD_MUTEX_INITIALIZER;
 
-int fopen_error_file(char *writeErrorDataPath)
+int fopen_error_file(char *adb_load_error_path)
 {
 
-
-	if (writeErrorDataPath == NULL)
+	if (adb_load_error_path == NULL)
 	{
-		snprintf(path, sizeof(path), "./adbloader_error_data.txt");
+		snprintf(path, sizeof(path), "./adb_load_error_data.txt");
 	}
 	else
 	{
-		if (writeErrorDataPath[strlen(writeErrorDataPath) - 1] == '/')
-			snprintf(path, sizeof(path), "%s%s", writeErrorDataPath, "adbloader_error_data.txt");
+		if (adb_load_error_path[strlen(adb_load_error_path) - 1] == '/')
+			snprintf(path, sizeof(path), "%s%s", adb_load_error_path, "adb_load_error_data.txt");
 		else
-			snprintf(path, sizeof(path), "%s/%s", writeErrorDataPath, "adbloader_error_data.txt");
+			snprintf(path, sizeof(path), "%s/%s", adb_load_error_path, "adb_load_error_data.txt");
 	}
 
 	if ((err_data_fd = fopen(path, "a")) == NULL)

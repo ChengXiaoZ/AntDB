@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 
  	adbLoader_log_init(NULL, LOG_INFO);
 	fopen_error_file(NULL);
-	InitDispatch(dispatch, TABLE_REPLICATION);
+	init_dispatch_threads(dispatch, TABLE_REPLICATION);
 
 	buf1 = get_linebuf();
 	buf2 = get_linebuf();

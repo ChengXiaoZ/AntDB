@@ -3,7 +3,6 @@
 
 FILE *fp_hash_error;
 
-
 typedef struct NodeInfo
 {
 	Oid   node_oid;
@@ -14,24 +13,15 @@ typedef struct NodeInfo
 	char *database_name;
 	char *connection;
 } NodeInfoData;
-/*
-typedef struct DataNodeInfo
-{
-	Oid   node_oid;
-	char *node_name;
-	char *node_host;
-	char *node_port;
-	char *user_name;
-	char *database_name
-	char *connection;
-} DataNodeInfo;
-*/
+
 typedef NodeInfoData ServerNodeInfo;
+
 typedef struct HashConfig
 {
-	int  hash_thread_num;
-	char *test_delim;
+	int   hash_thread_num;
+	char *text_delim;
 	char *hash_delim;
+    bool  copy_header;
 	char *copy_quotec;
 	char *copy_escapec;
 	char *copy_option;
@@ -54,7 +44,7 @@ typedef struct ModuleErrFile
 typedef struct UserFuncInfo
 {
 	char *creat_func_sql;
-	char *drop_frunc_sql;
+	char *drop_func_sql;
 	char *func_name;
 	int   func_args_count;
 	Oid  *func_args_type;
@@ -81,21 +71,33 @@ typedef struct ADBLoadSetting
 	bool  single_file;
 	bool  process_bar;
 	bool  config_datanodes_valid;
+	int   threads_num_per_datanode;
+	int   hash_thread_num;
+	int   read_file_buffer;
 
-	NodeInfoData	*server_info;
+	NodeInfoData    *server_info;
 	NodeInfoData    *agtm_info;	
 	NodeInfoData    *coordinator_info;
 
 	NodeInfoData    **datanodes_info;
-	int   datanodes_num;
+	int               datanodes_num;
 
-	HashConfig *hash_config;
-	LogField *log_field;
+	HashConfig      *hash_config;
+	LogField        *log_field;
+
+	int             *redo_queue_index;
+	int              redo_queue_total;
+	bool             redo_queue;
+
+    char            *filter_queue_file_path;
+    bool             filter_queue_file;
+
+    char            *error_data_file_path;
 } ADBLoadSetting;
 
-extern ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv,  ADBLoadSetting *setting);
-extern void free_adb_load_setting(ADBLoadSetting *setting);
-extern void free_NodeInfoData(NodeInfoData *pt);
+extern ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv);
+extern void pg_free_adb_load_setting(ADBLoadSetting *setting);
+extern void pg_free_NodeInfoData(NodeInfoData *pt);
 extern void get_node_conn_info(ADBLoadSetting *setting);
 extern void get_settings_by_config_file(ADBLoadSetting *setting);
 extern void check_node_connection_valid(const char *host_ip, const char *host_port, const char *connection_str);

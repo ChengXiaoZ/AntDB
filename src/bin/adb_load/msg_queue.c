@@ -31,7 +31,7 @@ mq_full (MessageQueue *queue)
 void
 mq_init (MessageQueue *queue, int max_size, char *name)
 {
-	Assert(queue != NULL && NULL != name);
+	Assert(queue != NULL && name != NULL);
 	if(pthread_mutex_init(&queue->queue_mutex, NULL) != 0 ||
 		pthread_mutex_init(&queue->product_mtx, NULL) != 0)
 	{
@@ -184,7 +184,7 @@ mq_destory (MessageQueue *queue)
 		QueueElement *element;
 		node = dlist_pop_head_node(&queue->queue_head);
 		element = dlist_container(QueueElement, node, node);
-		if (NULL != element->lineBuffer)
+		if (element->lineBuffer != NULL)
 			release_linebuf(element->lineBuffer);
 		element->lineBuffer = NULL;
 		pfree(element);

@@ -16,11 +16,11 @@ typedef struct PropertieNode {
 
 typedef struct PROPS_HANDLE {
     PropertieNode *pHead;  /* attribute head point */
-    char *filepath;		   /* config file path */
+    char *filepath;        /* config file path */
 } PROPS_HANDLE;
 
 static PropertieNode *create_props_node (void);
-static void			  clean_props_node(PropertieNode *node);
+static void clean_props_node(PropertieNode *node);
 /* wipe off space and \t \r from line*/
 static void trime_symbol_copy (const char *src, char **dest);
 static int saveConfig(const char *filepath);
@@ -32,16 +32,17 @@ InitConfig (const char *filepath)
 {
 	int ret = 0;
 	FILE *fp = NULL;
-	PropertieNode *pHead = NULL, *pCurrent = NULL;
+	PropertieNode *pHead = NULL;
+	PropertieNode *pCurrent = NULL;
 
-	char line[LINE_BUF_SIZE];	/*cache every line data */
-	char keybuff[KEY_SIZE] = { 0 };         /* cache key data */
+	char line[LINE_BUF_SIZE];    /*cache every line data */
+	char keybuff[KEY_SIZE] = {0};/* cache key data */
 	char *pLine = NULL;
-	PropertieNode	*node;
+	PropertieNode *node;
 
-	Assert(NULL != filepath);
+	Assert(filepath != NULL);
 	Properties = (PROPS_HANDLE *)palloc0(sizeof(PROPS_HANDLE));
-	if (NULL == Properties)
+	if (Properties == NULL)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[CONFIG][thread main ] palloc0 memory to PROPS_HANDLE failed");
 		exit(1);
@@ -54,7 +55,7 @@ InitConfig (const char *filepath)
 	fp = fopen(filepath, "r");
 	if (!fp) 
 	{
-	    ADBLOADER_LOG(LOG_ERROR, "[CONFIG][thread main ] open file failed, filepath : %s",filepath);
+		ADBLOADER_LOG(LOG_ERROR, "[CONFIG][thread main ] open file failed, filepath : %s",filepath);
 		exit(1);
 	} 
 	pHead = create_props_node();
@@ -73,8 +74,8 @@ InitConfig (const char *filepath)
 
 		 /* find "=" */
 		if ((pLine = strstr(line, "=")) == NULL) 
-		   /* if "=" unexist continue next line */
-		    continue;
+			/* if "=" unexist continue next line */
+			continue;
 
 		node = create_props_node();
 
@@ -94,7 +95,7 @@ InitConfig (const char *filepath)
 		memset(keybuff, 0, KEY_SIZE);
 	}
 	/* close file */
-	fclose(fp);     
+	fclose(fp);
 	return ret;
 }
 
@@ -113,7 +114,6 @@ GetConfValue (const char *key)
 	}
 	if (pCurrent == NULL)
 	{
-		ADBLOADER_LOG(LOG_ERROR, "[CONFIG][thread main ] can't find config key :%s", key);
 		return NULL;
 	}
 	return pCurrent->value;
@@ -154,7 +154,7 @@ SetValue(const char *key, const char *value)
 	PROPS_HANDLE *ph = NULL;
 	PropertieNode *pCurrent = NULL;
 
-	Assert(NULL != key && NULL != value);
+	Assert(key != NULL && value != NULL);
 	ph = Properties;
 	pCurrent = ph->pHead->pNext;
 	while (pCurrent != NULL)
@@ -192,10 +192,10 @@ create_props_node (void)
 void 
 clean_props_node(PropertieNode *node)
 {
-	Assert(NULL != node);
-	if (NULL != node->key)
+	Assert(node != NULL);
+	if (node->key != NULL)
 		pfree(node->key);
-	if (NULL != node->value)
+	if (node->value != NULL)
 		pfree(node->value);
 
 	node->key = NULL;
@@ -207,10 +207,10 @@ clean_props_node(PropertieNode *node)
 int
 saveConfig(const char *filepath)
 {
-	int	 writeLen = 0;
+	int writeLen = 0;
 	FILE *fp = NULL;
 	PropertieNode *pCurrent = NULL;
-	Assert(NULL != filepath);
+	Assert(filepath != NULL);
 
 	fp = fopen(filepath,"w");
 	if (NULL == fp)
@@ -219,7 +219,7 @@ saveConfig(const char *filepath)
 		return -1;
 	}
 	pCurrent = Properties->pHead->pNext;
-	while (NULL != pCurrent)
+	while (pCurrent != NULL)
 	{
 		writeLen = fprintf(fp, "%s=%s", pCurrent->key, pCurrent->value);
 		if (writeLen < 0)
@@ -237,17 +237,19 @@ saveConfig(const char *filepath)
 void 
 trime_symbol_copy (const char *src, char **dest)
 {
-    const char *psrc = src;
-    unsigned long i = 0,j = strlen(psrc) - 1,len;
+	const char *psrc = src;
+	unsigned long i = 0,j = strlen(psrc) - 1,len;
 
-	Assert(NULL != src && NULL != dest);
-    while (psrc[i] == ' '){
-        i++;
-    }
+	Assert(src != NULL && dest != NULL);
+	while (psrc[i] == ' ')
+	{
+		i++;
+	}
 
-    while (psrc[j] == ' ' || psrc[j] == '\t' || psrc[j] == '\r') {
-        j--;
-    }
+	while (psrc[j] == ' ' || psrc[j] == '\t' || psrc[j] == '\r') 
+	{
+		j--;
+	}
  
 	if (psrc[i] == '\"' && psrc[j] == '\"' && i != j)
 	{
@@ -255,28 +257,28 @@ trime_symbol_copy (const char *src, char **dest)
 		j--;
 	}
 
-	len = j - i + 1;	
-    *dest = (char*)palloc0(len + 1);
-    memcpy(*dest, psrc+i, len);	
-    *(*dest+len) = '\0';   
+	len = j - i + 1;
+	*dest = (char*)palloc0(len + 1);
+	memcpy(*dest, psrc+i, len);	
+	*(*dest+len) = '\0';   
 }
 
 int 
 PropsDel(const char *key)
 {
 	PROPS_HANDLE *ph = NULL;
-    PropertieNode *pCurrent = NULL, *pPrev = NULL;
-	Assert(NULL != key);
+	PropertieNode *pCurrent = NULL, *pPrev = NULL;
+	Assert(key != NULL);
 	ph = Properties;
 	pPrev = ph->pHead;
-    pCurrent = ph->pHead->pNext;
+	pCurrent = ph->pHead->pNext;
 
-    while (pCurrent != NULL) 
+	while (pCurrent != NULL) 
 	{
-	    if (strcmp(pCurrent->key, key) == 0)
-	        break;
-	    pPrev = pCurrent;
-	    pCurrent = pCurrent->pNext;
+		if (strcmp(pCurrent->key, key) == 0)
+			break;
+		pPrev = pCurrent;
+		pCurrent = pCurrent->pNext;
 	}
 	if (pCurrent == NULL)
 		return -1;
@@ -287,12 +289,12 @@ PropsDel(const char *key)
 	return (saveConfig(Properties->filepath));
 }
 
-int	
+int
 PropsAdd(const char *key, const char *value)
 {
 	PROPS_HANDLE *ph = NULL;
-    PropertieNode *pCurrent = NULL;
-	Assert(NULL != key && NULL != value);
+	PropertieNode *pCurrent = NULL;
+	Assert(key != NULL && value != NULL);
 	ph = Properties;
 	pCurrent = ph->pHead;
 	while (pCurrent->pNext != NULL)
@@ -319,25 +321,25 @@ PropsRelease(void)
 	{
 		if (pCurr->key != NULL)
 		{
-            pfree(pCurr->key);
-            pCurr->key = NULL;
-        }
+			pfree(pCurr->key);
+			pCurr->key = NULL;
+		}
 
 		if (pCurr->value != NULL)
 		{
-            pfree(pCurr->value);
-            pCurr->value = NULL;
-        }
+			pfree(pCurr->value);
+			pCurr->value = NULL;
+		}
 		pTemp = pCurr->pNext;
 		pfree(pCurr);
 		pCurr = pTemp;
 	}
 
 	if(ph->filepath != NULL)
-    {
-        pfree(ph->filepath);
-        ph->filepath = NULL;
-    }
+	{
+		pfree(ph->filepath);
+		ph->filepath = NULL;
+	}
 	pfree(ph);
 	return 0;
 }
@@ -358,7 +360,7 @@ PropsGetCount(void)
 	return count;
 }
 
-void 	
+void
 PrintConfig(void)
 {
 	PROPS_HANDLE *ph = NULL;

@@ -1,17 +1,18 @@
 #ifndef LINE_BUFFER_H_
 #define LINE_BUFFER_H_
 
+#include "postgres_fe.h"
 #include "lib/ilist.h"
 
 typedef struct LineBuffer
 {
-	char		   *data;
-	int				lineno;
-	int				fileline;
-	int				len;
-	int				maxlen;
-	dlist_node		dnode;
-	bool			marks[1];	/* (VARIABLE LENGTH) */
+	char            *data;
+	int             lineno;
+	int             fileline;
+	int             len;
+	int             maxlen;
+	dlist_node      dnode;
+	bool            marks[1]; /* (VARIABLE LENGTH) */
 }LineBuffer;
 
 LineBuffer* get_linebuf(void);

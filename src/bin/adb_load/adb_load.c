@@ -1,4 +1,3 @@
-#include "postgres_fe.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,9 +8,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <time.h>
 
+#include "postgres_fe.h"
 #include "catalog/pg_type.h"
-
 #include "compute_hash.h"
 #include "loadsetting.h"
 #include "linebuf.h"
@@ -32,34 +32,11 @@ typedef struct tables
 	struct TableInfo *info;
 }Tables;
 
-typedef enum DISTRIBUTE
-{
-	DISTRIBUTE_BY_REPLICATION,
-	DISTRIBUTE_BY_ROUNDROBIN,
-	DISTRIBUTE_BY_USERDEFINED,
-	DISTRIBUTE_BY_DEFAULT_HASH,
-	DISTRIBUTE_BY_DEFAULT_MODULO,
-	DISTRIBUTE_BY_ERROR
-} DISTRIBUTE;
-
 typedef struct FileLocation
 {
 	char * location;
 	slist_node next;
 } FileLocation;
-
-typedef struct TableInfo
-{
-	int           file_nums;        /*the num of files which own to one table */
-	char         *table_name;       /*the name of table*/
-	HashField   *table_attribute;  /*the attribute of table*/
-	DISTRIBUTE    distribute_type;
-	UserFuncInfo *funcinfo;
-	slist_head	   file_head;
-	NodeInfoData **use_datanodes;
-	int   		   use_datanodes_num; // use datanode num for special table
-	struct TableInfo *next;/* */
-} TableInfo;
 
 struct special_table
 {
@@ -80,10 +57,8 @@ static void get_conninfo_for_alldatanode(ADBLoadSetting *setting);
 static int  adbloader_cmp_nodes(const void *a, const void *b);
 static void get_table_attribute(ADBLoadSetting *setting, TableInfo *table_info);
 static void get_hash_field(const char *conninfo, TableInfo *table_info);
-// static void get_func_info(const char *conninfo, TableInfo *table_info);
 static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
-//static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo);
 static void get_create_and_drop_func_sql(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo);
 static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info);
 static void create_func_to_server(char *serverconninfo, char *creat_func_sql);
@@ -92,8 +67,12 @@ static void get_node_count_and_node_list(const char *conninfo, char *table_name,
 static void drop_func_to_server(char *serverconninfo, char *drop_func_sql);
 static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info);
 static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info);
+static void check_connect(ADBLoadSetting *setting, TableInfo *table_info_ptr);
+//static void check_get_enough_connect_num(TableInfo *table_info_ptr);
+static int get_max_connect(NodeInfoData *use_datanodes);
+static void check_max_connections(int threads_num_per_datanode, NodeInfoData *node_info);
+static void check_queue_num_valid(ADBLoadSetting *setting, TableInfo *table_info);
 
-//static bool file_exists(char *file);
 static bool is_create_in_adb_cluster(char *table_name);
 static Tables* get_file_info(char *input_dir);
 static bool update_file_info(char *input_dir, Tables *tables);
@@ -104,6 +83,10 @@ static void rename_file_suffix(char *old_file_path, char *suffix);
 static char *get_full_path(char *file_name, char *input_dir);
 static char *get_table_name(char *file_name);
 static bool is_suffix(char *str, char *suffix);
+
+static void send_data_to_datanode(DISTRIBUTE distribute_by,
+                                ADBLoadSetting *setting,
+                                TableInfo *table_info_ptr);
 
 static bool do_replaciate_roundrobin(char *filepath, TableInfo *table_info);
 static void clean_replaciate_roundrobin(void);
@@ -117,27 +100,17 @@ static void exit_nicely(PGconn *conn);
 void file_name_print(char **file_list, int file_num);
 void tables_print(Tables *tables_ptr);
 
-//static Tables *read_table_info(char *fullpath);
-//static Tables *get_tables(char **file_name_list, char **file_path_list, int file_num);
-//static TableInfo *get_table_info(char**file_name_list, int file_num);
-//static void get_special_table_by_sql(void);
-//static struct special_table *add_special_table(struct special_table *table_list, char *table_name);
-//static int has_special_file(char **file_name_list, int file_nums);
-//static int is_special_table(char *table_name);
-//static int is_special_file_name(char *file_name);
-//static void str_list_sort(char **file_list, int file_num);
-//static int get_file_num(char *fullpath);
-//static int is_type_file(char *fullpath);
-//static int is_type_dir(char *fullpath);
 static void tables_list_free(Tables *tables);
 static void table_free(TableInfo *table_info);
 static void clean_hash_field (HashField *hash_field);
 static char * conver_type_to_fun (Oid type, DISTRIBUTE loactor);
 static void free_datanode_info (DatanodeInfo *datanode_info);
 static void free_dispatch_info (DispatchInfo *dispatch_info);
+static void free_hash_info(HashComputeInfo *hash_info);
+static void free_read_info(ReadInfo *read_info);
 static LOG_TYPE covert_loglevel_from_char_type (char *type);
-static char * covert_distribute_type_to_string (DISTRIBUTE type);
-static void main_write_error_message(char * message, char *start_cmd);
+static char *covert_distribute_type_to_string (DISTRIBUTE type);
+static void main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd);
 static int get_file_total_line_num (char *file_path);
 static void process_bar(int total, int send);
 static void process_bar_multi(int total, int * send , int num);
@@ -161,60 +134,86 @@ static void show_process(int total,	int datanodes, int * thread_send_total, DIST
 #define SUFFIX_ERROR   ".error"
 #define END_FILE_NAME  "adbload_end"
 
-static ADBLoadSetting *setting;
+#define CHECK_FILE_INFO_ALWAYS \
+do \
+{ \
+	for (;;) \
+	{ \
+		tables_ptr = get_file_info(setting->input_directory); \
+		if (tables_ptr->table_nums == 0 && tables_ptr->info == NULL) \
+		{ \
+			if (update_tables) \
+			{ \
+				sleep(2); \
+				continue; \
+			} \
+			else \
+			{ \
+			    break; \
+			} \
+		} \
+		else \
+		{ \
+			break; \
+		} \
+	} \
+} while (0)
+
+
+static ADBLoadSetting *setting = NULL;
 
 /*update dir for tables info */
-bool update_tables = true;
+static bool update_tables = true;
 
 void
 clean_hash_field (HashField *hash_field)
 {
-	if (NULL == hash_field)
+	if (hash_field == NULL)
 		return;
-	Assert(NULL != hash_field);
-	if (NULL != hash_field->field_loc)
-		pfree(hash_field->field_loc);
 
-	if (NULL != hash_field->field_type)
-		pfree(hash_field->field_type);
-
-	if (NULL != hash_field->node_list)
-		pfree(hash_field->node_list);
-
-	if (NULL != hash_field->delim)
-		pfree(hash_field->delim);
-
-	if (NULL != hash_field->copy_options)
-		pfree(hash_field->copy_options);
-
-	if (NULL != hash_field->hash_delim)
-		pfree(hash_field->hash_delim);
-
+	pg_free(hash_field->field_loc);
 	hash_field->field_loc = NULL;
+
+	pg_free(hash_field->field_type);
 	hash_field->field_type = NULL;
+
+	pg_free(hash_field->func_name);
+	hash_field->func_name = NULL;
+
+	pg_free(hash_field->node_list);
 	hash_field->node_list = NULL;
-	hash_field->delim = NULL;
+
+	pg_free(hash_field->text_delim);
+	hash_field->text_delim = NULL;
+
+	pg_free(hash_field->copy_options);
 	hash_field->copy_options = NULL;
+
+	pg_free(hash_field->hash_delim);
 	hash_field->hash_delim = NULL;
 
-	pfree(hash_field);
+	pg_free(hash_field);
 	hash_field = NULL;
+
+	return;
 }
 
 LOG_TYPE
 covert_loglevel_from_char_type (char *type)
 {
-	Assert(NULL != type);
-	if (strcmp(type, "DEBUG") == 0)
+	Assert(type != NULL);
+
+	if (strcasecmp(type, "DEBUG") == 0)
 		return LOG_DEBUG;
-	else if (strcmp(type, "INFO") == 0)
+	else if (strcasecmp(type, "INFO") == 0)
 		return LOG_INFO;
-	else if (strcmp(type, "WARN") == 0)
+	else if (strcasecmp(type, "WARNING") == 0)
 		return LOG_WARN;
-	else if (strcmp(type, "ERROR") == 0)
+	else if (strcasecmp(type, "ERROR") == 0)
 		return LOG_ERROR;
 	else
 		fprintf(stderr, "log leve error : %s \n", type);
+
 	return LOG_INFO;
 }
 
@@ -223,6 +222,7 @@ covert_distribute_type_to_string (DISTRIBUTE type)
 {
 	LineBuffer * buff = get_linebuf();
 	char *result;
+
 	switch(type)
 	{
 		case DISTRIBUTE_BY_REPLICATION:
@@ -240,32 +240,55 @@ covert_distribute_type_to_string (DISTRIBUTE type)
 		case DISTRIBUTE_BY_DEFAULT_MODULO:
 			appendLineBufInfoString(buff, "DISTRIBUTE_BY_DEFAULT_MODULO");
 			break;
-		default:			
-			break;		
+		default:
+			break;
 	}
+
 	result = pg_strdup(buff->data);
 	release_linebuf(buff);
+
 	return result;
 }
 
 int main(int argc, char **argv)
 {
 	Tables *tables_ptr = NULL;
-	TableInfo    *table_info_ptr = NULL;
+	TableInfo *table_info_ptr = NULL;
 	int table_count = 0;
-	bool do_ok = false;
+
+	fprintf(stderr, "%s\n", get_current_time());
 
 	/* get cmdline param. */
-	setting = cmdline_adb_load_setting(argc, argv, setting);
+	setting = cmdline_adb_load_setting(argc, argv);
+	if (setting == NULL)
+	{
+		fprintf(stderr, "Error: Command-line processing error.\n");
+		exit(EXIT_FAILURE);
+	}
 
+	/* get var value from config file. */
 	get_settings_by_config_file(setting);
+
 	get_node_conn_info(setting);
 
-	/* open log file if not exist create. */
-	adbLoader_log_init(setting->log_field->log_path,
-					covert_loglevel_from_char_type(setting->log_field->log_level));
+	/*make sure threads_num_per_datanode < max_connect for agtm */
+	check_max_connections(setting->threads_num_per_datanode, setting->agtm_info);
 
-	setting->program = pg_strdup(argv[0]);
+	/*make sure threads_num_per_datanode < max_connect for coordinator */
+	check_max_connections(setting->threads_num_per_datanode, setting->coordinator_info);
+
+	/* open log file if not exist create. */
+	if (setting->output_directory != NULL)
+	{
+		adbLoader_log_init(setting->output_directory,
+			covert_loglevel_from_char_type(setting->log_field->log_level));
+		fopen_error_file(setting->output_directory);
+	}else if (setting->log_field->log_path != NULL)
+	{
+		adbLoader_log_init(setting->log_field->log_path,
+			covert_loglevel_from_char_type(setting->log_field->log_level));
+		fopen_error_file(setting->log_field->log_path);
+	}
 
 	if (setting->single_file)
 	{
@@ -276,8 +299,8 @@ int main(int argc, char **argv)
 		table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
 		if (!is_create_in_adb_cluster(setting->table_name))
 		{
-			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", setting->table_name);
-			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", setting->table_name);
+			fprintf(stderr, "Error: table \"%s\" does not exist in adb cluster. \n", setting->table_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] table \"%s\" does not exist in adb cluster. \n", setting->table_name);
 			exit(EXIT_FAILURE);
 		}
 
@@ -290,17 +313,29 @@ int main(int argc, char **argv)
 	else if (setting->static_mode || setting->dynamic_mode)
 	{
 		tables_ptr = get_file_info(setting->input_directory);
-		if (tables_ptr == NULL)
+
+		/*static mode : input_directory is empty */
+		if (setting->static_mode        &&
+			tables_ptr->table_nums == 0 &&
+			tables_ptr->info == NULL)
 		{
-			fprintf(stderr, "cannot get file information in \"%s\" \n", setting->input_directory);
+			fprintf(stderr, "Error: cannot get file information in \"%s\" \n", setting->input_directory);
 			exit(EXIT_FAILURE);
+		}
+
+		/*dynamic mode : input_directory is empty */
+		if (setting->dynamic_mode       && 
+			tables_ptr->table_nums == 0 &&
+			tables_ptr->info == NULL)
+		{
+			CHECK_FILE_INFO_ALWAYS;
 		}
 
 		table_info_ptr = tables_ptr->info;
 	}
 	else
 	{
-		fprintf(stderr, "mode is not recognized \n");
+		fprintf(stderr, "Error: unrecognized mode. \n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -313,13 +348,9 @@ int main(int argc, char **argv)
 	/* init linebuf */
 	init_linebuf(setting->datanodes_num);
 
-	/* open error file */
-	fopen_error_file(NULL);
-
+    
 	while(table_info_ptr)
 	{
-		LineBuffer *linebuff = NULL;
-		slist_mutable_iter siter;
 		++table_count;
 
 		if (setting->dynamic_mode)
@@ -339,11 +370,13 @@ int main(int argc, char **argv)
 					continue;
 				}
 				else
-					break;
+                {
+                    break;
+                }
 			}
 		}
 
-		/*get table info to store in the table_info_ptr*/
+		/* get table info to store in the table_info_ptr*/
 		get_table_attribute(setting, table_info_ptr);
 
 		if (setting->config_datanodes_valid)
@@ -351,122 +384,15 @@ int main(int argc, char **argv)
 		else
 			get_use_datanodes(setting, table_info_ptr);
 
-		switch(table_info_ptr->distribute_type)
-		{
-			case DISTRIBUTE_BY_REPLICATION:
-			case DISTRIBUTE_BY_ROUNDROBIN:
-			{
-				/*the table may be split to more than one*/
-				slist_foreach_modify (siter, &table_info_ptr->file_head) 
-				{
-					FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
-					Assert(NULL != file_location->location);
-					/* begin record error file */
-					linebuff = format_error_begin(file_location->location,
-										covert_distribute_type_to_string(table_info_ptr->distribute_type));
-					write_error(linebuff);
-					release_linebuf(linebuff);
-					fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n",
-						file_location->location);
+		/*check -Q valid*/
+		check_queue_num_valid(setting, table_info_ptr);
 
-					/* start module */
-					do_ok = do_replaciate_roundrobin(file_location->location, table_info_ptr);
-					/* stop module and clean resource */
-					clean_replaciate_roundrobin();
+        fopen_adb_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
 
-					/* end record error file */
-					linebuff = format_error_end(file_location->location);
-					write_error(linebuff);
-					release_linebuf(linebuff);
-					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
-						file_location->location);
-
-					//rename file name
-					if (setting->static_mode || setting->dynamic_mode)
-					{
-						if (do_ok)
-							rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
-						else
-							rename_file_suffix(file_location->location, SUFFIX_ERROR);
-					}
-
-					/* remove file from file list*/
-					slist_delete_current(&siter);
-					/* file num  subtract 1 */
-					table_info_ptr->file_nums--;
-
-					/* free location */
-					if (file_location->location)
-						pfree(file_location);
-					file_location = NULL;
-				}
-				break;
-			}
-			case DISTRIBUTE_BY_DEFAULT_HASH:
-			case DISTRIBUTE_BY_DEFAULT_MODULO:
-			case DISTRIBUTE_BY_USERDEFINED:
-			{
-				/*the table may be split to more than one*/
-				slist_foreach_modify (siter, &table_info_ptr->file_head) 
-				{
-					FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
-					Assert(NULL != file_location->location);
-					/* begin record error file */
-					linebuff = format_error_begin(file_location->location,
-										covert_distribute_type_to_string(table_info_ptr->distribute_type));
-					write_error(linebuff);
-					release_linebuf(linebuff);
-					fprintf(stderr, "-----------------------------------------begin file : %s ----------------------------------------------\n",
-						file_location->location);
-
-					/* start module */
-					do_ok = do_hash_module(file_location->location,table_info_ptr);
-					/* stop module and clean resource */
-					clean_hash_module();
-
-					/* end record error file */
-					linebuff = format_error_end(file_location->location);
-					write_error(linebuff);
-					release_linebuf(linebuff);
-					fprintf(stderr, "\n-----------------------------------------end file : %s ------------------------------------------------\n\n",
-						file_location->location);
-
-					//rename file name
-					if (setting->static_mode || setting->dynamic_mode)
-					{
-						if (do_ok)
-							rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
-						else
-							rename_file_suffix(file_location->location, SUFFIX_ERROR);
-					}
-
-					/* remove file from file list */
-					slist_delete_current(&siter);
-					/* file num  subtract 1 */
-					table_info_ptr->file_nums--;
-
-					/* free location */
-					if (file_location->location)
-						pfree(file_location);
-					file_location = NULL;
-				}
-				break;
-			}
-			default:
-			{
-				LineBuffer * error_buffer = NULL;
-				ADBLOADER_LOG(LOG_ERROR,"[main] unrecognized distribute by type: %d",
-						table_info_ptr->distribute_type);
-				error_buffer = format_error_info("table type error ,file need to redo",
-												MAIN,
-												NULL,
-												0,
-												NULL);
-				write_error(error_buffer);
-				release_linebuf(error_buffer);
-			}
-				break; 
-		}
+		send_data_to_datanode(table_info_ptr->distribute_type, setting, table_info_ptr);
+        
+        fclose_adb_load_error_data();
+        check_db_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
 
 		if (setting->dynamic_mode && update_tables)
 		{
@@ -477,22 +403,248 @@ int main(int argc, char **argv)
 			table_info_ptr = table_info_ptr->next;
 	}
 
-	fclose_error_file(); /* close error file */
+	fclose_error_file();
 
-	if(table_count != tables_ptr->table_nums) /*check again*/
+	if(table_count != tables_ptr->table_nums) /* check again */
 	{
+		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate: %d");
 		return 0;
 	}
-	tables_list_free(tables_ptr);
 
-	adbLoader_log_end(); /*close log file. */
-	free_adb_load_setting(setting);
-	end_linebuf();       /* end line buffer */
-	DestoryConfig();     /* destory config  */
+	tables_list_free(tables_ptr);
+	adbLoader_log_end(); 
+	pg_free_adb_load_setting(setting);
+	end_linebuf();
+	DestoryConfig();
+
+	fprintf(stderr, "%s\n", get_current_time());
+
 	return 0;
 }
 /*------------------------end main-------------------------------------------------------*/
+static void send_data_to_datanode(DISTRIBUTE distribute_by,
+                                ADBLoadSetting *setting,
+                                TableInfo *table_info_ptr)
+{
+	slist_mutable_iter siter;
+	LineBuffer *linebuff = NULL;
+	bool do_ok = false;
 
+	/* the table may be split to more than one*/
+	slist_foreach_modify (siter, &table_info_ptr->file_head) 
+	{
+		/* check connect to adb_load server, agtm, coordinator and all datanode. */
+		check_connect(setting, table_info_ptr);
+
+		/* make sure threads_num_per_datanode < max_connect */
+		//check_get_enough_connect_num(table_info_ptr);
+
+		FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
+		Assert(file_location->location != NULL);
+
+		/* begin record error file */
+		linebuff = format_error_begin(file_location->location,
+							covert_distribute_type_to_string(table_info_ptr->distribute_type));
+		write_error(linebuff);
+		release_linebuf(linebuff);
+		fprintf(stderr, "file : %s -------------> ", file_location->location);
+
+		switch (distribute_by)
+		{
+			case DISTRIBUTE_BY_REPLICATION:
+			case DISTRIBUTE_BY_ROUNDROBIN:
+				{
+					do_ok = do_replaciate_roundrobin(file_location->location, table_info_ptr);
+
+					/* stop module and clean resource */
+					clean_replaciate_roundrobin();
+					break;
+				}
+			case DISTRIBUTE_BY_DEFAULT_HASH:
+			case DISTRIBUTE_BY_DEFAULT_MODULO:
+			case DISTRIBUTE_BY_USERDEFINED:
+				{
+					do_ok = do_hash_module(file_location->location, table_info_ptr);
+
+					/* stop module and clean resource */
+					clean_hash_module();
+					break;
+				}
+			default:
+				break;
+		}
+
+		/* end record error file */
+		linebuff = format_error_end(file_location->location);
+		write_error(linebuff);
+		release_linebuf(linebuff);
+
+		if (do_ok)
+			fprintf(stderr, "success\n");
+		else
+			fprintf(stderr, "failed\n");
+
+		/* rename file name */
+		if (setting->static_mode || setting->dynamic_mode)
+		{
+			if (do_ok)
+				rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
+			else
+				rename_file_suffix(file_location->location, SUFFIX_ERROR);
+		}
+
+		/* remove file from file list */
+		slist_delete_current(&siter);
+
+		/* file num  subtract 1 */
+		table_info_ptr->file_nums--;
+
+		/* free location */
+		if (file_location->location)
+			pfree(file_location);
+		file_location = NULL;
+	}
+
+	return;
+}
+
+static void check_queue_num_valid(ADBLoadSetting *setting, TableInfo *table_info)
+{
+	int flag = 0;
+	int threads_total = 0;
+
+	threads_total = table_info->use_datanodes_num * table_info->threads_num_per_datanode;
+
+	for (flag = 0 ; flag < setting->redo_queue_total; flag++)
+	{
+		if (setting->redo_queue_index[flag] <= 0 || setting->redo_queue_index[flag] >= threads_total)
+		{
+			fprintf(stderr, "Error: value for option \"-Q\" is invalid, must be between 0 and THREADS_NUM_PER_DATANODE * DATANODE NUMBER -1.\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	return;
+}
+
+static void check_max_connections(int threads_num_per_datanode, NodeInfoData *node_info)
+{
+	int max_connect = 0;
+
+	Assert(setting != NULL);
+
+	max_connect = get_max_connect(node_info);
+	if (threads_num_per_datanode >= max_connect)
+	{
+		fprintf(stderr, "Error: \"THREADS_NUM_PER_DATANODE\"(%d) should be "
+						"less than max_connect(%d) for %s:%s.\n",
+						threads_num_per_datanode,
+						max_connect,
+						node_info->node_host,
+						node_info->node_port);
+		exit(EXIT_FAILURE);
+	}
+
+	return ;
+}
+
+#if 0
+static void check_get_enough_connect_num(TableInfo *table_info_ptr)
+{
+	int i = 0;
+	int max_connect = 0;
+
+	Assert(table_info_ptr != NULL);
+
+	for (i = 0; i < table_info_ptr->use_datanodes_num; i++)
+	{
+		max_connect = get_max_connect(table_info_ptr->use_datanodes[i]);
+		if (table_info_ptr->threads_num_per_datanode >= max_connect)
+		{
+			fprintf(stderr, "\"THREADS_NUM_PER_DATANODE\"(%d) should be less than max_connect(%d) for %s.\n",
+							table_info_ptr->threads_num_per_datanode,
+							max_connect,
+							table_info_ptr->use_datanodes[i]->node_name);
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	return;
+}
+#endif
+
+static int get_max_connect(NodeInfoData *node_info)
+{
+	char      query[QUERY_MAXLEN] = {0};
+	PGconn   *conn = NULL;
+	PGresult *res = NULL;
+	int       max_connect = 0;
+
+	conn = PQconnectdb(node_info->connection);
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		fprintf(stderr, "Connection to datanode failed:%s \n", PQerrorMessage(conn));
+		exit_nicely(conn);
+	}
+
+	sprintf(query, "select setting "
+					"from pg_settings "
+					"where name = \'max_connections\';");
+
+	res = PQexec(conn, query);
+	if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
+	{
+		fprintf(stderr, "Connection to datanode failed:%s \n", PQerrorMessage(conn));
+		PQclear(res);
+		exit_nicely(conn);
+	}
+
+	if (PQntuples(res) != 1)
+	{
+		PQclear(res);
+		exit_nicely(conn);
+	}
+
+	max_connect = atoi(PQgetvalue(res, 0, PQfnumber(res, "setting")));
+
+	PQclear(res);
+	PQfinish(conn);
+
+	return max_connect;
+}
+
+static void check_connect(ADBLoadSetting *setting, TableInfo *table_info_ptr)
+{
+	int i = 0;
+
+	Assert(setting != NULL);
+	Assert(table_info_ptr);
+
+	/* check adb_load server can connect.*/
+	check_node_connection_valid(setting->server_info->node_host,
+								setting->server_info->node_port,
+								setting->server_info->connection);
+
+	/* check ADB agtm can connect. */
+	check_node_connection_valid(setting->agtm_info->node_host,
+								setting->agtm_info->node_port,
+								setting->agtm_info->connection);
+
+	/* check ADB coordinator can connect. */
+	check_node_connection_valid(setting->coordinator_info->node_host,
+								setting->coordinator_info->node_port,
+								setting->coordinator_info->connection);
+
+	/* check all use datanode can connect. */
+	for (i = 0; i < table_info_ptr->use_datanodes_num; i++)
+	{
+		check_node_connection_valid(table_info_ptr->use_datanodes[i]->node_host,
+									table_info_ptr->use_datanodes[i]->node_port,
+									table_info_ptr->use_datanodes[i]->connection); 
+	}
+
+	return ;
+}
 
 static bool update_file_info(char *input_dir, Tables *tables)
 {
@@ -515,12 +667,12 @@ static bool update_file_info(char *input_dir, Tables *tables)
 
 	while ((dirent_ptr = readdir(dir)) != NULL)
 	{
-		if(strcmp(dirent_ptr->d_name, ".") == 0          ||
-		   strcmp(dirent_ptr->d_name, "..") == 0         ||
-		   is_suffix(dirent_ptr->d_name, SUFFIX_ADBLOAD) ||
-		   is_suffix(dirent_ptr->d_name, SUFFIX_DOING)   ||
-		   is_suffix(dirent_ptr->d_name, SUFFIX_ERROR)   ||
-		   is_suffix(dirent_ptr->d_name, SUFFIX_SCAN))
+		if (strcmp(dirent_ptr->d_name, ".") == 0          ||
+			strcmp(dirent_ptr->d_name, "..") == 0         ||
+			is_suffix(dirent_ptr->d_name, SUFFIX_ADBLOAD) ||
+			is_suffix(dirent_ptr->d_name, SUFFIX_DOING)   ||
+			is_suffix(dirent_ptr->d_name, SUFFIX_ERROR)   ||
+			is_suffix(dirent_ptr->d_name, SUFFIX_SCAN))
 			continue;
 
 		if (strcmp(dirent_ptr->d_name, END_FILE_NAME) == 0)
@@ -539,8 +691,8 @@ static bool update_file_info(char *input_dir, Tables *tables)
 		table_name  = get_table_name(dirent_ptr->d_name);
 		if (!is_create_in_adb_cluster(table_name))
 		{
-			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", table_name);
-			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", table_name);
+			fprintf(stderr, "Error: table \"%s\" does not exist in adb cluster.\n", table_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] table \"%s\" does not exist in adb cluster.\n", table_name);
 
 			new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir, SUFFIX_ERROR);
 			if (new_file_name != NULL)
@@ -606,12 +758,12 @@ static Tables* get_file_info(char *input_dir)
 {
 	Tables * tables_dynamic = NULL;
 	TableInfo * table_info_dynamic = NULL;
-	DIR *dir;
-	struct dirent *dirent_ptr;
+	DIR *dir = NULL;
+	struct dirent *dirent_ptr = NULL;
 	char *new_file_name = NULL;
 	char *table_name = NULL;
 	char *file_full_path = NULL;
-	FileLocation * file_location;
+	FileLocation * file_location = NULL;
 	TableInfo *ptr = NULL;
 	TableInfo *tail = NULL;
 
@@ -627,7 +779,10 @@ static Tables* get_file_info(char *input_dir)
 
 	while ((dirent_ptr = readdir(dir)) != NULL)
 	{
-		if(strcmp(dirent_ptr->d_name, ".") == 0 || strcmp(dirent_ptr->d_name, "..") == 0)
+		if(strcmp(dirent_ptr->d_name, ".") == 0           ||
+			strcmp(dirent_ptr->d_name, "..") == 0         ||
+			is_suffix(dirent_ptr->d_name, SUFFIX_ERROR)   ||
+			is_suffix(dirent_ptr->d_name, SUFFIX_ADBLOAD))
 			continue;
 
 		if (setting->dynamic_mode)
@@ -653,8 +808,8 @@ static Tables* get_file_info(char *input_dir)
 		table_name = get_table_name(dirent_ptr->d_name);
 		if (!is_create_in_adb_cluster(table_name))
 		{
-			fprintf(stderr, "No create table \"%s\" in adb cluster. \n", table_name);
-			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] No create table \"%s\" in adb cluster. \n", table_name);
+			fprintf(stderr, "Error: table \"%s\" does not exist in adb cluster.\n", table_name);
+			ADBLOADER_LOG(LOG_ERROR, "[main][thread main ] table \"%s\" does not exist in adb cluster.\n", table_name);
 
 			new_file_name  = rename_file_name(dirent_ptr->d_name, input_dir, SUFFIX_ERROR);
 			if (new_file_name != NULL)
@@ -750,7 +905,6 @@ static bool is_create_in_adb_cluster(char *table_name)
 	PQclear(res);
 	PQfinish(conn);
 
-
 	if (numtuples == 1) //create table in adb cluster
 		return true;
 	else                // no create table in adb cluster
@@ -813,6 +967,8 @@ static void rename_file_suffix(char *old_file_path, char *suffix)
 		fprintf(stderr, "could not rename file \"%s\" to \"%s\" : %s \n", 
 				old_file_path, new_file_path, strerror(errno));
 	}
+
+	return;
 }
 
 static char *get_full_path(char *file_name, char *input_dir)
@@ -834,10 +990,10 @@ static bool is_suffix(char *str, char *suffix)
 {
 	char *ptr = NULL;
 
+	Assert(str != NULL);
 	ptr = strrchr(str, '.');
 	if (ptr == NULL)
 	{
-		//fprintf(stderr, "The character \"%c\" was not found in \"%s\". \n", '.', str);
 		return false;
 	}
 
@@ -852,12 +1008,14 @@ get_outqueue_name (int datanode_num)
 {
 	char *name = NULL;
 	LineBuffer * lineBuffer;
+
 	lineBuffer = get_linebuf();
-	appendLineBufInfoString(lineBuffer, "datanode");
-	appendLineBufInfo(lineBuffer, "%d", datanode_num);
+	appendLineBufInfo(lineBuffer, "queue%d", datanode_num);
+
 	name = (char*)palloc0(lineBuffer->len + 1);
 	memcpy(name, lineBuffer->data, lineBuffer->len);
 	name[lineBuffer->len] = '\0';
+
 	release_linebuf(lineBuffer);
 	return name;
 }
@@ -865,86 +1023,130 @@ get_outqueue_name (int datanode_num)
 static bool
 do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 {
-	MessageQueuePipe 	 **output_queue;
-	DispatchInfo 		  *dispatch = NULL;
-	DatanodeInfo		  *datanode_info = NULL;
-	char 				  *queue_name;
-	int					   flag;
-	int					   res;
-	int					   file_total_line = 0;
-	bool				   read_finish = false;
-	bool				   dispatch_finish = false;
-	bool				   dispatch_failed = false;
-	bool				   do_sucess = true;
-	char				  *start = NULL;
-	int					  *thread_send_total;
+	MessageQueuePipe     **output_queue = NULL;
+	DispatchInfo          *dispatch = NULL;
+	ReadInfo              *read_info = NULL;
+	DatanodeInfo          *datanode_info = NULL;
+	char                  *queue_name = NULL;
+	int                    res;
+	int                    file_total_line = 0;
+	bool                   read_finish = false;
+	bool                   dispatch_finish = false;
+	bool                   do_success = true;
+	bool                   need_redo = false;
+	char                  *start = NULL;
+	int                   *thread_send_total;
+	int                    output_queue_total;
+	int                    i = 0;
+	LineBuffer            *linebuf = NULL;
 
-	Assert(NULL != filepath && NULL != table_info);
+	Assert(filepath != NULL);
+	Assert(table_info != NULL);
 
 	if (setting->process_bar)
 	{
 		file_total_line = get_file_total_line_num(filepath);
 		thread_send_total = palloc0(sizeof(int) * table_info->use_datanodes_num);
 	}
-		
-	start = create_start_command(setting->program, filepath, (char*)table_info->table_name,
-		setting->config_file_path, setting->database_name, setting->user_name, setting->password);
-	if (!start)
+
+	if (!is_create_in_adb_cluster(table_info->table_name))
 	{
-		main_write_error_message("creat start cmd error", NULL);
-		exit(1);
+		char error_str[1024] = {0};
+		sprintf(error_str, "Error: table \"%s\" does not exist in adb cluster." , table_info->table_name);
+		main_write_error_message(table_info->distribute_type, error_str, NULL);
+
+		do_success = false;
+		return do_success;
 	}
-	output_queue = (MessageQueuePipe**)palloc0(sizeof(MessageQueuePipe*) * table_info->use_datanodes_num);
+
+	start = create_start_command(filepath, setting, table_info);
+	if (start == NULL)
+	{
+		main_write_error_message(table_info->distribute_type, "create start cmd error", NULL);
+		exit(EXIT_FAILURE);
+	}
+
+	/*get datanode info from table_info struct*/
 	datanode_info = (DatanodeInfo*)palloc0(sizeof(DatanodeInfo));
 	datanode_info->node_nums = table_info->use_datanodes_num;
 	datanode_info->datanode = (Oid *)palloc0(sizeof(Oid) * table_info->use_datanodes_num);
 	datanode_info->conninfo = (char **)palloc0(sizeof(char *) * table_info->use_datanodes_num);
-	for (flag = 0; flag < table_info->use_datanodes_num; flag++)
+	for (i = 0; i < table_info->use_datanodes_num; i++)
 	{
-		datanode_info->datanode[flag] = table_info->use_datanodes[flag]->node_oid;
-		datanode_info->conninfo[flag] = pg_strdup(table_info->use_datanodes[flag]->connection);
+		datanode_info->datanode[i] = table_info->use_datanodes[i]->node_oid;
+		datanode_info->conninfo[i] = pg_strdup(table_info->use_datanodes[i]->connection);
+	}
 
-		output_queue[flag] =  (MessageQueuePipe*)palloc0(sizeof(MessageQueuePipe));
-		output_queue[flag]->write_lock = false;
-		queue_name = get_outqueue_name(flag);
-		mq_pipe_init(output_queue[flag], queue_name);
+	/*get dispatch info. */
+	dispatch = (DispatchInfo *)palloc0(sizeof(DispatchInfo));
+	dispatch->datanodes_num = table_info->use_datanodes_num;
+	dispatch->threads_num_per_datanode = table_info->threads_num_per_datanode;
+	output_queue_total = dispatch->datanodes_num * dispatch->threads_num_per_datanode;
+
+	output_queue = (MessageQueuePipe**)palloc0(sizeof(MessageQueuePipe*) * output_queue_total);
+	for (i = 0; i < output_queue_total; i++)
+	{
+		output_queue[i] =  (MessageQueuePipe*)palloc0(sizeof(MessageQueuePipe));
+
+		output_queue[i]->write_lock = false;
+		queue_name = get_outqueue_name(i);
+		mq_pipe_init(output_queue[i], queue_name);
+
 		pfree(queue_name);
 		queue_name = NULL;
 	}
 
-	dispatch = (DispatchInfo *)palloc0(sizeof(DispatchInfo));
-	dispatch->conninfo_agtm = pg_strdup(setting->agtm_info->connection);
-	dispatch->thread_nums = table_info->use_datanodes_num;
 	dispatch->output_queue = output_queue;
+	dispatch->conninfo_agtm = pg_strdup(setting->agtm_info->connection);
 	dispatch->datanode_info = datanode_info;
 	dispatch->table_name = pg_strdup(table_info->table_name);
-	if (NULL != setting->hash_config->copy_option)		
-		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
-	dispatch->process_bar = setting->process_bar;
-	SetDispatchFileStartCmd(start);
-	/* start dispatch module  */
-	if ((res = InitDispatch(dispatch, TABLE_REPLICATION)) != DISPATCH_OK)
+
+	if (setting->hash_config->copy_option != NULL)
 	{
-		ADBLOADER_LOG(LOG_ERROR,"start dispatch module failed");
-		main_write_error_message("start dispatch module failed", start);
-		exit(1);
+		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
+	}
+
+	dispatch->process_bar = setting->process_bar;
+	
+	SetDispatchFileStartCmd(start);
+
+	/* start dispatch module  */
+	if ((res = init_dispatch_threads(dispatch, TABLE_REPLICATION)) != DISPATCH_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR, "start dispatch module failed");
+		main_write_error_message(table_info->distribute_type, "start dispatch module failed", start);
+		exit(EXIT_FAILURE);
 	}
 
 	/* start read_producer module last */
-	if ( (res = InitReadProducer(filepath, NULL, output_queue,
-										table_info->use_datanodes_num, true, 0, start)) != READ_PRODUCER_OK)
+	read_info = (ReadInfo *)palloc0(sizeof(ReadInfo));
+	read_info->filepath = pg_strdup(filepath);
+	read_info->input_queue = NULL;
+	read_info->output_queue = output_queue;
+	read_info->output_queue_num = output_queue_total;
+	read_info->datanodes_num = table_info->use_datanodes_num;
+	read_info->threads_num_per_datanode = setting->threads_num_per_datanode;
+	read_info->replication = true;
+	read_info->end_flag_num = 0;
+	read_info->start_cmd = start;
+	read_info->read_file_buffer = setting->read_file_buffer;
+	read_info->redo_queue_index = setting->redo_queue_index;
+	read_info->redo_queue_total = setting->redo_queue_total;
+	read_info->redo_queue = setting->redo_queue;
+
+	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"start read_producer module failed");
-		main_write_error_message("start read_producer module failed", start);
-		exit(1);
+		main_write_error_message(table_info->distribute_type, "start read_producer module failed", start);
+		exit(EXIT_FAILURE);
 	}
 
-	/* check module state every 10s */
+	/* check module state every 1s */
 	for (;;)
 	{
-		ReadProducerState  state;
-		DispatchThreads *dispatch_exit = NULL;
-		int              flag;
+		ReadProducerState  state = READ_PRODUCER_PROCESS_DEFAULT;
+		DispatchThreads   *dispatch_exit = NULL;
+		int                i = 0;
 
 		if (setting->process_bar)
 		{
@@ -961,125 +1163,132 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 			break;
 		}
 
+		/*read data file have some error*/
 		if (!read_finish)
 		{
 			state = GetReadModule();
 			if (state == READ_PRODUCER_PROCESS_ERROR)
 			{
-				SetReadProducerExit();
+				set_read_producer_exit();
 				/* read module error, stop dispatch */
-				StopDispatch();
+				stop_dispatch();
 				read_finish = true;
 				dispatch_finish = true;
-				do_sucess = false;
+				do_success = false;
+
+				/* need redo for all threads */
+				ADBLOADER_LOG(LOG_ERROR,"read data file module failed");
+				main_write_error_message(table_info->distribute_type, "read data file module failed", start);
+
 				break;
 			}
 			else if (state == READ_PRODUCER_PROCESS_COMPLETE)
+			{
 				read_finish = true;
-		}		
-		
-		/* if read module state is ok, check dispatch state */
-		dispatch_exit = GetDispatchExitThreads();
-		if (dispatch_exit->send_thread_cur == 0)
+			}
+
+		}
+
+		dispatch_exit = get_dispatch_exit_threads();
+		if (dispatch_exit->send_thread_cur != dispatch_exit->send_thread_count)
 		{
 			sleep(1);
 			continue;
 		}
 		else
 		{
-			/* all threads exited ? */
-			if (dispatch_exit->send_thread_cur == dispatch_exit->send_thread_count)
-			{
-				int i;
-				bool all_error = true;
-				for (i = 0; i < dispatch_exit->send_thread_count; i++)
-				{
-					if (dispatch_exit->send_threads[i]->state == DISPATCH_THREAD_EXIT_NORMAL)
-						all_error = false;
-					else
-						do_sucess = false;
-				}
-				if (all_error)
-				{
-					ADBLOADER_LOG(LOG_ERROR,
-						"[MAIN][Tthread main] dispatch module all threads error, tabel name :%s ", table_info->table_name);
-					dispatch_failed = true;
-					StopDispatch();
-					dispatch_finish = true;
-					goto FAILED;
-				}
-			}
+			linebuf = get_linebuf();
+			appendLineBufInfo(linebuf, "%s", start);
+			appendLineBufInfo(linebuf, "%s", " -Q ");
 
-			for (flag = 0 ;flag < dispatch_exit->send_thread_count; flag ++)
+			for (i = 0; i < dispatch_exit->send_thread_count; i++)
 			{
 				DispatchThreadInfo *dispatch_thread = NULL;
-				dispatch_thread = dispatch_exit->send_threads[flag];
+				dispatch_thread = dispatch_exit->send_threads[i];
+				if (dispatch_thread != NULL)
+				{
+					if (dispatch_thread->state != DISPATCH_THREAD_EXIT_NORMAL)
+					{
+						need_redo = true;
+						appendLineBufInfo(linebuf, "%d,", i);
+					}
+				} 
 			}
-			if (dispatch_exit->send_thread_cur == dispatch_exit->send_thread_count)
-				dispatch_finish = true;
+
+			if (need_redo)
+			{
+				char *local_char = NULL;
+
+				local_char = strrchr(linebuf->data, ',');
+				*local_char = ' ';
+
+				ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
+				main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
+
+				do_success = false;
+			}
+			else
+			{
+				do_success = true;
+			}
+
+			dispatch_finish = true;
+			release_linebuf(linebuf);
 		}
 
 		sleep(1);
 	}
-FAILED:
-	if (dispatch_failed)
-	{
-		if (!read_finish)
-		{
-			SetReadProducerExit();
-			read_finish = true;
-		}
-			
-	}
+
 	CleanDispatchResource();
 
-	/* free  memory */
-	for (flag = 0; flag < table_info->use_datanodes_num; flag++)
-	{
-		/* free mesage queue */
-		mq_pipe_destory(output_queue[flag]);
-	}
-
-	pfree(output_queue);
-	output_queue = NULL;
-	/* free datanode info */
-	free_datanode_info(datanode_info);
-	datanode_info = NULL;
 	/* free dispatch */
 	free_dispatch_info(dispatch);
+	pg_free(dispatch);
 	dispatch = NULL;
-	pfree(start);
+	
+	free_read_info(read_info);
+	pg_free(read_info);
+	read_info = NULL;
+#if 0
+	pg_free(start);
 	start = NULL;
-	return do_sucess;
+#endif
+	return do_success;
 }
 
 void 
 clean_replaciate_roundrobin(void)
-{
-
-}
+{ return;}
 
 static bool
 do_hash_module(char *filepath, const TableInfo *table_info)
 {
-	MessageQueuePipe 	  *	input_queue;
-	MessageQueuePipe 	 **	output_queue;
-	HashField		 	  * field;
-	DispatchInfo 		  * dispatch = NULL;
-	DatanodeInfo		  * datanode_info = NULL;
-	int					 	flag = 0;
-	char 				  * queue_name = NULL;
-	char				  * func_name = NULL;
-	int						res;
-	int						file_total_line;
-	bool					hash_failed = false;
-	bool					dispatch_failed = false;
-	bool					read_finish = false;
-	bool					hash_finish = false;
-	bool					dispatch_finish = false;
-	bool				   do_sucess = true;
-	char				  * start = NULL;
-	int					  *thread_send_total;
+	MessageQueuePipe  *input_queue = NULL;
+	MessageQueuePipe **output_queue = NULL;
+	HashField          *field = NULL;
+	DispatchInfo       *dispatch = NULL;
+	ReadInfo           *read_info = NULL;
+	HashComputeInfo    *hash_info = NULL;
+	DatanodeInfo       *datanode_info = NULL;
+	char               *queue_name = NULL;
+	char               *func_name = NULL;
+	char               *start = NULL;
+	int                *thread_send_total = NULL;
+	LineBuffer         *linebuf = NULL;
+	int                 flag = 0;
+	int                 res = 0;
+	int                 file_total_line = 0;
+	bool                read_finish = false;
+	bool                hash_finish = false;
+	bool                dispatch_finish = false;
+	bool                do_success = true;
+    bool                do_read_file_success = true;
+    bool                do_hash_success = true;
+    bool                do_dispatch_success = true;
+	bool                need_redo = false;
+	bool                hash_error = false;
+	int                 output_queue_total = 0;
+	int                 i = 0;
 
 	if (setting->process_bar)
 	{
@@ -1087,16 +1296,25 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		thread_send_total = palloc0(sizeof(int) * table_info->use_datanodes_num);
 	}
 
-	start = create_start_command(setting->program, filepath, table_info->table_name,
-				setting->config_file_path, setting->database_name, setting->user_name, setting->password);
-	if (!start)
+	start = create_start_command(filepath, setting, table_info);
+	if (start == NULL)
 	{
-		main_write_error_message("start read_producer module failed", NULL);
-		exit(1);
+		main_write_error_message(table_info->distribute_type, "creat start command failed", NULL);
+		exit(EXIT_FAILURE);
 	}
+
+	if (!is_create_in_adb_cluster(table_info->table_name))
+	{
+		char error_str[1024] = {0};
+		sprintf(error_str, "Error: table \"%s\" does not exist in adb cluster." , table_info->table_name);
+		main_write_error_message(table_info->distribute_type, error_str, NULL);
+	
+		do_success = false;
+		return do_success;
+	}
+
 	/* init queue */
-	input_queue = (MessageQueuePipe*)palloc0(sizeof(MessageQueuePipe));
-	output_queue = (MessageQueuePipe**)palloc0(sizeof(MessageQueuePipe*) * table_info->use_datanodes_num);
+	input_queue = (MessageQueuePipe *)palloc0(sizeof(MessageQueuePipe));
 	mq_pipe_init(input_queue, "input_queue");
 
 	datanode_info = (DatanodeInfo*)palloc0(sizeof(DatanodeInfo));
@@ -1107,18 +1325,27 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	{
 		datanode_info->datanode[flag] = table_info->use_datanodes[flag]->node_oid;
 		datanode_info->conninfo[flag] = pg_strdup(table_info->use_datanodes[flag]->connection);
-
-		output_queue[flag] =  (MessageQueuePipe*)palloc0(sizeof(MessageQueuePipe));
-		output_queue[flag]->write_lock = true;
-		queue_name = get_outqueue_name(flag);
-		mq_pipe_init(output_queue[flag], queue_name);
 	}
+
+	output_queue_total = table_info->use_datanodes_num * table_info->threads_num_per_datanode;
+	output_queue = (MessageQueuePipe **)palloc0(sizeof(MessageQueuePipe *) * output_queue_total);
+	for (i = 0; i < output_queue_total; i++)
+	{
+		output_queue[i] = (MessageQueuePipe*)palloc0(sizeof(MessageQueuePipe));
+		output_queue[i]->write_lock = true;
+		queue_name = get_outqueue_name(i);
+		mq_pipe_init(output_queue[i], queue_name);
+
+		pfree(queue_name);
+		queue_name = NULL;
+	}
+
 	/* start hash module first */
 	field = table_info->table_attribute;
 
 	/*start hash module */
 	if (table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH || 
-				table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_MODULO)
+		table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_MODULO)
 	{
 		Assert(field->field_nums == 1);
 		func_name = conver_type_to_fun(field->field_type[0], DISTRIBUTE_BY_DEFAULT_HASH);		
@@ -1130,52 +1357,88 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	}
 
 	SetHashFileStartCmd(start);
-	res = InitHashCompute(setting->hash_config->hash_thread_num, func_name, setting->server_info->connection,
-						input_queue, output_queue, table_info->use_datanodes_num, field);
+
+	hash_info = (HashComputeInfo *)palloc0(sizeof(HashComputeInfo));
+    
+	hash_info->datanodes_num = table_info->use_datanodes_num;
+	hash_info->threads_num_per_datanode = table_info->threads_num_per_datanode;
+	hash_info->conninfo = pg_strdup(setting->server_info->connection);
+	hash_info->input_queue = input_queue;
+	hash_info->output_queue = output_queue;
+	hash_info->output_queue_num = output_queue_total;
+	hash_info->func_name = pg_strdup(func_name);
+
 	pfree(func_name);
 	func_name = NULL;
-	if (res != HASH_COMPUTE_OK)
+	
+	hash_info->hash_field = field;
+	hash_info->redo_queue = setting->redo_queue;
+	hash_info->redo_queue_total = setting->redo_queue_total;
+	hash_info->redo_queue_index = setting->redo_queue_index;
+	hash_info->filter_queue_file = setting->filter_queue_file;
+	hash_info->table_name = pg_strdup(table_info->table_name);
+	hash_info->filter_queue_file_path = pg_strdup(setting->filter_queue_file_path);
+	if ((res = init_hash_compute(hash_info)) != HASH_COMPUTE_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start hash module failed");
-		main_write_error_message("start hash module failed", start);
-		exit(1);
+			main_write_error_message(table_info->distribute_type, "start hash module failed", start);
+		exit(EXIT_FAILURE);
 	}
 
 	/* start dispatch module */
 	dispatch = (DispatchInfo *)palloc0(sizeof(DispatchInfo));
 	dispatch->conninfo_agtm = pg_strdup(setting->agtm_info->connection);
-	dispatch->thread_nums = table_info->use_datanodes_num;
+	dispatch->datanodes_num = table_info->use_datanodes_num;
+	dispatch->threads_num_per_datanode = table_info->threads_num_per_datanode;
 	dispatch->output_queue = output_queue;
 	dispatch->datanode_info = datanode_info;
 	dispatch->table_name = pg_strdup(table_info->table_name);
-	if (NULL != setting->hash_config->copy_option)		
+	if (setting->hash_config->copy_option != NULL)
 		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
 	dispatch->process_bar = setting->process_bar;
+
 	SetDispatchFileStartCmd(start);
+
 	/* start dispatch module */
-	if ((res = InitDispatch(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
+	if ((res = init_dispatch_threads(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start dispatch module failed");
-		main_write_error_message("start dispatch module failed", start);
-		exit(1);
+		main_write_error_message(table_info->distribute_type, "start dispatch module failed", start);
+		exit(EXIT_FAILURE);
 	}
 
 	/* start read_producer module last */
-	if ((res =InitReadProducer(filepath, input_queue, NULL, 0, 
-						false, setting->hash_config->hash_thread_num, start))!= READ_PRODUCER_OK)
+	read_info = (ReadInfo *)palloc0(sizeof(ReadInfo));
+	read_info->filepath = pg_strdup(filepath);
+	read_info->input_queue = input_queue;
+	read_info->output_queue = NULL;
+	read_info->output_queue_num = 0;
+	read_info->datanodes_num = 0;
+	read_info->threads_num_per_datanode = 0;
+	read_info->replication = false;
+	read_info->end_flag_num = setting->hash_config->hash_thread_num;
+	read_info->start_cmd = start;
+	read_info->read_file_buffer = setting->read_file_buffer;
+	read_info->redo_queue_index = setting->redo_queue_index;
+	read_info->redo_queue_total = setting->redo_queue_total;
+	read_info->redo_queue = setting->redo_queue;
+	
+	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
+
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start read module failed");
-		main_write_error_message("start read module failed", start);
-		exit(1);
+		main_write_error_message(table_info->distribute_type, "start read module failed", start);
+		exit(EXIT_FAILURE);
 	}
 
 	/* check module state every 1s */
 	for (;;)
 	{
 		ReadProducerState  state = READ_PRODUCER_PROCESS_DEFAULT;
-		DispatchThreads	*dispatch_exit = NULL;
-		HashThreads		*hash_exit = NULL;
-		int					 flag;
+		DispatchThreads   *dispatch_exit = NULL;
+		HashThreads       *hash_exit = NULL;
+		int                flag;
+		bool               hash_threads_fatal_error = false;
 
 		if (setting->process_bar)
 		{
@@ -1184,6 +1447,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			show_process(file_total_line, table_info->use_datanodes_num,
 								thread_send_total, DISTRIBUTE_BY_DEFAULT_HASH);
 		}
+
 		/* all modules complete*/
 		if (read_finish && hash_finish && dispatch_finish)
 		{
@@ -1191,139 +1455,180 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			break;
 		}
 
+		/* read data file module*/
 		if (!read_finish)
 		{
 			state = GetReadModule();
 			if (state == READ_PRODUCER_PROCESS_ERROR)
 			{
-				SetReadProducerExit();
+				set_read_producer_exit();
 				/* read module error, stop hash and dispatch */
 				StopHash();
-				StopDispatch();
+				stop_dispatch();
 				read_finish = true;
 				hash_finish = true;
 				dispatch_finish = true;
-				do_sucess = false;
+				do_read_file_success = false;
+
+				/* need redo for all threads */
+				ADBLOADER_LOG(LOG_ERROR,"read data file module failed");
+				main_write_error_message(table_info->distribute_type, "read data file module failed", start);
+
 				break;
 			}
 			else if (state == READ_PRODUCER_PROCESS_COMPLETE)
+			{
+				do_read_file_success = true;
 				read_finish = true;
-		}		
+			}
+				
+		}
 
-		/* if read module state is ok, check hash and dispatch state */
-		dispatch_exit = GetDispatchExitThreads();
+		/* compute hash module */
 		hash_exit = GetExitThreadsInfo();
-
-		if (hash_exit->hs_thread_cur == 0 && dispatch_exit->send_thread_cur == 0)
+		if (hash_exit->hs_thread_cur == 0)
 		{
-			/* all threads are running */
 			sleep(1);
 			continue;
 		}
 
-		if (!hash_finish && hash_exit->hs_thread_cur > 0)
+		if (!hash_finish && hash_exit->hs_thread_cur == hash_exit->hs_thread_count)
 		{
-			/* check hash module state */
 			pthread_mutex_lock(&hash_exit->mutex);
-			for (flag = 0; flag < hash_exit->hs_thread_count; flag++)
+			for (flag =0; flag < hash_exit->hs_thread_count; flag++)
 			{
-				ComputeThreadInfo * thread_info = hash_exit->hs_threads[flag];
-				if (NULL != thread_info && thread_info->state != THREAD_EXIT_NORMAL) /* ERROR happened */
+				ComputeThreadInfo * hash_thread_info = hash_exit->hs_threads[flag];
+				if (hash_thread_info != NULL && hash_thread_info->state != THREAD_EXIT_NORMAL)
 				{
-					pthread_mutex_unlock(&hash_exit->mutex);
+					hash_error = true;
 					ADBLOADER_LOG(LOG_ERROR,
 						"[MAIN][thread main] hash module error, thread id :%ld, table name :%s, filepath : %s",
-						thread_info->thread_id, table_info->table_name, filepath);
-					/* stop hash other threads */
-					StopHash();
-					hash_failed = true;
+						hash_thread_info->thread_id, table_info->table_name, filepath);
+
 					hash_finish = true;
-					do_sucess = false;
-					goto FAILED;
+
+
+					if (hash_thread_info->state != THREAD_PGRES_FATAL_ERROR)
+					{
+						/* need redo for all threads */
+						ADBLOADER_LOG(LOG_ERROR,"compute hash module failed");  
+					}
+					else /* adb_load server stopped by user.*/
+					{
+						hash_threads_fatal_error = true;
+                        do_hash_success = false;
+						main_write_error_message(table_info->distribute_type, "compute hash module failed", start);
+					}
+
+					if (hash_thread_info->state == THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE)
+					{
+						/*dispay faild for user */
+						do_hash_success = false;
+					}
+
+					if (setting->filter_queue_file)
+						fclose_filter_queue_file_fd(setting->redo_queue_total);
+
+					pthread_mutex_unlock(&hash_exit->mutex); 
+					break;
+				}
+				else
+				{
+				    do_hash_success = true; 
 				}
 			}
-			if (hash_exit->hs_thread_cur == hash_exit->hs_thread_count)
+
+			if (!hash_error)
 				hash_finish = true;
-			pthread_mutex_unlock(&hash_exit->mutex);
+
+			pthread_mutex_unlock(&hash_exit->mutex); 
 		}
 
-		if (!dispatch_finish && dispatch_exit->send_thread_cur > 0)
+		/*dispatch data module*/
+		dispatch_exit = get_dispatch_exit_threads();
+		if (dispatch_exit->send_thread_cur != dispatch_exit->send_thread_count)
 		{
+			sleep(1);
+			continue;
+		}
+		else
+		{
+			linebuf = get_linebuf();
+			appendLineBufInfo(linebuf, "%s", start);
+			appendLineBufInfo(linebuf, "%s", " -Q ");
+
 			pthread_mutex_lock(&dispatch_exit->mutex);
-			for (flag = 0 ;flag < dispatch_exit->send_thread_count; flag ++)
+			for (flag = 0; flag < dispatch_exit->send_thread_count; flag++)
 			{
 				DispatchThreadInfo *dispatch_thread = NULL;
 				dispatch_thread = dispatch_exit->send_threads[flag];
-				if (NULL != dispatch_thread && dispatch_thread->state != DISPATCH_THREAD_EXIT_NORMAL)
+				if (dispatch_thread != NULL)
 				{
-					pthread_mutex_unlock(&dispatch_exit->mutex);
-					ADBLOADER_LOG(LOG_ERROR,
-					"[MAIN][Tthread main] dispatch module error, thread id :%ld table name :%s, connection : %s, filepath :%s",
-					dispatch_thread->thread_id, dispatch_thread->table_name, dispatch_thread->conninfo_datanode, filepath);
-					/* stop dispatch other threads */
-					StopDispatch();
-					dispatch_failed = true;
-					dispatch_finish = true;
-					do_sucess = false;
-					goto FAILED;
+					if (dispatch_thread->state != DISPATCH_THREAD_EXIT_NORMAL)
+					{
+						need_redo = true;
+						appendLineBufInfo(linebuf, "%d,", flag);
+					}
 				}
 			}
-			if (dispatch_exit->send_thread_cur == dispatch_exit->send_thread_count)
-				dispatch_finish = true;
+
+			if (need_redo)
+			{
+				char *local_char = NULL;
+				local_char = strrchr(linebuf->data, ',');
+				*local_char = ' ';
+
+				do_dispatch_success = false;
+				main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
+			}
+			else
+			{
+				do_dispatch_success = true;
+			}
+
+			dispatch_finish = true;
+			release_linebuf(linebuf);
+
 			pthread_mutex_unlock(&dispatch_exit->mutex);
 		}
-	
-	sleep(1);
+
+		sleep(1);
 	}
 
-FAILED:
-	if (hash_failed)
-	{
-		/* check read module is finish */
-		if (!read_finish)
-			SetReadProducerExit();
-
-		if (!dispatch_finish)
-			StopDispatch();
-	}
-	else if (dispatch_failed)
-	{
-		if (!read_finish)
-			SetReadProducerExit();
-
-		if (!hash_finish)
-			StopHash();
-	}
+	do_success = (do_read_file_success && do_hash_success && do_dispatch_success);
 
 	CleanHashResource();
 	CleanDispatchResource();
-	/* free  memory */
-	for (flag = 0; flag < table_info->use_datanodes_num; flag++)
+
+	/* free input queue */
+	if (input_queue != NULL)
 	{
-		/* free mesage queue */
-		mq_pipe_destory(output_queue[flag]);
+		mq_pipe_destory(input_queue);
+		pg_free(input_queue);
+		input_queue = NULL;
 	}
-	pfree(output_queue);
-	output_queue = NULL;
-	/* free inner queue */
-	mq_pipe_destory(input_queue);
-	/* free datanode info */
-	free_datanode_info(datanode_info);
-	datanode_info = NULL;
+
 	/* free dispatch */
 	free_dispatch_info(dispatch);
+	pg_free(dispatch);
 	dispatch = NULL;
-	pfree(start);
-	start = NULL;
 
-	return do_sucess;
+	/*free hash info */
+	free_hash_info(hash_info);
+	pg_free(hash_info);
+	hash_info = NULL;
+	
+	/* free read_info */
+	free_read_info(read_info);
+	pg_free(read_info);
+	read_info = NULL;
+
+	return do_success;
 }
 
 void
 clean_hash_module(void)
-{
-
-}
+{ return;}
 
 static void
 get_table_attribute(ADBLoadSetting *setting, TableInfo *table_info)
@@ -1364,12 +1669,13 @@ get_table_attribute(ADBLoadSetting *setting, TableInfo *table_info)
 		get_userdefined_funcinfo(coord_conn_info, table_info);
 		reset_hash_field(table_info);
 
-		drop_func_to_server(setting->server_info->connection, table_info->funcinfo->drop_frunc_sql);
+		drop_func_to_server(setting->server_info->connection, table_info->funcinfo->drop_func_sql);
 		create_func_to_server(setting->server_info->connection, table_info->funcinfo->creat_func_sql);
 	}
 
 	return;
 }
+
 static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 {
 	char query[QUERY_MAXLEN];
@@ -1384,7 +1690,7 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	conn = PQconnectdb(setting->coordinator_info->connection);
 	if (PQstatus(conn) != CONNECTION_OK)
 	{
-		fprintf(stderr, "Connection to coordinator failed: %s \n", PQerrorMessage(conn));
+		fprintf(stderr, "Error: Connection to coordinator failed: %s \n", PQerrorMessage(conn));
 		exit_nicely(conn);
 	}
 
@@ -1396,7 +1702,7 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	res = PQexec(conn, query);
 	if ( !res || PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		fprintf(stderr, "Connection return value failed: %s \n", PQerrorMessage(conn));
+		fprintf(stderr, "Error: Connection return value failed: %s \n", PQerrorMessage(conn));
 		PQclear(res);
 		exit_nicely(conn);
 	}
@@ -1404,7 +1710,7 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	//Assert(PQntuples(res) != 0);
 	if (PQntuples(res) == 0)
 	{
-		fprintf(stderr, "table information is wrong. \n");
+		fprintf(stderr, "Error: table information is wrong. \n");
 		PQclear(res);
 		exit_nicely(conn);
 	}
@@ -1412,7 +1718,7 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	numtuples = PQntuples(res);
 	if (numtuples > setting->datanodes_num)
 	{
-		fprintf(stderr, "table : \'%s\' use datanode num is wrong. \n", table_info->table_name);
+		fprintf(stderr, "Error: table : \'%s\' use datanode num is wrong. \n", table_info->table_name);
 		PQclear(res);
 		PQfinish(conn);
 		exit(1);
@@ -1431,7 +1737,6 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 		use_datanodes_info[i] = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
 	}
 
-
 	for (i = 0; i < numtuples; i++)
 	{
 		for(j = 0; j < setting->datanodes_num; j++)
@@ -1445,7 +1750,6 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 				use_datanodes_info[i]->user_name = pg_strdup(setting->datanodes_info[j]->user_name);
 				use_datanodes_info[i]->database_name = pg_strdup(setting->datanodes_info[j]->database_name);
 				use_datanodes_info[i]->connection = pg_strdup(setting->datanodes_info[j]->connection);
-
 				break;
 			}
 			else
@@ -1453,6 +1757,7 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 		}
 	}
 
+	table_info->threads_num_per_datanode = setting->threads_num_per_datanode;
 	table_info->use_datanodes_num = numtuples;
 	table_info->use_datanodes = use_datanodes_info;
 	
@@ -1462,15 +1767,23 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 					adbloader_cmp_nodes);
 
 	if (datanodes_oid != NULL)
+	{
 		free(datanodes_oid);
+		datanodes_oid = NULL;
+	}
 
 	PQclear(res);
 	PQfinish(conn);
 
+	return;
 }
 
 static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
 {
+	Assert(setting != NULL);
+	Assert(table_info != NULL);
+	Assert(setting->datanodes_num > 0);
+
 	NodeInfoData **use_datanodes_info = NULL;
 	int i = 0;
 	int use_datanode_num = 0;
@@ -1497,6 +1810,7 @@ static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *tabl
 		use_datanodes_info[i]->connection = pg_strdup(setting->datanodes_info[i]->connection);
 	}
 
+	table_info->threads_num_per_datanode = setting->threads_num_per_datanode;
 	table_info->use_datanodes_num = use_datanode_num;
 	table_info->use_datanodes = use_datanodes_info;
 
@@ -1504,6 +1818,8 @@ static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *tabl
 					use_datanode_num,
 					sizeof(NodeInfoData*),
 					adbloader_cmp_nodes);
+
+	return;
 }
 
 static void reset_hash_field(TableInfo *table_info)
@@ -1512,9 +1828,9 @@ static void reset_hash_field(TableInfo *table_info)
 
 	hashfield = (HashField *)palloc0(sizeof(HashField));
 
-	hashfield->node_nums = table_info->funcinfo->node_count;
-	hashfield->node_list = (Oid *)palloc0(hashfield->node_nums * sizeof(Oid));
-	memcpy(hashfield->node_list, table_info->funcinfo->node_list, (hashfield->node_nums * sizeof(Oid)));
+	hashfield->datanodes_num = table_info->funcinfo->node_count;
+	hashfield->node_list = (Oid *)palloc0(hashfield->datanodes_num * sizeof(Oid));
+	memcpy(hashfield->node_list, table_info->funcinfo->node_list, (hashfield->datanodes_num * sizeof(Oid)));
 
 	hashfield->field_nums = table_info->funcinfo->func_args_count;
 	hashfield->field_loc  = (int *)palloc0(hashfield->field_nums * sizeof(int));
@@ -1524,7 +1840,8 @@ static void reset_hash_field(TableInfo *table_info)
 
 	hashfield->func_name = pg_strdup(table_info->funcinfo->func_name);
 
-	hashfield->delim        = pg_strdup(setting->hash_config->test_delim);
+	hashfield->hash_threads_num = setting->hash_config->hash_thread_num;
+	hashfield->text_delim        = pg_strdup(setting->hash_config->text_delim);
 	hashfield->copy_options = pg_strdup(setting->hash_config->copy_option);
 	hashfield->quotec       = setting->hash_config->copy_quotec[0];
 	hashfield->has_qoute    = false;
@@ -1556,6 +1873,8 @@ static void drop_func_to_server(char *serverconninfo, char *drop_func_sql)
 
 	PQclear(res);
 	PQfinish(conn);
+
+	return ;
 }
 
 static void create_func_to_server(char *serverconninfo, char *creat_func_sql)
@@ -1581,17 +1900,20 @@ static void create_func_to_server(char *serverconninfo, char *creat_func_sql)
 
 	PQclear(res);
 	PQfinish(conn);
+
+	return ;
 }
 
 static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info)
 {
 	UserFuncInfo *userdefined_funcinfo = NULL;
-	userdefined_funcinfo = (UserFuncInfo *)palloc0(sizeof(UserFuncInfo));
 
+	userdefined_funcinfo = (UserFuncInfo *)palloc0(sizeof(UserFuncInfo));
 	get_func_args_count_and_type(conninfo, table_info->table_name, userdefined_funcinfo);
 	get_table_loc_count_and_loc(conninfo,  table_info->table_name, userdefined_funcinfo);
 	get_create_and_drop_func_sql(conninfo, table_info->table_name, userdefined_funcinfo);
 	get_node_count_and_node_list(conninfo, table_info->table_name, userdefined_funcinfo);
+
 	table_info->funcinfo = userdefined_funcinfo;
 
 	return;
@@ -1687,7 +2009,7 @@ static void get_hash_field(const char *conninfo, TableInfo *table_info)
 		exit_nicely(conn);
 	}
 
-	hashfield->node_nums = local_node_nums;
+	hashfield->datanodes_num = local_node_nums;
 	hashfield->node_list = (Oid *)palloc0(local_node_nums * sizeof(Oid));
 
 	for (i = 0; i < local_node_nums; i++)
@@ -1706,82 +2028,20 @@ static void get_hash_field(const char *conninfo, TableInfo *table_info)
 		hashfield->field_type[i] = atoi(PQgetvalue(res, 0, PQfnumber(res, "atttypid")));
 	}
 
-	//get other hashfield info
-	hashfield->delim        = pg_strdup(setting->hash_config->test_delim);
+	/*get other hashfield info*/
+	hashfield->hash_threads_num = setting->hash_config->hash_thread_num;
+	hashfield->text_delim        = pg_strdup(setting->hash_config->text_delim);
 	hashfield->copy_options = pg_strdup(setting->hash_config->copy_option);
 	hashfield->quotec       = setting->hash_config->copy_quotec[0];
 	hashfield->has_qoute    = false;
 	hashfield->hash_delim   = pg_strdup(setting->hash_config->hash_delim);
 	table_info->table_attribute = hashfield;
+
 	PQclear(res);
 	PQfinish(conn);
 	return ;
 }
-#if 0
-static void get_special_table_by_sql(void)
-{
-	char query[QUERY_MAXLEN];
-	PGconn     *conn;
-	PGresult   *res;
-	char *table_name;
-	int table_nums = 0;
-	int i = 0;
-	conn = PQconnectdb(setting->coordinator_info->connection);
 
-	if (PQstatus(conn) != CONNECTION_OK)
-	{
-		fprintf(stderr, "Connection to coordinator failed: %s \n", PQerrorMessage(conn));
-		exit_nicely(conn);
-	}
-
-	sprintf(query, "select tablename from pg_tables where schemaname=\'public\'");
-
-	res = PQexec(conn, query);
-	if(PQresultStatus(res) == PGRES_TUPLES_OK && PQntuples(res) > 0)
-	{
-		table_nums = PQntuples(res);
-		for(i=0; i< table_nums; ++i)
-		{
-			table_name = PQgetvalue(res, i, 0);
-			if(is_special_table(table_name) == 0)
-			{
-				special_table_list = add_special_table(special_table_list, table_name);
-			}
-		}
-	}
-	else
-	{
-		fprintf(stderr, "get_distribute_by failed: %s \n", PQerrorMessage(conn));
-		PQclear(res);
-		exit_nicely(conn);
-	}
-
-	PQclear(res);
-	PQfinish(conn);
-	
-}
-#endif
-#if 0
-static struct special_table *add_special_table(struct special_table *table_list, char *table_name)
-{
-	struct TableName *table_ptr;
-	if(table_list == NULL)
-	{
-		table_list = (struct special_table *)palloc0(sizeof(struct special_table));
-		table_list->table_nums = 0;
-		table_list->tb_ptr = NULL;
-	}
-	else if(table_name != NULL)
-	{
-		table_ptr = (struct TableName *)palloc0(sizeof(struct TableName));
-		table_ptr->name = pstrdup(table_name);
-		table_ptr->next = table_list->tb_ptr;
-		table_list->tb_ptr = table_ptr;
-		table_list->table_nums = table_list->table_nums + 1;
-	}
-	return table_list;
-}
-#endif
 static char get_distribute_by(const char *conninfo, const char *tablename)
 {
 	char query[QUERY_MAXLEN];
@@ -1819,37 +2079,6 @@ static char get_distribute_by(const char *conninfo, const char *tablename)
 	return distribute;
 }
 
-/*
-static void get_func_info(const char *conninfo, TableInfo *table_info)
-{
-	UserFuncInfo *funcinfodata;
-
-	funcinfodata = (UserFuncInfo *)palloc0(sizeof(UserFuncInfo));
-	if (funcinfodata == NULL)
-	{
-		fprintf(stderr, "out of memory. \n");
-		exit(1);
-	}
-
-	if (table_info->distribute_type == DISTRIBUTE_BY_USERDEFINED)
-	{
-		//get_func_args_count_and_type(conninfo, table_info->table_name, funcinfodata);
-		//get_table_loc_count_and_loc(conninfo, table_info->table_name, funcinfodata);
-		//get_create_and_drop_func_sql(conninfo, table_info->table_name, funcinfodata);
-	}else if (table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH ||
-			table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_MODULO )
-	{
-		get_table_loc_for_hash_modulo(conninfo, table_info->table_name, funcinfodata);
-	}else
-	{
-		fprintf(stderr, "unrecognized distribute by type: %c.\n", table_info->distribute_type);
-		exit(1);
-	}
-
-	table_info->funcinfo = funcinfodata;
-	return;
-}
-*/
 static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char query[QUERY_MAXLEN];
@@ -1899,7 +2128,7 @@ static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, 
 
 }
 
-/*
+#if 0
 static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo)
 {
 	char query[QUERY_MAXLEN];
@@ -1942,7 +2171,8 @@ static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tabl
 	PQclear(res);
 	PQfinish(conn);
 }
-*/
+#endif
+
 static void get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo) 
 {
 	char query[QUERY_MAXLEN];
@@ -1991,29 +2221,29 @@ static void get_func_args_count_and_type(const char *conninfo, char *table_name,
 
 static void get_create_and_drop_func_sql(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
-    char query[QUERY_MAXLEN];
-    LineBuffer *create_func_sql;
-	char *create_func;
-	LineBuffer *drop_func_sql;
-	char *drop_func;
-	PGconn *conn;
-	PGresult *res;
-	char *proretset;
-	char *proname;
-	char *prosrc;
-	//char *probin;
-	char *funcargs;
-	//char *funciargs;
-	char *funcresult;
-	char *proiswindow;
-	char *provolatile;
-	char *proisstrict;
-	char *prosecdef;
-	char *proleakproof;
-	//char *proconfig;
-	char *procost;
-	char *prorows;
-	char *lanname;
+	char        query[QUERY_MAXLEN];
+	LineBuffer *create_func_sql = NULL;
+	char       *create_func = NULL;
+	LineBuffer *drop_func_sql = NULL;
+	char       *drop_func = NULL;
+	PGconn     *conn = NULL;
+	PGresult   *res = NULL;
+	char       *proretset = NULL;
+	char       *proname = NULL;
+	char       *prosrc = NULL;
+	//char     *probin = NULL;
+	char       *funcargs = NULL;
+	//char *funciargs = NULL;
+	char       *funcresult = NULL;
+	char       *proiswindow = NULL;
+	char       *provolatile = NULL;
+	char       *proisstrict = NULL;
+	char       *prosecdef = NULL;
+	char       *proleakproof = NULL;
+	//char     *proconfig = NULL;
+	char       *procost = NULL;
+	char       *prorows = NULL;
+	char       *lanname = NULL;
 
 	create_func_sql = get_linebuf();
 	drop_func_sql = get_linebuf();
@@ -2159,13 +2389,14 @@ static void get_create_and_drop_func_sql(const char *conninfo, char *table_name,
 
     userdefined_funcinfo->func_name      = pg_strdup(proname);
 	userdefined_funcinfo->creat_func_sql = create_func;
-	userdefined_funcinfo->drop_frunc_sql = drop_func;
+	userdefined_funcinfo->drop_func_sql = drop_func;
 
 	release_linebuf(create_func_sql);
 	release_linebuf(drop_func_sql);
 
 	PQclear(res);
 	PQfinish(conn);
+	return;
 }
 
 static void get_all_datanode_info(ADBLoadSetting *setting)
@@ -2227,9 +2458,6 @@ static void get_all_datanode_info(ADBLoadSetting *setting)
 					sizeof(NodeInfoData*),
 					adbloader_cmp_nodes);
 
-
-	/* get conninfo for all datanodes. */
-	
 	return;
 }
 
@@ -2267,7 +2495,7 @@ static void get_conninfo_for_alldatanode(ADBLoadSetting *setting)
 		}
 
 	}
-	
+
 	/*check the connection is valid*/
 	for(i = 0; i < setting->datanodes_num; ++i)
 	{
@@ -2296,313 +2524,7 @@ static void exit_nicely(PGconn *conn)
 	PQfinish(conn);
 	exit(1);
 }
-#if 0
-/*
- * According to the directory file to get the table infomation from the name of file 
- */
-static Tables* read_table_info(char *fullpath)
-{
-	/*check the file_path is directory*/
-	DIR *dir;
-	struct dirent *ptr;
-	char *file_path;
-	char *file_name;
-	char **file_name_list;
-	char **file_path_list;
-	int file_index = 0;
-	int file_num = 0;
-	char file_path_temp[1024];
-	Tables *tables_ptr = NULL;
-	
-	if(is_type_dir(fullpath) == 0)
-	{
-		fprintf(stderr, "\"%s\" has directory file", fullpath);
-		return NULL;
-	}
-	
-	file_num = get_file_num(fullpath);
-	if ((dir=opendir(fullpath)) == NULL)
-	{
-		fprintf(stderr, "open dir %s error...\n", fullpath);
-		return NULL;
-	}
 
-	file_name_list = (char **)palloc0(file_num * sizeof(char *));
-	file_index = 0;
-	while ((ptr=readdir(dir)) != NULL)
-	{
-		if(strcmp(ptr->d_name,".")==0 || strcmp(ptr->d_name,"..")==0)
-			continue;
-
-		sprintf(file_path_temp, "%s/%s", fullpath, ptr->d_name);
-		if(file_exists(file_path_temp))
-		{
-			file_name_list[file_index] = pg_strdup(ptr->d_name);
-			file_index = file_index + 1;
-		}
-	}
-
-	if(has_special_file(file_name_list, file_num) == 0)
-	{
-		if (file_name_list != NULL)
-		{
-			int i;
-			for (i = 0; i < file_num; i++)
-			{
-				pfree(file_name_list[i]);
-				file_name_list[i] = NULL;
-			}
-		}
-		pfree(file_name_list);
-		file_name_list = NULL;
-
-		return NULL;
-	}
-
-	//no need sort
-	//str_list_sort(file_name_list, file_num);
-
-	file_name_print(file_name_list, file_num);
-
-	file_path_list = (char **)palloc0(file_num * sizeof(char *));
-	for(file_index = 0; file_index < file_num; ++file_index)
-	{
-		file_name = file_name_list[file_index];
-		file_path = (char*)palloc0(strlen(fullpath) + strlen(file_name) + 2);/* 2 = '\0' + '/' */
-		sprintf(file_path, "%s/%s", fullpath, file_name);
-		file_path_list[file_index] = file_path;
-	}
-
-	/*get tables info */
-	tables_ptr = get_tables(file_name_list, file_path_list, file_num);
-
-	tables_print(tables_ptr);
-	closedir(dir);
-
-	/* pfree file_name_list */
-	if (file_name_list != NULL)
-	{
-		int i;
-		for (i = 0; i < file_num; i++)
-		{
-			pfree(file_name_list[i]);
-			file_name_list[i] = NULL;
-		}
-	}
-	pfree(file_name_list);
-	file_name_list = NULL;
-
-	/*pfree file_path_list*/
-	if (file_path_list != NULL)
-	{
-		int i;
-		for (i = 0; i < file_num; i++)
-		{
-			pfree(file_path_list[i]);
-			file_path_list[i] = NULL;
-		}
-	}
-	pfree(file_path_list);
-	file_path_list = NULL;
-
-	return tables_ptr;
-}
-#endif
-#if 0
-static Tables * get_tables(char **file_name_list, char **file_path_list, int file_num)
-{
-	TableInfo *table_info_ptr = NULL;
-	TableInfo *table_info_prev_ptr = NULL;
-	TableInfo *table_info_head_ptr = NULL;
-	Tables *tables_ptr = NULL;
-	int file_index = 0;
-	int table_sum = 0;
-
-	if(file_num <=0)
-		return NULL;
-
-	table_info_ptr = get_table_info(file_name_list, file_num);
-	if(table_info_ptr != NULL)
-	{
-		table_info_head_ptr = table_info_ptr;
-		table_info_prev_ptr = table_info_head_ptr;
-	}
-
-	file_index =0;
-	table_sum = 0;
-
-	while(table_info_ptr)
-	{
-		int i;
-		for (i = 0; i < table_info_ptr->file_nums; i++)
-		{
-			FileLocation * file_location = (FileLocation*)palloc0(sizeof(FileLocation));
-			file_location->location = pg_strdup(file_path_list[file_index]);
-			slist_push_head(&table_info_ptr->file_head, &file_location->next);
-			file_index++;
-		}
-
-		table_sum = table_sum + 1;
-		table_info_ptr = get_table_info(&(file_name_list[file_index]), file_num - file_index);
-		table_info_prev_ptr->next = table_info_ptr;
-		table_info_prev_ptr = table_info_ptr;
-	}
-
-	if(table_sum > 0)
-	{
-		tables_ptr = (Tables *)palloc0(sizeof(Tables));
-		tables_ptr->table_nums = table_sum;
-		tables_ptr->info = table_info_head_ptr;
-	}
-
-	return tables_ptr;
-}
-#endif
-#if 0
-static TableInfo *get_table_info(char **file_name_list, int file_num)
-{
-	char *table_name;
-	char table_name_temp[256];
-	int file_index;
-	int file_name_len = 0;
-	int table_split_num = 0;
-	TableInfo *table_info_ptr;
-	if(file_name_list == NULL || file_num <= 0)
-		return NULL;
-	table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
-	slist_init(&table_info_ptr->file_head);
-
-	for(file_index = 0; file_index < file_num; ++file_index)
-	{
-		strcpy(table_name_temp,file_name_list[file_index]);
-		file_name_len = strlen(table_name_temp) - 1;
-
-		while(table_name_temp[file_name_len] != '_')
-			--file_name_len;
-		table_name_temp[file_name_len] = '\0';
-
-		if(table_info_ptr->table_name == NULL)
-		{
-			table_name = (char*)palloc0(strlen(table_name_temp) + 1);
-			memcpy(table_name, table_name_temp, strlen(table_name_temp) + 1);
-			table_info_ptr->table_name = table_name;
-			table_split_num = 1;
-		}
-
-		else if(strcmp(table_name_temp ,table_info_ptr->table_name) == 0)
-		{
-			++table_split_num;
-		}
-		else
-		{ 
-			if(table_split_num == 1)
-				
-			break;
-		}
-	}
-
-	table_info_ptr->file_nums = table_split_num;
-	table_info_ptr->next = NULL;
-	return table_info_ptr;
-}
-#endif
-#if 0
-static int has_special_file(char **file_name_list, int file_nums)
-{
-	int i = 0;
-	int is_valid = 0;
-
-	for(i = 0; i < file_nums; ++i)
-	{
-		is_valid = is_special_file_name(file_name_list[i]);
-		if(!is_valid)
-		{	
-			fprintf(stderr, "the format of file name %s is error\n", file_name_list[i]);
-			return 0;
-		}
-	}	
-	return 1;
-}
-
-#endif
-#if 0
-static int is_special_table(char *table_name)
-{
-	return is_special_file_name(table_name);
-}
-#endif
-/* if the tail of file_name is underline add digit   reutrn true
-   else   return false
-*/
-#if 0
-static int is_special_file_name(char *file_name)
-{
-	int file_name_len = 0;
-	file_name_len = strlen(file_name) - 5;
-	while(is_digit(file_name[file_name_len])) 
-		--file_name_len;
-
-	if(file_name[file_name_len] == '_')
-		return 1;
-	else
-		return 0;
-}
-#endif
-#if 0
-static int get_file_num(char *fullpath)
-{
-	DIR *dir;
-	struct dirent *ptr;
-	char file_path[1024];
-	int file_num = 0;
-	
-	if ((dir=opendir(fullpath)) == NULL)
-    {
-	//	fprintf(stderr, "open dir %s error...\n", fullpath);
-        return 0;
-    }
-	/*get file of directory*/
-	file_num = 0;
-	while ((ptr=readdir(dir)) != NULL)
-    {
-        if(strcmp(ptr->d_name,".")==0 || strcmp(ptr->d_name,"..")==0)    ///current dir OR parrent dir
-            continue;
-		
-		sprintf(file_path, "%s/%s", fullpath, ptr->d_name);
-		if(is_type_file(file_path))
-		{
-			++file_num;
-		}
-	}
-	closedir(dir);
-	return file_num;
-}
-#endif
-/*
-static void str_list_sort(char **file_list, int file_num)
-{
-	int i=0;
-	int j=0;
-	int min_index  = 0;
-    for(i=0; i < file_num; ++i)
-    {
-        min_index = i; 
-        for(j=i+1; j < file_num; j++)
-        {
-			if(strcmp(file_list[j], file_list[min_index]) < 0)
-			{
-                min_index = j;
-            }
-        }
-        if( i != min_index)
-        {
-            char *temp = file_list[i];
-            file_list[i] = file_list[min_index];
-            file_list[min_index] = temp;
-        }
-    }
-}
-*/
 void file_name_print(char **file_list, int file_num)
 {
 	int file_index = 0;
@@ -2639,17 +2561,17 @@ static void tables_list_free(Tables *tables)
 {
 	TableInfo *table_info;
 	TableInfo *table_info_next;
-	
+
 	table_info = tables->info;
-	
-	while(table_info)
+
+	while(table_info != NULL)
 	{
 		table_info_next = table_info->next;
 		table_free(table_info);
 		table_info = table_info_next;	
 	}
-	
-	pfree(tables);
+
+	pg_free(tables);
 	tables = NULL;
 }
 
@@ -2657,92 +2579,65 @@ static void table_free(TableInfo *table_info)
 {
 	int i = 0;
 	slist_mutable_iter siter;
-	Assert(NULL != table_info && NULL != table_info->table_name);
+
+	Assert(table_info != NULL);
 
 	pg_free(table_info->table_name);
 	table_info->table_name = NULL;
 
 	clean_hash_field(table_info->table_attribute);
+	table_info->table_attribute = NULL;
 
-	if(table_info->funcinfo != NULL)
-	{
-		if(table_info->funcinfo->creat_func_sql)
-		{
-			pfree(table_info->funcinfo->creat_func_sql);
-			table_info->funcinfo->creat_func_sql = NULL;
-		}
+    if (table_info->funcinfo != NULL)
+    {
+        pg_free(table_info->funcinfo->creat_func_sql);
+        table_info->funcinfo->creat_func_sql = NULL;
+        
+        pg_free(table_info->funcinfo->drop_func_sql);
+        table_info->funcinfo->drop_func_sql = NULL;
+        
+        pg_free(table_info->funcinfo->func_name);
+        table_info->funcinfo->func_name = NULL;
+        
+        pg_free(table_info->funcinfo->func_args_type);
+        table_info->funcinfo->func_args_type = NULL;
+        
+        pg_free(table_info->funcinfo->table_loc);
+        table_info->funcinfo->table_loc = NULL;
 
-		if(table_info->funcinfo->drop_frunc_sql)
-		{
-			pfree(table_info->funcinfo->drop_frunc_sql);
-			table_info->funcinfo->drop_frunc_sql = NULL;
-		}
-		
-		if(table_info->funcinfo->func_args_type)
-		{
-			pfree(table_info->funcinfo->func_args_type);
-			table_info->funcinfo->func_args_type = NULL;
-		}
-		
-		if(table_info->funcinfo->table_loc)
-		{
-			pfree(table_info->funcinfo->table_loc);
-			table_info->funcinfo->table_loc = NULL;
-		}
-		
-		pfree(table_info->funcinfo);
-		table_info->funcinfo = NULL;
-	}
+        pg_free(table_info->funcinfo);
+        table_info->funcinfo = NULL;
+    }
 
 	slist_foreach_modify(siter, &table_info->file_head)
 	{
 		FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
-		if (file_location->location)
-			pfree(file_location->location);
-		file_location->location = NULL;
-		pfree(file_location);
+
+		pg_free(file_location->location);
+		file_location->location = NULL;    
+
+		pg_free(file_location);
+		file_location = NULL;
 	}
-	
+
 	for (i = 0; i < table_info->use_datanodes_num; i++)
 	{
-		free_NodeInfoData(table_info->use_datanodes[i]);
+		pg_free_NodeInfoData(table_info->use_datanodes[i]);
 		pg_free(table_info->use_datanodes[i]);
 		table_info->use_datanodes[i] = NULL;
 	}
 
-	pfree(table_info);
+	pg_free(table_info);
 	table_info = NULL;
+
+    return;
 }
-#if 0
-static int is_type_file(char *fullpath)
-{
-	struct stat statbuf;
-	if(lstat(fullpath, &statbuf)<0)/*stat error*/
-		return 0;
-	if(S_ISDIR(statbuf.st_mode) == 0)
-		return 1;
-	return 0;
-}
-#endif
-#if 0
-static int
-is_type_dir(char *fullpath)
-{
-	struct stat statbuf;
-	if(lstat(fullpath, &statbuf)<0)/*stat error*/
-	{	
-		return 0;
-	}
-	if(S_ISDIR(statbuf.st_mode) == 0)
-		return 0;
-	return 1;
-}
-#endif
+
 char *
 conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 {
-	char		* func;
-	LineBuffer  * buf;
+	char        *func;
+	LineBuffer  *buf;
 
 	buf = get_linebuf();
 	switch (type)
@@ -2750,90 +2645,89 @@ conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 
 		case INT8OID:
 			/* This gives added advantage that
-			 *	a = 8446744073709551359
-			 * and	a = 8446744073709551359::int8 both work*/			
+			 * a = 8446744073709551359
+			 * and a = 8446744073709551359::int8 both work*/
 			appendLineBufInfoString(buf, "hashint8");
 			break;
 		case INT2OID:
 			appendLineBufInfoString(buf, "hashint2");
 			break;
-	    case OIDOID:
-	    	appendLineBufInfoString(buf, "hashoid");
-	    	break;
-	    case INT4OID:
-	    	appendLineBufInfoString(buf, "hashint4");
-	    	break;
-	    case BOOLOID:
-	    	appendLineBufInfoString(buf, "hashchar");
-	    	break;
-	    case CHAROID:
-	    	appendLineBufInfoString(buf, "hashchar");
-	    	break;
-	    case NAMEOID:
-	    	appendLineBufInfoString(buf, "hashname");
-	    	break;
-	    case INT2VECTOROID:
-	    	appendLineBufInfoString(buf, "hashint2vector");
-	    	break;
-	    case VARCHAR2OID:
-	    case NVARCHAR2OID:
-	    case VARCHAROID:
-	    case TEXTOID:
-	    	appendLineBufInfoString(buf, "hashtext");
-	    	break;
-	    case OIDVECTOROID:
-	    	appendLineBufInfoString(buf, "hashoidvector");
-	    	break;
-	    case FLOAT4OID:
-	    	appendLineBufInfoString(buf, "hashfloat4");
-	    	break;
-	    case FLOAT8OID:
-	    	appendLineBufInfoString(buf, "hashfloat8");
-	    	break;
-	    case ABSTIMEOID:
-	    	if (loactor == DISTRIBUTE_BY_DEFAULT_HASH)
-	    		appendLineBufInfoString(buf, "hashint4");
-	    	else
-	    		appendLineBufInfoString(buf, "DatumGetInt32");
-	    	break;
-	    case RELTIMEOID:
-	    	if (loactor == DISTRIBUTE_BY_DEFAULT_HASH)
-	    		appendLineBufInfoString(buf, "hashint4");
-	    	else
-	    		appendLineBufInfoString(buf, "DatumGetRelativeTime");
-	    	break;
-	    case CASHOID:
-	    	appendLineBufInfoString(buf, "hashint8");
-	    	break;
-	    case BPCHAROID:
-	    	appendLineBufInfoString(buf, "hashbpchar");
-	    	break;
-	    case BYTEAOID:
-	    	appendLineBufInfoString(buf, "hashvarlena");
-	    	break;
-	    case DATEOID:
-	    	if (loactor == DISTRIBUTE_BY_DEFAULT_HASH)
-	    		appendLineBufInfoString(buf, "hashint4");
-	    	else
-	    		appendLineBufInfoString(buf, "DatumGetDateADT");
-	    	break;
-	    case TIMEOID:
-	    	appendLineBufInfoString(buf, "time_hash");
-	    	break;
-	    case TIMESTAMPOID:
-	   	case TIMESTAMPTZOID:
-	    	appendLineBufInfoString(buf, "timestamp_hash");
-	    	break;
-	    case INTERVALOID:
-	    	appendLineBufInfoString(buf, "interval_hash");
-	    	break;
-	    case TIMETZOID:
-	    	appendLineBufInfoString(buf, "timetz_hash");
-	    	break;
-	    case NUMERICOID:
-	    	appendLineBufInfoString(buf, "hash_numeric");
-	    	break;
-
+		case OIDOID:
+			appendLineBufInfoString(buf, "hashoid");
+			break;
+		case INT4OID:
+			appendLineBufInfoString(buf, "hashint4");
+			break;
+		case BOOLOID:
+			appendLineBufInfoString(buf, "hashchar");
+			break;
+		case CHAROID:
+			appendLineBufInfoString(buf, "hashchar");
+			break;
+		case NAMEOID:
+			appendLineBufInfoString(buf, "hashname");
+			break;
+		case INT2VECTOROID:
+			appendLineBufInfoString(buf, "hashint2vector");
+			break;
+		case VARCHAR2OID:
+		case NVARCHAR2OID:
+		case VARCHAROID:
+		case TEXTOID:
+			appendLineBufInfoString(buf, "hashtext");
+			break;
+		case OIDVECTOROID:
+			appendLineBufInfoString(buf, "hashoidvector");
+			break;
+		case FLOAT4OID:
+			appendLineBufInfoString(buf, "hashfloat4");
+			break;
+		case FLOAT8OID:
+			appendLineBufInfoString(buf, "hashfloat8");
+			break;
+		case ABSTIMEOID:
+			if (loactor == DISTRIBUTE_BY_DEFAULT_HASH)
+				appendLineBufInfoString(buf, "hashint4");
+			else
+				appendLineBufInfoString(buf, "DatumGetInt32");
+			break;
+		case RELTIMEOID:
+			if (loactor == DISTRIBUTE_BY_DEFAULT_HASH)
+				appendLineBufInfoString(buf, "hashint4");
+			else
+				appendLineBufInfoString(buf, "DatumGetRelativeTime");
+			break;
+		case CASHOID:
+			appendLineBufInfoString(buf, "hashint8");
+			break;
+		case BPCHAROID:
+			appendLineBufInfoString(buf, "hashbpchar");
+			break;
+		case BYTEAOID:
+			appendLineBufInfoString(buf, "hashvarlena");
+			break;
+		case DATEOID:
+			if (loactor == DISTRIBUTE_BY_DEFAULT_HASH)
+				appendLineBufInfoString(buf, "hashint4");
+			else
+				appendLineBufInfoString(buf, "DatumGetDateADT");
+			break;
+		case TIMEOID:
+			appendLineBufInfoString(buf, "time_hash");
+			break;
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			appendLineBufInfoString(buf, "timestamp_hash");
+			break;
+		case INTERVALOID:
+			appendLineBufInfoString(buf, "interval_hash");
+			break;
+		case TIMETZOID:
+			appendLineBufInfoString(buf, "timetz_hash");
+			break;
+		case NUMERICOID:
+			appendLineBufInfoString(buf, "hash_numeric");
+			break;
 		default:
 			ADBLOADER_LOG(LOG_ERROR, "[Main] field type error");
 			release_linebuf(buf);
@@ -2852,55 +2746,192 @@ conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 void
 free_datanode_info (DatanodeInfo *datanode_info)
 {
-	int flag;
-	Assert(NULL != datanode_info && NULL != datanode_info->datanode && NULL != datanode_info->conninfo);
-	pfree(datanode_info->datanode);
+	int i;
+
+	Assert(datanode_info != NULL);
+	Assert(datanode_info->datanode != NULL);
+	Assert(datanode_info->conninfo != NULL);
+
+	pg_free(datanode_info->datanode);
 	datanode_info->datanode = NULL;
 
-	for (flag = 0; flag < datanode_info->node_nums; flag++)
+	for (i = 0; i < datanode_info->node_nums; i++)
 	{
-		pfree(datanode_info->conninfo[flag]);
-		datanode_info->conninfo[flag] = NULL;
+		pg_free(datanode_info->conninfo[i]);
+		datanode_info->conninfo[i] = NULL;
 	}
-	pfree(datanode_info->conninfo);
+	pg_free(datanode_info->conninfo);
 	datanode_info->conninfo = NULL;
 
-	pfree(datanode_info);		
+	return;
 }
 
 void
-free_dispatch_info (DispatchInfo *dispatch_info)
+free_dispatch_info (DispatchInfo *dispatch)
 {
-	Assert(NULL != dispatch_info && NULL != dispatch_info->table_name && NULL != dispatch_info->conninfo_agtm);
+	int flag = 0;
+	int output_queue_total = 0;
+    
+	Assert(dispatch != NULL);
+	Assert(dispatch->table_name != NULL); 
+	Assert(dispatch->conninfo_agtm != NULL);
 
-	pfree(dispatch_info->table_name);
-	dispatch_info->table_name = NULL;
-	pfree(dispatch_info->conninfo_agtm);
-	dispatch_info->conninfo_agtm = NULL;
-	if (dispatch_info->copy_options)
+	pg_free(dispatch->conninfo_agtm);
+	dispatch->conninfo_agtm = NULL;
+
+	/* free output queue memory */
+	if (dispatch->output_queue != NULL)
 	{
-		pfree(dispatch_info->copy_options);
-		dispatch_info->copy_options = NULL;
+		output_queue_total = dispatch->datanodes_num * dispatch->threads_num_per_datanode;
+		for (flag = 0; flag < output_queue_total; flag++)
+		{
+			mq_pipe_destory(dispatch->output_queue[flag]);
+		}
+		pg_free(dispatch->output_queue);
+		dispatch->output_queue = NULL;
 	}
 
-	dispatch_info->output_queue = NULL;
-	pfree(dispatch_info);
+	/* free datanode info */
+	free_datanode_info(dispatch->datanode_info);
+	pg_free(dispatch->datanode_info);	
+	dispatch->datanode_info = NULL;
+
+	pg_free(dispatch->table_name);
+	dispatch->table_name = NULL;
+
+	pg_free(dispatch->copy_options);
+	dispatch->copy_options = NULL;
+
+	return ;
 }
 
 static void
-main_write_error_message(char * message, char *start_cmd)
+free_hash_info(HashComputeInfo *hash_info)
+{
+	int i = 0;
+	int output_queue_total = 0;
+
+	Assert(hash_info != NULL);
+	
+	pg_free(hash_info->func_name);
+	hash_info->func_name = NULL;
+	
+	pg_free(hash_info->table_name);
+	hash_info->table_name = NULL;
+
+	pg_free(hash_info->conninfo);
+	hash_info->conninfo = NULL;
+
+#if 0
+	/* free input queue */
+	if (hash_info->input_queue != NULL)
+	{
+		mq_pipe_destory(hash_info->input_queue);
+		pg_free(hash_info->input_queue);
+		hash_info->input_queue = NULL;
+	}
+#endif
+
+	/* free output queue memory */
+	if (hash_info->output_queue != NULL)
+	{
+		output_queue_total = hash_info->datanodes_num * hash_info->threads_num_per_datanode;
+		for (i = 0; i < output_queue_total; i++)
+		{
+			mq_pipe_destory(hash_info->output_queue[i]);
+		}
+
+		pg_free(hash_info->output_queue);
+		hash_info->output_queue = NULL;
+	}
+
+	pg_free(hash_info->redo_queue_index);
+	hash_info->redo_queue_index = NULL;
+
+	pg_free(hash_info->filter_queue_file_path);
+	hash_info->filter_queue_file_path = NULL;
+
+	clean_hash_field(hash_info->hash_field);
+	hash_info->hash_field = NULL;
+
+	return ;
+}
+
+static void
+free_read_info(ReadInfo *read_info)
+{
+	int output_queue_total = 0;
+	int i = 0;
+
+	Assert(read_info != NULL);
+
+	/* free filepath */
+	pg_free(read_info->filepath);
+	read_info->filepath = NULL;
+
+#if 0
+	/* free input queue */
+	if (read_info->input_queue != NULL)
+	{
+		mq_pipe_destory(read_info->input_queue);
+		pg_free(read_info->input_queue);
+		read_info->input_queue = NULL;
+	}
+#endif
+
+	/* free output queue memory */
+	if (read_info->output_queue != NULL)
+	{
+		output_queue_total = read_info->datanodes_num * read_info->threads_num_per_datanode;
+		for (i = 0; i < output_queue_total; i++)
+		{
+			mq_pipe_destory(read_info->output_queue[i]);
+		}
+
+		pg_free(read_info->output_queue);
+		read_info->output_queue = NULL;
+	}
+
+	/* free start_cmd */
+	pg_free(read_info->start_cmd);
+	read_info->start_cmd = NULL;
+
+	/* free redo_queue_index */
+	pg_free(read_info->redo_queue_index);
+	read_info->redo_queue_index = NULL;
+
+	return ;	
+}
+
+static void
+main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd)
 {
 	LineBuffer *error_buffer = NULL;
+
 	error_buffer = format_error_info(message, MAIN, NULL, 0, NULL);
-	if (start_cmd)
+
+	if (start_cmd != NULL)
 	{
 		appendLineBufInfoString(error_buffer, "\n");
-		appendLineBufInfoString(error_buffer, "suggest : ");
+		appendLineBufInfoString(error_buffer, "suggest       : ");
+		appendLineBufInfoString(error_buffer, "Please choose the following different processing options according to the different error information:\n");
+		appendLineBufInfoString(error_buffer, "               If it is a non-primary key error, please proceed as follows\n");
+		appendLineBufInfoString(error_buffer, "                   1,Manually modify the original data\n");
+		appendLineBufInfoString(error_buffer, "                   2,Execute the following command\n");
+		appendLineBufInfoString(error_buffer, "                     ");
 		appendLineBufInfoString(error_buffer, start_cmd);
 		appendLineBufInfoString(error_buffer, "\n");
+		appendLineBufInfoString(error_buffer, "               If it is a primary key error, please proceed as follows\n");
+		appendLineBufInfoString(error_buffer, "                   1,Execute the following command, gets the data in each queue into file\n");
+		appendLineBufInfoString(error_buffer, "                     ");
+		appendLineBufInfoString(error_buffer, start_cmd);
+		appendLineBufInfoString(error_buffer, " -e \n");
+		appendLineBufInfoString(error_buffer, "                   2,Manually modify the error data in the queue data file\n");
+		appendLineBufInfoString(error_buffer, "                   3,Import data using single file mode or static folder mode\n");
+		appendLineBufInfoString(error_buffer, "\n");
 	}
-	appendLineBufInfoString(error_buffer, "-------------------------------------------------------\n");
-	appendLineBufInfoString(error_buffer, "\n");
+	appendLineBufInfoString(error_buffer, "---------------------------------------------------------\n");
+
 	write_error(error_buffer);
 	release_linebuf(error_buffer);
 }
@@ -2909,43 +2940,32 @@ static int
 get_file_total_line_num (char *file_path)
 {
 	FILE *fp;
- 	int n = 0;
- 	int ch;
-	
+	int n = 0;
+	int ch;
+
 	if((fp = fopen(file_path,"r+")) == NULL)
-  	{
-	   fprintf(stderr,"open file \"%s\" error: %s\n", file_path, strerror(errno));
-	   exit(EXIT_FAILURE);
+	{
+		fprintf(stderr,"open file \"%s\" error: %s\n", file_path, strerror(errno));
+		exit(EXIT_FAILURE);
 	}
 
-	 while((ch = fgetc(fp)) != EOF)
-     {
-         if(ch == '\n')
-         {
-             n++;
-         }
-     }
+	while((ch = fgetc(fp)) != EOF)
+	{
+		if(ch == '\n')
+		{
+			n++;
+		}
+	}
 
-	 n++;
+	n++;
 
-	 fclose(fp);
-	 return n;
+	fclose(fp);
+	return n;
 }
-#if 0
-bool file_exists(char *file)
-{
-    FILE  *f = fopen(file, "r");
 
-    if (!f)
-        return false;
-
-    fclose(f);
-    return true;
-}
-#endif
 static void
 process_bar(int total, int send)
-{	
+{
 	char buf[103];
 	char index[6] = "-\\|/\0";
 	double precent = 0;
@@ -2967,7 +2987,7 @@ process_bar(int total, int send)
 	printf("%s [%d/%d][%d%%][%c]\r", buf, send, total,(int)precent, index[send % 4]);
 	/* flush cache buffer */
 	fflush(stdout);
-//	printf("\n");
+	//printf("\n");
 }
 
 static void
@@ -3012,13 +3032,14 @@ process_bar_multi(int total, int * send , int num)
 }
 
 static void 
-show_process(int total,
-			int datanodes, int * thread_send_total, DISTRIBUTE type)
+show_process(int total, int datanodes, int * thread_send_total, DISTRIBUTE type)
 {
 	int flag;
-	Assert(datanodes > 0 && thread_send_total != NULL);
+	Assert(datanodes > 0);
+	Assert(thread_send_total != NULL);
+
 	switch(type)
-	{		
+	{
 		case DISTRIBUTE_BY_REPLICATION:
 		{
 			 process_bar_multi(total, thread_send_total, datanodes);
