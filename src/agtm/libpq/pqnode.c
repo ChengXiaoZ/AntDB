@@ -598,7 +598,7 @@ static bool pq_node_ProcessStartupPacket(pq_comm_node *node)
 					, valptr, MyProcPort->user_name)));
 		}else if(strcmp(nameptr, "options") == 0)
 		{
-			if(strcmp(MyProcPort->cmdline_options, valptr) == 0)
+			if(strcmp(MyProcPort->cmdline_options, valptr) != 0)
 				ereport(ERROR, (errmsg("options \"%s\" not match current options \"%s\""
 					, valptr, MyProcPort->cmdline_options)));
 		}
