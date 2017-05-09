@@ -370,9 +370,9 @@ int main(int argc, char **argv)
 					continue;
 				}
 				else
-                {
-                    break;
-                }
+				{
+					break;
+				}
 			}
 		}
 
@@ -387,12 +387,12 @@ int main(int argc, char **argv)
 		/*check -Q valid*/
 		check_queue_num_valid(setting, table_info_ptr);
 
-        fopen_adb_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
+		fopen_adb_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
 
 		send_data_to_datanode(table_info_ptr->distribute_type, setting, table_info_ptr);
-        
-        fclose_adb_load_error_data();
-        check_db_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
+
+		fclose_adb_load_error_data();
+		check_db_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
 
 		if (setting->dynamic_mode && update_tables)
 		{
@@ -905,9 +905,9 @@ static bool is_create_in_adb_cluster(char *table_name)
 	PQclear(res);
 	PQfinish(conn);
 
-	if (numtuples == 1) //create table in adb cluster
+	if (numtuples == 1) /* create table in adb cluster */
 		return true;
-	else                // no create table in adb cluster
+	else                /* no create table in adb cluster */
 		return false;
 }
 
@@ -1023,22 +1023,22 @@ get_outqueue_name (int datanode_num)
 static bool
 do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 {
-	MessageQueuePipe     **output_queue = NULL;
-	DispatchInfo          *dispatch = NULL;
-	ReadInfo              *read_info = NULL;
-	DatanodeInfo          *datanode_info = NULL;
-	char                  *queue_name = NULL;
-	int                    res;
-	int                    file_total_line = 0;
-	bool                   read_finish = false;
-	bool                   dispatch_finish = false;
-	bool                   do_success = true;
-	bool                   need_redo = false;
-	char                  *start = NULL;
-	int                   *thread_send_total;
-	int                    output_queue_total;
-	int                    i = 0;
-	LineBuffer            *linebuf = NULL;
+	MessageQueuePipe **output_queue = NULL;
+	DispatchInfo      *dispatch = NULL;
+	ReadInfo          *read_info = NULL;
+	DatanodeInfo      *datanode_info = NULL;
+	char              *queue_name = NULL;
+	int                res;
+	int                file_total_line = 0;
+	bool               read_finish = false;
+	bool               dispatch_finish = false;
+	bool               do_success = true;
+	bool               need_redo = false;
+	char              *start = NULL;
+	int               *thread_send_total;
+	int                output_queue_total;
+	int                i = 0;
+	LineBuffer        *linebuf = NULL;
 
 	Assert(filepath != NULL);
 	Assert(table_info != NULL);
@@ -1359,7 +1359,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	SetHashFileStartCmd(start);
 
 	hash_info = (HashComputeInfo *)palloc0(sizeof(HashComputeInfo));
-    
 	hash_info->datanodes_num = table_info->use_datanodes_num;
 	hash_info->threads_num_per_datanode = table_info->threads_num_per_datanode;
 	hash_info->conninfo = pg_strdup(setting->server_info->connection);
@@ -1370,7 +1369,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 
 	pfree(func_name);
 	func_name = NULL;
-	
+
 	hash_info->hash_field = field;
 	hash_info->redo_queue = setting->redo_queue;
 	hash_info->redo_queue_total = setting->redo_queue_total;
@@ -1422,7 +1421,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	read_info->redo_queue_index = setting->redo_queue_index;
 	read_info->redo_queue_total = setting->redo_queue_total;
 	read_info->redo_queue = setting->redo_queue;
-	
+
 	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 
 	{
@@ -1516,7 +1515,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 					else /* adb_load server stopped by user.*/
 					{
 						hash_threads_fatal_error = true;
-                        do_hash_success = false;
+						do_hash_success = false;
 						main_write_error_message(table_info->distribute_type, "compute hash module failed", start);
 					}
 
@@ -1534,7 +1533,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				}
 				else
 				{
-				    do_hash_success = true; 
+					do_hash_success = true; 
 				}
 			}
 
@@ -1617,7 +1616,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	free_hash_info(hash_info);
 	pg_free(hash_info);
 	hash_info = NULL;
-	
+
 	/* free read_info */
 	free_read_info(read_info);
 	pg_free(read_info);
@@ -1707,7 +1706,6 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 		exit_nicely(conn);
 	}
 
-	//Assert(PQntuples(res) != 0);
 	if (PQntuples(res) == 0)
 	{
 		fprintf(stderr, "Error: table information is wrong. \n");
@@ -1753,7 +1751,9 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 				break;
 			}
 			else
+			{
 				continue;
+			}
 		}
 	}
 
@@ -1780,10 +1780,6 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 
 static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
 {
-	Assert(setting != NULL);
-	Assert(table_info != NULL);
-	Assert(setting->datanodes_num > 0);
-
 	NodeInfoData **use_datanodes_info = NULL;
 	int i = 0;
 	int use_datanode_num = 0;
@@ -1841,7 +1837,7 @@ static void reset_hash_field(TableInfo *table_info)
 	hashfield->func_name = pg_strdup(table_info->funcinfo->func_name);
 
 	hashfield->hash_threads_num = setting->hash_config->hash_thread_num;
-	hashfield->text_delim        = pg_strdup(setting->hash_config->text_delim);
+	hashfield->text_delim   = pg_strdup(setting->hash_config->text_delim);
 	hashfield->copy_options = pg_strdup(setting->hash_config->copy_option);
 	hashfield->quotec       = setting->hash_config->copy_quotec[0];
 	hashfield->has_qoute    = false;
@@ -1852,8 +1848,8 @@ static void reset_hash_field(TableInfo *table_info)
 
 static void drop_func_to_server(char *serverconninfo, char *drop_func_sql)
 {
-	PGconn     *conn;
-	PGresult   *res;
+	PGconn   *conn = NULL;
+	PGresult *res = NULL;
 
 	conn = PQconnectdb(serverconninfo);
 
@@ -1879,8 +1875,8 @@ static void drop_func_to_server(char *serverconninfo, char *drop_func_sql)
 
 static void create_func_to_server(char *serverconninfo, char *creat_func_sql)
 {
-	PGconn     *conn;
-	PGresult   *res;
+	PGconn   *conn = NULL;
+	PGresult *res = NULL;
 
 	conn = PQconnectdb(serverconninfo);
 
@@ -1922,10 +1918,10 @@ static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info
 static void get_node_count_and_node_list(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char query[QUERY_MAXLEN];
-	PGconn     *conn;
-	PGresult   *res;
-	int i;
-	int local_node_nums;
+	PGconn     *conn = NULL;
+	PGresult   *res = NULL;
+	int i = 0;
+	int local_node_nums = 0;
 
 	conn = PQconnectdb(conninfo);
 	if (PQstatus(conn) != CONNECTION_OK)

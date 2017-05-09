@@ -34,6 +34,7 @@ DispatchThreads *DispatchThreadsRun = &DispatchThreadsData;
 DispatchThreads  DispatchThreadsFinishData;
 DispatchThreads *DispatchThreadsFinish = &DispatchThreadsFinishData;
 TableType    Table_Type;
+
 static bool Is_Deal = false;
 static bool process_bar = false;
 static char **error_message_name = NULL;
@@ -52,7 +53,6 @@ static void dispatch_init_error_nametabs(void);
 static char *dispatch_util_message_name (DispatchThreadWorkState state);
 static void dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 										char * dispatch_error_message, int line_no, char *line_data, bool redo);
-
 
 static bool datanode_can_write(int fd, fd_set *set);
 static bool datanode_can_read(int fd, fd_set *set);
@@ -78,25 +78,24 @@ for (;;)                                     \
     }                                        \
 }
 
-
 static void
 dispatch_init_error_nametabs(void)
 {
-	int ii;
+	int i = 0;
 
 	if (error_message_name)
 		pfree(error_message_name);
 
-	for (ii = 0, error_message_max = 0; message_name_tab[ii].type >= 0; ii++)
+	for (i = 0, error_message_max = 0; message_name_tab[i].type >= 0; i++)
 	{
-		if (error_message_max < message_name_tab[ii].type)
-			error_message_max = message_name_tab[ii].type;
+		if (error_message_max < message_name_tab[i].type)
+			error_message_max = message_name_tab[i].type;
 	}
 	error_message_name = (char **)palloc0(sizeof(char *) * (error_message_max + 1));
 	memset(error_message_name, 0, sizeof(char *) * (error_message_max + 1));
-	for (ii = 0; message_name_tab[ii].type >= 0; ii++)
+	for (i = 0; message_name_tab[i].type >= 0; i++)
 	{
-		error_message_name[message_name_tab[ii].type] = message_name_tab[ii].name;
+		error_message_name[message_name_tab[i].type] = message_name_tab[i].name;
 	}
 }
 
@@ -115,7 +114,7 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			char * dispatch_error_message, int line_no, char *line_data, bool redo)
 {
 	LineBuffer *error_buffer = NULL;
-    
+
 	if (thrinfo)
 		error_buffer = format_error_info(message, DISPATCH, dispatch_error_message,
 									line_no, line_data);
@@ -337,7 +336,7 @@ static void
 put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, MessageQueuePipe *output_queue)
 {
 	int send = 0;
-	
+
 	/* send data to ADB*/
 	send = PQputCopyData(thrinfo->conn, lineBuffer->data, lineBuffer->len);
 
@@ -354,11 +353,10 @@ put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, Messag
 		"[DISPATCH][thread id : %ld ] send copy data error : %s ",
 			thrinfo->thread_id, lineBuffer->data);
 
-        ADBLOADER_LOG(LOG_ERROR,
-                    "[DISPATCH][thread id : %ld ] send copy data error message: %s ",
-                    thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] send copy data error message: %s ",
+					thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
 
-        
 		/* check connection state */
 		if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 		{
@@ -450,8 +448,8 @@ put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback)
 static int
 get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback)
 {
-	PGresult   *res = NULL;
-	char       *read_buff = NULL;
+	PGresult *res = NULL;
+	char     *read_buff = NULL;
 
 	res = PQgetResult(thrinfo->conn);
 	if (PQresultStatus(res) == PGRES_COPY_IN)
@@ -530,7 +528,6 @@ dispatch_threadMain (void *argp)
 	output_queue = thrinfo->output_queue;
 
 	build_communicate_agtm_and_datanode(thrinfo);
-
 	ADBLOADER_LOG(LOG_DEBUG,
 		"[DISPATCH][thread id : %ld ] out queue read fd : %d, server connection fd : %d",
 		thrinfo->thread_id, output_queue->fd[0], thrinfo->conn->sock);
@@ -592,7 +589,7 @@ dispatch_threadMain (void *argp)
 				continue;
 			}
 		}
-        
+
 		if (datanode_can_read(thrinfo->conn->sock, &read_fds))
 		{
 			int result = 0;
@@ -612,14 +609,6 @@ dispatch_threadMain (void *argp)
 				}
 				else // threads end flag
 				{
-#if 0
-				    int i;
-				    for (i = 0; i < 5; i++)
-                    {
-                        get_data_from_datanode(thrinfo, &need_rollback);
-                        sleep(2);
-                    }
-#endif
 					put_copy_end_to_datanode(thrinfo, need_rollback);
 				} 
 			}
@@ -634,8 +623,6 @@ dispatch_threadMain (void *argp)
 			ADBLOADER_LOG(LOG_DEBUG,
 							"[DISPATCH][thread id : %ld] Adb cluster processing data is relatively slow.\n", thrinfo->thread_id);
 		}
-
-
 
 		if (datanode_can_write(thrinfo->conn->sock, &write_fds) &&
 			!datanode_can_read(thrinfo->conn->sock, &read_fds) &&
@@ -899,64 +886,18 @@ dispatch_ThreadCleanup (void * argp)
 static PGconn *
 reconnect(DispatchThreadInfo *thrinfo)
 {
-	int times = 3;
-    
 	Assert(thrinfo->conn != NULL);
-    Assert(thrinfo->conninfo_datanode != NULL);
-    
+	Assert(thrinfo->conninfo_datanode != NULL);
+
 	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread id : %ld ] begin reconnect",
 				thrinfo->thread_id);
-    
+
 	PQfinish(thrinfo->conn);
-    PQfinish(thrinfo->agtm_conn);
-    
+	PQfinish(thrinfo->agtm_conn);
+
     build_communicate_agtm_and_datanode(thrinfo);
-#if 0
-	while (times > 0)
-	{
-		thrinfo->conn = PQconnectdb(thrinfo->conninfo_datanode);
-		if (thrinfo->conn == NULL)
-		{
-			ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread id : %ld ] memory allocation failed",
-				thrinfo->thread_id);
 
-			dispatch_write_error_message(thrinfo, 
-										"memory allocation failed",
-										NULL, 0,
-										NULL, true);
-			pthread_exit(thrinfo);
-		}
-		if (PQstatus(thrinfo->conn) != CONNECTION_OK)
-		{
-			ADBLOADER_LOG(LOG_WARN, "[DISPATCH][thread id : %ld ] connect error : %s, connect string : %s ",
-				thrinfo->thread_id, PQerrorMessage(thrinfo->conn), thrinfo->conninfo_datanode);
-			PQfinish(thrinfo->conn);
-			thrinfo->conn = NULL;
-			times--; 
-			sleep(5);
-			continue;
-		}
-		else
-        {
-            break; 
-        }
-
-	}
-    
-	if (times == 0)
-	{
-		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread id : %ld ] connect error : %s, connect string : %s ",
-				thrinfo->thread_id, PQerrorMessage(thrinfo->conn), thrinfo->conninfo_datanode);
-		thrinfo->conn = NULL;
-
-		dispatch_write_error_message(thrinfo, 
-									"connect error",
-									NULL, 0,
-									NULL, true);
-		pthread_exit(thrinfo);
-	}
-#endif
-    return thrinfo->conn;
+	return thrinfo->conn;
 }
 
 static char *
@@ -1110,13 +1051,17 @@ SetDispatchFileStartCmd(char * start_cmd)
 static char *
 get_linevalue_from_pqerrormsg(char *pqerrormsg)
 {
-    char *tmp = NULL;
-    
-    tmp = strstr(pqerrormsg,"LINEVALUE:");
-    if (tmp == NULL)
-        return NULL;
-    else
-        return pstrdup(tmp + 10);
-}
+	char *tmp = NULL;
+	const char *str_tok = "value: ";
 
+	tmp = strstr(pqerrormsg, str_tok);
+	if (tmp == NULL)
+	{
+		return NULL;  
+	}
+	else
+	{
+		return pstrdup(tmp + strlen(str_tok));
+	}
+}
 
