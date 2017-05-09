@@ -196,6 +196,9 @@ extern int  pool_time_out;
 /* connect retry times */
 int 		RetryTimes = 3;	
 
+/* receive sigquit signal */
+bool	signal_quit = false;
+
 /* Flag to tell if we are Postgres-XC pooler process */
 static bool am_pgxc_pooler = false;
 
@@ -364,8 +367,7 @@ PoolManagerInit()
 	 */
 	pqsignal(SIGINT, StatementCancelHandler);
 	pqsignal(SIGTERM, die);
-	/* pqsignal(SIGQUIT, pooler_quickdie); */
-	pqsignal(SIGQUIT, SIG_IGN);
+	pqsignal(SIGQUIT, pooler_quickdie);
 	pqsignal(SIGHUP, SIG_IGN);
 	/* TODO other signal handlers */
 
@@ -456,6 +458,10 @@ static void PoolerLoop(void)
 		MemoryContextResetAndDeleteChildren(context);
 
 		if(!PostmasterIsAlive())
+			proc_exit(1);
+
+		/* receive signal_quit and all agents had destory.exit poolmgr */ 
+		if (signal_quit && 0 == agentCount)
 			proc_exit(1);
 
 		for(i=agentCount;i--;)
@@ -611,8 +617,12 @@ static void PoolerLoop(void)
 			for(;;)
 			{
 				new_socket = accept(server_fd, NULL, NULL);
-				if(new_socket == PGINVALID_SOCKET)
-					break;
+				/* receive signal quit, close new connection */
+				if (signal_quit)
+				{
+					closesocket(new_socket);
+					continue;
+				}
 				else
 					agent_create(new_socket);
 			}
@@ -1255,8 +1265,11 @@ void PoolManagerCancelQuery(int dn_count, int* dn_list, int co_count, int* co_li
  */
 static void pooler_quickdie(SIGNAL_ARGS)
 {
+	signal_quit = true;	
+#if 0
 	PG_SETMASK(&BlockSig);
 	exit(2);
+#endif
 }
 
 bool IsPoolHandle(void)
