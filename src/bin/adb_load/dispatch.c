@@ -45,10 +45,9 @@ static int dispatch_threadsCreate(DispatchInfo *dispatch);
 static void *dispatch_threadMain (void *argp);
 static void *dispatch_ThreadMainWrapper (void *argp);
 static void dispatch_ThreadCleanup (void * argp);
-static PGconn *reconnect (DispatchThreadInfo *thrinfo);
 static char *create_copy_string (char *table_name, char *copy_options);
 //static void deal_after_thread_exit(void);
-static void build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo);
+//static void build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo);
 static void dispatch_init_error_nametabs(void);
 static char *dispatch_util_message_name (DispatchThreadWorkState state);
 static void dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
@@ -59,8 +58,12 @@ static bool datanode_can_read(int fd, fd_set *set);
 static bool output_queue_can_read(int fd, fd_set *set);
 static void put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, MessageQueuePipe *output_queue);
 static void put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback);
-static int get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback);
-
+static int  get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback);
+static void reconnect_agtm_and_datanode(DispatchThreadInfo *thrinfo);
+static void connect_agtm_and_datanode(DispatchThreadInfo *thrinfo);
+static bool connect_datanode(DispatchThreadInfo *thrinfo);
+static bool connect_agtm(DispatchThreadInfo *thrinfo);
+static void PQfinish_agtm_and_datanode(DispatchThreadInfo *thrinfo);
 
 #define FOR_GET_DATA_FROM_OUTPUT_QUEUE()     \
 for (;;)                                     \
@@ -361,7 +364,7 @@ put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, Messag
 		if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 		{
 			/* reconnect */
-			reconnect(thrinfo);
+			reconnect_agtm_and_datanode(thrinfo);
 			send = PQputCopyData(thrinfo->conn, lineBuffer->data, lineBuffer->len);
 			if (send < 0)
 			{
@@ -491,14 +494,14 @@ get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback)
 				fwrite_adb_load_error_data(linedata);
 				pg_free(linedata);
 				linedata = NULL;
-				reconnect(thrinfo);
+				reconnect_agtm_and_datanode(thrinfo);
 				return -1;
 			}
 		}
 	}
 	else
 	{
-		reconnect(thrinfo);
+		reconnect_agtm_and_datanode(thrinfo);
 		return -1;
 	}
 
@@ -527,7 +530,8 @@ dispatch_threadMain (void *argp)
 
 	output_queue = thrinfo->output_queue;
 
-	build_communicate_agtm_and_datanode(thrinfo);
+	//build_communicate_agtm_and_datanode(thrinfo);
+    connect_agtm_and_datanode(thrinfo);
 	ADBLOADER_LOG(LOG_DEBUG,
 		"[DISPATCH][thread id : %ld ] out queue read fd : %d, server connection fd : %d",
 		thrinfo->thread_id, output_queue->fd[0], thrinfo->conn->sock);
@@ -585,7 +589,7 @@ dispatch_threadMain (void *argp)
 			if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 			{
 				/* reconnect */
-				reconnect(thrinfo);
+				reconnect_agtm_and_datanode(thrinfo);
 				continue;
 			}
 		}
@@ -660,7 +664,7 @@ dispatch_threadMain (void *argp)
 			if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 			{   
 				/* reconnect */
-				reconnect(thrinfo);
+				reconnect_agtm_and_datanode(thrinfo);
 				continue;
 			}
 
@@ -694,6 +698,7 @@ dispatch_threadMain (void *argp)
 	return thrinfo;
 }
 
+#if 0
 static void 
 build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 {
@@ -808,6 +813,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 
 	return;
 }
+#endif
 
 static void 
 dispatch_ThreadCleanup (void * argp)
@@ -883,21 +889,197 @@ dispatch_ThreadCleanup (void * argp)
 	return;
 }
 
-static PGconn *
-reconnect(DispatchThreadInfo *thrinfo)
+static void
+reconnect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 {
+	/* finish agtm and datanode connect */
+	PQfinish_agtm_and_datanode(thrinfo);
+
+	/* reconnect agtm and datanode again */
+	connect_agtm_and_datanode(thrinfo);
+
+	return;
+}
+
+static void
+connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
+{
+	bool      conn_success = false;
+	char     *agtm_port = NULL;
+	char     *copy = NULL;
+	PGresult *res = NULL;
+	int       i = 0;
+
 	Assert(thrinfo->conn != NULL);
 	Assert(thrinfo->conninfo_datanode != NULL);
-
+	
 	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread id : %ld ] begin reconnect",
 				thrinfo->thread_id);
 
+	/* reconnect agtm 3 times, if failed, threads exit */
+	for (i = 0; i < 3; i++)
+	{
+		conn_success = connect_agtm(thrinfo);
+		if (conn_success)
+		{
+			break;
+		}
+		sleep(1);
+	}
+	if (!conn_success)
+	{
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
+		pthread_exit(thrinfo);
+	}
+	else
+	{
+		agtm_port = (char*)PQparameterStatus(thrinfo->agtm_conn, "agtm_port");
+	}
+
+	/* reconnect datanode 3 times, if failed, threads exit */
+	for (i = 0; i < 3; i++)
+	{
+		conn_success = connect_datanode(thrinfo);
+		if (conn_success)
+		{
+			break;
+		}
+		sleep(1);
+	}
+	if (!conn_success)
+	{
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_DATANODE_ERROR;
+		pthread_exit(thrinfo);
+	}
+
+	/* send agtm server listen port for datanode */
+	if (pqSendAgtmListenPort(thrinfo->conn, atoi(agtm_port)) < 0)
+	{
+		thrinfo->state = DISPATCH_THREAD_CONNECTION_AGTM_ERROR;
+
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] could not send agtm port: %s",
+					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));		
+		dispatch_write_error_message(thrinfo, 
+									"could not send agtm port",
+									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
+									NULL, true);
+
+		PQfinish(thrinfo->agtm_conn);
+		thrinfo->agtm_conn = NULL;
+		PQfinish(thrinfo->conn);
+		thrinfo->conn = NULL;
+
+		pthread_exit(thrinfo);
+	}
+
+	/* exec copy command to datanode */
+	copy = create_copy_string(thrinfo->table_name, thrinfo->copy_options);
+	ADBLOADER_LOG(LOG_DEBUG, "[DISPATCH][thread id : %ld ] dispatch copy string is : %s ",
+				thrinfo->thread_id, copy);
+
+	res = PQexec(thrinfo->conn, copy);
+	if (PQresultStatus(res) != PGRES_COPY_IN)
+	{
+		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread id : %ld ] PQresultStatus is not PGRES_COPY_IN, error message :%s, thread exit",
+					thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
+		thrinfo->state = DISPATCH_THREAD_COPY_STATE_ERROR;
+
+		dispatch_write_error_message(thrinfo, 
+									"PQresultStatus is not PGRES_COPY_IN",
+									PQerrorMessage(thrinfo->conn), 0,
+									NULL, true);
+
+		PQfinish(thrinfo->agtm_conn);
+		thrinfo->agtm_conn = NULL;
+		PQfinish(thrinfo->conn);
+		thrinfo->conn = NULL;
+
+		pthread_exit(thrinfo);
+	}
+
+	thrinfo->copy_str = copy;
+
+	return;
+}
+
+static bool
+connect_datanode(DispatchThreadInfo *thrinfo)
+{
+	Assert(thrinfo->conn!= NULL);
+
+	thrinfo->conn = PQconnectdb(thrinfo->conninfo_datanode);
+	if (thrinfo->conn == NULL)
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
+		dispatch_write_error_message(thrinfo, 
+									"memory allocation failed",
+									NULL, 0, NULL, true);
+		return false;
+	}
+
+	if (PQstatus((PGconn*)thrinfo->conn) != CONNECTION_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
+					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));
+		dispatch_write_error_message(thrinfo, 
+									"connect to agtm error",
+									PQerrorMessage((PGconn*)thrinfo->conn), 0,
+									NULL, true);
+
+		PQfinish(thrinfo->conn);
+		thrinfo->conn = NULL;
+
+		return false;
+	}
+
+	return true;
+}
+
+static bool
+connect_agtm(DispatchThreadInfo *thrinfo)
+{
+	Assert(thrinfo->agtm_conn != NULL);
+
+	thrinfo->agtm_conn = PQconnectdb(thrinfo->conninfo_agtm);
+	if (thrinfo->agtm_conn == NULL)
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
+		dispatch_write_error_message(thrinfo, 
+									"memory allocation failed",
+									NULL, 0, NULL, true);
+		return false;
+	}
+
+	if (PQstatus((PGconn*)thrinfo->agtm_conn) != CONNECTION_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
+					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->agtm_conn));
+		dispatch_write_error_message(thrinfo, 
+									"connect to agtm error",
+									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
+									NULL, true);
+
+		PQfinish(thrinfo->agtm_conn);
+		thrinfo->agtm_conn = NULL;
+
+		return false;
+	}
+
+	return true;
+}
+
+static void
+PQfinish_agtm_and_datanode(DispatchThreadInfo *thrinfo)
+{
 	PQfinish(thrinfo->conn);
 	PQfinish(thrinfo->agtm_conn);
 
-    build_communicate_agtm_and_datanode(thrinfo);
-
-	return thrinfo->conn;
+	return;
 }
 
 static char *
