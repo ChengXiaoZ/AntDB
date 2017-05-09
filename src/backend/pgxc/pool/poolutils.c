@@ -119,12 +119,12 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 	/* No need to reload, node information is consistent */
 	if (PoolManagerCheckConnectionInfo())
 	{
+		/* Release the lock on pooler */
+		PoolManagerLock(false);
 #ifdef ADB
 		/* Sync cluster nextXid with AGTM */
 		PgxcNodeSyncNextXid();
 #endif
-		/* Release the lock on pooler */
-		PoolManagerLock(false);
 		PG_RETURN_BOOL(true);
 	}
 
@@ -134,12 +134,12 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 	/* Be sure it is done consistently */
 	if (!PoolManagerCheckConnectionInfo())
 	{
+		/* Release the lock on pooler */
+		PoolManagerLock(false);
 #ifdef ADB
 		/* Sync cluster nextXid with AGTM */
 		PgxcNodeSyncNextXid();
 #endif
-		/* Release the lock on pooler */
-		PoolManagerLock(false);
 		PG_RETURN_BOOL(false);
 	}
 
