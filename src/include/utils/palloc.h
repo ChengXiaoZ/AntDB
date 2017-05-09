@@ -54,6 +54,15 @@ extern void *palloc0(Size size);
 extern void *repalloc(void *pointer, Size size);
 extern void pfree(void *pointer);
 
+#ifdef ADB
+#define safe_pfree(ptr) \
+	do { \
+		if ((ptr)) \
+			pfree((ptr)); \
+		(ptr) = NULL; \
+	} while (0)
+#endif
+
 /*
  * The result of palloc() is always word-aligned, so we can skip testing
  * alignment of the pointer when deciding which MemSet variant to use.

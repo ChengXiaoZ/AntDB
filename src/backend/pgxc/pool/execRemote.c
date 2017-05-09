@@ -6028,5 +6028,147 @@ TellRemoteXactLocalPrepared(bool status)
 {
 	remoteXactState.preparedLocalNode = status;
 }
-#endif
 
+static void
+pgxc_node_sync_nextxid(PGXCNodeHandle **handles, const int count)
+{
+	const char		   *query = "select * from sync_agtm_xid()";
+	RemoteQueryState   *combiner;
+	PGXCNodeHandle	   *new_handles[count];
+	int					new_count = 0;
+	int					i, res;
+
+	if (count <= 0)
+		return ;
+
+	for (i = 0; i < count; i++)
+	{
+		/* send query */
+		if (pgxc_node_send_query(handles[i], query))
+		{
+			ereport(WARNING,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("Fail to send query: \"%s\"", query),
+				errnode(NameStr(handles[i]->name)),
+				errhint("Error: %s", handles[i]->error)));
+		}
+		new_handles[new_count++] = handles[i];
+	}
+
+	if (new_count == 0)
+		return ;
+
+	combiner = CreateResponseCombiner(new_count, COMBINE_TYPE_NONE);
+
+	while (new_count > 0)
+	{
+		/*
+		 * No matter any connection has crash down, we still need to deal with
+		 * other connections.
+		 */
+		pgxc_node_receive(new_count, new_handles, NULL);
+
+		i = 0;
+		while (i < new_count)
+		{
+			res = handle_response(new_handles[i], combiner);
+
+			switch (res)
+			{
+				case RESPONSE_EOF:
+					i++;
+					break;
+				case RESPONSE_COMPLETE:
+					if (--new_count > i)
+						new_handles[i] = new_handles[new_count];
+					break;
+				case RESPONSE_TUPDESC:
+					break;
+				case RESPONSE_DATAROW:
+					{
+						safe_pfree(combiner->currentRow.msg);
+						combiner->currentRow.msg = NULL;
+						combiner->currentRow.msglen = 0;
+						combiner->currentRow.msgnode = 0;
+					}
+					break;
+				default:
+					{
+						new_handles[i]->state = DN_CONNECTION_STATE_ERROR_FATAL;
+						if (new_handles[i]->error == NULL)
+						{
+							add_error_message(new_handles[i],
+								"Node \"%s\" fail to sync nextXid", NameStr(new_handles[i]->name));
+						}
+						if (combiner->errorMessage.len == 0)
+						{
+							appendStringInfo(&(combiner->errorMessage),
+								"Node \"%s\" fail to sync nextXid", NameStr(new_handles[i]->name));
+						}
+						/* Stop tracking and move last connection in place */
+						new_count--;
+						if (i < new_count)
+							new_handles[i] = new_handles[new_count];
+					}
+					break;
+			}
+		}
+	}
+	pgxc_node_report_error(combiner);
+
+	ValidateAndCloseCombiner(combiner);
+}
+
+void
+PgxcNodeSyncNextXid(void)
+{
+	PGXCNodeAllHandles	   *all_handles = NULL;
+	PGXCNodeHandle		  **co_handles = NULL;
+	PGXCNodeHandle		  **dn_handles = NULL;
+	PGXCNodeHandle		  **connections = NULL;
+	List				   *co_list = NIL;
+	List				   *dn_list = NIL;
+	int						co_count = 0;
+	int						dn_count = 0;
+	int						count = 0;
+
+	/* Only master-coordinator can do this */
+	if (IS_PGXC_DATANODE || IsConnFromCoord())
+		return ;
+
+	/* first sync local nextXid with agtm */
+	agtm_SyncLocalNextXid(NULL, NULL);
+
+	/* then sync other nodes of the cluster */
+	PG_TRY();
+	{
+		co_list = GetAllCoordNodes();
+		dn_list = GetAllDataNodes();
+		all_handles = get_handles(dn_list, co_list, false);
+		co_handles = all_handles->coord_handles;
+		dn_handles = all_handles->datanode_handles;
+		co_count = all_handles->co_conn_count;
+		dn_count = all_handles->dn_conn_count;
+		count = co_count + dn_count;
+		if (count <= 0)
+			return ;
+		connections = (PGXCNodeHandle **) palloc0(count * sizeof(PGXCNodeHandle *));
+		memcpy(connections, co_handles, co_count * sizeof(PGXCNodeHandle *));
+		memcpy(&(connections[co_count]), dn_handles, dn_count * sizeof(PGXCNodeHandle *));
+
+		pgxc_node_sync_nextxid(connections, count);
+	} PG_CATCH();
+	{
+		safe_pfree(connections);
+		pfree_pgxc_all_handles(all_handles);
+		list_free(dn_list);
+		list_free(co_list);
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	safe_pfree(connections);
+	pfree_pgxc_all_handles(all_handles);
+	list_free(dn_list);
+	list_free(co_list);
+}
+#endif

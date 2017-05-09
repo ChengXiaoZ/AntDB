@@ -54,7 +54,7 @@ extern XidStatus agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 /*
  * synchronize transaction ID with AGTM.
  */
-extern void agtm_SyncXidWithAGTM(TransactionId *local_xid, TransactionId *agtm_xid);
+extern void agtm_SyncLocalNextXid(TransactionId *local_xid, TransactionId *agtm_xid);
 
 /*
  * synchronize transaction ID with AGTM.

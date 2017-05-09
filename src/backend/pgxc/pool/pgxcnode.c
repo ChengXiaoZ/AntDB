@@ -2358,13 +2358,12 @@ PGXCNodeAllHandles *
 get_handles(List *datanodelist, List *coordlist, bool is_coord_only_query)
 {
 	PGXCNodeAllHandles	*result;
-	ListCell		*node_list_item;
-	List			*dn_allocate = NIL;
-	List			*co_allocate = NIL;
+	ListCell			*node_list_item;
+	List				*dn_allocate = NIL;
+	List				*co_allocate = NIL;
 	PGXCNodeHandle		*node_handle;
-
 	/* index of the result array */
-	int			i = 0;
+	int					 i = 0;
 
 	result = (PGXCNodeAllHandles *) palloc(sizeof(PGXCNodeAllHandles));
 	if (!result)

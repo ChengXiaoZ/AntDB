@@ -385,9 +385,10 @@ agtm_TransactionIdGetStatus(TransactionId xid, XLogRecPtr *lsn)
 }
 
 void
-agtm_SyncXidWithAGTM(TransactionId *local_xid, TransactionId *agtm_xid)
+agtm_SyncLocalNextXid(TransactionId *local_xid,		/* output */
+					  TransactionId *agtm_xid)		/* output */
 {
-	PGresult	   *res = NULL;
+	PGresult *volatile res = NULL;
 	TransactionId	lxid,	/* local xid */
 					axid;	/* agtm xid */
 	StringInfoData	buf;
@@ -427,7 +428,7 @@ Datum sync_agtm_xid(PG_FUNCTION_ARGS)
 	bool			isnull[3];
 	NameData		nodename;
 
-	agtm_SyncXidWithAGTM(&lxid, &axid);
+	agtm_SyncLocalNextXid(&lxid, &axid);
 
 	tupdesc = CreateTemplateTupleDesc(3, false);
 	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "node",

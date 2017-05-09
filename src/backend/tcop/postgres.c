@@ -4799,11 +4799,12 @@ PostgresMain(int argc, char *argv[],
 		 */
 		if (IsUnderPostmaster && IS_PGXC_COORDINATOR && !cluster_ex_lock_held && !cluster_lock_held)
 		{
-						bool exclusive = false;
-						AcquireClusterLock(exclusive);
-						cluster_lock_held = true;
+			bool exclusive = false;
+			AcquireClusterLock(exclusive);
+			cluster_lock_held = true;
 		}
 #endif
+
 		/*
 		 * (5) check for any other interesting events that happened while we
 		 * slept.

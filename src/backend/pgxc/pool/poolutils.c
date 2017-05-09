@@ -19,6 +19,7 @@
 
 #ifdef ADB
 #include "access/rxact_mgr.h"
+#include "pgxc/execRemote.h"
 #endif /* ADB */
 #include "pgxc/pgxc.h"
 #include "nodes/nodes.h"
@@ -118,6 +119,10 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 	/* No need to reload, node information is consistent */
 	if (PoolManagerCheckConnectionInfo())
 	{
+#ifdef ADB
+		/* Sync cluster nextXid with AGTM */
+		PgxcNodeSyncNextXid();
+#endif
 		/* Release the lock on pooler */
 		PoolManagerLock(false);
 		PG_RETURN_BOOL(true);
@@ -129,6 +134,10 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 	/* Be sure it is done consistently */
 	if (!PoolManagerCheckConnectionInfo())
 	{
+#ifdef ADB
+		/* Sync cluster nextXid with AGTM */
+		PgxcNodeSyncNextXid();
+#endif
 		/* Release the lock on pooler */
 		PoolManagerLock(false);
 		PG_RETURN_BOOL(false);
@@ -153,6 +162,11 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 	PoolManagerReconnect();
 
 	MemoryContextSwitchTo(old_context);
+
+#ifdef ADB
+	/* Sync cluster nextXid with AGTM */
+	PgxcNodeSyncNextXid();
+#endif
 
 	PG_RETURN_BOOL(true);
 }

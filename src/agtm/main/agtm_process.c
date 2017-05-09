@@ -34,7 +34,7 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 	set_ps_display(msg_name, true);
 	BeginCommand(msg_name, dest);
 	ereport(DEBUG1, 
-		(errmsg("[ pid=%d] Process Command mtype = %s (%d).",
+		(errmsg("[pid=%d] Process Command mtype = %s (%d).",
 		MyProcPid, msg_name, (int)mtype)));
 
 	if(buf.data == NULL)
