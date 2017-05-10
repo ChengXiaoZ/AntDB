@@ -6527,11 +6527,9 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	Form_mgr_node mgr_node;
 	Form_mgr_node mgr_nodecn;
 	Form_mgr_node mgr_nodetmp;
-	Form_mgr_host mgr_host;
 	HeapTuple tuple;
 	HeapTuple mastertuple;
 	HeapTuple cn_tuple;
-	HeapTuple host_tuple;
 	Oid hostOidtmp;
 	Oid hostOid;
 	Oid nodemasternameoid;
@@ -6548,7 +6546,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	char *strlabel;
 	char *address;
 	char *strnodetype;
-	char *pstr;
 	char aimtuplenodetype;
 	char nodetype;
 	char nodeport_buf[10];
@@ -6654,38 +6651,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 				appendStringInfo(&recorderr, "on %s \"%s\" reload \"agtm_host\", \"agtm_port\" fail\n", strnodetype, NameStr(mgr_nodetmp->nodename));
 			}
 			pfree(strnodetype);
-
-			/*datanode master: sync agtm xid*/
-			if (CNDN_TYPE_DATANODE_MASTER == mgr_nodetmp->nodetype)
-			{
-				host_tuple = SearchSysCache1(HOSTHOSTOID, mgr_nodetmp->nodehost);
-				if(!(HeapTupleIsValid(host_tuple)))
-				{
-					ereport(ERROR, (errmsg("host oid \"%u\" not exist", mgr_nodetmp->nodehost)
-						, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
-						, errcode(ERRCODE_UNDEFINED_OBJECT)));
-				}
-				mgr_host= (Form_mgr_host)GETSTRUCT(host_tuple);
-				Assert(mgr_host);
-				try = maxtry;
-				ereport(LOG, (errmsg("on datanode master \"%s\" execute \"%s\"", NameStr(mgr_nodetmp->nodename), "select * from sync_agtm_xid()")));
-				while(try -- >= 0)
-				{
-					resetStringInfo(&resultstrdata);
-					monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, mgr_host->hostagentport, "select * from sync_agtm_xid()", NameStr(mgr_host->hostuser), address, mgr_nodetmp->nodeport, DEFAULT_DB, &resultstrdata);
-					pstr = resultstrdata.data;
-					if (resultstrdata.len != 0 && strcasecmp(pstr, NameStr(mgr_nodetmp->nodename)) == 0)
-					{
-						break;
-					}
-				}
-				ReleaseSysCache(host_tuple);
-				if (try < 0)
-				{
-					ereport(WARNING, (errmsg("on datanode master \"%s\" execute \"%s\" fail", NameStr(mgr_nodetmp->nodename), "select * from sync_agtm_xid()")));
-					appendStringInfo(&recorderr, "on datanode master \"%s\" execute \"%s\" fail\n", NameStr(mgr_nodetmp->nodename), "select * from sync_agtm_xid()");
-				}
-			}
 			pfree(address);
 		}
 	}
@@ -6781,7 +6746,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_nodetmp);
 		resetStringInfo(&infosendsyncmsg);
-		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (\"%s\") 'select * from sync_agtm_xid()';", NameStr(mgr_nodetmp->nodename));
+		appendStringInfo(&infosendsyncmsg,"EXECUTE DIRECT ON (\"%s\") 'select pgxc_pool_reload()';", NameStr(mgr_nodetmp->nodename));
 		ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", cnnamedata.data, infosendsyncmsg.data)));
 		try = maxtry;
 		while(try-- >= 0)
@@ -6789,8 +6754,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 			res = PQexec(*pg_conn, infosendsyncmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
 			{
-				if (PQntuples(res) > 0)
-					if (strcasecmp(NameStr(mgr_nodetmp->nodename), PQgetvalue(res, 0, 0)) == 0)
+					if (strcasecmp("t", PQgetvalue(res, 0, 0)) == 0)
 					{
 						PQclear(res);
 						break;
