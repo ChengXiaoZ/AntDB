@@ -3085,6 +3085,9 @@ static int node_info_check(PoolAgent *agent)
 		list_free(checked_oids);
 	}
 node_info_check_end_:
+	/* after pgxc_pool_reload,some idle conn may be connet to error datanode */
+	if (res == POOL_CHECK_SUCCESS)
+		close_idle_connection();
 	return res;
 }
 
