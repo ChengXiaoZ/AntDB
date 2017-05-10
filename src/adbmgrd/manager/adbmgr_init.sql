@@ -419,11 +419,26 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
 
 -- for ADB monitor host page: The names of all the nodes on a host
 CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname text)
-    RETURNS table (all_nodename name)
+    RETURNS table
+	(
+		nodename name,
+		nodetype text,
+		nodesync name
+	)
     AS 
     $$
-
-    select nodename as all_node_name
+    select
+		nodename,
+		case nodetype
+		when 'g' then 'gtm master'
+		when 'p' then 'gtm slave'
+		when 'e' then 'gtm extra'
+		when 'c' then 'coordinator'
+		when 'd' then 'datanode master'
+		when 'b' then 'datanode slave'
+		when 'n' then 'datanode extra'
+		end as nodetype,
+		nodesync
     from mgr_node
     where nodehost = (select oid from mgr_host where hostname = $1);
 
