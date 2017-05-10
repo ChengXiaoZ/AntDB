@@ -2885,6 +2885,8 @@ static void agent_acquire_conn_list(ADBNodePoolSlot **slots, const Oid *oids, co
 			slot->current_list = BUSY_SLOT;
 		}
 		slot->owner = agent;
+		ereport(DEBUG1,
+					(errmsg("connect string : %s", node_pool->connstr)));
 	}
 }
 
@@ -3052,10 +3054,10 @@ static int node_info_check(PoolAgent *agent)
 	if(res != POOL_CHECK_SUCCESS)
 		return res;
 
-	checked_oids = NIL;
 	hash_seq_init(&hash_database_status, htab_database);
 	while((db_pool = hash_seq_search(&hash_database_status)) != NULL)
 	{
+		checked_oids = NIL;
 		hash_seq_init(&hash_nodepool_status, db_pool->htab_nodes);
 		while((node_pool = hash_seq_search(&hash_nodepool_status)) != NULL)
 		{
@@ -3066,6 +3068,7 @@ static int node_info_check(PoolAgent *agent)
 			if (connstr == NULL)
 			{
 				res = POOL_CHECK_FAILED;
+				list_free(checked_oids);
 				goto node_info_check_end_;
 			}
 			else
@@ -3079,9 +3082,9 @@ static int node_info_check(PoolAgent *agent)
 			PFREE_SAFE(connstr);
 			checked_oids = lappend_oid(checked_oids, node_pool->nodeoid);
 		}
+		list_free(checked_oids);
 	}
 node_info_check_end_:
-	list_free(checked_oids);
 	return res;
 }
 
