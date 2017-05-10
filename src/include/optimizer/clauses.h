@@ -60,6 +60,7 @@ extern double tlist_returns_set_rows(List *tlist);
 extern bool contain_subplans(Node *clause);
 #ifdef ADB
 extern bool contain_rownum(Node *clause);
+extern bool contain_volatile_functions_without_check_RownumExpr(Node *clause);
 #endif /* ADB */
 
 extern bool contain_mutable_functions(Node *clause);
