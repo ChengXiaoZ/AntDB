@@ -1041,7 +1041,7 @@ connect_datanode(DispatchThreadInfo *thrinfo)
 static bool
 connect_agtm(DispatchThreadInfo *thrinfo)
 {
-	Assert(thrinfo->agtm_conn != NULL);
+	Assert(thrinfo->conninfo_agtm != NULL);
 
 	thrinfo->agtm_conn = PQconnectdb(thrinfo->conninfo_agtm);
 	if (thrinfo->agtm_conn == NULL)
