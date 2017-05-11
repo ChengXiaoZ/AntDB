@@ -1241,6 +1241,21 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 
 	CleanDispatchResource();
 
+    /* just free output queeu once , read threads and dispatch threads all used */
+	if (dispatch->output_queue != NULL)
+	{
+	    int output_queue_total = 0;
+        int flag = 0;
+        
+		output_queue_total = dispatch->datanodes_num * dispatch->threads_num_per_datanode;
+		for (flag = 0; flag < output_queue_total; flag++)
+		{
+			mq_pipe_destory(dispatch->output_queue[flag]);
+		}
+		pg_free(dispatch->output_queue);
+		dispatch->output_queue = NULL;
+	}
+
 	/* free dispatch */
 	free_dispatch_info(dispatch);
 	pg_free(dispatch);
@@ -1249,10 +1264,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	free_read_info(read_info);
 	pg_free(read_info);
 	read_info = NULL;
-#if 0
-	pg_free(start);
-	start = NULL;
-#endif
+
 	return do_success;
 }
 
@@ -1605,6 +1617,22 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		mq_pipe_destory(input_queue);
 		pg_free(input_queue);
 		input_queue = NULL;
+	}
+    
+	/* free output queue memory */
+	if (read_info->output_queue != NULL)
+	{
+		int output_queue_total = 0;
+	    int i = 0;
+        
+		output_queue_total = read_info->datanodes_num * read_info->threads_num_per_datanode;
+		for (i = 0; i < output_queue_total; i++)
+		{
+			mq_pipe_destory(read_info->output_queue[i]);
+		}
+
+		pg_free(read_info->output_queue);
+		read_info->output_queue = NULL;
 	}
 
 	/* free dispatch */
@@ -2765,9 +2793,6 @@ free_datanode_info (DatanodeInfo *datanode_info)
 void
 free_dispatch_info (DispatchInfo *dispatch)
 {
-	int flag = 0;
-	int output_queue_total = 0;
-    
 	Assert(dispatch != NULL);
 	Assert(dispatch->table_name != NULL); 
 	Assert(dispatch->conninfo_agtm != NULL);
@@ -2776,18 +2801,8 @@ free_dispatch_info (DispatchInfo *dispatch)
 	dispatch->conninfo_agtm = NULL;
 
 	/* free output queue memory */
-	if (dispatch->output_queue != NULL)
-	{
-		output_queue_total = dispatch->datanodes_num * dispatch->threads_num_per_datanode;
-		for (flag = 0; flag < output_queue_total; flag++)
-		{
-			mq_pipe_destory(dispatch->output_queue[flag]);
-		}
-		pg_free(dispatch->output_queue);
-		dispatch->output_queue = NULL;
-	}
+	// to do nothing
 
-	/* free datanode info */
 	free_datanode_info(dispatch->datanode_info);
 	pg_free(dispatch->datanode_info);	
 	dispatch->datanode_info = NULL;
@@ -2804,9 +2819,6 @@ free_dispatch_info (DispatchInfo *dispatch)
 static void
 free_hash_info(HashComputeInfo *hash_info)
 {
-	int i = 0;
-	int output_queue_total = 0;
-
 	Assert(hash_info != NULL);
 	
 	pg_free(hash_info->func_name);
@@ -2818,28 +2830,11 @@ free_hash_info(HashComputeInfo *hash_info)
 	pg_free(hash_info->conninfo);
 	hash_info->conninfo = NULL;
 
-#if 0
+	/*free input queue */
+	// to do nothing
+
 	/* free input queue */
-	if (hash_info->input_queue != NULL)
-	{
-		mq_pipe_destory(hash_info->input_queue);
-		pg_free(hash_info->input_queue);
-		hash_info->input_queue = NULL;
-	}
-#endif
-
-	/* free output queue memory */
-	if (hash_info->output_queue != NULL)
-	{
-		output_queue_total = hash_info->datanodes_num * hash_info->threads_num_per_datanode;
-		for (i = 0; i < output_queue_total; i++)
-		{
-			mq_pipe_destory(hash_info->output_queue[i]);
-		}
-
-		pg_free(hash_info->output_queue);
-		hash_info->output_queue = NULL;
-	}
+	// to do nothing
 
 	pg_free(hash_info->redo_queue_index);
 	hash_info->redo_queue_index = NULL;
@@ -2862,32 +2857,11 @@ free_read_info(ReadInfo *read_info)
 	pg_free(read_info->filepath);
 	read_info->filepath = NULL;
 
-#if 0
-	/* free input queue */
-	if (read_info->input_queue != NULL)
-	{
-		mq_pipe_destory(read_info->input_queue);
-		pg_free(read_info->input_queue);
-		read_info->input_queue = NULL;
-	}
+	/* free input queue for hash table */
+	/* to do nothing */
 
-
-	/* free output queue memory */
-	if (read_info->output_queue != NULL)
-	{
-		int output_queue_total = 0;
-	    int i = 0;
-        
-		output_queue_total = read_info->datanodes_num * read_info->threads_num_per_datanode;
-		for (i = 0; i < output_queue_total; i++)
-		{
-			mq_pipe_destory(read_info->output_queue[i]);
-		}
-
-		pg_free(read_info->output_queue);
-		read_info->output_queue = NULL;
-	}
-#endif
+	/* free output queue for replication table */
+	/* to do nothing */
 
 	/* free start_cmd */
 	pg_free(read_info->start_cmd);
@@ -2897,7 +2871,7 @@ free_read_info(ReadInfo *read_info)
 	pg_free(read_info->redo_queue_index);
 	read_info->redo_queue_index = NULL;
 
-	return ;	
+	return ;
 }
 
 static void

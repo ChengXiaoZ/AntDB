@@ -79,7 +79,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		{"configfile",          required_argument, NULL, 'c'},
 		{"dbname",              required_argument, NULL, 'd'},
 		{"dynamic",                   no_argument, NULL, 'y'},
-        {"filter_queue_file",         no_argument, NULL, 'e'},      
+		{"filter_queue_file",         no_argument, NULL, 'e'},
 		{"hash_threads",        required_argument, NULL, 'h'},
 		{"inputdir",            required_argument, NULL, 'i'},
 		{"inputfile",           required_argument, NULL, 'f'},
@@ -98,7 +98,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 
 	int c;
 	int option_index;
-    ADBLoadSetting * setting = NULL;
+	ADBLoadSetting * setting = NULL;
 
 	if (argc > 1)
 	{
@@ -126,9 +126,9 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		case 'd': //dbname
 			setting->database_name = pg_strdup(optarg);
 			break;
-        case 'e': 
-            setting->filter_queue_file = true;
-            break;
+		case 'e': 
+			setting->filter_queue_file = true;
+			break;
 		case 'f': //inputfile
 			setting->input_file = pg_strdup(optarg);
 			break;
@@ -163,7 +163,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 			setting->static_mode = true;
 			break;
 		case 't': //table
-			setting->table_name = pg_strdup(optarg);
+			setting->table_name = pg_strdup(adb_load_tolower(optarg));
 			break;
 		case 'U': //username
 			setting->user_name = pg_strdup(optarg);
@@ -187,14 +187,13 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		}
 	}
 
-    setting->program = pg_strdup(argv[0]);
+	setting->program = pg_strdup(argv[0]);
 
-    if (setting->filter_queue_file && !setting->redo_queue)
-    {
-
-        fprintf(stderr, "Error: options -e/--filter_queue_file and -Q/--queue must be use together.\n");
-        exit(EXIT_FAILURE);
-    }
+	if (setting->filter_queue_file && !setting->redo_queue)
+	{
+		fprintf(stderr, "Error: options -e/--filter_queue_file and -Q/--queue must be use together.\n");
+		exit(EXIT_FAILURE);
+	}
 
 	if (setting->threads_num_per_datanode < 0)
 	{
@@ -306,7 +305,7 @@ static int get_redo_queue_total(char *optarg)
 	char *local_optarg = NULL;
 	char *token = NULL;
 	int   redo_queue_total = 0;
-    char *strtok_r_ptr = NULL;
+	char *strtok_r_ptr = NULL;
 
 	local_optarg = pg_strdup(optarg);
 
@@ -337,9 +336,8 @@ static int *get_redo_queue(char *optarg, int redo_queue_total)
 {
 	char *local_optarg = NULL;
 	int  *redo_queue = NULL;
-    char *strtok_r_ptr = NULL;
+	char *strtok_r_ptr = NULL;
 	int   i = 0;
-    
 
 	local_optarg = pg_strdup(optarg);
 
@@ -482,12 +480,12 @@ void check_node_connection_valid(const char *host_ip, const char *host_port, con
 		fprintf(stderr, "Error: Connection to node with(ip = %s, port = %s) failed. \n Error:%s\n",
 						host_ip, host_port, PQerrorMessage(conn));
 		PQfinish(conn);
-        conn = NULL;
+		conn = NULL;
 		exit(EXIT_FAILURE);
 	}
-    
+
 	PQfinish(conn);
-    conn = NULL;
+	conn = NULL;
 }
 
 void get_settings_by_config_file(ADBLoadSetting *setting)
@@ -496,7 +494,6 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 	char *datanode_valid = NULL;
 	char *process_bar_config = NULL;
 	char *str_ptr = NULL;
-    //char *copy_header_str = NULL;
 	int i = 0;
 
 	if(setting->config_file_path == NULL)
@@ -577,48 +574,48 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 	{
 		str_ptr = get_config_file_value(THREADS_NUM_PER_DATANODE);
 		setting->threads_num_per_datanode = atoi(str_ptr);
-        
-        if (setting->threads_num_per_datanode <= 0)
-        {
-            pfree(str_ptr);
-            str_ptr = NULL;
-            
-            fprintf(stderr, "Error: The variable value for \"THREADS_NUM_PER_DATANODE\" should be greater than 0.\n");
-            exit(EXIT_FAILURE);
-        }
-        
+
+		if (setting->threads_num_per_datanode <= 0)
+		{
+			pfree(str_ptr);
+			str_ptr = NULL;
+			
+			fprintf(stderr, "Error: The variable value for \"THREADS_NUM_PER_DATANODE\" should be greater than 0.\n");
+			exit(EXIT_FAILURE);
+		}
+
 		pfree(str_ptr);
 		str_ptr = NULL;
 	}
-    
+
 	setting->hash_config = (HashConfig *)palloc0(sizeof(HashConfig ));
 	if (setting->hash_thread_num == 0)
 	{
 		str_ptr = get_config_file_value(HASH_THREAD_NUM);
 		setting->hash_config->hash_thread_num = atoi(str_ptr);
 
-        if (setting->hash_config->hash_thread_num <= 0)
-        {
-            pfree(str_ptr);
-            str_ptr = NULL;
-            
-            fprintf(stderr, "Error: The variable value for \"HASH_THREAD_NUM\" should be greater than 0.\n");
-            exit(EXIT_FAILURE);
-        }
-        
+		if (setting->hash_config->hash_thread_num <= 0)
+		{
+			pfree(str_ptr);
+			str_ptr = NULL;
+			
+			fprintf(stderr, "Error: The variable value for \"HASH_THREAD_NUM\" should be greater than 0.\n");
+			exit(EXIT_FAILURE);
+		}
+
 		pfree(str_ptr);
 		str_ptr = NULL;
 	}
 	else
-    {
+	{
 		setting->hash_config->hash_thread_num = setting->hash_thread_num; 
-    }   
+	}
 
 	setting->hash_config->text_delim = get_text_delim(get_config_file_value(COPY_DELIMITER));
 	setting->hash_config->hash_delim = pstrdup(HASH_DELIM); 
 #if 0
-    copy_header_str = get_config_file_value(COPY_HEADER);
-    
+	copy_header_str = get_config_file_value(COPY_HEADER);
+
 	if (strcasecmp(copy_header_str, "on") == 0   ||
 		strcasecmp(copy_header_str, "true") == 0 ||
 		strcasecmp(copy_header_str, "1") == 0)
@@ -626,23 +623,23 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		setting->hash_config->copy_header = true;
 	}
 	else if (strcasecmp(copy_header_str, "off") == 0  ||
-		    strcasecmp(copy_header_str, "false") == 0 ||
-		    strcasecmp(copy_header_str, "0") == 0)
+			strcasecmp(copy_header_str, "false") == 0 ||
+			strcasecmp(copy_header_str, "0") == 0)
 	{
 		setting->hash_config->copy_header = false;
 	}
-    else
-    {
+	else
+	{
 		fprintf(stderr, "the config parameter \"COPY_HEADER\" set wrong.\n");
 		exit(EXIT_FAILURE);
-    }
+	}
 
-    if (setting->hash_config->copy_header && 
-        strcmp(setting->hash_config->text_delim, ",") != 0)
-    {
+	if (setting->hash_config->copy_header && 
+		strcmp(setting->hash_config->text_delim, ",") != 0)
+	{
 		fprintf(stderr, "COPY HEADER available only COPY_DELIMITER = \',\'.\n");
 		exit(EXIT_FAILURE);
-    }
+	}
 #endif
 	setting->hash_config->copy_quotec = pstrdup("\"");
 	setting->hash_config->copy_escapec = pstrdup("NO");
@@ -653,89 +650,87 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 	setting->log_field->log_level = get_config_file_value(LOG_LEVEL);
 	setting->log_field->log_path = get_config_file_value(LOG_PATH);
 
-
-    str_ptr = get_config_file_value(FILTER_QUEUE_FILE_PATH);
-    if (str_ptr[strlen(str_ptr) - 1] == '/')
-        str_ptr[strlen(str_ptr) - 1] = '\0';
-    setting->filter_queue_file_path = pstrdup(str_ptr);
-    pfree(str_ptr);
+	str_ptr = get_config_file_value(FILTER_QUEUE_FILE_PATH);
+	if (str_ptr[strlen(str_ptr) - 1] == '/')
+		str_ptr[strlen(str_ptr) - 1] = '\0';
+	setting->filter_queue_file_path = pstrdup(str_ptr);
+	pfree(str_ptr);
 	str_ptr = NULL;
 
-    if (!directory_exists(setting->filter_queue_file_path))
-        make_directory(setting->filter_queue_file_path);
+	if (!directory_exists(setting->filter_queue_file_path))
+		make_directory(setting->filter_queue_file_path);
 
-
-    str_ptr = get_config_file_value(ERROR_DATA_FILE_PATH);
-    if (str_ptr[strlen(str_ptr) - 1] == '/')
-        str_ptr[strlen(str_ptr) - 1] = '\0';
-    setting->error_data_file_path = pstrdup(str_ptr);
-    pfree(str_ptr);
+	str_ptr = get_config_file_value(ERROR_DATA_FILE_PATH);
+	if (str_ptr[strlen(str_ptr) - 1] == '/')
+		str_ptr[strlen(str_ptr) - 1] = '\0';
+	setting->error_data_file_path = pstrdup(str_ptr);
+	pfree(str_ptr);
 	str_ptr = NULL;
 
-    if (!directory_exists(setting->error_data_file_path))
-        make_directory(setting->error_data_file_path);
+	if (!directory_exists(setting->error_data_file_path))
+		make_directory(setting->error_data_file_path);
 
 	str_ptr = get_config_file_value(READ_FILE_BUFFER);
 	setting->read_file_buffer = atoi(str_ptr);
 	pfree(str_ptr);
 	str_ptr = NULL;
 
-    return;
+	return;
 }
 
 static char *
 get_text_delim(char *text_delim)
 {
-    char *local_text_delim = NULL;
+	char *local_text_delim = NULL;
 
-    local_text_delim = pstrdup(text_delim);
-    
-    if (strlen(local_text_delim) == 1)
-    {
-        return local_text_delim;
-    }
-    else if (strlen(local_text_delim) == 2)
-    {
-        if (strcasecmp(local_text_delim, "\\t") == 0)
-        {
-            local_text_delim[0] = '\t';
-            local_text_delim[1] = '\0';
-            return local_text_delim;
-        }
-    }
-    else
-    {
+	local_text_delim = pstrdup(text_delim);
+
+	if (strlen(local_text_delim) == 1)
+	{
+		return local_text_delim;
+	}
+	else if (strlen(local_text_delim) == 2)
+	{
+		if (strcasecmp(local_text_delim, "\\t") == 0)
+		{
+			local_text_delim[0] = '\t';
+			local_text_delim[1] = '\0';
+			return local_text_delim;
+		}
+	}
+	else
+	{
 		fprintf(stderr, "COPY delimiter must be a single one-byte character.\n");
 		exit(EXIT_FAILURE);
-    }
-    
-    return NULL;
+	}
+
+	return NULL;
 }
 
 static char *
 get_copy_options(char *text_delim, char *copy_null)
 {
-    LineBuffer *buf = NULL;
-    char *copy_options = NULL;
-    
-    init_linebuf(3);
-    buf = get_linebuf();
+	LineBuffer *buf = NULL;
+	char *copy_options = NULL;
 
-    appendLineBufInfo(buf, " with ( ");
+	init_linebuf(3);
+	buf = get_linebuf();
 
-    /*for COPY_DELIMITER */
-    appendLineBufInfo(buf, "DELIMITER \'%c\', ", text_delim[0]);
+	appendLineBufInfo(buf, " with ( ");
 
-    /*for COPY_NULL */
-    appendLineBufInfo(buf, "NULL \'%s\' ", copy_null);
-    appendLineBufInfo(buf, ")");
+	/*for COPY_DELIMITER */
+	appendLineBufInfo(buf, "DELIMITER \'%c\', ", text_delim[0]);
 
-    copy_options = pstrdup(buf->data);
+	/*for COPY_NULL */
+	appendLineBufInfo(buf, "NULL \'%s\' ", copy_null);
+	appendLineBufInfo(buf, ")");
 
-    release_linebuf(buf);
-    end_linebuf();
+	copy_options = pstrdup(buf->data);
 
-    return copy_options;
+	release_linebuf(buf);
+	end_linebuf();
+
+	return copy_options;
 }
 
 static char *replace_string(const char *string, const char *replace, const char *replacement)
@@ -785,11 +780,11 @@ static void print_help(FILE *fd)
 
 	fprintf(fd, _("  -c, --configfile            config file path (default:adb_load.conf on current directory)\n"));
 	fprintf(fd, _("  -o, --outputdir             output directory for log file and error file\n"));
-    fprintf(fd, _("  -i, --inputdir              data file directory\n"));
+	fprintf(fd, _("  -i, --inputdir              data file directory\n"));
 	fprintf(fd, _("  -f, --inputfile             data file\n"));
 	fprintf(fd, _("  -t, --table                 table name\n"));
-    fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
-    fprintf(fd, _("  -e, --filter_queue_file     filter queue data into file\n"));
+	fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
+	fprintf(fd, _("  -e, --filter_queue_file     filter queue data into file\n"));
 	fprintf(fd, _("  -?, --help                  show this help, then exit\n\n"));
 
 	return;
@@ -859,8 +854,8 @@ void pg_free_adb_load_setting(ADBLoadSetting *setting)
 	pg_free(setting->redo_queue_index);
 	setting->redo_queue_index = NULL;
 
-    pg_free(setting->filter_queue_file_path);
-    setting->filter_queue_file_path = NULL;
+	pg_free(setting->filter_queue_file_path);
+	setting->filter_queue_file_path = NULL;
 
 	pg_free(setting);
 	setting = NULL;

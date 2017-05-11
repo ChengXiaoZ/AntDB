@@ -88,4 +88,6 @@ void make_directory(const char *dir);
 unsigned long file_size(const char *file);
 bool file_exists(const char *file);
 bool remove_file(const char *file);
+
+char *adb_load_tolower(char *str);
 #endif

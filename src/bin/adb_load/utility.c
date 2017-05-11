@@ -61,24 +61,24 @@ format_error_info(char *message, Module type, char *error_message,
 
 	appendLineBufInfoString(linebuf, "Failed Reason : ");
 	if (error_message != NULL)
-    {
+	{
 		appendLineBufInfoString(linebuf, error_message);
-    }
-    else
-    {
-        appendLineBufInfoString(linebuf, "\n");
-    }
+	}
+	else
+	{
+		appendLineBufInfoString(linebuf, "\n");
+	}
 
-    if (type == HASHMODULE)
-    {
-        appendLineBufInfoString(linebuf, "Failed line loc  : ");
-        appendLineBufInfo(linebuf, "%d", line_no);
-        appendLineBufInfoString(linebuf, "\n");
-        
-        appendLineBufInfoString(linebuf, "Failed line data : ");
-        if (line_data != NULL)
-            appendLineBufInfoString(linebuf, line_data);
-    }
+	if (type == HASHMODULE)
+	{
+		appendLineBufInfoString(linebuf, "Failed line loc  : ");
+		appendLineBufInfo(linebuf, "%d", line_no);
+		appendLineBufInfoString(linebuf, "\n");
+		
+		appendLineBufInfoString(linebuf, "Failed line data : ");
+		if (line_data != NULL)
+			appendLineBufInfoString(linebuf, line_data);
+	}
 
 	return linebuf;
 }
@@ -189,7 +189,7 @@ char *
 create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *table_info)
 {
 	char       *start = NULL;
-    char       *new_file_path_suffix = NULL;
+	char       *new_file_path_suffix = NULL;
 	LineBuffer *linebuf = get_linebuf();
 
 	Assert(setting->program != NULL);
@@ -214,32 +214,32 @@ create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *
 	appendLineBufInfoString(linebuf, setting->config_file_path);
 	appendLineBufInfoString(linebuf, " -f ");
 
-    if (setting->static_mode || setting->dynamic_mode)
-    {
-        new_file_path_suffix = rename_string_suffix(file_path, ".error");
-        appendLineBufInfoString(linebuf, new_file_path_suffix);
-        pg_free(new_file_path_suffix);
-        new_file_path_suffix = NULL;
-    }else if (setting->single_file)
-    {
-        appendLineBufInfoString(linebuf, setting->input_file);
-    }
+	if (setting->static_mode || setting->dynamic_mode)
+	{
+		new_file_path_suffix = rename_string_suffix(file_path, ".error");
+		appendLineBufInfoString(linebuf, new_file_path_suffix);
+		pg_free(new_file_path_suffix);
+		new_file_path_suffix = NULL;
+	}else if (setting->single_file)
+	{
+		appendLineBufInfoString(linebuf, setting->input_file);
+	}
 
 	appendLineBufInfoString(linebuf, " -t ");
 	appendLineBufInfoString(linebuf, table_info->table_name);
 
-    if (table_info->distribute_type == DISTRIBUTE_BY_REPLICATION ||
-        table_info->distribute_type == DISTRIBUTE_BY_ROUNDROBIN)
-    {
-        appendLineBufInfo(linebuf, " -r %d", table_info->threads_num_per_datanode);
-    }
-    else if (table_info->distribute_type == DISTRIBUTE_BY_USERDEFINED ||
-            table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH ||
-            table_info->distribute_type  == DISTRIBUTE_BY_DEFAULT_MODULO)
-    {
-        appendLineBufInfo(linebuf, " -h %d", table_info->table_attribute->hash_threads_num);
-        appendLineBufInfo(linebuf, " -r %d", table_info->threads_num_per_datanode);
-    }
+	if (table_info->distribute_type == DISTRIBUTE_BY_REPLICATION ||
+		table_info->distribute_type == DISTRIBUTE_BY_ROUNDROBIN)
+	{
+		appendLineBufInfo(linebuf, " -r %d", table_info->threads_num_per_datanode);
+	}
+	else if (table_info->distribute_type == DISTRIBUTE_BY_USERDEFINED ||
+			table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH ||
+			table_info->distribute_type  == DISTRIBUTE_BY_DEFAULT_MODULO)
+	{
+		appendLineBufInfo(linebuf, " -h %d", table_info->table_attribute->hash_threads_num);
+		appendLineBufInfo(linebuf, " -r %d", table_info->threads_num_per_datanode);
+	}
 
 	start = (char*)palloc0(linebuf->len + 1);
 	memcpy(start, linebuf->data, linebuf->len);
@@ -253,21 +253,20 @@ create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *
 
 static char *rename_string_suffix(char *file_path, char *suffix)
 {
-    char new_string_suffix[1024];
-    char tmp[1024] ;
-    int  tmp_len = 0;
+	char new_string_suffix[1024];
+	char tmp[1024] ;
+	int  tmp_len = 0;
 
-    strcpy(tmp, file_path);
+	strcpy(tmp, file_path);
 
-    tmp_len = strlen(tmp);
-    while (tmp[tmp_len] != '.')
-        tmp_len--;
+	tmp_len = strlen(tmp);
+	while (tmp[tmp_len] != '.')
+		tmp_len--;
 
-    tmp[tmp_len] = '\0';
-    
-    sprintf(new_string_suffix, "%s%s", tmp, suffix);
+	tmp[tmp_len] = '\0';
 
-    return pstrdup(new_string_suffix);
+	sprintf(new_string_suffix, "%s%s", tmp, suffix);
+	return pstrdup(new_string_suffix);
 }
 
 char* get_current_time()
@@ -310,36 +309,19 @@ void make_directory(const char *dir)
  */
 unsigned long file_size(const char *file)
 {
-#if 0
-	unsigned long size;
-	FILE *fd = fopen(file, "r");
+	unsigned long filesize = -1;
+	struct stat statbuff;
 
-	if (!fd)
-	{
-		fprintf(stderr, "could not open file \"%s\" : %s\n", file, strerror(errno));
-		return -1;
+	if(stat(file, &statbuff) < 0)
+	{  
+		return filesize;
+	}
+	else
+	{  
+		filesize = statbuff.st_size;
 	}
 
-	fseek(fd, 0, SEEK_END);
-	size = ftell(fd);
-
-	fclose(fd);
-	return size;
-#endif
-
-    unsigned long filesize = -1;
-    struct stat statbuff;
-
-    if(stat(file, &statbuff) < 0)
-    {  
-        return filesize;
-    }
-    else
-    {  
-        filesize = statbuff.st_size;
-    }
-
-    return filesize;
+	return filesize;
 }
 
 bool file_exists(const char *file)
@@ -347,24 +329,54 @@ bool file_exists(const char *file)
 	FILE *fd = fopen(file, "r");
 
 	if (fd == NULL)
-    {
-        return false;
-    }
-    
+	{
+		return false;
+	}
+
 	fclose(fd);
 	return true;
 }
 
 bool remove_file(const char *file)
 {
-    int res = 0;
-    
-    res = remove(file);
-    if (res == -1)
-    {
-        fprintf(stderr, "remove fie \"%s\" failed.\n", file);
-        return false;
-    }
+	int res = 0;
 
-    return true;
+	res = remove(file);
+	if (res == -1)
+	{
+		fprintf(stderr, "remove fie \"%s\" failed.\n", file);
+		return false;
+	}
+
+	return true;
 }
+
+char *adb_load_tolower(char *str)
+{
+	char *orign = str;
+
+	for (; *str != '\0'; str++)
+	{
+		*str = pg_tolower(*str);
+	}
+
+	return orign;
+}
+
+/*
+ * Fold a character to lower case.
+ *
+ * Unlike some versions of tolower(), this is safe to apply to characters
+ * that aren't upper case letters.  Note however that the whole thing is
+ * a bit bogus for multibyte character sets.
+ */
+unsigned char
+pg_tolower(unsigned char ch)
+{
+	if (ch >= 'A' && ch <= 'Z')
+		ch += 'a' - 'A';
+	else if (IS_HIGHBIT_SET(ch) && isupper(ch))
+		ch = tolower(ch);
+	return ch;
+}
+
