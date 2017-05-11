@@ -417,6 +417,45 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
 
+-- for ADB monitor host page: get cpu, memory, i/o and net info for specific time period.
+CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage_by_time_period(hostname text, starttime timestamptz, endtime timestamptz)
+    RETURNS table 
+    (
+        recordtimes timestamptz,
+        cpuuseds numeric,
+        memuseds numeric,
+        ioreadps numeric,
+        iowriteps numeric,
+        netinps numeric,
+        netoutps numeric
+    )
+    AS 
+    $$
+
+    select c.mc_timestamptz as recordtimes,
+           round(c.mc_cpu_usage::numeric, 1) as cpuuseds,
+           round(m.mm_usage::numeric, 1) as memuseds,
+           round((d.md_io_read_bytes/1024.0/1024.0)/(d.md_io_read_time/1000.0), 1) as ioreadps,
+           round((d.md_io_write_bytes/1024.0/1024.0)/(d.md_io_write_time/1000.0), 1) as iowriteps,
+           round(n.mn_recv/1024.0,1) as netinps,
+           round(n.mn_sent/1024.0,1) as netoutps
+    from monitor_cpu c left join monitor_mem  m on(c.host_oid = m.host_oid and c.mc_timestamptz = m.mm_timestamptz)
+                       left join monitor_disk d on(c.host_oid = d.host_oid and c.mc_timestamptz = d.md_timestamptz)
+                       left join monitor_net  n on(c.host_oid = n.host_oid and c.mc_timestamptz = n.mn_timestamptz)
+                       left join monitor_host h on(c.host_oid = h.host_oid and c.mc_timestamptz = h.mh_current_time)
+                       left join mgr_host   mgr on(c.host_oid = mgr.oid),
+
+                       (select mh.host_oid, mh.mh_current_time 
+                        from monitor_host mh 
+                        order by mh.mh_current_time desc 
+                        limit 1) as temp
+    where c.mc_timestamptz  between $2 and $3
+            and mgr.hostname = $1;
+    $$
+    LANGUAGE SQL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
 -- for ADB monitor host page: The names of all the nodes on a host
 CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname text)
     RETURNS table
@@ -539,7 +578,29 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in times
 	$$
 		LANGUAGE SQL
 	IMMUTABLE
-	RETURNS NULL ON NULL INPUT;	
+	RETURNS NULL ON NULL INPUT;
+
+--make function to get tps and qps for given dbname time and start time and end time
+CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func_by_time_period(dbname text, starttime timestamptz, endtime timestamptz)
+		RETURNS TABLE
+	(
+		recordtime timestamptz(0),
+		tps int,
+		qps int
+	)
+	AS $$
+	SELECT monitor_databasetps_time::timestamptz(0) AS recordtime,
+				monitor_databasetps_tps   AS tps,
+				monitor_databasetps_qps   AS qps
+	FROM 
+				monitor_databasetps
+	WHERE monitor_databasetps_dbname = $1 and 
+		  monitor_databasetps_time between $2 and $3;
+	$$
+		LANGUAGE SQL
+	IMMUTABLE
+	RETURNS NULL ON NULL INPUT;
+	
 --to show all database tps, qps, runtime at current_time
  CREATE VIEW adbmgr.monitor_all_dbname_tps_qps_runtime_v
  AS 

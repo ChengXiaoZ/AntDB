@@ -191,10 +191,13 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
-				GET_HOST_HISTORY_USAGE GET_ALL_NODENAME_IN_SPEC_HOST
+				GET_HOST_HISTORY_USAGE
+				GET_HOST_HISTORY_USAGE_BY_TIME_PERIOD
+				GET_ALL_NODENAME_IN_SPEC_HOST
 				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
 				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
-				GET_DATABASE_TPS_QPS_INTERVAL_TIME GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER GET_SLOWLOG_COUNT
+				GET_DATABASE_TPS_QPS_INTERVAL_TIME MONITOR_DATABASETPS_FUNC_BY_TIME_PERIOD
+				GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER GET_SLOWLOG_COUNT
 				UPDATE_THRESHOLD_VALUE UPDATE_PASSWORD CHECK_USER USER
 				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD GET_DB_THRESHOLD_ALL_TYPE
 				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM GET_ALARM_INFO_COUNT
@@ -588,6 +591,16 @@ Gethostparm:
 			args = lappend(args, makeIntConst($5, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("get_host_history_usage", args));
+			$$ = (Node*)stmt;
+		}
+		| GET_HOST_HISTORY_USAGE_BY_TIME_PERIOD '(' Ident ',' Ident ',' Ident ')'
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("get_host_history_usage_by_time_period", args));
 			$$ = (Node*)stmt;
 		}
         | GET_ALL_NODENAME_IN_SPEC_HOST '(' Ident ')'
@@ -2270,6 +2283,16 @@ ListMonitor:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasetps_func", args));
 			$$ = (Node*)stmt;
 		}
+	| MONITOR_DATABASETPS_FUNC_BY_TIME_PERIOD '(' Ident ',' Ident ',' Ident ')'
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_databasetps_func_by_time_period", args));
+			$$ = (Node*)stmt;
+	}
 	| GET_DATABASE_SUMMARY '(' Ident')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -2560,6 +2583,7 @@ unreserved_keyword:
 	| GET_DATANODE_NODE_TOPOLOGY
 	| GET_DB_THRESHOLD_ALL_TYPE
 	| GET_HOST_HISTORY_USAGE
+	| GET_HOST_HISTORY_USAGE_BY_TIME_PERIOD
 	| GET_HOST_LIST_ALL
 	| GET_HOST_LIST_SPEC
 	| GET_SLOWLOG
