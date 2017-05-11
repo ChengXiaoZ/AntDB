@@ -124,7 +124,9 @@ CREATE VIEW adbmgr.initall AS
 	UNION ALL
 	SELECT 'init datanode extra' AS "operation type", * FROM mgr_init_dn_extra_all()
 	UNION ALL
-	SELECT 'start datanode extra' AS "operation type", * FROM mgr_start_dn_extra(NULL)
+	SELECT 'start datanode extra' AS "operation type", * FROM mgr_start_dn_extra(NULL)	
+	UNION ALL
+	SELECT 'connect adb nodes' AS "operation type", * FROM mgr_hba_to_nodes_all(NULL)
 	UNION ALL
 	SELECT 'config coordinator' AS "operation type", * FROM mgr_configure_nodes_all(NULL);
 

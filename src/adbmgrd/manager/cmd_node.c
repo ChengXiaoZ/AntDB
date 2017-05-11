@@ -93,6 +93,7 @@ struct tuple_cndn
 extern void mgr_clean_hba_table(char *coord_name, char *values);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
 
+
   
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc get_common_command_tuple_desc_for_monitor(void);
@@ -116,7 +117,7 @@ static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *dnname, Oid dnhostoid, int32 dnport);
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
-static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr);
+static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr, bool check_incluster);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn, Oid cnoid);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, PGconn **pg_conn, Oid cnoid);
@@ -204,7 +205,7 @@ static bool mgr_try_max_pingnode(char *host, char *port, char *user, const int m
 static char mgr_get_master_type(char nodetype);
 static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, bool bincluster);
 static void mgr_get_master_sync_string(Oid mastertupleoid, bool bincluster, Oid excludeoid, StringInfo infostrparam);
-
+static bool get_local_ip(Name local_ip);
 #if (Natts_mgr_node != 9)
 #error "need change code"
 #endif
@@ -3633,7 +3634,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* add host line for exist already */
-		mgr_add_hbaconf_all(appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr);
+		mgr_add_hbaconf_all(appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, true);
 
 		/* step 4: block all the DDL lock */
 		if (!mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, true))
@@ -4553,7 +4554,7 @@ static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo 
 	heap_close(noderelation, AccessShareLock);
 }
 
-static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
+static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr, bool check_incluster)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[2];
@@ -4566,7 +4567,7 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
-
+	
 	ScanKeyInit(&key[0]
 				,Anum_mgr_node_nodeincluster
 				,BTEqualStrategyNumber
@@ -4581,7 +4582,10 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 
 	info = palloc(sizeof(*info));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	if (check_incluster)
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	else
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 0, NULL);
 	info->lcp =NULL;
 
 	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
@@ -4615,6 +4619,7 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr)
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
 }
+
 
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 {
@@ -5745,6 +5750,90 @@ check_dn_slave(char nodetype, List *nodenamelist, Relation rel_node, StringInfo 
 		}
 		heap_endscan(rel_scan);
 	}
+}
+/*
+* last step for init all 
+* we sent the ADB manager ip and user to adb cluaster to refresh the pg_hba.conf 
+*/
+Datum mgr_hba_to_nodes_all(PG_FUNCTION_ARGS)
+{
+	
+	NameData msg;
+	NameData exec_name;
+	HeapTuple tup_result;
+	NameData local_host_ip;
+	bool success = false;
+	char username[] = "all";
+	
+	/*get the manager host ip and user */
+	success = get_local_ip(&local_host_ip);
+	if(!success)
+	{
+		sprintf(msg.data, "get adb manager ip error");
+	}
+	
+	/*send the ip and user to add all the node */
+	mgr_add_hbaconf_all(username, local_host_ip.data, false);
+	
+	sprintf(exec_name.data, "add_mgr_hba");
+	tup_result = build_common_command_tuple( &exec_name
+				,success
+				,success == true ? "success" : msg.data);
+	return HeapTupleGetDatum(tup_result);
+}
+
+/*
+Get the local IP address by checking the server
+if success return true;
+else return false;
+*/
+static bool get_local_ip(Name local_ip)
+{	
+	Datum agent_host_ip;
+	int32 port;	
+	bool isNull;	
+	ManagerAgent *ma;
+	Relation rel;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple =NULL;
+	Form_mgr_host mgr_host;
+	
+	Assert(local_ip.data != NULL);
+	
+	/*Query the the first agent information in the cluster but must make sure it's running*/
+	rel = heap_open(HostRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{		
+		ma = ma_connect_hostoid(HeapTupleGetOid(tuple));
+		/*to get the local host ip ,you must make sure the server is running*/
+		if(ma_isconnected(ma))
+		{
+			ma_close(ma);
+			break;
+		}
+	}
+	if(!(HeapTupleIsValid(tuple)))
+	{
+		return false;
+	}	
+	mgr_host = (Form_mgr_host)GETSTRUCT(tuple);
+	Assert(mgr_host);
+		
+	/*	get the local ip  */
+	agent_host_ip = SysCacheGetAttr(HOSTHOSTOID, tuple, Anum_mgr_host_hostaddr, &isNull);
+	if(isNull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errmsg("column hostaddr is null")));
+	}
+	port = mgr_host->hostagentport;
+	mgr_get_self_address(TextDatumGetCString(agent_host_ip), port, local_ip);
+
+	heap_endscan(rel_scan);
+	heap_close(rel, AccessShareLock);
+	return true;
 }
 /*
  * last step for init all

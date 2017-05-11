@@ -130,6 +130,7 @@ extern Datum mgr_runmode_cndn(char nodetype, char cmdtype, List *namelist, char 
 extern Datum mgr_monitor_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS);
+
 extern Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS);
 extern Datum mgr_monitor_agent_all(PG_FUNCTION_ARGS);
@@ -152,6 +153,7 @@ extern Datum mgr_add_node_func(PG_FUNCTION_ARGS);
 extern Datum mgr_alter_node_func(PG_FUNCTION_ARGS);
 
 extern Datum mgr_configure_nodes_all(PG_FUNCTION_ARGS);
+extern Datum mgr_hba_to_nodes_all(PG_FUNCTION_ARGS);
 
 extern bool mgr_has_priv_add(void);
 extern bool mgr_has_priv_drop(void);
