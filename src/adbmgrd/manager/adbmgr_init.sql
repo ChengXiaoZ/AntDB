@@ -126,8 +126,6 @@ CREATE VIEW adbmgr.initall AS
 	UNION ALL
 	SELECT 'start datanode extra' AS "operation type", * FROM mgr_start_dn_extra(NULL)	
 	UNION ALL
-	SELECT 'connect adb nodes' AS "operation type", * FROM mgr_hba_to_nodes_all(NULL)
-	UNION ALL
 	SELECT 'config coordinator' AS "operation type", * FROM mgr_configure_nodes_all(NULL);
 
 --start gtm all

@@ -5228,9 +5228,6 @@ DESCR("mgr failover datanode");
 DATA(insert OID = 3213 ( mgr_configure_nodes_all      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_configure_nodes_all _null_ _null_ _null_ ));
 DESCR("mgr_configure_nodes_all");
 
-DATA(insert OID = 3188 ( mgr_hba_to_nodes_all      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_hba_to_nodes_all _null_ _null_ _null_ ));
-DESCR("mgr_hba_to_nodes_all");
-
 DATA(insert OID = 3215 ( mgr_start_one_dn_master      PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_start_one_dn_master _null_ _null_ _null_ ));
 DESCR("mgr start one dn master");
 

@@ -92,7 +92,7 @@ struct tuple_cndn
 
 extern void mgr_clean_hba_table(char *coord_name, char *values);
 void mgr_reload_conf(Oid hostoid, char *nodepath);
-
+static void add_mgr_hba_to_node(char *datapath, Oid hostoid, bool check_incluster, GetAgentCmdRst *getAgentCmdRst);
 
   
 static TupleDesc common_command_tuple_desc = NULL;
@@ -1793,6 +1793,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
 		mgr_add_parm(cndnname, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+		/*add adb manager hba to the node pg_hba.conf*/
+		add_mgr_hba_to_node(cndnPath, hostOid, false, getAgentCmdRst); 
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
@@ -1818,6 +1820,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_add_parameters_hbaconf((mgr_node->nodemasternameoid == 0)? HeapTupleGetOid(aimtuple):mgr_node->nodemasternameoid
 			, GTM_TYPE_GTM_MASTER, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+		/*add adb manager hba to the node pg_hba.conf*/
+		add_mgr_hba_to_node(cndnPath, hostOid, false, getAgentCmdRst); 
 		/*refresh recovry.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
@@ -1836,6 +1840,8 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mgr_add_parameters_pgsqlconf(tupleOid, nodetype, cndnport, &infosendmsg);
 		mgr_add_parm(cndnname, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
+		/*add adb manager hba to the node pg_hba.conf*/
+		add_mgr_hba_to_node(cndnPath, hostOid, false, getAgentCmdRst); 
 		/*refresh pg_hba.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
@@ -1843,6 +1849,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 			, nodetype, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, cndnPath, &infosendmsg, hostOid, getAgentCmdRst);
 	}
+
 	/*failover execute success*/
 	if(AGT_CMD_DN_FAILOVER == cmdtype && execok)
 	{
@@ -2773,6 +2780,7 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	bool agtm_e_is_exist, agtm_e_is_running; /* agtm extra status */
 	StringInfoData  infosendmsg;
 	NameData nodename;
+	NameData local_host_ip;
 	Oid coordhostoid;
 	int32 coordport;
 	int max_locktry = 600;
@@ -2861,14 +2869,16 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 								appendnodeinfo.nodepath,
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
-								&getAgentCmdRst);
+								&getAgentCmdRst);		
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-
+		
 		/* step 3: update datanode master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_hbaconf(appendnodeinfo.nodemasteroid, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		get_local_ip(&local_host_ip);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
 								&infosendmsg,
@@ -2993,6 +3003,7 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 	StringInfoData recorderr;
 	StringInfoData infostrparam;
 	NameData nodename;
+	NameData local_host_ip;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
 	const int max_pingtry = 60;
@@ -3100,6 +3111,8 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 		/* step 3: update datanode master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		get_local_ip(&local_host_ip);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								parentnodeinfo.nodepath,
 								&infosendmsg,
@@ -3263,6 +3276,7 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 	StringInfoData recorderr;
 	StringInfoData infostrparam;
 	NameData nodename;
+	NameData local_host_ip;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
 	const int max_pingtry = 60;
@@ -3353,6 +3367,8 @@ Datum mgr_append_dnextra(PG_FUNCTION_ARGS)
 				/* flush datanode slave's pg_hba.conf "host replication postgres slave_ip/32 trust" if datanode slave exist */
 				resetStringInfo(&infosendmsg);
 				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", appendnodeinfo.nodeusername, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+				get_local_ip(&local_host_ip);
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
 				mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 										dn_s_nodeinfo.nodepath,
 										&infosendmsg,
@@ -3533,6 +3549,7 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	char coordport_buf[10];
 	char nodeport_buf[10];
 	NameData nodename;
+	NameData local_host_ip;
 	bool result = true;
 	int max_locktry = 600;
 	const int max_pingtry = 60;
@@ -3625,6 +3642,8 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_hbaconf(appendnodeinfo.nodemasteroid, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		get_local_ip(&local_host_ip);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								appendnodeinfo.nodepath,
 								&infosendmsg,
@@ -3736,6 +3755,7 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 	StringInfoData recorderr;
 	StringInfoData infostrparam;
 	NameData nodename;
+	NameData local_host_ip;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
 	char nodeport_buf[10];
@@ -3799,6 +3819,8 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 		/* step 1: update agtm master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		get_local_ip(&local_host_ip);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								agtm_m_nodeinfo.nodepath,
 								&infosendmsg,
@@ -3947,6 +3969,7 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 	StringInfoData recorderr;
 	StringInfoData infostrparam;
 	NameData nodename;
+	NameData local_host_ip;
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
 	char nodeport_buf[10];
@@ -4011,6 +4034,8 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 		/* step 1: update agtm master's pg_hba.conf. */
 		resetStringInfo(&infosendmsg);
 		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, appendnodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		get_local_ip(&local_host_ip);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
 								agtm_m_nodeinfo.nodepath,
 								&infosendmsg,
@@ -5751,35 +5776,30 @@ check_dn_slave(char nodetype, List *nodenamelist, Relation rel_node, StringInfo 
 		heap_endscan(rel_scan);
 	}
 }
-/*
-* last step for init all 
-* we sent the ADB manager ip and user to adb cluaster to refresh the pg_hba.conf 
-*/
-Datum mgr_hba_to_nodes_all(PG_FUNCTION_ARGS)
+static void add_mgr_hba_to_node(char *datapath, Oid hostoid, bool check_incluster, GetAgentCmdRst *getAgentCmdRst)
 {
-	
-	NameData msg;
-	NameData exec_name;
-	HeapTuple tup_result;
 	NameData local_host_ip;
+	StringInfoData infosendmsg;
 	bool success = false;
-	char username[] = "all";
-	
+	initStringInfo(&infosendmsg);
 	/*get the manager host ip and user */
 	success = get_local_ip(&local_host_ip);
-	if(!success)
+	if (!success)
 	{
-		sprintf(msg.data, "get adb manager ip error");
+		getAgentCmdRst->ret = false;
+		appendStringInfo(&(getAgentCmdRst->description), "get adb manager's ip address failure");
+		return;
+	}
+	if (!check_incluster)
+	{
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", local_host_ip.data, 32, "trust", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								datapath,
+								&infosendmsg,
+								hostoid,
+								getAgentCmdRst); 
 	}
 	
-	/*send the ip and user to add all the node */
-	mgr_add_hbaconf_all(username, local_host_ip.data, false);
-	
-	sprintf(exec_name.data, "add_mgr_hba");
-	tup_result = build_common_command_tuple( &exec_name
-				,success
-				,success == true ? "success" : msg.data);
-	return HeapTupleGetDatum(tup_result);
 }
 
 /*
