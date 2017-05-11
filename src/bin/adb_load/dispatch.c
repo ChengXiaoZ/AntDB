@@ -910,7 +910,7 @@ connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 	PGresult *res = NULL;
 	int       i = 0;
 
-	Assert(thrinfo->conn != NULL);
+	Assert(thrinfo->conninfo_agtm != NULL);
 	Assert(thrinfo->conninfo_datanode != NULL);
 	
 	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread id : %ld ] begin reconnect",
@@ -1006,7 +1006,7 @@ connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 static bool
 connect_datanode(DispatchThreadInfo *thrinfo)
 {
-	Assert(thrinfo->conn!= NULL);
+	Assert(thrinfo->conninfo_datanode != NULL);
 
 	thrinfo->conn = PQconnectdb(thrinfo->conninfo_datanode);
 	if (thrinfo->conn == NULL)
