@@ -22,6 +22,10 @@ ADB documentation
   <refsynopsisdiv>
 	<synopsis>
 ADD HBA { ALL | coord_name } ( "hba_value" [, ...] )
+
+<phrase>where hba_value must be the following:</phrase>
+
+    host database user IP-address IP-mask auth-method
 </synopsis>
 </refsynopsisdiv>
   <refsect1>
