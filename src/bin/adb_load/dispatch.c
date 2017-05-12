@@ -1347,6 +1347,8 @@ static char *
 get_linevalue_from_PQerrormsg(char *PQerrormsg)
 {
 	char *tmp = NULL;
+
+	/*data line token is "VALUE: " in PQerrormsg from datanode */
 	const char *str_tok = "VALUE: ";
 
 	tmp = strstr(PQerrormsg, str_tok);

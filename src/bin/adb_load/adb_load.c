@@ -1469,7 +1469,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		DispatchThreads   *dispatch_exit = NULL;
 		HashThreads       *hash_exit = NULL;
 		int                flag = 0;
-		bool               hash_threads_fatal_error = false;
 
 		if (setting->process_bar)
 		{
@@ -1524,6 +1523,11 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 
 		if (!hash_finish && hash_exit->hs_thread_cur == hash_exit->hs_thread_count)
 		{
+			hash_finish = true;
+
+			if (setting->filter_queue_file)
+				fclose_filter_queue_file_fd(setting->redo_queue_total);
+
 			pthread_mutex_lock(&hash_exit->mutex);
 			for (flag =0; flag < hash_exit->hs_thread_count; flag++)
 			{
@@ -1533,40 +1537,9 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				if (hash_thread_info->state != THREAD_EXIT_NORMAL)
 				{
 					hash_error = true;
-					ADBLOADER_LOG(LOG_ERROR,
-						"[MAIN][thread main] hash module error, thread id :%ld, table name :%s, filepath : %s",
-						hash_thread_info->thread_id, table_info->table_name, filepath);
+					do_hash_success = false;
 
-					hash_finish = true;
-
-
-					//===============
-					//if ()
-					//===============
-
-					if (hash_thread_info->state != THREAD_PGRES_FATAL_ERROR)
-					{
-						/* need redo for all threads */
-						ADBLOADER_LOG(LOG_ERROR, "compute hash module failed");  
-					}
-					else /* adb_load server stopped by user */
-					{
-						hash_threads_fatal_error = true;
-						do_hash_success = false;
-						main_write_error_message(table_info->distribute_type, "compute hash module failed", start);
-					}
-
-					if (hash_thread_info->state == THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE ||
-						hash_thread_info->state == THREAD_HAPPEN_ERROR_CONTINUE)
-					{
-						/* dispay faild for user */
-						do_hash_success = false;
-					}
-
-					if (setting->filter_queue_file)
-						fclose_filter_queue_file_fd(setting->redo_queue_total);
-
-					pthread_mutex_unlock(&hash_exit->mutex); 
+					pthread_mutex_unlock(&hash_exit->mutex);
 					break;
 				}
 				else
@@ -1574,9 +1547,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 					do_hash_success = true; 
 				}
 			}
-
-			if (!hash_error)
-				hash_finish = true;
 
 			pthread_mutex_unlock(&hash_exit->mutex); 
 		}
