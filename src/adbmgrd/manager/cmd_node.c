@@ -5818,7 +5818,7 @@ static bool get_local_ip(Name local_ip)
 	HeapTuple tuple =NULL;
 	Form_mgr_host mgr_host;
 	
-	Assert(local_ip.data != NULL);
+	Assert(local_ip->data != NULL);
 	
 	/*Query the the first agent information in the cluster but must make sure it's running*/
 	rel = heap_open(HostRelationId, AccessShareLock);
