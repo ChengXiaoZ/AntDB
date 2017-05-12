@@ -40,7 +40,8 @@ static bool process_bar = false;
 static char **error_message_name = NULL;
 static char *g_start_cmd = NULL;
 static int error_message_max;
-static char *get_linevalue_from_pqerrormsg(char *pqerrormsg);
+static char *get_linevalue_from_PQerrormsg(char *pqerrormsg);
+static bool rollback_in_PQerrormsg(char *PQerrormsg);
 static int dispatch_threadsCreate(DispatchInfo *dispatch);
 static void *dispatch_threadMain (void *argp);
 static void *dispatch_ThreadMainWrapper (void *argp);
@@ -57,13 +58,15 @@ static bool datanode_can_write(int fd, fd_set *set);
 static bool datanode_can_read(int fd, fd_set *set);
 static bool output_queue_can_read(int fd, fd_set *set);
 static void put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, MessageQueuePipe *output_queue);
-static void put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback);
-static int  get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback);
+static void put_copy_end_to_datanode(DispatchThreadInfo *thrinfo);
+static int  get_data_from_datanode(DispatchThreadInfo *thrinfo);
 static void reconnect_agtm_and_datanode(DispatchThreadInfo *thrinfo);
 static void connect_agtm_and_datanode(DispatchThreadInfo *thrinfo);
 static bool connect_datanode(DispatchThreadInfo *thrinfo);
 static bool connect_agtm(DispatchThreadInfo *thrinfo);
 static void PQfinish_agtm_and_datanode(DispatchThreadInfo *thrinfo);
+static void put_end_to_datanode(DispatchThreadInfo *thrinfo);
+static void put_rollback_to_datanode(DispatchThreadInfo *thrinfo);
 
 #define FOR_GET_DATA_FROM_OUTPUT_QUEUE()     \
 for (;;)                                     \
@@ -264,17 +267,22 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 				dispatch_write_error_message(NULL, 
 											"Can not malloc memory to DispatchThreadInfo",
 											g_start_cmd, 0 , NULL, true);
-				exit(1);
+				exit(EXIT_FAILURE);
 			}
 
 			thrinfo->conninfo_datanode = pg_strdup(datanode_info->conninfo[i]);
 			thrinfo->table_name = pg_strdup(dispatch->table_name);
 			thrinfo->conninfo_agtm = pg_strdup(dispatch->conninfo_agtm);
+			thrinfo->just_check = dispatch->just_check;
 			if (dispatch->copy_options != NULL)
+			{
 				thrinfo->copy_options = pg_strdup(dispatch->copy_options);
+			}
 			else
+			{
 				thrinfo->copy_options = NULL;
-		
+			}
+
 			thrinfo->thr_startroutine = dispatch_threadMain;
 
 			thrinfo->output_queue = dispatch->output_queue[i * dispatch->threads_num_per_datanode + j];
@@ -391,7 +399,7 @@ put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, Messag
 }
 
 static void
-put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback)
+put_end_to_datanode(DispatchThreadInfo *thrinfo)
 {
 	PGresult *res = NULL;
 
@@ -399,8 +407,9 @@ put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback)
 		"[DISPATCH][thread id : %ld ] dispatch file is complete, exit thread",
 		thrinfo->thread_id);
 
-	if (need_rollback == true ? (PQputCopyEnd(thrinfo->conn, "rollback") == 1):
-								(PQputCopyEnd(thrinfo->conn, NULL) == 1))
+	if ((thrinfo->need_rollback)?
+			(PQputCopyEnd(thrinfo->conn, "adb_load_rollback") == 1):
+			(PQputCopyEnd(thrinfo->conn, NULL) == 1))
 	{
 		res = PQgetResult(thrinfo->conn);
 		if (PQresultStatus(res) == PGRES_COMMAND_OK)
@@ -429,16 +438,19 @@ put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback)
 
 	if (thrinfo->state == DISPATCH_THREAD_COPY_END_ERROR)
 	{
-		char *linedata = NULL;
-		dispatch_write_error_message(thrinfo, 
-									"thread send copy end error",
-									PQerrorMessage(thrinfo->conn), 0,
-									NULL, true);
-
-		linedata = get_linevalue_from_pqerrormsg(PQerrorMessage(thrinfo->conn));
-		fwrite_adb_load_error_data(linedata);
-		pg_free(linedata);
-		linedata = NULL;
+		if (!rollback_in_PQerrormsg(PQerrorMessage(thrinfo->conn)))
+		{
+			char *linedata = NULL;
+			dispatch_write_error_message(thrinfo, 
+										"thread send copy end error",
+										PQerrorMessage(thrinfo->conn), 0,
+										NULL, true);
+			
+			linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
+			fwrite_adb_load_error_data(linedata);
+			pg_free(linedata);
+			linedata = NULL;
+		}
 	}
 
 	PQfinish(thrinfo->conn);
@@ -448,8 +460,113 @@ put_copy_end_to_datanode(DispatchThreadInfo *thrinfo, bool need_rollback)
 	return;
 }
 
+static void
+put_rollback_to_datanode(DispatchThreadInfo *thrinfo)
+{
+	PGresult *res = NULL;
+
+	ADBLOADER_LOG(LOG_DEBUG,
+		"[DISPATCH][thread id : %ld ] dispatch file is complete, exit thread",
+		thrinfo->thread_id);
+
+	if (PQputCopyEnd(thrinfo->conn, "adb_load_rollback") == 1)
+	{
+		res = PQgetResult(thrinfo->conn);
+		if (PQresultStatus(res) == PGRES_COMMAND_OK)
+		{
+			ADBLOADER_LOG(LOG_INFO,
+						"[DISPATCH][thread id : %ld ] copy end ok", thrinfo->thread_id);
+			thrinfo->state = DISPATCH_THREAD_EXIT_NORMAL;
+			thrinfo->need_redo = true;
+		}
+		else
+		{
+			ADBLOADER_LOG(LOG_ERROR,
+					"[DISPATCH][thread id : %ld ] send copy end sucess, get some error message : %s,PQresultStatus(res):%d \n",
+					thrinfo->thread_id, PQerrorMessage(thrinfo->conn), PQresultStatus(res));
+			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+			thrinfo->need_redo = true;
+		}
+	}
+	else
+	{
+		ADBLOADER_LOG(LOG_ERROR,
+						"[DISPATCH][thread id : %ld ] send copy end error", thrinfo->thread_id);
+		thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+		thrinfo->need_redo = true;
+	}
+
+	if (thrinfo->need_rollback)
+	{
+		if (rollback_in_PQerrormsg(PQerrorMessage(thrinfo->conn)))
+		{
+			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+		}
+		else
+		{
+			char *linedata = NULL;
+			dispatch_write_error_message(thrinfo, 
+										"thread send copy end error",
+										PQerrorMessage(thrinfo->conn), 0,
+										NULL, true);
+			
+			linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
+			fwrite_adb_load_error_data(linedata);
+			pg_free(linedata);
+			linedata = NULL;
+			
+			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+		}		
+	}
+	else // no errored
+	{
+		if (rollback_in_PQerrormsg(PQerrorMessage(thrinfo->conn)))
+		{
+			thrinfo->state = DISPATCH_THREAD_EXIT_NORMAL;
+		}
+		else
+		{
+			char *linedata = NULL;
+			dispatch_write_error_message(thrinfo, 
+										"thread send copy end error",
+										PQerrorMessage(thrinfo->conn), 0,
+										NULL, true);
+
+			linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
+			fwrite_adb_load_error_data(linedata);
+			pg_free(linedata);
+			linedata = NULL;
+			
+			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
+		}
+	}
+
+	PQfinish(thrinfo->conn);
+	thrinfo->conn = NULL;
+
+	pthread_exit(thrinfo);
+	return;
+
+}
+
+static void
+put_copy_end_to_datanode(DispatchThreadInfo *thrinfo)
+{
+	
+	if (thrinfo->just_check) // for check tool
+	{
+		put_rollback_to_datanode(thrinfo);
+	}
+	else  // for send data
+	{
+		put_end_to_datanode(thrinfo);
+	}
+
+	return;
+}
+
 static int
-get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback)
+get_data_from_datanode(DispatchThreadInfo *thrinfo)
 {
 	PGresult *res = NULL;
 	char     *read_buff = NULL;
@@ -479,7 +596,7 @@ get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback)
 												PQerrorMessage(thrinfo->conn), 0 , NULL, true);
 
 					thrinfo->state = DISPATCH_GET_BACKEND_FATAL_ERROR;
-					*need_rollback = true;
+					thrinfo->need_rollback = true;
 				}else
 				{
 					dispatch_write_error_message(thrinfo, 
@@ -487,10 +604,10 @@ get_data_from_datanode(DispatchThreadInfo *thrinfo, bool *need_rollback)
 												PQerrorMessage(thrinfo->conn), 0 , NULL, true);
 
 					thrinfo->state = DISPATCH_THREAD_COPY_DATA_ERROR;
-					*need_rollback = true;
+					thrinfo->need_rollback = true;
 				}
 
-				linedata = get_linevalue_from_pqerrormsg(PQerrorMessage(thrinfo->conn));
+				linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
 				fwrite_adb_load_error_data(linedata);
 				pg_free(linedata);
 				linedata = NULL;
@@ -519,7 +636,6 @@ dispatch_threadMain (void *argp)
 	bool                 mq_read = false;
 	bool                 conn_read = false;
 	bool                 conn_write = false;
-	bool                 need_rollback = false;
 	int                  max_fd;
 	int                  select_res;
 	fd_set               read_fds;
@@ -597,7 +713,7 @@ dispatch_threadMain (void *argp)
 		if (datanode_can_read(thrinfo->conn->sock, &read_fds))
 		{
 			int result = 0;
-			result = get_data_from_datanode(thrinfo, &need_rollback);
+			result = get_data_from_datanode(thrinfo);
 			if (result == -1)
 				continue;
 		}
@@ -613,7 +729,7 @@ dispatch_threadMain (void *argp)
 				}
 				else // threads end flag
 				{
-					put_copy_end_to_datanode(thrinfo, need_rollback);
+					put_copy_end_to_datanode(thrinfo);
 				} 
 			}
 			else
@@ -1231,12 +1347,12 @@ SetDispatchFileStartCmd(char * start_cmd)
 }
 
 static char *
-get_linevalue_from_pqerrormsg(char *pqerrormsg)
+get_linevalue_from_PQerrormsg(char *PQerrormsg)
 {
 	char *tmp = NULL;
 	const char *str_tok = "value: ";
 
-	tmp = strstr(pqerrormsg, str_tok);
+	tmp = strstr(PQerrormsg, str_tok);
 	if (tmp == NULL)
 	{
 		return NULL;  
@@ -1246,4 +1362,20 @@ get_linevalue_from_pqerrormsg(char *pqerrormsg)
 		return pstrdup(tmp + strlen(str_tok));
 	}
 }
+
+static bool
+rollback_in_PQerrormsg(char *PQerrormsg)
+{
+	char *tmp = NULL;
+	const char *str_tok = "adb_load_rollback";
+
+	tmp = strstr(PQerrormsg, str_tok);
+	if (tmp == NULL)
+	{
+		return false; 
+	}
+
+	return true;
+}
+
 

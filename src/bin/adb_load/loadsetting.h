@@ -70,6 +70,7 @@ typedef struct ADBLoadSetting
 	bool  static_mode;
 	bool  single_file;
 	bool  process_bar;
+	bool  just_check;
 	bool  config_datanodes_valid;
 	int   threads_num_per_datanode;
 	int   hash_thread_num;

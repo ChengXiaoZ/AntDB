@@ -22,11 +22,11 @@ typedef struct DispatchInfo
 	int                threads_num_per_datanode;
 	char              *conninfo_agtm;
 	MessageQueuePipe **output_queue;
-	// output_queue_num = datanodes_num * threads_num_per_datanode
 	DatanodeInfo      *datanode_info;
 	char              *table_name;
 	char              *copy_options;
 	bool               process_bar;
+	bool               just_check;
 } DispatchInfo;
 
 typedef enum DISPATCH_THREAD_WORK_STATE
@@ -67,6 +67,8 @@ typedef struct DispatchThreadInfo
 	PGconn              *agtm_conn;
 	bool                exit;
 	bool                need_redo;
+	bool                need_rollback;
+	bool                just_check;
 	int                 send_total;
 	void               *(* thr_startroutine)(void *); /* thread start function */
 	DispatchThreadWorkState state;

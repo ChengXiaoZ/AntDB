@@ -83,6 +83,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		{"hash_threads",        required_argument, NULL, 'h'},
 		{"inputdir",            required_argument, NULL, 'i'},
 		{"inputfile",           required_argument, NULL, 'f'},
+		{"just_check",                no_argument, NULL, 'j'},
 		{"outputdir",           required_argument, NULL, 'o'},
 		{"password",            required_argument, NULL, 'W'},
 		{"queue",               required_argument, NULL, 'Q'},
@@ -116,7 +117,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 	}
 
 	setting = (ADBLoadSetting *)palloc0(sizeof(ADBLoadSetting));
-	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:e", long_options, &option_index)) != -1)
+	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ej", long_options, &option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -146,6 +147,9 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 				setting->input_directory = pg_strdup(optarg);
 				break;
 			}
+		case 'j': //just for check tool
+			setting->just_check = true;
+			break;
 		case 'o': //outputdir
 			setting->output_directory = pg_strdup(optarg);
 			break;
@@ -782,9 +786,11 @@ static void print_help(FILE *fd)
 	fprintf(fd, _("  -o, --outputdir             output directory for log file and error file\n"));
 	fprintf(fd, _("  -i, --inputdir              data file directory\n"));
 	fprintf(fd, _("  -f, --inputfile             data file\n"));
-	fprintf(fd, _("  -t, --table                 table name\n"));
+	fprintf(fd, _("  -t, --table                 table name\n\n"));
+	
 	fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
 	fprintf(fd, _("  -e, --filter_queue_file     filter queue data into file\n"));
+	fprintf(fd, _("  -j, --just_check            just check data, not send data\n"));
 	fprintf(fd, _("  -?, --help                  show this help, then exit\n\n"));
 
 	return;

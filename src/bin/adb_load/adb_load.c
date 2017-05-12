@@ -428,7 +428,7 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 {
 	slist_mutable_iter siter;
 	LineBuffer *linebuff = NULL;
-	bool do_ok = false;
+	bool sent_ok = false;
 
 	/* the table may be split to more than one*/
 	slist_foreach_modify (siter, &table_info_ptr->file_head) 
@@ -454,7 +454,7 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 			case DISTRIBUTE_BY_REPLICATION:
 			case DISTRIBUTE_BY_ROUNDROBIN:
 				{
-					do_ok = do_replaciate_roundrobin(file_location->location, table_info_ptr);
+					sent_ok = do_replaciate_roundrobin(file_location->location, table_info_ptr);
 
 					/* stop module and clean resource */
 					clean_replaciate_roundrobin();
@@ -464,7 +464,7 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 			case DISTRIBUTE_BY_DEFAULT_MODULO:
 			case DISTRIBUTE_BY_USERDEFINED:
 				{
-					do_ok = do_hash_module(file_location->location, table_info_ptr);
+					sent_ok = do_hash_module(file_location->location, table_info_ptr);
 
 					/* stop module and clean resource */
 					clean_hash_module();
@@ -479,7 +479,7 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 		write_error(linebuff);
 		release_linebuf(linebuff);
 
-		if (do_ok)
+		if (sent_ok)
 			fprintf(stderr, "success\n");
 		else
 			fprintf(stderr, "failed\n");
@@ -487,7 +487,7 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 		/* rename file name */
 		if (setting->static_mode || setting->dynamic_mode)
 		{
-			if (do_ok)
+			if (sent_ok)
 				rename_file_suffix(file_location->location, SUFFIX_ADBLOAD);
 			else
 				rename_file_suffix(file_location->location, SUFFIX_ERROR);
@@ -1107,6 +1107,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	}
 
 	dispatch->process_bar = setting->process_bar;
+	dispatch->just_check = setting->just_check;
 	
 	SetDispatchFileStartCmd(start);
 
@@ -1294,9 +1295,9 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	bool                hash_finish = false;
 	bool                dispatch_finish = false;
 	bool                do_success = true;
-    bool                do_read_file_success = true;
-    bool                do_hash_success = true;
-    bool                do_dispatch_success = true;
+	bool                do_read_file_success = true;
+	bool                do_hash_success = true;
+	bool                do_dispatch_success = true;
 	bool                need_redo = false;
 	bool                hash_error = false;
 	int                 output_queue_total = 0;
@@ -1404,9 +1405,14 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	dispatch->output_queue = output_queue;
 	dispatch->datanode_info = datanode_info;
 	dispatch->table_name = pg_strdup(table_info->table_name);
+	
 	if (setting->hash_config->copy_option != NULL)
+	{
 		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
+	}
+
 	dispatch->process_bar = setting->process_bar;
+	dispatch->just_check = setting->just_check;
 
 	SetDispatchFileStartCmd(start);
 
