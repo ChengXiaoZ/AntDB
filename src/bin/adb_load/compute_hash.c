@@ -244,7 +244,7 @@ fclose_filter_queue_file_fd(int fd_total)
 }
 
 int
-CheckComputeState(void)
+check_compute_state(void)
 {
 	int running = 0;
 	pthread_mutex_lock(&RunThreads->mutex);
@@ -254,13 +254,13 @@ CheckComputeState(void)
 }
 
 HashThreads *
-GetExitThreadsInfo(void)
+get_exit_threads_info(void)
 {
 	return FinishThreads;
 }
 
 int
-StopHash(void)
+stop_hash_threads(void)
 {
 	int flag;
 	pthread_mutex_lock(&RunThreads->mutex);
@@ -345,7 +345,7 @@ hash_write_error_message(ComputeThreadInfo *thrinfo, char * message,
 }
 
 void 
-CleanHashResource(void)
+clean_hash_resource(void)
 {
 	int flag;
 	Assert(RunThreads->hs_thread_cur == 0);
@@ -404,7 +404,7 @@ CleanHashResource(void)
 }
 
 void 
-SetHashFileStartCmd(char * start_cmd)
+set_hash_file_start_cmd(char * start_cmd)
 {
 	Assert(start_cmd != NULL);
 
@@ -2005,8 +2005,16 @@ restart_hash_stream(ComputeThreadInfo *thrinfo)
 									PQerrorMessage(thrinfo->conn), 0,
 									NULL, TRUE);
 		}
-		pthread_exit(thrinfo);
+
+		if (thrinfo->state == THREAD_HAPPEN_ERROR_CONTINUE)
+		{
+			thrinfo->state = THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE;
+			pthread_exit(thrinfo);
+		}
 	}
+	
+	ADBLOADER_LOG(LOG_INFO, "[HASH]restart_hash_stream function complete, now thrinfo->send_seq is : %ld",
+					thrinfo->thread_id, thrinfo->send_seq);
 	/* destory tmp_queue */
 	mq_destory(queue);
 }

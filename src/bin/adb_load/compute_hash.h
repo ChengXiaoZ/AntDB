@@ -109,43 +109,23 @@ typedef struct HashThreads
 #define HASH_COMPUTE_ERROR     0
 #define HASH_COMPUTE_OK        1
 
-#if 0
-int init_hash_compute(int datanodes_num,
-					int threads_num_per_datanode,
-					char * func_name,
-					char * conninfo,
-					MessageQueuePipe * input_queue,
-					MessageQueuePipe ** output_queue,
-					int output_queue_num,
-					HashField * field,
-					bool redo_queue,
-					int redo_queue_total,
-					int *redo_queue_index,
-					bool filter_queue_file,
-					char *table_name,
-					char *filter_queue_file_path);
-#endif
-
-int init_hash_compute(HashComputeInfo * hash_info);
+extern int init_hash_compute(HashComputeInfo * hash_info);
 
 /**
-* @brief CheckComputeState
+* @brief check_compute_state
 * 
 * return  running thread numbers
 * @return int  running thread numbers
 */
-int CheckComputeState(void);
+extern int check_compute_state(void);
 
 /* caller don't need to free memory */
-HashThreads *GetExitThreadsInfo(void);
+extern HashThreads *get_exit_threads_info(void);
 
-int StopHash(void);
+extern int stop_hash_threads(void);
 
 /* make sure all threads had exited */
-void CleanHashResource(void);
-
-
-void fclose_filter_queue_file_fd(int fd_total);
-
-void SetHashFileStartCmd(char * start_cmd);
+extern void clean_hash_resource(void);
+extern void fclose_filter_queue_file_fd(int fd_total);
+extern void set_hash_file_start_cmd(char * start_cmd);
 #endif

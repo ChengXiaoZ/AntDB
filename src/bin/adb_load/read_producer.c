@@ -449,7 +449,7 @@ GetReadModule(void)
 }
 
 void
-set_read_producer_exit(void)
+stop_read_thread(void)
 {
 	int i =0;
 	int pthread_res = 0;

@@ -193,7 +193,7 @@ init_dispatch_threads(DispatchInfo *dispatch_info, TableType type)
 }
 
 int
-stop_dispatch (void)
+stop_dispatch_threads(void)
 {
 	int flag;
 	pthread_mutex_lock(&DispatchThreadsRun->mutex);
@@ -293,7 +293,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 											"create dispatch thread error",
 											g_start_cmd, 0 , NULL, true);
 				/* stop start thread */
-				stop_dispatch();
+				stop_dispatch_threads();
 
 				return DISPATCH_ERROR;
 			}
@@ -1028,9 +1028,6 @@ connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 
 	Assert(thrinfo->conninfo_agtm != NULL);
 	Assert(thrinfo->conninfo_datanode != NULL);
-	
-	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread id : %ld ] begin reconnect",
-				thrinfo->thread_id);
 
 	/* reconnect agtm 3 times, if failed, threads exit */
 	for (i = 0; i < 3; i++)
@@ -1252,7 +1249,7 @@ deal_after_thread_exit(void)
 #endif
 
 void 
-CleanDispatchResource(void)
+clean_dispatch_resource(void)
 {
 	int flag = 0;
 
@@ -1302,7 +1299,7 @@ get_dispatch_exit_threads(void)
 }
 
 void 
-GetSendCount(int * thread_send_num)
+get_sent_conut(int * thread_send_num)
 {
 	int flag;
 
@@ -1331,7 +1328,7 @@ GetSendCount(int * thread_send_num)
 }
 
 void
-SetDispatchFileStartCmd(char * start_cmd)
+set_dispatch_file_start_cmd(char * start_cmd)
 {
 	Assert(start_cmd != NULL);
 
@@ -1350,7 +1347,7 @@ static char *
 get_linevalue_from_PQerrormsg(char *PQerrormsg)
 {
 	char *tmp = NULL;
-	const char *str_tok = "value: ";
+	const char *str_tok = "VALUE: ";
 
 	tmp = strstr(PQerrormsg, str_tok);
 	if (tmp == NULL)

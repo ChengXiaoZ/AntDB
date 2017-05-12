@@ -82,12 +82,13 @@ typedef struct DispatchThreads
 	pthread_mutex_t      mutex;
 } DispatchThreads;
 
-int init_dispatch_threads (DispatchInfo *dispatch_info, TableType type);
-int stop_dispatch (void);
+extern int init_dispatch_threads(DispatchInfo *dispatch_info, TableType type);
+extern int stop_dispatch_threads(void);
+
 /* make sure all threads had exited */
-void CleanDispatchResource (void);
-DispatchThreads *get_dispatch_exit_threads (void);
-void GetSendCount(int * thread_send_num);
-void SetDispatchFileStartCmd(char * start_cmd);
+extern void clean_dispatch_resource(void);
+extern DispatchThreads *get_dispatch_exit_threads(void);
+extern void get_sent_conut(int * thread_send_num);
+extern void set_dispatch_file_start_cmd(char * start_cmd);
 
 #endif

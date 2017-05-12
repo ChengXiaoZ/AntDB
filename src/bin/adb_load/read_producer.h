@@ -55,5 +55,5 @@ bool check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag
 
 int get_filter_queue_file_fd_index(int redo_queue_total, int *redo_queue_index, int flag);
 
-void set_read_producer_exit(void);
+void stop_read_thread(void);
 #endif

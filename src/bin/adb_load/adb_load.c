@@ -250,7 +250,8 @@ covert_distribute_type_to_string (DISTRIBUTE type)
 	return result;
 }
 
-int main(int argc, char **argv)
+int
+main(int argc, char **argv)
 {
 	Tables *tables_ptr = NULL;
 	TableInfo *table_info_ptr = NULL;
@@ -271,10 +272,10 @@ int main(int argc, char **argv)
 
 	get_node_conn_info(setting);
 
-	/*make sure threads_num_per_datanode < max_connect for agtm */
+	/* make sure threads_num_per_datanode < max_connect for agtm */
 	check_max_connections(setting->threads_num_per_datanode, setting->agtm_info);
 
-	/*make sure threads_num_per_datanode < max_connect for coordinator */
+	/* make sure threads_num_per_datanode < max_connect for coordinator */
 	check_max_connections(setting->threads_num_per_datanode, setting->coordinator_info);
 
 	/* open log file if not exist create. */
@@ -294,7 +295,7 @@ int main(int argc, char **argv)
 	{
 		FileLocation *file_location = (FileLocation*)palloc0(sizeof(FileLocation));
 		tables_ptr = (Tables *)palloc0(sizeof(Tables));
-		tables_ptr->table_nums = 1;
+		tables_ptr->table_nums = 1;/* just one table in single mode */
 
 		table_info_ptr = (TableInfo *)palloc0(sizeof(TableInfo));
 		if (!is_create_in_adb_cluster(setting->table_name))
@@ -305,7 +306,7 @@ int main(int argc, char **argv)
 		}
 
 		table_info_ptr->table_name = pg_strdup(setting->table_name);
-		table_info_ptr->file_nums = 1;
+		table_info_ptr->file_nums = 1; /* just one file in single node */
 		table_info_ptr->next = NULL;
 		file_location->location = pg_strdup(setting->input_file);
 		slist_push_head(&table_info_ptr->file_head, &file_location->next);
@@ -314,7 +315,7 @@ int main(int argc, char **argv)
 	{
 		tables_ptr = get_file_info(setting->input_directory);
 
-		/*static mode : input_directory is empty */
+		/* static mode : input_directory is empty */
 		if (setting->static_mode        &&
 			tables_ptr->table_nums == 0 &&
 			tables_ptr->info == NULL)
@@ -323,7 +324,7 @@ int main(int argc, char **argv)
 			exit(EXIT_FAILURE);
 		}
 
-		/*dynamic mode : input_directory is empty */
+		/* dynamic mode : input_directory is empty */
 		if (setting->dynamic_mode       && 
 			tables_ptr->table_nums == 0 &&
 			tables_ptr->info == NULL)
@@ -348,7 +349,6 @@ int main(int argc, char **argv)
 	/* init linebuf */
 	init_linebuf(setting->datanodes_num);
 
-    
 	while(table_info_ptr)
 	{
 		++table_count;
@@ -384,11 +384,12 @@ int main(int argc, char **argv)
 		else
 			get_use_datanodes(setting, table_info_ptr);
 
-		/*check -Q valid*/
+		/* check -Q valid*/
 		check_queue_num_valid(setting, table_info_ptr);
 
 		fopen_adb_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
-
+		
+		/* create all threads and send data to datanode */
 		send_data_to_datanode(table_info_ptr->distribute_type, setting, table_info_ptr);
 
 		fclose_adb_load_error_data();
@@ -400,12 +401,15 @@ int main(int argc, char **argv)
 			table_info_ptr = tables_ptr->info;
 		}
 		else
+		{
 			table_info_ptr = table_info_ptr->next;
+		}
 	}
 
 	fclose_error_file();
 
-	if(table_count != tables_ptr->table_nums) /* check again */
+	/* check again */
+	if(table_count != tables_ptr->table_nums) 
 	{
 		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate: %d");
 		return 0;
@@ -422,7 +426,8 @@ int main(int argc, char **argv)
 	return 0;
 }
 /*------------------------end main-------------------------------------------------------*/
-static void send_data_to_datanode(DISTRIBUTE distribute_by,
+static void
+send_data_to_datanode(DISTRIBUTE distribute_by,
                                 ADBLoadSetting *setting,
                                 TableInfo *table_info_ptr)
 {
@@ -479,6 +484,7 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 		write_error(linebuff);
 		release_linebuf(linebuff);
 
+		/* print exec status */
 		if (sent_ok)
 			fprintf(stderr, "success\n");
 		else
@@ -496,19 +502,20 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
 		/* remove file from file list */
 		slist_delete_current(&siter);
 
-		/* file num  subtract 1 */
+		/* file num subtract 1 */
 		table_info_ptr->file_nums--;
 
 		/* free location */
 		if (file_location->location)
-			pfree(file_location);
+			pg_free(file_location);
 		file_location = NULL;
 	}
 
 	return;
 }
 
-static void check_queue_num_valid(ADBLoadSetting *setting, TableInfo *table_info)
+static void
+check_queue_num_valid(ADBLoadSetting *setting, TableInfo *table_info)
 {
 	int flag = 0;
 	int threads_total = 0;
@@ -527,11 +534,10 @@ static void check_queue_num_valid(ADBLoadSetting *setting, TableInfo *table_info
 	return;
 }
 
-static void check_max_connections(int threads_num_per_datanode, NodeInfoData *node_info)
+static void
+check_max_connections(int threads_num_per_datanode, NodeInfoData *node_info)
 {
 	int max_connect = 0;
-
-	Assert(setting != NULL);
 
 	max_connect = get_max_connect(node_info);
 	if (threads_num_per_datanode >= max_connect)
@@ -549,7 +555,8 @@ static void check_max_connections(int threads_num_per_datanode, NodeInfoData *no
 }
 
 #if 0
-static void check_get_enough_connect_num(TableInfo *table_info_ptr)
+static void
+check_get_enough_connect_num(TableInfo *table_info_ptr)
 {
 	int i = 0;
 	int max_connect = 0;
@@ -573,7 +580,8 @@ static void check_get_enough_connect_num(TableInfo *table_info_ptr)
 }
 #endif
 
-static int get_max_connect(NodeInfoData *node_info)
+static int
+get_max_connect(NodeInfoData *node_info)
 {
 	char      query[QUERY_MAXLEN] = {0};
 	PGconn   *conn = NULL;
@@ -613,12 +621,13 @@ static int get_max_connect(NodeInfoData *node_info)
 	return max_connect;
 }
 
-static void check_connect(ADBLoadSetting *setting, TableInfo *table_info_ptr)
+static void
+check_connect(ADBLoadSetting *setting, TableInfo *table_info_ptr)
 {
 	int i = 0;
 
 	Assert(setting != NULL);
-	Assert(table_info_ptr);
+	Assert(table_info_ptr != NULL);
 
 	/* check adb_load server can connect.*/
 	check_node_connection_valid(setting->server_info->node_host,
@@ -646,22 +655,22 @@ static void check_connect(ADBLoadSetting *setting, TableInfo *table_info_ptr)
 	return ;
 }
 
-static bool update_file_info(char *input_dir, Tables *tables)
+static bool
+update_file_info(char *input_dir, Tables *tables)
 {
 	TableInfo * table_info_dynamic = NULL;
-	DIR *dir;
-	struct dirent *dirent_ptr;
+	struct dirent *dirent_ptr = NULL;
 	char *new_file_name = NULL;
 	char *table_name = NULL;
 	char *file_full_path = NULL;
-	FileLocation * file_location;
-
+	FileLocation * file_location = NULL;
+	DIR *dir = NULL;
 	TableInfo *ptr = NULL;
 	TableInfo *tail = NULL;
 
 	if ((dir=opendir(input_dir)) == NULL)
 	{
-		fprintf(stderr, "open dir %s error...\n", input_dir);
+		fprintf(stderr, "can not open directory \"%s\".\n", input_dir);
 		return false;
 	}
 
@@ -754,7 +763,8 @@ static bool update_file_info(char *input_dir, Tables *tables)
 	return true;
 }
 
-static Tables* get_file_info(char *input_dir)
+static Tables*
+get_file_info(char *input_dir)
 {
 	Tables * tables_dynamic = NULL;
 	TableInfo * table_info_dynamic = NULL;
@@ -871,12 +881,13 @@ static Tables* get_file_info(char *input_dir)
 	return tables_dynamic;
 }
 
-static bool is_create_in_adb_cluster(char *table_name)
+static bool
+is_create_in_adb_cluster(char *table_name)
 {
-	char query[QUERY_MAXLEN];
-	PGconn       *conn;
-	PGresult     *res;
-	int          numtuples;
+	char query[QUERY_MAXLEN] = {0};
+	PGconn       *conn = NULL;
+	PGresult     *res = NULL;
+	int          numtuples = 0;
 
 	conn = PQconnectdb(setting->coordinator_info->connection);
 	if (PQstatus(conn) != CONNECTION_OK)
@@ -911,7 +922,8 @@ static bool is_create_in_adb_cluster(char *table_name)
 		return false;
 }
 
-static char *get_table_name(char *file_name)
+static char *
+get_table_name(char *file_name)
 {
 	char * file_name_local = NULL;
 	int file_name_local_len;
@@ -926,7 +938,8 @@ static char *get_table_name(char *file_name)
 	return file_name_local;
 }
 
-static char *rename_file_name(char *file_name, char *input_dir, char *suffix)
+static char *
+rename_file_name(char *file_name, char *input_dir, char *suffix)
 {
 	char old_file_name_path[1024] = {0};
 	char new_file_name_path[1024] = {0};
@@ -947,7 +960,8 @@ static char *rename_file_name(char *file_name, char *input_dir, char *suffix)
 	return new_fiel_name;
 }
 
-static void rename_file_suffix(char *old_file_path, char *suffix)
+static void
+rename_file_suffix(char *old_file_path, char *suffix)
 {
 	char new_file_path[1024] = {0};
 	char tmp[1024] = {0};
@@ -971,7 +985,8 @@ static void rename_file_suffix(char *old_file_path, char *suffix)
 	return;
 }
 
-static char *get_full_path(char *file_name, char *input_dir)
+static char *
+get_full_path(char *file_name, char *input_dir)
 {
 	int file_name_len;
 	int input_dir_len;
@@ -986,7 +1001,8 @@ static char *get_full_path(char *file_name, char *input_dir)
 	return full_path;
 }
 
-static bool is_suffix(char *str, char *suffix)
+static bool
+is_suffix(char *str, char *suffix)
 {
 	char *ptr = NULL;
 
@@ -1109,7 +1125,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	dispatch->process_bar = setting->process_bar;
 	dispatch->just_check = setting->just_check;
 	
-	SetDispatchFileStartCmd(start);
+	set_dispatch_file_start_cmd(start);
 
 	/* start dispatch module  */
 	if ((res = init_dispatch_threads(dispatch, TABLE_REPLICATION)) != DISPATCH_OK)
@@ -1152,7 +1168,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 		if (setting->process_bar)
 		{
 			memset(thread_send_total, 0 , sizeof(int) * table_info->use_datanodes_num);
-			GetSendCount(thread_send_total);
+			get_sent_conut(thread_send_total);
 			show_process(file_total_line, table_info->use_datanodes_num,
 								thread_send_total, DISTRIBUTE_BY_REPLICATION);
 		}
@@ -1170,9 +1186,9 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 			state = GetReadModule();
 			if (state == READ_PRODUCER_PROCESS_ERROR)
 			{
-				set_read_producer_exit();
+				stop_read_thread();
 				/* read module error, stop dispatch */
-				stop_dispatch();
+				stop_dispatch_threads();
 				read_finish = true;
 				dispatch_finish = true;
 				do_success = false;
@@ -1240,7 +1256,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 		sleep(1);
 	}
 
-	CleanDispatchResource();
+	clean_dispatch_resource();
 
     /* just free output queeu once , read threads and dispatch threads all used */
 	if (dispatch->output_queue != NULL)
@@ -1326,7 +1342,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		return do_success;
 	}
 
-	/* init queue */
+	/* init input queue */
 	input_queue = (MessageQueuePipe *)palloc0(sizeof(MessageQueuePipe));
 	mq_pipe_init(input_queue, "input_queue");
 
@@ -1340,6 +1356,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		datanode_info->conninfo[flag] = pg_strdup(table_info->use_datanodes[flag]->connection);
 	}
 
+	/* init output queue */
 	output_queue_total = table_info->use_datanodes_num * table_info->threads_num_per_datanode;
 	output_queue = (MessageQueuePipe **)palloc0(sizeof(MessageQueuePipe *) * output_queue_total);
 	for (i = 0; i < output_queue_total; i++)
@@ -1353,10 +1370,10 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		queue_name = NULL;
 	}
 
-	/* start hash module first */
+	/* get table base attribute */
 	field = table_info->table_attribute;
 
-	/*start hash module */
+	/* start hash module first */
 	if (table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH || 
 		table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_MODULO)
 	{
@@ -1369,7 +1386,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		func_name = pg_strdup(field->func_name);
 	}
 
-	SetHashFileStartCmd(start);
+	set_hash_file_start_cmd(start);
 
 	hash_info = (HashComputeInfo *)palloc0(sizeof(HashComputeInfo));
 	hash_info->datanodes_num = table_info->use_datanodes_num;
@@ -1414,9 +1431,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	dispatch->process_bar = setting->process_bar;
 	dispatch->just_check = setting->just_check;
 
-	SetDispatchFileStartCmd(start);
-
-	/* start dispatch module */
+	set_dispatch_file_start_cmd(start);
 	if ((res = init_dispatch_threads(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start dispatch module failed");
@@ -1439,7 +1454,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	read_info->redo_queue_index = setting->redo_queue_index;
 	read_info->redo_queue_total = setting->redo_queue_total;
 	read_info->redo_queue = setting->redo_queue;
-
 	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 
 	{
@@ -1454,13 +1468,13 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		ReadProducerState  state = READ_PRODUCER_PROCESS_DEFAULT;
 		DispatchThreads   *dispatch_exit = NULL;
 		HashThreads       *hash_exit = NULL;
-		int                flag;
+		int                flag = 0;
 		bool               hash_threads_fatal_error = false;
 
 		if (setting->process_bar)
 		{
 			memset(thread_send_total, 0 , sizeof(int) * table_info->use_datanodes_num);
-			GetSendCount(thread_send_total);
+			get_sent_conut(thread_send_total);
 			show_process(file_total_line, table_info->use_datanodes_num,
 								thread_send_total, DISTRIBUTE_BY_DEFAULT_HASH);
 		}
@@ -1472,16 +1486,16 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			break;
 		}
 
-		/* read data file module*/
+		/* check read data file module status */
 		if (!read_finish)
 		{
 			state = GetReadModule();
 			if (state == READ_PRODUCER_PROCESS_ERROR)
 			{
-				set_read_producer_exit();
-				/* read module error, stop hash and dispatch */
-				StopHash();
-				stop_dispatch();
+				stop_read_thread();
+				stop_hash_threads(); /* stop hash threads and then dispatch threads */
+				stop_dispatch_threads();
+				
 				read_finish = true;
 				hash_finish = true;
 				dispatch_finish = true;
@@ -1497,15 +1511,14 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			{
 				do_read_file_success = true;
 				read_finish = true;
-			}
-				
+			}	
 		}
 
-		/* compute hash module */
-		hash_exit = GetExitThreadsInfo();
+		/* check hash module status */
+		hash_exit = get_exit_threads_info();
 		if (hash_exit->hs_thread_cur == 0)
 		{
-			sleep(1);
+			sleep(2);
 			continue;
 		}
 
@@ -1515,7 +1528,9 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			for (flag =0; flag < hash_exit->hs_thread_count; flag++)
 			{
 				ComputeThreadInfo * hash_thread_info = hash_exit->hs_threads[flag];
-				if (hash_thread_info != NULL && hash_thread_info->state != THREAD_EXIT_NORMAL)
+				Assert(hash_thread_info != NULL);
+
+				if (hash_thread_info->state != THREAD_EXIT_NORMAL)
 				{
 					hash_error = true;
 					ADBLOADER_LOG(LOG_ERROR,
@@ -1525,21 +1540,26 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 					hash_finish = true;
 
 
+					//===============
+					//if ()
+					//===============
+
 					if (hash_thread_info->state != THREAD_PGRES_FATAL_ERROR)
 					{
 						/* need redo for all threads */
-						ADBLOADER_LOG(LOG_ERROR,"compute hash module failed");  
+						ADBLOADER_LOG(LOG_ERROR, "compute hash module failed");  
 					}
-					else /* adb_load server stopped by user.*/
+					else /* adb_load server stopped by user */
 					{
 						hash_threads_fatal_error = true;
 						do_hash_success = false;
 						main_write_error_message(table_info->distribute_type, "compute hash module failed", start);
 					}
 
-					if (hash_thread_info->state == THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE)
+					if (hash_thread_info->state == THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE ||
+						hash_thread_info->state == THREAD_HAPPEN_ERROR_CONTINUE)
 					{
-						/*dispay faild for user */
+						/* dispay faild for user */
 						do_hash_success = false;
 					}
 
@@ -1561,7 +1581,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			pthread_mutex_unlock(&hash_exit->mutex); 
 		}
 
-		/*dispatch data module*/
+		/* dispatch data module */
 		dispatch_exit = get_dispatch_exit_threads();
 		if (dispatch_exit->send_thread_cur != dispatch_exit->send_thread_count)
 		{
@@ -1609,13 +1629,13 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			pthread_mutex_unlock(&dispatch_exit->mutex);
 		}
 
-		sleep(1);
+		sleep(2);
 	}
 
 	do_success = (do_read_file_success && do_hash_success && do_dispatch_success);
 
-	CleanHashResource();
-	CleanDispatchResource();
+	clean_hash_resource();
+	clean_dispatch_resource();
 
 	/* free input queue */
 	if (input_queue != NULL)
@@ -1709,7 +1729,8 @@ get_table_attribute(ADBLoadSetting *setting, TableInfo *table_info)
 	return;
 }
 
-static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
+static void
+get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -1812,7 +1833,8 @@ static void get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	return;
 }
 
-static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
+static void
+get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *table_info)
 {
 	NodeInfoData **use_datanodes_info = NULL;
 	int i = 0;
@@ -1852,7 +1874,8 @@ static void get_use_datanodes_from_conf(ADBLoadSetting *setting, TableInfo *tabl
 	return;
 }
 
-static void reset_hash_field(TableInfo *table_info)
+static void
+reset_hash_field(TableInfo *table_info)
 {
 	HashField *hashfield = NULL;
 
@@ -1880,7 +1903,8 @@ static void reset_hash_field(TableInfo *table_info)
 	table_info->table_attribute = hashfield;
 }
 
-static void drop_func_to_server(char *serverconninfo, char *drop_func_sql)
+static void
+drop_func_to_server(char *serverconninfo, char *drop_func_sql)
 {
 	PGconn   *conn = NULL;
 	PGresult *res = NULL;
@@ -1907,7 +1931,8 @@ static void drop_func_to_server(char *serverconninfo, char *drop_func_sql)
 	return ;
 }
 
-static void create_func_to_server(char *serverconninfo, char *creat_func_sql)
+static void
+create_func_to_server(char *serverconninfo, char *creat_func_sql)
 {
 	PGconn   *conn = NULL;
 	PGresult *res = NULL;
@@ -1934,7 +1959,8 @@ static void create_func_to_server(char *serverconninfo, char *creat_func_sql)
 	return ;
 }
 
-static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info)
+static void
+get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info)
 {
 	UserFuncInfo *userdefined_funcinfo = NULL;
 
@@ -1949,7 +1975,8 @@ static void get_userdefined_funcinfo(const char *conninfo, TableInfo *table_info
 	return;
 }
 
-static void get_node_count_and_node_list(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
+static void
+get_node_count_and_node_list(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char query[QUERY_MAXLEN];
 	PGconn     *conn = NULL;
@@ -1999,7 +2026,8 @@ static void get_node_count_and_node_list(const char *conninfo, char *table_name,
 	return ;
 }
 
-static void get_hash_field(const char *conninfo, TableInfo *table_info)
+static void
+get_hash_field(const char *conninfo, TableInfo *table_info)
 {
 	char query[QUERY_MAXLEN];
 	PGconn     *conn;
@@ -2072,7 +2100,8 @@ static void get_hash_field(const char *conninfo, TableInfo *table_info)
 	return ;
 }
 
-static char get_distribute_by(const char *conninfo, const char *tablename)
+static char
+get_distribute_by(const char *conninfo, const char *tablename)
 {
 	char query[QUERY_MAXLEN];
 	PGconn     *conn;
@@ -2109,7 +2138,8 @@ static char get_distribute_by(const char *conninfo, const char *tablename)
 	return distribute;
 }
 
-static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
+static void
+get_table_loc_count_and_loc(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -2159,7 +2189,8 @@ static void get_table_loc_count_and_loc(const char *conninfo, char *table_name, 
 }
 
 #if 0
-static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo)
+static void
+get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserFuncInfo *funcinfo)
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -2203,7 +2234,8 @@ static void get_table_loc_for_hash_modulo(const char *conninfo, const char *tabl
 }
 #endif
 
-static void get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo) 
+static void
+get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo) 
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -2249,7 +2281,8 @@ static void get_func_args_count_and_type(const char *conninfo, char *table_name,
 	PQfinish(conn);
 }
 
-static void get_create_and_drop_func_sql(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
+static void
+get_create_and_drop_func_sql(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char        query[QUERY_MAXLEN];
 	LineBuffer *create_func_sql = NULL;
@@ -2429,7 +2462,8 @@ static void get_create_and_drop_func_sql(const char *conninfo, char *table_name,
 	return;
 }
 
-static void get_all_datanode_info(ADBLoadSetting *setting)
+static void
+get_all_datanode_info(ADBLoadSetting *setting)
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -2491,7 +2525,8 @@ static void get_all_datanode_info(ADBLoadSetting *setting)
 	return;
 }
 
-static void get_conninfo_for_alldatanode(ADBLoadSetting *setting)
+static void
+get_conninfo_for_alldatanode(ADBLoadSetting *setting)
 {
 	char conn_info_string[1024] = {0};
 	int i;
@@ -2549,13 +2584,15 @@ adbloader_cmp_nodes(const void *a, const void *b)
 	return 1;
 }
 
-static void exit_nicely(PGconn *conn)
+static void
+exit_nicely(PGconn *conn)
 {
 	PQfinish(conn);
 	exit(1);
 }
 
-void file_name_print(char **file_list, int file_num)
+void
+file_name_print(char **file_list, int file_num)
 {
 	int file_index = 0;
 	for(file_index = 0; file_index < file_num; ++file_index)
@@ -2564,7 +2601,8 @@ void file_name_print(char **file_list, int file_num)
 	}
 }
 
-void tables_print(Tables *tables_ptr)
+void
+tables_print(Tables *tables_ptr)
 {
 	TableInfo * table_info_ptr;
 	slist_iter	iter;
@@ -2587,7 +2625,8 @@ void tables_print(Tables *tables_ptr)
 	}
 }
 
-static void tables_list_free(Tables *tables)
+static void
+tables_list_free(Tables *tables)
 {
 	TableInfo *table_info;
 	TableInfo *table_info_next;
@@ -2605,7 +2644,8 @@ static void tables_list_free(Tables *tables)
 	tables = NULL;
 }
 
-static void table_free(TableInfo *table_info)
+static void
+table_free(TableInfo *table_info)
 {
 	int i = 0;
 	slist_mutable_iter siter;
@@ -2618,26 +2658,26 @@ static void table_free(TableInfo *table_info)
 	clean_hash_field(table_info->table_attribute);
 	table_info->table_attribute = NULL;
 
-    if (table_info->funcinfo != NULL)
-    {
-        pg_free(table_info->funcinfo->creat_func_sql);
-        table_info->funcinfo->creat_func_sql = NULL;
-        
-        pg_free(table_info->funcinfo->drop_func_sql);
-        table_info->funcinfo->drop_func_sql = NULL;
-        
-        pg_free(table_info->funcinfo->func_name);
-        table_info->funcinfo->func_name = NULL;
-        
-        pg_free(table_info->funcinfo->func_args_type);
-        table_info->funcinfo->func_args_type = NULL;
-        
-        pg_free(table_info->funcinfo->table_loc);
-        table_info->funcinfo->table_loc = NULL;
+	if (table_info->funcinfo != NULL)
+	{
+		pg_free(table_info->funcinfo->creat_func_sql);
+		table_info->funcinfo->creat_func_sql = NULL;
 
-        pg_free(table_info->funcinfo);
-        table_info->funcinfo = NULL;
-    }
+		pg_free(table_info->funcinfo->drop_func_sql);
+		table_info->funcinfo->drop_func_sql = NULL;
+
+		pg_free(table_info->funcinfo->func_name);
+		table_info->funcinfo->func_name = NULL;
+
+		pg_free(table_info->funcinfo->func_args_type);
+		table_info->funcinfo->func_args_type = NULL;
+
+		pg_free(table_info->funcinfo->table_loc);
+		table_info->funcinfo->table_loc = NULL;
+
+		pg_free(table_info->funcinfo);
+		table_info->funcinfo = NULL;
+	}
 
 	slist_foreach_modify(siter, &table_info->file_head)
 	{
@@ -2660,14 +2700,14 @@ static void table_free(TableInfo *table_info)
 	pg_free(table_info);
 	table_info = NULL;
 
-    return;
+	return;
 }
 
 char *
 conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 {
-	char        *func;
-	LineBuffer  *buf;
+	char        *func = NULL;
+	LineBuffer  *buf = NULL;
 
 	buf = get_linebuf();
 	switch (type)
@@ -2776,7 +2816,7 @@ conver_type_to_fun (Oid type, DISTRIBUTE loactor)
 void
 free_datanode_info (DatanodeInfo *datanode_info)
 {
-	int i;
+	int i = 0;
 
 	Assert(datanode_info != NULL);
 	Assert(datanode_info->datanode != NULL);
@@ -2857,7 +2897,7 @@ free_hash_info(HashComputeInfo *hash_info)
 static void
 free_read_info(ReadInfo *read_info)
 {
-    Assert(read_info != NULL);
+	Assert(read_info != NULL);
 
 	/* free filepath */
 	pg_free(read_info->filepath);
