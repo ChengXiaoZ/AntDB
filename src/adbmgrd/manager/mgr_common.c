@@ -467,24 +467,27 @@ bool mgr_check_host_in_use(Oid hostoid)
 	HeapTuple tuple =NULL;
 	Form_mgr_node mgr_node;
 	Relation rel;
-	
-	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	bool is_using = false;
+	rel = heap_open(NodeRelationId, AccessShareLock);
 	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		/* check this tuple incluster or not, if it has incluster, cannot be dropped/alter. */
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		if(mgr_node->nodehost == hostoid)
+		if(mgr_node->nodehost == hostoid && 
+			( mgr_node->nodeincluster || mgr_node->nodeinited))
 		{
-			heap_endscan(rel_scan);
-			heap_close(rel, RowExclusiveLock);
-			return true;
+			break;
 		}
 	}
+	if (HeapTupleIsValid(tuple))
+		is_using =  true;
+	else
+		is_using =  false;
 	heap_endscan(rel_scan);
-	heap_close(rel, RowExclusiveLock);
-	return false;
+	heap_close(rel, AccessShareLock);
+	return is_using;
 }
 
 /*
