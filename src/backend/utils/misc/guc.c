@@ -3750,6 +3750,7 @@ static struct config_string ConfigureNamesString[] =
 		"$&#$",
 		NULL, NULL, NULL
 	},
+<<<<<<< HEAD
 	{
 		{"rep_read_archive_path", PGC_USERSET, CLIENT_CONN_LOCALE,
 			gettext_noop("archive xlog path"),
@@ -3760,6 +3761,8 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		NULL,NULL,NULL
 	},	
+=======
+>>>>>>> 5a140c5... adb_load:实现copy命令的注释功能。
 
 	{
 		{"copy_cmd_comment_str", PGC_USERSET, CUSTOM_OPTIONS,
