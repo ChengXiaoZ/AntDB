@@ -636,6 +636,8 @@
 #log_parse_query = off				# Enable record parse sql
 #enable_zero_year = false			# Thing it is effective if year is zero
 #distribute_by_replication_default = false	# Set distribute by replication default.
+#copy_cmd_comment_str = '//'		#Comment string for copy commend.
+#copy_cmd_comment = off				#Enable copy commend use comment.
 
 #------------------------------------------------------------------------------
 # ADB MONITOR PARAMETERS

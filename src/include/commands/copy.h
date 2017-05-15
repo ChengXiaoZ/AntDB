@@ -40,4 +40,9 @@ extern CopyState pgxcMatViewBeginCopyTo(Relation mvrel);
 extern int64 pgxcDoCopyTo(CopyState cstate);
 #endif /* PGXC */
 
+#ifdef ADB
+extern char *copy_cmd_comment_str;
+extern bool  copy_cmd_comment;
+#endif
+
 #endif   /* COPY_H */

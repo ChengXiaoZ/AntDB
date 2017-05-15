@@ -39,6 +39,7 @@
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "optimizer/planner.h"
+#include "optimizer/cost.h"
 #include "parser/parse_relation.h"
 #ifdef PGXC
 #include "optimizer/pgxcship.h"
@@ -64,6 +65,10 @@
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
+
+char	   *copy_cmd_comment_str = NULL;
+bool		copy_cmd_comment = false;
+
 
 /*
  * Represents the different source/dest cases we need to worry about at
@@ -3660,6 +3665,8 @@ CopyReadLineText(CopyState cstate)
 			 * Try to read some more data.  This will certainly reset
 			 * raw_buf_index to zero, and raw_buf_ptr must go with it.
 			 */
+
+READLINE:
 			if (!CopyLoadRawBuf(cstate))
 				hit_eof = true;
 			raw_buf_ptr = 0;
@@ -3680,6 +3687,32 @@ CopyReadLineText(CopyState cstate)
 		/* OK to fetch a character */
 		prev_raw_ptr = raw_buf_ptr;
 		c = copy_raw_buf[raw_buf_ptr++];
+
+		if (copy_cmd_comment)
+		{
+			char comment_char = *copy_cmd_comment_str;
+			if (c == comment_char)
+			{
+				c = copy_raw_buf[raw_buf_ptr++];
+				if (c == comment_char)
+				{
+					c = copy_raw_buf[raw_buf_ptr++];
+					while (c != '\n')
+					{
+						c = copy_raw_buf[raw_buf_ptr++];
+					}
+
+					hit_eof = false;
+					need_data = false;
+					cstate->raw_buf_index = raw_buf_ptr;
+					goto READLINE;
+				}
+				else
+				{
+					raw_buf_ptr--;
+				}
+			}
+		}
 
 		if (cstate->csv_mode)
 		{

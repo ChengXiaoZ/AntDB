@@ -40,6 +40,7 @@
 #include "commands/vacuum.h"
 #include "commands/variable.h"
 #include "commands/trigger.h"
+#include "commands/copy.h"
 #include "funcapi.h"
 #include "libpq/auth.h"
 #include "libpq/be-fsstubs.h"
@@ -229,6 +230,9 @@ static char *config_enum_get_options(struct config_enum * record,
 static bool check_adbmonitor_workers(int *newval, void **extra, GucSource source);
 #endif
 
+#if defined (ADB)
+static bool check_string_valid(char **newval, void **extra, GucSource source);
+#endif
 
 /*
  * Options for enum values defined in this module.
@@ -1813,6 +1817,14 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&ADB_DEBUG,
+
+	{
+		{"copy_cmd_comment", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("enable copy command comment."),
+			NULL,
+			GUC_REPORT
+		},
+		&copy_cmd_comment,
 		false,
 		NULL, NULL, NULL
 	},
@@ -3748,6 +3760,17 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		NULL,NULL,NULL
 	},	
+
+	{
+		{"copy_cmd_comment_str", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("copy command comment string."),
+			NULL,
+			GUC_REPORT
+		},
+		&copy_cmd_comment_str,
+		"//",
+		check_string_valid, NULL, NULL
+	},
 #endif
 
 	/* End-of-list marker */
@@ -9297,6 +9320,31 @@ check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source)
 			return false;
 	}
 }
+#endif
+
+
+#ifdef ADB
+
+/* check the string is valid ? */
+static bool
+check_string_valid(char **newval, void **extra, GucSource source)
+{
+	int str_len = 0;
+	char first_char = '\0';
+	char second_char = '\0';
+
+	str_len = strlen(*newval);
+	if (str_len != 2) /* copy command comment string length must be 2. */
+		return false;
+
+	first_char = **newval;
+	second_char = *(*newval + 1);
+	if (first_char != second_char) /*first char and second char must be the same. */
+		return false;
+
+	return true;
+}
+
 #endif
 
 static bool
