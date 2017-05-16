@@ -2539,13 +2539,20 @@ RemoveNodeStmt:
 			node->names = $4;
 			$$ = (Node*)node;
 		}
-	| REMOVE DATANODE opt_dn_inner_type ObjList
+	|	REMOVE DATANODE opt_dn_inner_type ObjList
 		{
 			MgrRemoveNode *node = makeNode(MgrRemoveNode);
 			node->nodetype = $3;
 			node->names = $4;
 			$$ = (Node*)node;
 		}
+	|	REMOVE COORDINATOR ObjList
+		{
+			MgrRemoveNode *node = makeNode(MgrRemoveNode);
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+			node->names = $3;
+			$$ = (Node*)node;
+		}	
 	;
 
 unreserved_keyword:

@@ -81,7 +81,8 @@ typedef enum
 {
 	CONFIG,
 	APPEND,
-	FAILOVER
+	FAILOVER,
+	REMOVE
 }pgxc_node_operator;
 
 struct tuple_cndn
@@ -115,6 +116,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file);
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *dnname, Oid dnhostoid, int32 dnport);
+static void mgr_drop_node_on_all_coord(char nodetype, char *nodename);
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
 static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr, bool check_incluster);
@@ -206,6 +208,10 @@ static char mgr_get_master_type(char nodetype);
 static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, bool bincluster);
 static void mgr_get_master_sync_string(Oid mastertupleoid, bool bincluster, Oid excludeoid, StringInfo infostrparam);
 static bool get_local_ip(Name local_ip);
+static void exec_remove_coordinator(char *nodename);
+static bool get_node_info(const char node_type, const char *node_name, bool *is_inited, bool *is_incluster, bool *is_running, AppendNodeInfo *node_info);
+static bool get_active_node_info(const char node_type, const char *node_name, AppendNodeInfo *node_info);
+void release_append_node_info(AppendNodeInfo *node_info, bool is_release);
 #if (Natts_mgr_node != 9)
 #error "need change code"
 #endif
@@ -5001,6 +5007,122 @@ static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *
 	pfree(getAgentCmdRst.description.data);
 }
 
+/*
+	execute remove coordinator command, so the function is need to remove
+	the coordinator from pgxc_node table.
+	it just remove the tuple, but it didn't change the primary and preferred value
+*/
+static void mgr_drop_node_on_all_coord(char nodetype, char *nodename)
+{
+	InitNodeInfo *info;
+	ScanKeyData key[2];
+	HeapTuple tuple;
+	ManagerAgent *ma;
+	Form_mgr_node mgr_node;
+	StringInfoData psql_cmd;
+	bool execok = false;
+	StringInfoData buf;
+	char *addressconnect = NULL;
+	char *user = NULL;
+
+	GetAgentCmdRst getAgentCmdRst;
+
+	initStringInfo(&(getAgentCmdRst.description));
+
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+    
+	info = palloc(sizeof(*info));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+	info->lcp = NULL;
+
+	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		
+		/*check the coodinator is running*/
+	/* 	if (!mgr_get_active_node(mgr_node->nodename, mgr_node->nodetype))
+			continue; */
+		if ((strcmp(NameStr(mgr_node->nodename), nodename) == 0) && mgr_node->nodetype == nodetype)
+			continue;
+			
+		/* connection agent */
+		ma = ma_connect_hostoid(mgr_node->nodehost);
+		if (!ma_isconnected(ma))
+		{
+			/* report error message */
+			getAgentCmdRst.ret = false;
+			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+			ma_close(ma);
+
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+
+			ereport(ERROR, (errmsg("could not connect socket for agent\"%s\".",
+							get_hostname_from_hostoid(mgr_node->nodehost))));
+			return;
+		}
+
+		initStringInfo(&psql_cmd);
+		addressconnect = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		appendStringInfo(&psql_cmd, " -h %s -p %u -d %s -U %s -a -c \""
+						,addressconnect
+						,mgr_node->nodeport
+						,DEFAULT_DB
+						,user);
+
+
+		appendStringInfo(&psql_cmd, " DROP NODE \\\"%s\\\";", nodename);
+		appendStringInfo(&psql_cmd, " select pgxc_pool_reload();\"");
+
+		ma_beginmessage(&buf, AGT_MSG_COMMAND);
+		ma_sendbyte(&buf, AGT_CMD_PSQL_CMD);
+		ma_sendstring(&buf, psql_cmd.data);
+		pfree(psql_cmd.data);
+		pfree(addressconnect);
+		pfree(user);
+		ma_endmessage(&buf, ma);
+
+		if (! ma_flush(ma, true))
+		{
+			getAgentCmdRst.ret = false;
+			appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+			ma_close(ma);
+
+			heap_endscan(info->rel_scan);
+			heap_close(info->rel_node, AccessShareLock);
+			pfree(info);
+
+			return;
+		}
+
+		/*check the receive msg*/
+		execok = mgr_recv_msg(ma, &getAgentCmdRst);
+		ma_close(ma);
+		if (!execok)
+			ereport(WARNING, (errmsg("drop node on all coordinators fail %s", 
+				getAgentCmdRst.description.data)));
+	}
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+	pfree(getAgentCmdRst.description.data);
+}
+
 static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 {
 	StringInfoData start_cmd;
@@ -8224,6 +8346,9 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 								,NameStr(mgr_node_out->nodename)
 								,host_address
 								,mgr_node_out->nodeport);
+		// }else if (remove == cmd)
+		// {
+			// appendStringInfo(&cmdstring, "DROP NODE \\\"%s\\\";",NameStr(mgr_node_out->nodename));
 		}
 		pfree(host_address);
 		datanode_num = 0;
@@ -11196,9 +11321,9 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 	
 	/*ndoe type*/
 	nodetype = PG_GETARG_CHAR(0);
-	if (CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+	if (CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
-			, errmsg("it does not support remove master node now")));
+			, errmsg("it does not support remove master node now execpt for coordinator")));
 	nodenamelist = (List *)PG_GETARG_POINTER(1);
 
 	/*check the node in the cluster*/
@@ -11256,7 +11381,18 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 		heap_endscan(rel_scan);
 		pfree(address);
 	}
-
+	/*if coordinator is remove, just to remove it directly*/
+	if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+	{
+		foreach(cell, nodenamelist)
+		{
+			val = lfirst(cell);
+			Assert(val && IsA(val, String));
+			exec_remove_coordinator(strVal(val));
+		}
+		heap_close(rel, RowExclusiveLock);
+		PG_RETURN_BOOL(true);
+	}
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&infosendmsg);
 	initStringInfo(&infostrparam);
@@ -11355,10 +11491,55 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
+static void exec_remove_coordinator(char *nodename)
+{
+	Relation rel;
+	AppendNodeInfo remove_node_info;
+	bool is_inited = false;
+	bool is_incluster = false;
+	bool is_running = false;
+	int ret = false;
+	NameData remove_node_name;
+
+	/*step 1: get the info of remove coordinator */
+	ret = get_node_info(CNDN_TYPE_COORDINATOR_MASTER, nodename, &is_inited, &is_incluster, &is_running, &remove_node_info);
+	if (false == ret)
+	{
+		ereport(ERROR, (errmsg("An error occurred while get the coordinator\"%s\" values", remove_node_info.nodename)));
+	}
+	if (!is_inited)
+	{
+		ereport(ERROR, (errmsg("the coordinator \"%s\" dose not inited", remove_node_info.nodename)));
+	}
+		
+	/*step 2: check the remove coordinator is running*/
+	if (is_running)
+	{
+		ereport(ERROR, (errmsg("the coordinator \"%s\" , stop it first", remove_node_info.nodename)));
+	}
+	
+	/*step 3: modify the pgxc_node table, because the coordinator has stoppend so it's not need to add ddl lock*/
+	mgr_drop_node_on_all_coord(CNDN_TYPE_COORDINATOR_MASTER, remove_node_info.nodename);
+		
+	/*step 4: modify the mgr_param table*/
+	rel= heap_open(UpdateparmRelationId, RowExclusiveLock);
+	sprintf(remove_node_name.data, "%s", remove_node_info.nodename);
+	mgr_parmr_delete_tuple_nodename_nodetype(rel, &remove_node_name, CNDN_TYPE_COORDINATOR_MASTER);
+	heap_close(rel, RowExclusiveLock);
+	
+	/*step 5:modify the pg_hba.conf file of all the node */
+	/*modify hba table*/
+	mgr_clean_hba_table(remove_node_info.nodename, NULL);
+	
+	/*step 6: modify the mgr_node table*/
+	mgr_set_inited_incluster(remove_node_info.nodename, CNDN_TYPE_COORDINATOR_MASTER, true, false);
+	
+	/*step 7: release memory*/
+	release_append_node_info(&remove_node_info, false);
+}
 /*
 * check the node pingNode ok max_try times
 */
-
 static bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times)
 {
 	int ret = 0;
@@ -11624,3 +11805,184 @@ Datum mgr_monitor_ha(PG_FUNCTION_ARGS)
 	pfree(resultstrdata.data);
 	SRF_RETURN_DONE(funcctx);
 }
+/*
+	if node_name is NULL
+	find the first node which respond to the node_type
+*/
+static bool get_active_node_info(const char node_type, const char *node_name, AppendNodeInfo *nodeinfo)
+{
+	InitNodeInfo *info = NULL;
+	ScanKeyData key[4];
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	Datum datumPath;
+	bool isNull = false;
+	bool is_running = false;
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+
+	ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(node_type));
+
+	ScanKeyInit(&key[3]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,CStringGetDatum(node_name));
+	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	if (PointerIsValid(node_name))
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
+	else
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 3, key);
+	info->lcp =NULL;
+	while((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		nodeinfo->nodeport = mgr_node->nodeport;
+		is_running = is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport, nodeinfo->nodeusername);
+		if (is_running)
+			break;
+	}
+	if (!is_running)
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return false;
+	}
+	if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		nodeinfo->nodeusername = pstrdup(AGTM_USER);
+	else
+		nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
+	nodeinfo->nodetype = mgr_node->nodetype;	
+	nodeinfo->nodehost = mgr_node->nodehost;
+	nodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
+	nodeinfo->tupleoid = HeapTupleGetOid(tuple);
+	namestrcpy(&(nodeinfo->sync_state), NameStr(mgr_node->nodesync));
+	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+	if (isNull)
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return false;
+	}
+	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
+
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+	return true;
+} 
+
+/*
+	if node_name is NULL, 
+	find the first node which respond to the node_type
+	if get node information success return  true;
+	else return false;
+*/
+static bool get_node_info(const char node_type, const char *node_name, bool *is_inited, bool *is_incluster, bool *is_running, AppendNodeInfo *nodeinfo)
+{
+	InitNodeInfo *info;
+	ScanKeyData key[2];
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	Datum datumPath;
+	bool isNull = false;
+	Assert(node_name);
+	
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(node_type));
+				
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,NameGetDatum(node_name));
+	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
+	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
+	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+
+	info->lcp =NULL;
+	
+	tuple = heap_getnext(info->rel_scan, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return false;
+	}
+
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
+		
+	nodeinfo->nodeaddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+	if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE || mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		nodeinfo->nodeusername = pstrdup(AGTM_USER);
+	else
+		nodeinfo->nodeusername = get_hostuser_from_hostoid(mgr_node->nodehost);
+	nodeinfo->nodetype = mgr_node->nodetype;
+	nodeinfo->nodeport = mgr_node->nodeport;
+	nodeinfo->nodehost = mgr_node->nodehost;
+	nodeinfo->nodemasteroid = mgr_node->nodemasternameoid;
+	nodeinfo->tupleoid = HeapTupleGetOid(tuple);
+	nodeinfo->nodename = pstrdup(NameStr(mgr_node->nodename));
+	namestrcpy(&(nodeinfo->sync_state), NameStr(mgr_node->nodesync));
+	/*get nodepath from tuple*/
+	datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(info->rel_node), &isNull);
+	if (isNull)
+	{
+		heap_endscan(info->rel_scan);
+		heap_close(info->rel_node, AccessShareLock);
+		pfree(info);
+		return false;
+	}
+	nodeinfo->nodepath = pstrdup(TextDatumGetCString(datumPath));
+	
+	*is_running = is_node_running(nodeinfo->nodeaddr, nodeinfo->nodeport, nodeinfo->nodeusername);
+	*is_inited = mgr_node->nodeinited;
+	*is_incluster = mgr_node->nodeincluster;
+	heap_endscan(info->rel_scan);
+	heap_close(info->rel_node, AccessShareLock);
+	pfree(info);
+	return true;
+}
+
+void release_append_node_info(AppendNodeInfo *node_info, bool is_release)
+{
+	if (!PointerIsValid(node_info))
+		return;
+	if (PointerIsValid(node_info->nodename))
+		pfree(node_info->nodename);
+	if (PointerIsValid(node_info->nodepath))
+		pfree(node_info->nodepath);
+	if (PointerIsValid(node_info->nodeaddr))
+		pfree(node_info->nodeaddr);
+	if (PointerIsValid(node_info->nodeusername))
+		pfree(node_info->nodeusername);
+	/*checking whether release the struct of AppendNodeInfo*/
+	if (is_release)
+		pfree(node_info);
+}
+	
+	
