@@ -17,6 +17,7 @@ LOG_TYPE log_output_type = LOG_INFO;
 
 static char *get_file_name(const char *file_path);
 static char *get_file_path(char *path, char *tablename);
+static void remove_duplicate_lines(char *file_path);
 
 void adbLoader_log_init(char *logfilepath, LOG_TYPE type)
 {
@@ -61,7 +62,7 @@ void adbloader_log_type(LOG_TYPE type, const char *file, const char *fun, int li
 	va_list args;
 	int cnt;
 	int n;
-    char *p_file_name = NULL;
+	char *p_file_name = NULL;
 
 	if (type < log_output_type)
 		return;
@@ -124,105 +125,117 @@ static char *get_file_name(const char *file_path)
 
 void fopen_adb_load_error_data(char *path, char *tablename)
 {
-    char *file_path = NULL;
+	char *file_path = NULL;
 
-    Assert(tablename != NULL);
+	Assert(tablename != NULL);
 
-    file_path = get_file_path(path, tablename);
-    
+	file_path = get_file_path(path, tablename);
 	adb_load_error_data_fd = fopen(file_path, "a+");
 	if (adb_load_error_data_fd == NULL)
 	{
 		fprintf(stderr, "could not open log file: %s.\n",  file_path);
-        
-        pfree(file_path);
-        file_path = NULL;
+		pfree(file_path);
+		file_path = NULL;
 		exit(EXIT_FAILURE);
 	}
 
-    pfree(file_path);
-    file_path = NULL;
+	pfree(file_path);
+	file_path = NULL;
 
 	return;
 }
 
 void check_db_load_error_data(char *path, char *tablename)
 {
+	char *file_path = NULL;
 
-    char *file_path = NULL;
-    
-    file_path = get_file_path(path, tablename);
+	file_path = get_file_path(path, tablename);
+	if (file_exists(file_path))
+	{
+		if (file_size(file_path) > 0)
+		{
+			remove_duplicate_lines(file_path);
+			pfree(file_path);
+			file_path = NULL;
+			return;
+		}
+		else // file is empty
+		{
+			remove_file(file_path);
+		}
+	}
 
-    if (file_exists(file_path))
-    {
-        if (file_size(file_path) > 0)
-        {
-            pfree(file_path);
-            file_path = NULL;
-            return;
-        }
-        else // file is empty
-        {
-            remove_file(file_path);
-        }
-    }
+	pfree(file_path);
+	file_path = NULL;
 
-    pfree(file_path);
-    file_path = NULL;
-
-    return;    
+	return;    
 }
-
 
 void fwrite_adb_load_error_data(char *linedata)
 {
-    int ret = 0;
+	int ret = 0;
 
-    if (linedata == NULL)
-        return;
-    
-    ret = fwrite(linedata, 1, strlen(linedata), adb_load_error_data_fd);
-    if (ret != strlen(linedata))
-    {
-        fprintf(stderr, "could not write data to error data file.\n");
-        exit(EXIT_FAILURE);
-    }
+	if (linedata == NULL)
+		return;
 
-    fflush(adb_load_error_data_fd);
+	ret = fwrite(linedata, 1, strlen(linedata), adb_load_error_data_fd);
+	if (ret != strlen(linedata))
+	{
+		fprintf(stderr, "could not write data to error data file.\n");
+		exit(EXIT_FAILURE);
+	}
 
-    return;
+	fflush(adb_load_error_data_fd);
+
+	return;
 }
 
 void fclose_adb_load_error_data(void)
 {
 	if (fclose(adb_load_error_data_fd))
 	{
-        fprintf(stderr, "could not close error data file.\n");
-        exit(EXIT_FAILURE);
+		fprintf(stderr, "could not close error data file.\n");
+		exit(EXIT_FAILURE);
 	}
 
-    return;
+	return;
 }
 
 static char *get_file_path(char *path, char *tablename)
 {
-    char error_path[1024] = {0};
-    
-    Assert(path != NULL);
-    Assert(tablename != NULL);
+	char error_path[1024] = {0};
 
-    if (path == NULL)
-    {
-        snprintf(error_path, sizeof(error_path), "./%s.txt", tablename);
-    }
-    else
-    {
-        if (path[strlen(path) - 1] == '/')
-            snprintf(error_path, sizeof(error_path), "%s%s.txt", path, tablename);
-        else
-            snprintf(error_path, sizeof(error_path), "%s/%s.txt", path, tablename);
-    }
+	Assert(path != NULL);
+	Assert(tablename != NULL);
 
-    return pstrdup(error_path);
+	if (path == NULL)
+	{
+		snprintf(error_path, sizeof(error_path), "./%s.txt", tablename);
+	}
+	else
+	{
+		if (path[strlen(path) - 1] == '/')
+			snprintf(error_path, sizeof(error_path), "%s%s.txt", path, tablename);
+		else
+			snprintf(error_path, sizeof(error_path), "%s/%s.txt", path, tablename);
+	}
+
+	return pstrdup(error_path);
 }
 
+static void
+remove_duplicate_lines(char *file_path)
+{
+	int res = 0;
+	char cmd[1024] = {0};
+
+	sprintf(cmd, "sort -u %s -o %s", file_path, file_path);
+
+	res = system(cmd);
+	if (res == 127 || res == -1)
+	{
+		fprintf(stderr, "remove duplicate line failed.\n");
+	}
+
+	return;
+}

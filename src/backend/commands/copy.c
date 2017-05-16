@@ -3601,6 +3601,7 @@ CopyReadLineText(CopyState cstate)
 
 	/* CSV variables */
 	bool		first_char_in_line = true;
+	bool		is_first_char = true;
 	bool		in_quote = false,
 				last_was_esc = false;
 	char		quotec = '\0';
@@ -3688,9 +3689,12 @@ READLINE:
 		prev_raw_ptr = raw_buf_ptr;
 		c = copy_raw_buf[raw_buf_ptr++];
 
-		if (copy_cmd_comment)
+		if (copy_cmd_comment && is_first_char)
 		{
-			char comment_char = *copy_cmd_comment_str;
+			char comment_char = '\0';
+
+			is_first_char = false;
+			comment_char = *copy_cmd_comment_str;
 			if (c == comment_char)
 			{
 				c = copy_raw_buf[raw_buf_ptr++];

@@ -1239,9 +1239,12 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 				local_char = strrchr(linebuf->data, ',');
 				*local_char = ' ';
 
-				ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
-				main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
-
+				/*don't display this error message in check tool.*/
+				if (!setting->just_check)
+				{
+					ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
+					main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
+				}
 				do_success = false;
 			}
 			else
@@ -1585,8 +1588,13 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				local_char = strrchr(linebuf->data, ',');
 				*local_char = ' ';
 
+				/*don't display this error message in check tool.*/
+				if (!setting->just_check)
+				{
+					ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
+					main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
+				}
 				do_dispatch_success = false;
-				main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
 			}
 			else
 			{
