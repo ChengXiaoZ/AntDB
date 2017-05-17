@@ -311,8 +311,9 @@
    &mgrMonitorDatanode;
    &mgrMonitorGtm;
    &mgrMonitorHa;
-   &mgrRemoveDatanode
-   &mgrRemoveGtm
+   &mgrRemoveCoordinator;
+   &mgrRemoveDatanode;
+   &mgrRemoveGtm;
    &mgrResetCoordinator;
    &mgrResetDatanode;
    &mgrResetGtm;

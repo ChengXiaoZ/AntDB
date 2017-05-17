@@ -1,3 +1,4 @@
+
 <!--
 doc/src/sgml/ref/allfiles.sgml
 PostgreSQL documentation
@@ -232,6 +233,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrMonitorDatanode SYSTEM "mgr_monitor_datanode.sgml">
 <!ENTITY mgrMonitorGtm      SYSTEM "mgr_monitor_gtm.sgml">
 <!ENTITY mgrMonitorHa       SYSTEM "mgr_monitor_ha.sgml">
+<!ENTITY mgrRemoveCoordinator  SYSTEM "mgr_remove_coordinator.sgml">
 <!ENTITY mgrRemoveDatanode  SYSTEM "mgr_remove_datanode.sgml">
 <!ENTITY mgrRemoveGtm       SYSTEM "mgr_remove_gtm.sgml">
 <!ENTITY mgrResetCoordinator SYSTEM "mgr_reset_coordinator.sgml">

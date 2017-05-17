@@ -138,6 +138,8 @@ MONITOR HA [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
      </para>
     </listitem>
   </varlistentry>
+  </variablelist>
+  </refsect1>
 
   <refsect1>
     <title>Examples</title>	

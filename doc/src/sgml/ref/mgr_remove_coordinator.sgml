@@ -1,0 +1,60 @@
+<!--
+doc/src/sgml/ref/mgr_remove_coordinator.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-REMOVECOORDINATOR">
+  <refmeta>
+    <refentrytitle>REMOVE COORDINATOR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>REMOVE COORDINATOR</refname>
+    <refpurpose>remove the coordinator out of the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-removecoordinator">
+    <primary>REMOVE COORDINATOR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+REMOVE COORDINATOR <replaceable class="parameter">node_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>REMOVE COORDINATOR</command> remove the given coordinator out of the cluster. If the coordinator is running, it needs to be stopped first. The command just remove the coordinator out of cluster, not delete the parameters information in param table. If you want to drop the coordinator and its parameters, use "DROP COORDINATOR" to delete it.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name.
+          </para>
+        </listitem>
+      </varlistentry>
+		</variablelist>
+	</refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Remove the coordinator coord_name1 out of the cluster:
+<programlisting>
+REMOVE COORDINATOR coord_name1;
+</programlisting>
+</para>
+  </refsect1>
+
+</refentry>
