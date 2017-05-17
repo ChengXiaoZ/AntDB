@@ -11493,13 +11493,11 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 
 static void exec_remove_coordinator(char *nodename)
 {
-	Relation rel;
 	AppendNodeInfo remove_node_info;
 	bool is_inited = false;
 	bool is_incluster = false;
 	bool is_running = false;
 	int ret = false;
-	NameData remove_node_name;
 
 	/*step 1: get the info of remove coordinator */
 	ret = get_node_info(CNDN_TYPE_COORDINATOR_MASTER, nodename, &is_inited, &is_incluster, &is_running, &remove_node_info);
@@ -11520,21 +11518,15 @@ static void exec_remove_coordinator(char *nodename)
 	
 	/*step 3: modify the pgxc_node table, because the coordinator has stoppend so it's not need to add ddl lock*/
 	mgr_drop_node_on_all_coord(CNDN_TYPE_COORDINATOR_MASTER, remove_node_info.nodename);
-		
-	/*step 4: modify the mgr_param table*/
-	rel= heap_open(UpdateparmRelationId, RowExclusiveLock);
-	sprintf(remove_node_name.data, "%s", remove_node_info.nodename);
-	mgr_parmr_delete_tuple_nodename_nodetype(rel, &remove_node_name, CNDN_TYPE_COORDINATOR_MASTER);
-	heap_close(rel, RowExclusiveLock);
-	
-	/*step 5:modify the pg_hba.conf file of all the node */
+
+	/*step 4:modify the pg_hba.conf file of all the node */
 	/*modify hba table*/
 	mgr_clean_hba_table(remove_node_info.nodename, NULL);
 	
-	/*step 6: modify the mgr_node table*/
+	/*step 5: modify the mgr_node table*/
 	mgr_set_inited_incluster(remove_node_info.nodename, CNDN_TYPE_COORDINATOR_MASTER, true, false);
 	
-	/*step 7: release memory*/
+	/*step 6: release memory*/
 	release_append_node_info(&remove_node_info, false);
 }
 /*
