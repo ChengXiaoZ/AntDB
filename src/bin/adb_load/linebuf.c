@@ -20,8 +20,7 @@ static void destroy_linebuf(LineBuffer *buf);
 static bool appendLineBufInfoVA(LineBuffer *buf,
 								int *need,
 								const char *fmt,
-								va_list args)
-__attribute__((format(PG_PRINTF_ATTRIBUTE, 3, 0)));
+								va_list args);
 
 void init_linebuf(int max_node)
 {

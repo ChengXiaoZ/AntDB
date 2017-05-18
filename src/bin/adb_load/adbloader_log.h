@@ -16,8 +16,7 @@ extern void adbloader_log_type(LOG_TYPE type,
 								const char *file,
 								const char *fun,
 								int line,
-								const char *fmt, ...)
-__attribute__((format(PG_PRINTF_ATTRIBUTE, 5, 6)));
+								const char *fmt, ...);
 
 #define ADBLOADER_LOG(type, fmt, args...) \
 	adbloader_log_type(type, __FILE__, __FUNCTION__, __LINE__, fmt, ##args)
