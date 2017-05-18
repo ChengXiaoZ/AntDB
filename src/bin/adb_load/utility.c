@@ -380,3 +380,25 @@ pg_tolower(unsigned char ch)
 	return ch;
 }
 
+bool
+check_copy_comment_str_valid(char *copy_cmd_comment_str)
+{
+	int str_len = 0;
+	char first_char = '\0';
+	char second_char = '\0';
+
+	/* copy command comment string length must be 2. */
+	str_len = strlen(copy_cmd_comment_str);
+	if (str_len != 2)
+		return false;
+
+	first_char = *copy_cmd_comment_str;
+	second_char = *(copy_cmd_comment_str + 1);
+
+	/*first char and second char must be the same. */
+	if (first_char != second_char)
+		return false;
+
+	return true;
+}
+

@@ -11,7 +11,7 @@ typedef pthread_t HashThreadID;
 typedef struct HashField
 {
 	int  *field_loc;     /* hash fields locations , begin at 1 */
-	Oid  *field_type;    /* hash fields type */	
+	Oid  *field_type;    /* hash fields type */
 	int   field_nums;
 	char *func_name;
 	int   datanodes_num;
@@ -38,13 +38,16 @@ typedef struct HashComputeInfo
 	MessageQueuePipe    *input_queue;
 	MessageQueuePipe   **output_queue;
 	int                  output_queue_num;
-    
+
 	int                 *redo_queue_index;
 	int                  redo_queue_total;
 	bool                 redo_queue;
 
     bool                 filter_queue_file;
 	char				*filter_queue_file_path;
+
+	bool                 copy_cmd_comment;
+	char                *copy_cmd_comment_str;
 
 	HashField           *hash_field;
 } HashComputeInfo;
@@ -87,6 +90,9 @@ typedef struct ComputeThreadInfo
 
     bool               filter_queue_file;
 
+	bool                copy_cmd_comment;
+	char               *copy_cmd_comment_str;
+
     LineBuffer        *field_data;
 	HashField         *hash_field;
 	char              *func_name;
@@ -95,6 +101,8 @@ typedef struct ComputeThreadInfo
 	PGconn            *conn;
 	ThreadWorkState    state;
 	bool               exit;
+
+	bool               happen_error;
 	void              *(* thr_startroutine)(void *); /* thread start function */
 } ComputeThreadInfo;
 
@@ -113,7 +121,7 @@ extern int init_hash_compute(HashComputeInfo * hash_info);
 
 /**
 * @brief check_compute_state
-* 
+*
 * return  running thread numbers
 * @return int  running thread numbers
 */

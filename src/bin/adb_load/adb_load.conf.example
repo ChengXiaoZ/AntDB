@@ -53,6 +53,13 @@ ERROR_DATA_FILE_PATH = ./
 /* on/off */
 PROCESS_BAR = off
 
+/* for comment */
+COPY_CMD_COMMENT = off
+COPY_CMD_COMMENT_STR = //
+
+/* filter_first_line */
+FILTER_FIRST_LINE = off
+
 /*unit KB*/
 READ_FILE_BUFFER = 1024
 

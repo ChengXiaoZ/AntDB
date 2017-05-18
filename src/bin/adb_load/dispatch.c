@@ -46,7 +46,10 @@ static int dispatch_threadsCreate(DispatchInfo *dispatch);
 static void *dispatch_threadMain (void *argp);
 static void *dispatch_ThreadMainWrapper (void *argp);
 static void dispatch_ThreadCleanup (void * argp);
-static char *create_copy_string (char *table_name, char *copy_options);
+static char *create_copy_string (char *table_name,
+								char *copy_options,
+								bool copy_cmd_comment,
+								char *copy_cmd_comment_str);
 //static void deal_after_thread_exit(void);
 //static void build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo);
 static void dispatch_init_error_nametabs(void);
@@ -274,6 +277,9 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 			thrinfo->table_name = pg_strdup(dispatch->table_name);
 			thrinfo->conninfo_agtm = pg_strdup(dispatch->conninfo_agtm);
 			thrinfo->just_check = dispatch->just_check;
+			thrinfo->copy_cmd_comment = dispatch->copy_cmd_comment;
+			thrinfo->copy_cmd_comment_str = pg_strdup(dispatch->copy_cmd_comment_str);
+
 			if (dispatch->copy_options != NULL)
 			{
 				thrinfo->copy_options = pg_strdup(dispatch->copy_options);
@@ -1087,7 +1093,8 @@ connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 	}
 
 	/* exec copy command to datanode */
-	copy = create_copy_string(thrinfo->table_name, thrinfo->copy_options);
+	copy = create_copy_string(thrinfo->table_name, thrinfo->copy_options,
+							  thrinfo->copy_cmd_comment, thrinfo->copy_cmd_comment_str);
 	ADBLOADER_LOG(LOG_DEBUG, "[DISPATCH][thread id : %ld ] dispatch copy string is : %s ",
 				thrinfo->thread_id, copy);
 
@@ -1196,7 +1203,10 @@ PQfinish_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 }
 
 static char *
-create_copy_string (char *table_name, char *copy_options)
+create_copy_string (char *table_name,
+					char *copy_options,
+					bool copy_cmd_comment,
+					char *copy_cmd_comment_str)
 {
 	LineBuffer *buf = NULL;
 	char       *result = NULL;
@@ -1204,6 +1214,17 @@ create_copy_string (char *table_name, char *copy_options)
 	Assert(table_name != NULL);
 
 	buf = get_linebuf();
+
+	if (copy_cmd_comment)
+	{
+		appendLineBufInfo(buf, "set COPY_CMD_COMMENT = ON;");
+		appendLineBufInfo(buf, "set COPY_CMD_COMMENT_STR = \'%s\';", copy_cmd_comment_str);
+	}
+	else
+	{
+		appendLineBufInfo(buf, "set COPY_CMD_COMMENT = OFF;");
+	}
+
 	appendLineBufInfo(buf, "%s", "COPY  ");
 	appendLineBufInfo(buf, "%s", table_name);
 	appendLineBufInfo(buf, "%s", " FROM STDIN ");

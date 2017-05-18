@@ -90,4 +90,5 @@ bool file_exists(const char *file);
 bool remove_file(const char *file);
 
 char *adb_load_tolower(char *str);
+bool check_copy_comment_str_valid(char *copy_cmd_comment_str);
 #endif

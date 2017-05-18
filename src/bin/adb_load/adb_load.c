@@ -23,7 +23,6 @@
 #include "dispatch.h"
 #include "lib/ilist.h"
 #include "utility.h"
-
 #include "properties.h"
 
 typedef struct tables
@@ -217,7 +216,7 @@ covert_loglevel_from_char_type (char *type)
 	return LOG_INFO;
 }
 
-char * 
+char *
 covert_distribute_type_to_string (DISTRIBUTE type)
 {
 	LineBuffer * buff = get_linebuf();
@@ -256,8 +255,6 @@ main(int argc, char **argv)
 	Tables *tables_ptr = NULL;
 	TableInfo *table_info_ptr = NULL;
 	int table_count = 0;
-
-	fprintf(stderr, "%s\n", get_current_time());
 
 	/* get cmdline param. */
 	setting = cmdline_adb_load_setting(argc, argv);
@@ -325,7 +322,7 @@ main(int argc, char **argv)
 		}
 
 		/* dynamic mode : input_directory is empty */
-		if (setting->dynamic_mode       && 
+		if (setting->dynamic_mode       &&
 			tables_ptr->table_nums == 0 &&
 			tables_ptr->info == NULL)
 		{
@@ -388,7 +385,7 @@ main(int argc, char **argv)
 		check_queue_num_valid(setting, table_info_ptr);
 
 		fopen_adb_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
-		
+
 		/* create all threads and send data to datanode */
 		send_data_to_datanode(table_info_ptr->distribute_type, setting, table_info_ptr);
 
@@ -409,19 +406,17 @@ main(int argc, char **argv)
 	fclose_error_file();
 
 	/* check again */
-	if(table_count != tables_ptr->table_nums) 
+	if(table_count != tables_ptr->table_nums)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate: %d");
 		return 0;
 	}
 
 	tables_list_free(tables_ptr);
-	adbLoader_log_end(); 
+	adbLoader_log_end();
 	pg_free_adb_load_setting(setting);
 	end_linebuf();
 	DestoryConfig();
-
-	fprintf(stderr, "%s\n", get_current_time());
 
 	return 0;
 }
@@ -436,7 +431,7 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 	bool sent_ok = false;
 
 	/* the table may be split to more than one*/
-	slist_foreach_modify (siter, &table_info_ptr->file_head) 
+	slist_foreach_modify (siter, &table_info_ptr->file_head)
 	{
 		/* check connect to adb_load server, agtm, coordinator and all datanode. */
 		check_connect(setting, table_info_ptr);
@@ -649,7 +644,7 @@ check_connect(ADBLoadSetting *setting, TableInfo *table_info_ptr)
 	{
 		check_node_connection_valid(table_info_ptr->use_datanodes[i]->node_host,
 									table_info_ptr->use_datanodes[i]->node_port,
-									table_info_ptr->use_datanodes[i]->connection); 
+									table_info_ptr->use_datanodes[i]->connection);
 	}
 
 	return ;
@@ -978,7 +973,7 @@ rename_file_suffix(char *old_file_path, char *suffix)
 
 	if (rename(old_file_path, new_file_path) < 0)
 	{
-		fprintf(stderr, "could not rename file \"%s\" to \"%s\" : %s \n", 
+		fprintf(stderr, "could not rename file \"%s\" to \"%s\" : %s \n",
 				old_file_path, new_file_path, strerror(errno));
 	}
 
@@ -1124,7 +1119,8 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 
 	dispatch->process_bar = setting->process_bar;
 	dispatch->just_check = setting->just_check;
-	
+	dispatch->copy_cmd_comment = setting->copy_cmd_comment;
+	dispatch->copy_cmd_comment_str = pg_strdup(setting->copy_cmd_comment_str);
 	set_dispatch_file_start_cmd(start);
 
 	/* start dispatch module  */
@@ -1229,7 +1225,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 						need_redo = true;
 						appendLineBufInfo(linebuf, "%d,", i);
 					}
-				} 
+				}
 			}
 
 			if (need_redo)
@@ -1266,7 +1262,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	{
 	    int output_queue_total = 0;
         int flag = 0;
-        
+
 		output_queue_total = dispatch->datanodes_num * dispatch->threads_num_per_datanode;
 		for (flag = 0; flag < output_queue_total; flag++)
 		{
@@ -1280,7 +1276,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	free_dispatch_info(dispatch);
 	pg_free(dispatch);
 	dispatch = NULL;
-	
+
 	free_read_info(read_info);
 	pg_free(read_info);
 	read_info = NULL;
@@ -1288,7 +1284,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	return do_success;
 }
 
-void 
+void
 clean_replaciate_roundrobin(void)
 { return;}
 
@@ -1340,7 +1336,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		char error_str[1024] = {0};
 		sprintf(error_str, "Error: table \"%s\" does not exist in adb cluster." , table_info->table_name);
 		main_write_error_message(table_info->distribute_type, error_str, NULL);
-	
+
 		do_success = false;
 		return do_success;
 	}
@@ -1377,11 +1373,11 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	field = table_info->table_attribute;
 
 	/* start hash module first */
-	if (table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH || 
+	if (table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH ||
 		table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_MODULO)
 	{
 		Assert(field->field_nums == 1);
-		func_name = conver_type_to_fun(field->field_type[0], DISTRIBUTE_BY_DEFAULT_HASH);		
+		func_name = conver_type_to_fun(field->field_type[0], DISTRIBUTE_BY_DEFAULT_HASH);
 	}
 	else if (table_info->distribute_type == DISTRIBUTE_BY_USERDEFINED)
 	{
@@ -1410,6 +1406,8 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	hash_info->filter_queue_file = setting->filter_queue_file;
 	hash_info->table_name = pg_strdup(table_info->table_name);
 	hash_info->filter_queue_file_path = pg_strdup(setting->filter_queue_file_path);
+	hash_info->copy_cmd_comment = setting->copy_cmd_comment;
+	hash_info->copy_cmd_comment_str = pg_strdup(setting->copy_cmd_comment_str);
 	if ((res = init_hash_compute(hash_info)) != HASH_COMPUTE_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start hash module failed");
@@ -1425,7 +1423,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	dispatch->output_queue = output_queue;
 	dispatch->datanode_info = datanode_info;
 	dispatch->table_name = pg_strdup(table_info->table_name);
-	
+
 	if (setting->hash_config->copy_option != NULL)
 	{
 		dispatch->copy_options = pg_strdup(setting->hash_config->copy_option);
@@ -1433,6 +1431,8 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 
 	dispatch->process_bar = setting->process_bar;
 	dispatch->just_check = setting->just_check;
+	dispatch->copy_cmd_comment = setting->copy_cmd_comment;
+	dispatch->copy_cmd_comment_str = pg_strdup(setting->copy_cmd_comment_str);
 
 	set_dispatch_file_start_cmd(start);
 	if ((res = init_dispatch_threads(dispatch, TABLE_DISTRIBUTE)) != DISPATCH_OK)
@@ -1497,7 +1497,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				stop_read_thread();
 				stop_hash_threads(); /* stop hash threads and then dispatch threads */
 				stop_dispatch_threads();
-				
+
 				read_finish = true;
 				hash_finish = true;
 				dispatch_finish = true;
@@ -1513,7 +1513,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			{
 				do_read_file_success = true;
 				read_finish = true;
-			}	
+			}
 		}
 
 		/* check hash module status */
@@ -1547,11 +1547,11 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				}
 				else
 				{
-					do_hash_success = true; 
+					do_hash_success = true;
 				}
 			}
 
-			pthread_mutex_unlock(&hash_exit->mutex); 
+			pthread_mutex_unlock(&hash_exit->mutex);
 		}
 
 		/* dispatch data module */
@@ -1622,13 +1622,13 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		pg_free(input_queue);
 		input_queue = NULL;
 	}
-    
+
 	/* free output queue memory */
 	if (read_info->output_queue != NULL)
 	{
 		int output_queue_total = 0;
 	    int i = 0;
-        
+
 		output_queue_total = read_info->datanodes_num * read_info->threads_num_per_datanode;
 		for (i = 0; i < output_queue_total; i++)
 		{
@@ -1793,7 +1793,7 @@ get_use_datanodes(ADBLoadSetting *setting, TableInfo *table_info)
 	table_info->threads_num_per_datanode = setting->threads_num_per_datanode;
 	table_info->use_datanodes_num = numtuples;
 	table_info->use_datanodes = use_datanodes_info;
-	
+
 	qsort(table_info->use_datanodes,
 					table_info->use_datanodes_num,
 					sizeof(NodeInfoData*),
@@ -2213,7 +2213,7 @@ get_table_loc_for_hash_modulo(const char *conninfo, const char *tablename, UserF
 #endif
 
 static void
-get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo) 
+get_func_args_count_and_type(const char *conninfo, char *table_name, UserFuncInfo *userdefined_funcinfo)
 {
 	char query[QUERY_MAXLEN];
 	PGconn       *conn;
@@ -2460,7 +2460,7 @@ get_all_datanode_info(ADBLoadSetting *setting)
 	sprintf(query, "select oid, node_name,node_port,node_host "
 					"from pgxc_node "
 					"where node_type= 'D' order by oid;");
-	
+
 	res = PQexec(conn, query);
 	if ( !res || PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
@@ -2596,7 +2596,7 @@ tables_print(Tables *tables_ptr)
 		{
 			FileLocation * file_location = slist_container(FileLocation, next, iter.cur);
 			printf("\t table_split_files:%s", file_location->location);
-			
+
 		}
 		printf("\n");
 		table_info_ptr = table_info_ptr->next;
@@ -2615,7 +2615,7 @@ tables_list_free(Tables *tables)
 	{
 		table_info_next = table_info->next;
 		table_free(table_info);
-		table_info = table_info_next;	
+		table_info = table_info_next;
 	}
 
 	pg_free(tables);
@@ -2662,7 +2662,7 @@ table_free(TableInfo *table_info)
 		FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
 
 		pg_free(file_location->location);
-		file_location->location = NULL;    
+		file_location->location = NULL;
 
 		pg_free(file_location);
 		file_location = NULL;
@@ -2818,7 +2818,7 @@ void
 free_dispatch_info (DispatchInfo *dispatch)
 {
 	Assert(dispatch != NULL);
-	Assert(dispatch->table_name != NULL); 
+	Assert(dispatch->table_name != NULL);
 	Assert(dispatch->conninfo_agtm != NULL);
 
 	pg_free(dispatch->conninfo_agtm);
@@ -2828,7 +2828,7 @@ free_dispatch_info (DispatchInfo *dispatch)
 	// to do nothing
 
 	free_datanode_info(dispatch->datanode_info);
-	pg_free(dispatch->datanode_info);	
+	pg_free(dispatch->datanode_info);
 	dispatch->datanode_info = NULL;
 
 	pg_free(dispatch->table_name);
@@ -2844,10 +2844,10 @@ static void
 free_hash_info(HashComputeInfo *hash_info)
 {
 	Assert(hash_info != NULL);
-	
+
 	pg_free(hash_info->func_name);
 	hash_info->func_name = NULL;
-	
+
 	pg_free(hash_info->table_name);
 	hash_info->table_name = NULL;
 
@@ -3026,7 +3026,7 @@ process_bar_multi(int total, int * send , int num)
 	buf = NULL;
 }
 
-static void 
+static void
 show_process(int total, int datanodes, int * thread_send_total, DISTRIBUTE type)
 {
 	int flag;

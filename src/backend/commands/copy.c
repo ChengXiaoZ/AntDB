@@ -2097,7 +2097,7 @@ CopyFromErrorCallback(void *arg)
 			char	   *attval;
 
 			attval = limit_printout_length(cstate->cur_attval);
-			errcontext("COPY %s, line %d, column %s: \"%s\" \nVALUE: %s",
+			errcontext("COPY %s, line %d, column %s: \"%s\"\nVALUE: %s",
 					   cstate->cur_relname, cstate->cur_lineno,
 					   cstate->cur_attname, attval, cstate->line_buf.data);
 			pfree(attval);
@@ -2127,7 +2127,7 @@ CopyFromErrorCallback(void *arg)
 				char	   *lineval;
 
 				lineval = limit_printout_length(cstate->line_buf.data);
-				errcontext("COPY %s, line %d,\nVALUE: %s ",
+				errcontext("COPY %s, line %d\nVALUE: %s ",
 						   cstate->cur_relname, cstate->cur_lineno, lineval);
 				pfree(lineval);
 			}

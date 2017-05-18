@@ -49,6 +49,9 @@ static const char *LOG_PATH          = "LOG_PATH";
 static const char *FILTER_QUEUE_FILE_PATH = "FILTER_QUEUE_FILE_PATH";
 static const char *ERROR_DATA_FILE_PATH = "ERROR_DATA_FILE_PATH";
 static const char *PROCESS_BAR       = "PROCESS_BAR";
+static const char *COPY_CMD_COMMENT  = "COPY_CMD_COMMENT";
+static const char *COPY_CMD_COMMENT_STR = "COPY_CMD_COMMENT_STR";
+//static const char *FILTER_FIRST_LINE = "FILTER_FIRST_LINE";
 static const char *READ_FILE_BUFFER  = "READ_FILE_BUFFER";
 
 /* ERROR FILE */
@@ -76,6 +79,8 @@ static char * get_text_delim(char *text_delim);
 ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 {
 	static struct option long_options[] = {
+		{"copy_cmd_comment",          no_argument, NULL, 'p'},
+		{"copy_cmd_comment_str",required_argument, NULL, 'm'},
 		{"configfile",          required_argument, NULL, 'c'},
 		{"dbname",              required_argument, NULL, 'd'},
 		{"dynamic",                   no_argument, NULL, 'y'},
@@ -111,13 +116,13 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("adb_load (PostgreSQL) " PG_VERSION);
+			puts("adb_load 2.0 " PG_VERSION);
 			exit(EXIT_SUCCESS);
 		}
 	}
 
 	setting = (ADBLoadSetting *)palloc0(sizeof(ADBLoadSetting));
-	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ej", long_options, &option_index)) != -1)
+	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ejpm:", long_options, &option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -127,7 +132,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		case 'd': //dbname
 			setting->database_name = pg_strdup(optarg);
 			break;
-		case 'e': 
+		case 'e':
 			setting->filter_queue_file = true;
 			break;
 		case 'f': //inputfile
@@ -150,8 +155,24 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		case 'j': //just for check tool
 			setting->just_check = true;
 			break;
+		case 'm':
+			{
+				if (check_copy_comment_str_valid(optarg))
+				{
+					setting->copy_cmd_comment_str = pg_strdup(optarg);
+				}
+				else
+				{
+					fprintf(stderr, "Error: option -m/copy_cmd_comment_str must be two same char.\n");
+					exit(EXIT_FAILURE);
+				}
+				break;
+			}
 		case 'o': //outputdir
 			setting->output_directory = pg_strdup(optarg);
+			break;
+		case 'p':
+			setting->copy_cmd_comment = true;
 			break;
 		case 'Q': //queue
 			{
@@ -208,7 +229,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 	if (setting->hash_thread_num < 0)
 	{
 		fprintf(stderr, "Error: option -h/--hash_thread_num can not less then 0.\n");
-		exit(EXIT_FAILURE); 
+		exit(EXIT_FAILURE);
 	}
 
 	if (setting->database_name == NULL || setting->user_name == NULL)
@@ -317,7 +338,7 @@ static int get_redo_queue_total(char *optarg)
 	while (token != NULL)
 	{
 		redo_queue_total++;
-		
+
 		token = strtok_r(NULL, ",", &strtok_r_ptr);
 	}
 
@@ -345,7 +366,7 @@ static int *get_redo_queue(char *optarg, int redo_queue_total)
 
 	local_optarg = pg_strdup(optarg);
 
-	redo_queue = (int *)palloc0(redo_queue_total * sizeof(int));    
+	redo_queue = (int *)palloc0(redo_queue_total * sizeof(int));
 
 	i = 0;
 	char *token = strtok_r(local_optarg, ",", &strtok_r_ptr);
@@ -359,7 +380,7 @@ static int *get_redo_queue(char *optarg, int redo_queue_total)
 		else
 		{
 			fprintf(stderr, "Error: please check -Q/--queue option.\n");
-			exit(EXIT_FAILURE); 
+			exit(EXIT_FAILURE);
 		}
 
 		token = strtok_r(NULL, ",", &strtok_r_ptr);
@@ -508,7 +529,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 
 	InitConfig(setting->config_file_path);
 
-	setting->server_info = (ServerNodeInfo *)palloc0(sizeof(ServerNodeInfo)); 
+	setting->server_info = (ServerNodeInfo *)palloc0(sizeof(ServerNodeInfo));
 	setting->agtm_info = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
 	setting->coordinator_info = (NodeInfoData *)palloc0(sizeof(NodeInfoData));
 
@@ -583,7 +604,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		{
 			pfree(str_ptr);
 			str_ptr = NULL;
-			
+
 			fprintf(stderr, "Error: The variable value for \"THREADS_NUM_PER_DATANODE\" should be greater than 0.\n");
 			exit(EXIT_FAILURE);
 		}
@@ -602,7 +623,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		{
 			pfree(str_ptr);
 			str_ptr = NULL;
-			
+
 			fprintf(stderr, "Error: The variable value for \"HASH_THREAD_NUM\" should be greater than 0.\n");
 			exit(EXIT_FAILURE);
 		}
@@ -612,11 +633,11 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 	}
 	else
 	{
-		setting->hash_config->hash_thread_num = setting->hash_thread_num; 
+		setting->hash_config->hash_thread_num = setting->hash_thread_num;
 	}
 
 	setting->hash_config->text_delim = get_text_delim(get_config_file_value(COPY_DELIMITER));
-	setting->hash_config->hash_delim = pstrdup(HASH_DELIM); 
+	setting->hash_config->hash_delim = pstrdup(HASH_DELIM);
 #if 0
 	copy_header_str = get_config_file_value(COPY_HEADER);
 
@@ -638,7 +659,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		exit(EXIT_FAILURE);
 	}
 
-	if (setting->hash_config->copy_header && 
+	if (setting->hash_config->copy_header &&
 		strcmp(setting->hash_config->text_delim, ",") != 0)
 	{
 		fprintf(stderr, "COPY HEADER available only COPY_DELIMITER = \',\'.\n");
@@ -678,6 +699,54 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 	setting->read_file_buffer = atoi(str_ptr);
 	pfree(str_ptr);
 	str_ptr = NULL;
+
+	if (!setting->copy_cmd_comment)
+	{
+		str_ptr = get_config_file_value(COPY_CMD_COMMENT);
+		if (strcasecmp(str_ptr, "on") == 0	 ||
+			strcasecmp(str_ptr, "true") == 0 ||
+			strcasecmp(str_ptr, "1") == 0)
+		{
+			setting->copy_cmd_comment = true;
+		}
+		else if (strcasecmp(str_ptr, "off") == 0   ||
+				strcasecmp(str_ptr, "false") == 0  ||
+				strcasecmp(str_ptr, "0") == 0)
+		{
+			setting->copy_cmd_comment = false;
+		}
+		else
+		{
+			fprintf(stderr, "the config parameter \"copy_cmd_comment\" set wrong.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		pfree(str_ptr);
+		str_ptr = NULL;
+	}
+
+	if (setting->copy_cmd_comment_str == NULL)
+	{
+		str_ptr = get_config_file_value(COPY_CMD_COMMENT_STR);
+		if (check_copy_comment_str_valid(str_ptr))
+		{
+			setting->copy_cmd_comment_str = pg_strdup(str_ptr);
+		}
+		else
+		{
+			fprintf(stderr, "the config parameter \"copy_cmd_comment_str\" set wrong.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		pfree(str_ptr);
+		str_ptr = NULL;
+	}
+
+	if (setting->copy_cmd_comment && setting->copy_cmd_comment_str == NULL)
+	{
+		fprintf(stderr, "\'COPY_CMD_COMMENT_STR\' do not is NULL when \'COPY_CMD_COMMENT\' is on.\n");
+		exit(EXIT_FAILURE);
+	}
 
 	return;
 }
@@ -787,11 +856,12 @@ static void print_help(FILE *fd)
 	fprintf(fd, _("  -i, --inputdir              data file directory\n"));
 	fprintf(fd, _("  -f, --inputfile             data file\n"));
 	fprintf(fd, _("  -t, --table                 table name\n\n"));
-	
+
 	fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
 	fprintf(fd, _("  -e, --filter_queue_file     filter queue data into file\n"));
 	fprintf(fd, _("  -j, --just_check            just check data, not send data\n"));
-	fprintf(fd, _("  -?, --help                  show this help, then exit\n\n"));
+	fprintf(fd, _("  -?, --help                  show this help, then exit\n"));
+	fprintf(fd, _("  -V, --version               output version information, then exit\n"));
 
 	return;
 }

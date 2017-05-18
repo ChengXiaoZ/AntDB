@@ -27,6 +27,9 @@ typedef struct DispatchInfo
 	char              *copy_options;
 	bool               process_bar;
 	bool               just_check;
+
+	bool               copy_cmd_comment;
+	char              *copy_cmd_comment_str;
 } DispatchInfo;
 
 typedef enum DISPATCH_THREAD_WORK_STATE
@@ -70,6 +73,10 @@ typedef struct DispatchThreadInfo
 	bool                need_rollback;
 	bool                just_check;
 	int                 send_total;
+
+	bool                copy_cmd_comment;
+	char               *copy_cmd_comment_str;
+
 	void               *(* thr_startroutine)(void *); /* thread start function */
 	DispatchThreadWorkState state;
 } DispatchThreadInfo;

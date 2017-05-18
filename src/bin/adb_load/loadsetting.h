@@ -21,7 +21,7 @@ typedef struct HashConfig
 	int   hash_thread_num;
 	char *text_delim;
 	char *hash_delim;
-    bool  copy_header;
+	bool  copy_header;
 	char *copy_quotec;
 	char *copy_escapec;
 	char *copy_option;
@@ -90,10 +90,13 @@ typedef struct ADBLoadSetting
 	int              redo_queue_total;
 	bool             redo_queue;
 
-    char            *filter_queue_file_path;
-    bool             filter_queue_file;
+	char            *filter_queue_file_path;
+	bool             filter_queue_file;
 
-    char            *error_data_file_path;
+	char            *error_data_file_path;
+
+	bool             copy_cmd_comment;
+	char            *copy_cmd_comment_str;
 } ADBLoadSetting;
 
 extern ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv);
