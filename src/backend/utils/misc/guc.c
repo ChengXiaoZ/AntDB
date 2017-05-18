@@ -1798,25 +1798,13 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
 	{
 		{"rep_read_archive_path_flag", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Find xlog in rep_read_archive_path in wal sender."),
 			NULL
 		},
 		&rep_read_archive_path_flag,
-		false,
-		NULL, NULL, NULL
-	},		
-#endif
-
-#ifdef DEBUG_ADB
-	{
-		{"adb_debug", PGC_SUSET, DEVELOPER_OPTIONS,
-			gettext_noop("Emit ADB debugging output."),
-			NULL,
-			GUC_NOT_IN_SAMPLE
-		},
-		&ADB_DEBUG,
 		false,
 		NULL, NULL, NULL
 	},
@@ -1828,6 +1816,19 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_REPORT
 		},
 		&copy_cmd_comment,
+		false,
+		NULL, NULL, NULL
+	},
+#endif
+
+#ifdef DEBUG_ADB
+	{
+		{"adb_debug", PGC_SUSET, DEVELOPER_OPTIONS,
+			gettext_noop("Emit ADB debugging output."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&ADB_DEBUG,
 		false,
 		NULL, NULL, NULL
 	},
