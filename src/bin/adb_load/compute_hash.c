@@ -79,7 +79,7 @@ static const unsigned int xc_mod_r[][6] =
  * hash_uint32() -- hash a 32-bit value
  */
 static uint32 hash_uint32(uint32 k);
-static uint32 hash_any(register const unsigned char *k, register int keylen);
+//static uint32 hash_any(register const unsigned char *k, register int keylen);
 static uint32 get_multi_field_hash_value(char *field_data);
 
 /* Get a bit mask of the bits set in non-uint32 aligned addresses */
@@ -125,12 +125,12 @@ static char * create_copy_string (char *func, int parameter_nums, char *copy_opt
 //static LineBuffer * get_field (char **fields, char *line, int * loc, char *delim, int size);
 static LineBuffer * get_field_quote (char **fields, char *line, int * loc, char *text_delim, char quotec,
                                      char escapec, int size, ComputeThreadInfo * thrinfo);
-static LineBuffer * get_field_for_tab(char *line_data,  char *text_delim, int *field_loc, int field_nums);
-static bool in_field_loc(int num, int *field_loc, int field_nums);
+//static LineBuffer * get_field_for_tab(char *line_data,  char *text_delim, int *field_loc, int field_nums);
+//static bool in_field_loc(int num, int *field_loc, int field_nums);
 static void * hash_threadMain (void *argp);
 static LineBuffer * package_field (LineBuffer *lineBuffer, ComputeThreadInfo *thrinfo);
 static PGconn * reconnect (ComputeThreadInfo *thrinfo);
-static void set_other_threads_exit(void); 
+//static void set_other_threads_exit(void);
 static void hash_write_error_message(ComputeThreadInfo *thrinfo,
                                     char * message,
                                     char * hash_error_message,
@@ -289,6 +289,7 @@ stop_hash_threads(void)
 	return 0;
 }
 
+#if 0
 static void
 set_other_threads_exit(void)
 {
@@ -305,6 +306,7 @@ set_other_threads_exit(void)
 	}
 	pthread_mutex_unlock(&RunThreads->mutex);
 }
+#endif
 
 static void
 hash_write_error_message(ComputeThreadInfo *thrinfo, char * message,
@@ -1164,6 +1166,7 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 	return buf;
 }
 
+#if 0
 static LineBuffer *
 get_field_for_tab(char *line_data,  char *text_delim, int *field_loc, int field_nums)
 {
@@ -1207,6 +1210,7 @@ get_field_for_tab(char *line_data,  char *text_delim, int *field_loc, int field_
 	return buf;
 }
 
+
 static bool in_field_loc(int num, int *field_loc, int field_nums)
 {
 	int i = 0;
@@ -1222,7 +1226,7 @@ static bool in_field_loc(int num, int *field_loc, int field_nums)
 
 	return false;
 }
-
+#endif
 #if 0
 static LineBuffer *
 get_field (char **fields, char *line, int * loc, char *delim, int size)
@@ -2198,7 +2202,7 @@ compute_hash_modulo(unsigned int numerator, unsigned int denominator)
 	}
 	return numerator % denominator;
 }
-
+#if 0
 static uint32 hash_any(register const unsigned char *k, register int keylen)
 {
 	register uint32 a;
@@ -2395,6 +2399,7 @@ static uint32 hash_any(register const unsigned char *k, register int keylen)
 	/* report the result */
 	return (c);
 }
+#endif
 
 static uint32 hash_uint32(uint32 k)
 {
