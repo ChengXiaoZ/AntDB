@@ -365,14 +365,13 @@ static int *get_redo_queue(char *optarg, int redo_queue_total)
 	char *local_optarg = NULL;
 	int  *redo_queue = NULL;
 	char *strtok_r_ptr = NULL;
+	char *token = NULL;
 	int   i = 0;
 
 	local_optarg = pg_strdup(optarg);
-
 	redo_queue = (int *)palloc0(redo_queue_total * sizeof(int));
 
-	i = 0;
-	char *token = strtok_r(local_optarg, ",", &strtok_r_ptr);
+	token = strtok_r(local_optarg, ",", &strtok_r_ptr);
 	while (token != NULL)
 	{
 		if (i < redo_queue_total)

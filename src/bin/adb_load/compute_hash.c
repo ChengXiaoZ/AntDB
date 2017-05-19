@@ -270,7 +270,7 @@ stop_hash_threads(void)
 		if (thrinfo != NULL)
 		{
 			thrinfo->exit = true;
-			ADBLOADER_LOG(LOG_INFO, "[HASH][thread main ] hash function set thread exit : %ld", thrinfo->thread_id);
+			ADBLOADER_LOG(LOG_INFO, "[HASH][thread main ] hash function set thread exit : %lu", (unsigned long)thrinfo->thread_id);
 		}
 	}
 	pthread_mutex_unlock(&RunThreads->mutex);
@@ -534,7 +534,7 @@ adbLoader_hashThreadCreate(HashComputeInfo *hash_info)
 			ADBLOADER_LOG(LOG_ERROR, "[HASH][thread main ] create thread error");
 			return HASH_COMPUTE_ERROR;
 		}
-		ADBLOADER_LOG(LOG_INFO, "[HASH][thread main ] create thread : %ld ",thread_info->thread_id);
+		ADBLOADER_LOG(LOG_INFO, "[HASH][thread main ] create thread : %lu", (unsigned long)thread_info->thread_id);
 		RunThreads->hs_thread_cur++;
 	}
 
@@ -565,9 +565,6 @@ adbLoader_ThreadCleanup(void * argp)
 	{
 		QueueElement * element;
 		element = mq_poll(inner_queue);
-		//write_error(element->lineBuffer);
-		//ADBLOADER_LOG(LOG_WARN, "[HASH][thread id : %ld ]thread exit, inner queue is not empty, data : %s",
-					//thrinfo->thread_id, element->lineBuffer->data);
 		release_linebuf(element->lineBuffer);
 		element->lineBuffer = NULL;
 		pfree(element);
@@ -584,18 +581,6 @@ adbLoader_ThreadCleanup(void * argp)
 		pfree(thrinfo->copy_str);
 		thrinfo->copy_str = NULL;
 	}
-
-#if 0
-	/* check current thread state */
-	if (thrinfo->state == THREAD_MEMORY_ERROR ||
-		thrinfo->state == THREAD_CONNECTION_ERROR ||
-		thrinfo->state == THREAD_SELECT_ERROR ||
-		thrinfo->state == THREAD_COPY_STATE_ERROR ||
-		thrinfo->state == THREAD_MESSAGE_CONFUSION_ERROR ||
-		thrinfo->state == THREAD_FIELD_ERROR ||
-		thrinfo->state == THREAD_PGRES_FATAL_ERROR)
-		set_other_threads_exit();
-#endif
 
 	/* remove thread info  */
 	pthread_mutex_lock(&RunThreads->mutex);
@@ -735,15 +720,15 @@ put_copy_end_to_server(ComputeThreadInfo *thrinfo, MessageQueue *inner_queue)
 	RECV_END_FLAG = true;
 
 	ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] file is complete, before exit thread do something",
-		thrinfo->thread_id);
+		"[HASH][thread id : %lu ] file is complete, before exit thread do something",
+		(unsigned long)thrinfo->thread_id);
 
 ENDCOPY:
 	end_times++;
 	if (end_times > 3)
 	{
 		ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] send end copy error", thrinfo->thread_id);
+		"[HASH][thread id : %lu ] send end copy error", (unsigned long)thrinfo->thread_id);
 		thrinfo->state = THREAD_SEND_ERROR;
 		hash_write_error_message(thrinfo,
 								"send end copy error, more than three times",
@@ -768,7 +753,7 @@ ENDCOPY:
 			if (result == - 1)
 			{
 				ADBLOADER_LOG(LOG_INFO,
-						"[HASH][thread id : %ld ] file is complete", thrinfo->thread_id);
+						"[HASH][thread id : %lu ] file is complete", (unsigned long)thrinfo->thread_id);
 				PQclear(res);
 
 				if (thrinfo->state == THREAD_HAPPEN_ERROR_CONTINUE)
@@ -781,8 +766,8 @@ ENDCOPY:
 		else if (PQresultStatus(res) != PGRES_COMMAND_OK)
 		{
 			ADBLOADER_LOG(LOG_ERROR,
-					"[HASH][thread id : %ld ] put copy end error, message : %s",
-					thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
+					"[HASH][thread id : %lu ] put copy end error, message : %s",
+					(unsigned long)thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
 
 			if (thrinfo->state == THREAD_HAPPEN_ERROR_CONTINUE)
 				thrinfo->state = THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE;
@@ -799,7 +784,7 @@ ENDCOPY:
 		else if (PQresultStatus(res) == PGRES_COMMAND_OK)
 		{
 			ADBLOADER_LOG(LOG_INFO,
-						"[HASH][thread id : %ld ] file is complete", thrinfo->thread_id);
+						"[HASH][thread id : %lu ] file is complete", (unsigned long)thrinfo->thread_id);
 			PQclear(res);
 
 			if (thrinfo->state == THREAD_HAPPEN_ERROR_CONTINUE)
@@ -817,8 +802,8 @@ ENDCOPY:
 	else if (end_copy == -1)
     {
         ADBLOADER_LOG(LOG_ERROR,
-            "[HASH][thread id : %ld ] send copy end to server error, message : %s",
-            thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
+            "[HASH][thread id : %lu ] send copy end to server error, message : %s",
+            (unsigned long)thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
 
         if (thrinfo->state != THREAD_HAPPEN_ERROR_CONTINUE)
             thrinfo->state = THREAD_COPY_END_ERROR;
@@ -837,9 +822,6 @@ hash_threadMain(void *argp)
 	MessageQueue       *inner_queue = NULL;
 	char               *copy = NULL;
 	PGresult           *res = NULL;
-	bool                mq_read = false;
-	bool                conn_read = false;
-	bool                conn_write = false;
 	LineBuffer         *lineBuffer = NULL;
 	char               *read_buff = NULL;
 	fd_set              read_fds;
@@ -871,14 +853,14 @@ hash_threadMain(void *argp)
 	copy = create_copy_string(thrinfo->func_name,
 								thrinfo->hash_field->field_nums,
 								thrinfo->hash_field->copy_options);
-	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id : %ld ] compute hash copy string is : %s ",
-				thrinfo->thread_id, copy);
+	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id : %lu ] compute hash copy string is : %s ",
+				(unsigned long)thrinfo->thread_id, copy);
 
 	res = PQexec(thrinfo->conn, copy);
 	if (PQresultStatus(res) != PGRES_COPY_BOTH)
 	{
-		ADBLOADER_LOG(LOG_ERROR, "[HASH]PQresultStatus is not PGRES_COPY_BOTH, thread id : %ld, thread exit",
-					thrinfo->thread_id);
+		ADBLOADER_LOG(LOG_ERROR, "[HASH]PQresultStatus is not PGRES_COPY_BOTH, thread id : %lu, thread exit",
+					(unsigned long)thrinfo->thread_id);
 		thrinfo->state = THREAD_COPY_STATE_ERROR;
 		hash_write_error_message(thrinfo,
 								"PQresultStatus is not PGRES_COPY_BOTH",
@@ -889,21 +871,18 @@ hash_threadMain(void *argp)
 
 	thrinfo->copy_str = copy;
 	ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] input queue read fd : %d, input queue write fd : %d, server connection fd : %d",
-		thrinfo->thread_id, input_queue->fd[0],	input_queue->fd[1], thrinfo->conn->sock);
+		"[HASH][thread id : %lu ] input queue read fd : %d, input queue write fd : %d, server connection fd : %d",
+		(unsigned long)thrinfo->thread_id, input_queue->fd[0],	input_queue->fd[1], thrinfo->conn->sock);
 
 	for(;;)
 	{
 		if (thrinfo->exit)
 		{
-			ADBLOADER_LOG(LOG_INFO, "[HASH]hash thread : %d exit", thrinfo->thread_id);
+			ADBLOADER_LOG(LOG_INFO, "[HASH]hash thread : %lu exit", (unsigned long)thrinfo->thread_id);
 			thrinfo->state = THREAD_EXIT_BY_OTHERS;
 			pthread_exit(thrinfo);
 		}
 
-		mq_read     = false;
-		conn_read   = false;
-		conn_write  = false;
 		read_buff   = NULL;
 		lineBuffer  = NULL;
 
@@ -917,7 +896,7 @@ hash_threadMain(void *argp)
 			max_fd = input_queue->fd[0] + 1;
 		else
 			max_fd = thrinfo->conn->sock + 1;
-		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id : %ld ] max fd : %d", thrinfo->thread_id, max_fd);
+		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id : %lu ] max fd : %d", (unsigned long)thrinfo->thread_id, max_fd);
 		select_res = select(max_fd, &read_fds, &write_fds, NULL, NULL);
         if (select_res < 0)
 		{
@@ -925,8 +904,8 @@ hash_threadMain(void *argp)
 			{
 				/* exception handling */
 				ADBLOADER_LOG(LOG_ERROR,
-					"[HASH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
-					thrinfo->thread_id);
+					"[HASH][thread id : %lu ] select connect server socket return < 0, network may be not well, exit thread",
+					(unsigned long)thrinfo->thread_id);
 
 				if (thrinfo->state != THREAD_HAPPEN_ERROR_CONTINUE)
 					thrinfo->state = THREAD_SELECT_ERROR;
@@ -966,13 +945,13 @@ hash_threadMain(void *argp)
             else
             {
                 ADBLOADER_LOG(LOG_DEBUG,
-                    "[HASH][thread id : %ld] input queue can not read now.\n", thrinfo->thread_id);
+                    "[HASH][thread id : %lu] input queue can not read now.\n", (unsigned long)thrinfo->thread_id);
             }
         }
         else
         {
             ADBLOADER_LOG(LOG_INFO,
-                "[HASH][thread id : %ld] Adb server compute hash relatively slow.\n", thrinfo->thread_id);
+                "[HASH][thread id : %lu] Adb server compute hash relatively slow.\n", (unsigned long)thrinfo->thread_id);
         }
 
         if (server_can_read(thrinfo->conn->sock, &read_fds))
@@ -999,8 +978,8 @@ hash_threadMain(void *argp)
                 if (errno != EINTR && errno != EWOULDBLOCK)
                 {
                     ADBLOADER_LOG(LOG_ERROR,
-                            "[HASH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
-                                thrinfo->thread_id);
+                            "[HASH][thread id : %lu ] select connect server socket return < 0, network may be not well, exit thread",
+                                (unsigned long)thrinfo->thread_id);
                     thrinfo->state = THREAD_SELECT_ERROR;
                     hash_write_error_message(thrinfo,
                                             "select connect server socket return < 0, network may be not well",
@@ -1034,8 +1013,8 @@ hash_threadMain(void *argp)
                 if (errno != EINTR && errno != EWOULDBLOCK)
                 {
                     ADBLOADER_LOG(LOG_ERROR,
-                            "[HASH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
-                                thrinfo->thread_id);
+                            "[HASH][thread id : %lu ] select connect server socket return < 0, network may be not well, exit thread",
+                                (unsigned long)thrinfo->thread_id);
                     thrinfo->state = THREAD_SELECT_ERROR;
                     hash_write_error_message(thrinfo,
                                             "select connect server socket return < 0, network may be not well",
@@ -1081,8 +1060,8 @@ prepare_hash_field (LineBuffer **element_batch, int size,
 			if(send < 0)
 			{
 				ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] send copy data error : %s ",
-								thrinfo->thread_id, lineBuffer->data);
+							"[HASH][thread id : %lu ] send copy data error : %s ",
+								(unsigned long)thrinfo->thread_id, lineBuffer->data);
 
 				hash_write_error_message(thrinfo,
 										"send hash field to server error",
@@ -1099,8 +1078,8 @@ prepare_hash_field (LineBuffer **element_batch, int size,
 				if (element_inner == NULL)
 				{
 					ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] palloc0 QueueElement error, may be memory not enough",
-								thrinfo->thread_id);
+							"[HASH][thread id : %lu ] palloc0 QueueElement error, may be memory not enough",
+								(unsigned long)thrinfo->thread_id);
 					release_linebuf(hash_field);
 					thrinfo->state = THREAD_MEMORY_ERROR;
 					hash_write_error_message(thrinfo,
@@ -1130,8 +1109,8 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 	if (fields == NULL || line == NULL)
 	{
 		ADBLOADER_LOG(LOG_ERROR,
-			"[HASH][thread id : %ld ] distribute function palloc memory error",
-			thrinfo->thread_id);
+			"[HASH][thread id : %lu ] distribute function palloc memory error",
+			(unsigned long)thrinfo->thread_id);
 		return NULL;
 	}
 
@@ -1139,7 +1118,7 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 	line[lineBuffer->len] = '\0';
 
 	ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] get line : %s", thrinfo->thread_id, line);
+		"[HASH][thread id : %lu ] get line : %s", (unsigned long)thrinfo->thread_id, line);
 
 	buf = get_field_quote(fields,
 						line,
@@ -1151,12 +1130,12 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 						thrinfo);
 
 	ADBLOADER_LOG(LOG_DEBUG,
-		"[HASH][thread id : %ld ] get field : %s", thrinfo->thread_id, buf->data);
+		"[HASH][thread id : %lu ] get field : %s", (unsigned long)thrinfo->thread_id, buf->data);
 
 	if(buf == NULL)
 	{
-		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id: %ld] get hash field failed : %s ",
-			thrinfo->thread_id, line);
+		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id: %lu ] get hash field failed : %s ",
+			(unsigned long)thrinfo->thread_id, line);
 		pfree(line);
 		line = NULL;
 		return NULL;
@@ -1366,8 +1345,8 @@ get_field_quote (char **fields, char *line, int * loc, char *text_delim, char qu
 				if (cur_ptr >= line_end_ptr)
 				{
 					ADBLOADER_LOG(LOG_ERROR,
-								"[HASH][thread id : %ld] unterminated CSV quoted field ",
-								thrinfo->thread_id);
+								"[HASH][thread id : %lu] unterminated CSV quoted field ",
+								(unsigned long)thrinfo->thread_id);
 					return NULL;
 				}
 				c = *cur_ptr++;
@@ -1486,11 +1465,11 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 			res = PQgetResult(conn);
 			if (PQresultStatus(res) != PGRES_COMMAND_OK)
 			{
-				ADBLOADER_LOG(LOG_ERROR, "[HASH][thread id : %ld ] Failure while read  end of copy, but PGresult is  PGRES_FATAL_ERROR: %s,PQresultStatus(res):%d\n",
-				thrinfo->thread_id, PQerrorMessage(conn), PQresultStatus(res));
-
-				//pthread_exit(thrinfo);
 				QueueElement* element = NULL;
+
+				ADBLOADER_LOG(LOG_ERROR, "[HASH][thread id : %lu ] Failure while read  end of copy, but PGresult is  PGRES_FATAL_ERROR: %s,PQresultStatus(res):%d\n",
+				(unsigned long)thrinfo->thread_id, PQerrorMessage(conn), PQresultStatus(res));
+
 				element = mq_poll(thrinfo->inner_queue);
 
 				if (!thrinfo->copy_cmd_comment ||
@@ -1516,17 +1495,18 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 		/* Failure while reading the copy stream */
 		if (ret == -2)
 		{
+			QueueElement* element = NULL;
+
 			if (read_buff != NULL)
 			{
 				PQfreemem(read_buff);
 				read_buff = NULL;
 			}
-			ADBLOADER_LOG(LOG_ERROR, "[HASH][thread id : %ld ] Failure while reading the copy stream",
-				thrinfo->thread_id);
+
+			ADBLOADER_LOG(LOG_ERROR, "[HASH][thread id : %lu ] Failure while reading the copy stream",
+				(unsigned long)thrinfo->thread_id);
 
 			thrinfo->happen_error = true;
-
-            QueueElement* element = NULL;
             element = mq_poll(thrinfo->inner_queue);
             fwrite_adb_load_error_data(element->lineBuffer->data);
 
@@ -1556,8 +1536,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 		{
 			/* buffer error */
 			ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] get hash restult error, can't get flag result : %s",
-							thrinfo->thread_id, read_buff);
+							"[HASH][thread id : %lu ] get hash restult error, can't get flag result : %s",
+							(unsigned long)thrinfo->thread_id, read_buff);
 			thrinfo->state = THREAD_FIELD_ERROR;
 			/* this error need not to pthread_exit,  improve it*/
 			inner_element = mq_poll(thrinfo->inner_queue);
@@ -1579,8 +1559,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 		if (field == NULL)
 		{
 			ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] get hash restult error, can't get hash: %s",
-							thrinfo->thread_id, read_buff);
+							"[HASH][thread id : %lu ] get hash restult error, can't get hash: %s",
+							(unsigned long)thrinfo->thread_id, read_buff);
 			/* buffer error */
 			thrinfo->state = THREAD_FIELD_ERROR;
 			/* this error need not to pthread_exit,  improve it*/
@@ -1606,8 +1586,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 		if (inner_element == NULL)
 		{
 			ADBLOADER_LOG(LOG_ERROR,
-							"[HASH][thread id : %ld ] receive hash result : %s, but inner queue is empty",
-							thrinfo->thread_id, read_buff);
+							"[HASH][thread id : %lu ] receive hash result : %s, but inner queue is empty",
+							(unsigned long)thrinfo->thread_id, read_buff);
 			/* message confusion */
 			thrinfo->state = THREAD_MESSAGE_CONFUSION_ERROR;
 			hash_write_error_message(thrinfo,
@@ -1639,8 +1619,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 				/* put linebuf to outqueue */
 				mq_pipe_put(thrinfo->output_queue[output_queue_flag], inner_element->lineBuffer);
 				ADBLOADER_LOG(LOG_DEBUG,
-								"[HASH][thread id : %ld ]TO output_queue num:%s ,hash_result: %lu, modulo_datanode:%d, hash_value:%lu, module_queue:%d, line data : %s\n",
-								thrinfo->thread_id,
+								"[HASH][thread id : %lu ]TO output_queue num:%s ,hash_result: %u, modulo_datanode:%d, hash_value:%u, module_queue:%d, line data : %s\n",
+								(unsigned long)thrinfo->thread_id,
 								thrinfo->output_queue[output_queue_flag]->name,
 								hash_result,
 								modulo_datanode,
@@ -1672,8 +1652,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 				/* put linebuf to outqueue */
 				mq_pipe_put(thrinfo->output_queue[output_queue_flag], inner_element->lineBuffer);
 				ADBLOADER_LOG(LOG_DEBUG,
-						"[HASH][thread id : %ld ]TO output_queue num:%s ,hash_result: %lu, modulo_datanode:%d, hash_value:%lu, module_queue:%d, line data : %s\n",
-						thrinfo->thread_id,
+						"[HASH][thread id : %lu ]TO output_queue num:%s ,hash_result: %u, modulo_datanode:%d, hash_value:%u, module_queue:%d, line data : %s\n",
+						(unsigned long)thrinfo->thread_id,
 						thrinfo->output_queue[output_queue_flag]->name,
 						hash_result,
 						modulo_datanode,
@@ -1711,8 +1691,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 				{
 					mq_pipe_put(thrinfo->output_queue[output_queue_flag], inner_element->lineBuffer);
 					ADBLOADER_LOG(LOG_DEBUG,
-								"[HASH][thread id : %ld ] line data : %s, TO output_queue num:%s \n",
-								thrinfo->thread_id, inner_element->lineBuffer->data, thrinfo->output_queue[output_queue_flag]->name);
+								"[HASH][thread id : %lu ] line data : %s, TO output_queue num:%s \n",
+								(unsigned long)thrinfo->thread_id, inner_element->lineBuffer->data, thrinfo->output_queue[output_queue_flag]->name);
 				}
 
                 /* just get filter queue file */
@@ -1763,8 +1743,8 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 					/* put linebuf to outqueue */
 					mq_pipe_put(thrinfo->output_queue[output_queue_flag], inner_element->lineBuffer);
 					ADBLOADER_LOG(LOG_DEBUG,
-									"[HASH][thread id : %ld ]TO output_queue num:%s ,hash_result: %lu, modulo_datanode:%d, hash_value:%lu, module_queue:%d, line data : %s\n",
-									thrinfo->thread_id,
+									"[HASH][thread id : %lu ]TO output_queue num:%s ,hash_result: %u, modulo_datanode:%d, hash_value:%u, module_queue:%d, line data : %s\n",
+									(unsigned long)thrinfo->thread_id,
 									thrinfo->output_queue[output_queue_flag]->name,
 									hash_result,
 									modulo_datanode,
@@ -1848,14 +1828,14 @@ restart_hash_stream(ComputeThreadInfo *thrinfo)
 		copy = create_copy_string(thrinfo->func_name, thrinfo->hash_field->field_nums,
 									thrinfo->hash_field->copy_options);
 
-	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id : %ld ] compute hash copy string is : %s ",
-				thrinfo->thread_id, copy);
+	ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread id : %lu ] compute hash copy string is : %s ",
+				(unsigned long)thrinfo->thread_id, copy);
 
 	res = PQexec(thrinfo->conn, copy);
 	if (PQresultStatus(res) != PGRES_COPY_BOTH)
 	{
-		ADBLOADER_LOG(LOG_ERROR, "[HASH]PQresultStatus is not PGRES_COPY_BOTH, thread id : %ld, thread exit",
-					thrinfo->thread_id);
+		ADBLOADER_LOG(LOG_ERROR, "[HASH]PQresultStatus is not PGRES_COPY_BOTH, thread id : %lu, thread exit",
+					(unsigned long)thrinfo->thread_id);
 		thrinfo->state = THREAD_COPY_STATE_ERROR;
 		hash_write_error_message(thrinfo,
 								"begin copy to server PQresultStatus is not PGRES_COPY_BOTH",
@@ -1871,8 +1851,8 @@ restart_hash_stream(ComputeThreadInfo *thrinfo)
 	mq_init(queue, THREAD_QUEUE_SIZE, "tmp_queue");
 	if (!mq_empty(thrinfo->inner_queue))
 	{
-		ADBLOADER_LOG(LOG_INFO, "[HASH]thrinfo->send_seq is : %ld, now restart sequence",
-					thrinfo->thread_id, thrinfo->send_seq);
+		ADBLOADER_LOG(LOG_INFO, "[HASH][thread id : %lu ] thrinfo->send_seq is : %ld, now restart sequence",
+					(unsigned long)thrinfo->thread_id, thrinfo->send_seq);
 		thrinfo->send_seq = 0; /* restart sequence */
 	}
 
@@ -1899,8 +1879,8 @@ restart_hash_stream(ComputeThreadInfo *thrinfo)
 		if(send < 0)
 		{
 			ADBLOADER_LOG(LOG_DEBUG,
-						"[HASH][thread id : %ld ] send copy data error : %s ",
-							thrinfo->thread_id, element->lineBuffer->data);
+						"[HASH][thread id : %lu ] send copy data error : %s ",
+							(unsigned long)thrinfo->thread_id, element->lineBuffer->data);
 
 			hash_write_error_message(thrinfo,
 									"send hash field to server error",
@@ -1944,7 +1924,7 @@ restart_hash_stream(ComputeThreadInfo *thrinfo)
 				if (result == - 1)
 				{
 					ADBLOADER_LOG(LOG_INFO,
-							"[HASH][thread id : %ld ] file is complete", thrinfo->thread_id);
+							"[HASH][thread id : %lu ] file is complete", (unsigned long)thrinfo->thread_id);
 
 				if (thrinfo->happen_error)
 					thrinfo->state = THREAD_HAPPEN_ERROR_CONTINUE_AND_DEAL_COMPLETE;
@@ -1994,8 +1974,8 @@ restart_hash_stream(ComputeThreadInfo *thrinfo)
 		pthread_exit(thrinfo);
 	}
 
-	ADBLOADER_LOG(LOG_INFO, "[HASH]restart_hash_stream function complete, now thrinfo->send_seq is : %ld",
-					thrinfo->thread_id, thrinfo->send_seq);
+	ADBLOADER_LOG(LOG_INFO, "[HASH][thread id : %lu ] restart_hash_stream function complete, now thrinfo->send_seq is : %ld",
+					(unsigned long)thrinfo->thread_id, thrinfo->send_seq);
 	/* destory tmp_queue */
 	mq_destory(queue);
 
@@ -2062,7 +2042,7 @@ print_struct (HashComputeInfo * hash_computeInfo, HashField * hash_field)
 
 	for (flag = 0; flag < hash_field->field_nums; flag ++)
 	{
-		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] field loc :%d, field type",
+		ADBLOADER_LOG(LOG_DEBUG, "[HASH][thread main ] field loc :%d, field type:%d",
 				hash_field->field_loc[flag], hash_field->field_type[flag]);
 	}
 

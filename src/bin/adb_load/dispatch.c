@@ -146,7 +146,7 @@ dispatch_write_error_message(DispatchThreadInfo	*thrinfo, char * message,
 			appendLineBufInfoString(error_buffer, "suggest : ");
 			if (thrinfo)
 				appendLineBufInfoString(error_buffer, g_start_cmd);
-				
+
 			else if (thrinfo == NULL && dispatch_error_message != NULL)
 				appendLineBufInfoString(error_buffer, dispatch_error_message);
 			appendLineBufInfoString(error_buffer, "\n");
@@ -246,7 +246,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not initialize dispatch mutex: %s",
 						strerror(errno));
 
-		dispatch_write_error_message(NULL, 
+		dispatch_write_error_message(NULL,
 									"Can not initialize dispatch mutex",
 									g_start_cmd, 0 , NULL, true);
 		exit(1);
@@ -267,7 +267,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 			{
 				ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] Can not malloc memory to DispatchThreadInfo");
 
-				dispatch_write_error_message(NULL, 
+				dispatch_write_error_message(NULL,
 											"Can not malloc memory to DispatchThreadInfo",
 											g_start_cmd, 0 , NULL, true);
 				exit(EXIT_FAILURE);
@@ -295,7 +295,7 @@ dispatch_threadsCreate(DispatchInfo  *dispatch)
 			if ((pthread_create(&thrinfo->thread_id, NULL, dispatch_ThreadMainWrapper, thrinfo)) < 0)
 			{
 				ADBLOADER_LOG(LOG_ERROR, "[DISPATCH][thread main ] create dispatch thread error");
-				dispatch_write_error_message(NULL, 
+				dispatch_write_error_message(NULL,
 											"create dispatch thread error",
 											g_start_cmd, 0 , NULL, true);
 				/* stop start thread */
@@ -389,7 +389,7 @@ put_data_to_datanode(DispatchThreadInfo *thrinfo, LineBuffer *lineBuffer, Messag
 				thrinfo->conn = NULL;
 				thrinfo->state = DISPATCH_THREAD_SEND_ERROR;
 
-				dispatch_write_error_message(thrinfo, 
+				dispatch_write_error_message(thrinfo,
 											"PQputCopyData error",
 											PQerrorMessage(thrinfo->conn), lineBuffer->fileline,
 											lineBuffer->data, true);
@@ -447,11 +447,11 @@ put_end_to_datanode(DispatchThreadInfo *thrinfo)
 		if (!rollback_in_PQerrormsg(PQerrorMessage(thrinfo->conn)))
 		{
 			char *linedata = NULL;
-			dispatch_write_error_message(thrinfo, 
+			dispatch_write_error_message(thrinfo,
 										"thread send copy end error",
 										PQerrorMessage(thrinfo->conn), 0,
 										NULL, true);
-			
+
 			linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
 			fwrite_adb_load_error_data(linedata);
 			pg_free(linedata);
@@ -511,18 +511,18 @@ put_rollback_to_datanode(DispatchThreadInfo *thrinfo)
 		else
 		{
 			char *linedata = NULL;
-			dispatch_write_error_message(thrinfo, 
+			dispatch_write_error_message(thrinfo,
 										"thread send copy end error",
 										PQerrorMessage(thrinfo->conn), 0,
 										NULL, true);
-			
+
 			linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
 			fwrite_adb_load_error_data(linedata);
 			pg_free(linedata);
 			linedata = NULL;
-			
+
 			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
-		}		
+		}
 	}
 	else // no errored
 	{
@@ -533,7 +533,7 @@ put_rollback_to_datanode(DispatchThreadInfo *thrinfo)
 		else
 		{
 			char *linedata = NULL;
-			dispatch_write_error_message(thrinfo, 
+			dispatch_write_error_message(thrinfo,
 										"thread send copy end error",
 										PQerrorMessage(thrinfo->conn), 0,
 										NULL, true);
@@ -542,7 +542,7 @@ put_rollback_to_datanode(DispatchThreadInfo *thrinfo)
 			fwrite_adb_load_error_data(linedata);
 			pg_free(linedata);
 			linedata = NULL;
-			
+
 			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
 		}
 	}
@@ -558,7 +558,7 @@ put_rollback_to_datanode(DispatchThreadInfo *thrinfo)
 static void
 put_copy_end_to_datanode(DispatchThreadInfo *thrinfo)
 {
-	
+
 	if (thrinfo->just_check) // for check tool
 	{
 		put_rollback_to_datanode(thrinfo);
@@ -585,7 +585,7 @@ get_data_from_datanode(DispatchThreadInfo *thrinfo)
 		if (result == -2)
 		{
 			char *linedata = NULL;
-			
+
 			if (PQputCopyEnd(thrinfo->conn, NULL) == 1)
 			{
 				res = PQgetResult(thrinfo->conn);
@@ -597,7 +597,7 @@ get_data_from_datanode(DispatchThreadInfo *thrinfo)
 
 				if (PQresultStatus(res) == PGRES_FATAL_ERROR)
 				{
-					dispatch_write_error_message(thrinfo, 
+					dispatch_write_error_message(thrinfo,
 												"datanode backend processing closed the connection unexpectedly, please check datanode running or not.",
 												PQerrorMessage(thrinfo->conn), 0 , NULL, true);
 
@@ -605,7 +605,7 @@ get_data_from_datanode(DispatchThreadInfo *thrinfo)
 					thrinfo->need_rollback = true;
 				}else
 				{
-					dispatch_write_error_message(thrinfo, 
+					dispatch_write_error_message(thrinfo,
 												"thread receive error message from ADB",
 												PQerrorMessage(thrinfo->conn), 0 , NULL, true);
 
@@ -636,14 +636,9 @@ dispatch_threadMain (void *argp)
 {
 	DispatchThreadInfo  *thrinfo = (DispatchThreadInfo*) argp;
 	MessageQueuePipe    *output_queue = NULL;
-	char                *read_buff = NULL;
 	LineBuffer          *lineBuffer = NULL;
-
-	bool                 mq_read = false;
-	bool                 conn_read = false;
-	bool                 conn_write = false;
-	int                  max_fd;
-	int                  select_res;
+	int                  max_fd = 0;
+	int                  select_res = 0;
 	fd_set               read_fds;
 	fd_set               write_fds;
 
@@ -671,13 +666,8 @@ dispatch_threadMain (void *argp)
 			pthread_exit(thrinfo);
 		}
 
-		mq_read     = false;
-		conn_read   = false;
-		conn_write  = false;
-		read_buff   = NULL;
-		lineBuffer  = NULL;
-
-		FD_ZERO(&read_fds);	
+		lineBuffer = NULL;
+		FD_ZERO(&read_fds);
 		FD_SET(thrinfo->conn->sock, &read_fds);
 		FD_SET(output_queue->fd[0], &read_fds);
 		FD_ZERO(&write_fds);
@@ -702,7 +692,7 @@ dispatch_threadMain (void *argp)
 								thrinfo->thread_id);
 					thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
 
-					dispatch_write_error_message(thrinfo, 
+					dispatch_write_error_message(thrinfo,
 												"select connect datanode socket return < 0, network may be not well ,file need to redo",
 												NULL, 0, NULL, true);
 					continue;
@@ -736,7 +726,7 @@ dispatch_threadMain (void *argp)
 				else // threads end flag
 				{
 					put_copy_end_to_datanode(thrinfo);
-				} 
+				}
 			}
 			else
 			{
@@ -768,13 +758,13 @@ dispatch_threadMain (void *argp)
 					ADBLOADER_LOG(LOG_ERROR,
 							"[DISPATCH][thread id : %ld ] select connect server socket return < 0, network may be not well, exit thread",
 								thrinfo->thread_id);
-			
+
 					thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
-			
-					dispatch_write_error_message(thrinfo, 
+
+					dispatch_write_error_message(thrinfo,
 												"select connect server socket return < 0, network may be not well ,file need to redo",
 												NULL, 0, NULL, true);
-			
+
 				}
 			}
 		}
@@ -784,13 +774,13 @@ dispatch_threadMain (void *argp)
 			!datanode_can_read(thrinfo->conn->sock, &read_fds))
 		{
 			if (PQstatus(thrinfo->conn) != CONNECTION_OK)
-			{   
+			{
 				/* reconnect */
 				reconnect_agtm_and_datanode(thrinfo);
 				continue;
 			}
 
-			FD_ZERO(&read_fds); 
+			FD_ZERO(&read_fds);
 			FD_SET(thrinfo->conn->sock, &read_fds);
 			FD_ZERO(&write_fds);
 			FD_SET(thrinfo->conn->sock, &write_fds);
@@ -807,7 +797,7 @@ dispatch_threadMain (void *argp)
 								thrinfo->thread_id);
 					thrinfo->state = DISPATCH_THREAD_SELECT_ERROR;
 
-					dispatch_write_error_message(thrinfo, 
+					dispatch_write_error_message(thrinfo,
 												"select connect datanode socket return < 0, network may be not well ,file need to redo",
 												NULL, 0, NULL, true);
 
@@ -821,7 +811,7 @@ dispatch_threadMain (void *argp)
 }
 
 #if 0
-static void 
+static void
 build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 {
 	char     *agtm_port = NULL;
@@ -838,7 +828,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"memory allocation failed",
 									NULL, 0, NULL, true);
 		pthread_exit(thrinfo);
@@ -847,10 +837,10 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 	if (PQstatus(thrinfo->conn) != CONNECTION_OK)
 	{
 		thrinfo->state = DISPATCH_THREAD_CONNECTION_DATANODE_ERROR;
-		
+
 		ADBLOADER_LOG(LOG_ERROR, "[DISPATCH] Connection to database failed: %s, thread id is : %ld",
 					PQerrorMessage(thrinfo->conn), thrinfo->thread_id);
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"Connection to database failed",
 									PQerrorMessage(thrinfo->conn), 0, NULL, true);
 
@@ -867,7 +857,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"memory allocation failed",
 									NULL, 0, NULL, true);
 
@@ -881,7 +871,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
 					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->agtm_conn));
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"connect to agtm error",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
@@ -901,8 +891,8 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] could not send agtm port: %s",
-					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));		
-		dispatch_write_error_message(thrinfo, 
+					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));
+		dispatch_write_error_message(thrinfo,
 									"could not send agtm port",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
@@ -924,7 +914,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 					thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
 		thrinfo->state = DISPATCH_THREAD_COPY_STATE_ERROR;
 
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"PQresultStatus is not PGRES_COPY_IN",
 									PQerrorMessage(thrinfo->conn), 0,
 									NULL, true);
@@ -937,7 +927,7 @@ build_communicate_agtm_and_datanode (DispatchThreadInfo *thrinfo)
 }
 #endif
 
-static void 
+static void
 dispatch_ThreadCleanup (void * argp)
 {
 	int flag;
@@ -1078,8 +1068,8 @@ connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] could not send agtm port: %s",
-					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));		
-		dispatch_write_error_message(thrinfo, 
+					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));
+		dispatch_write_error_message(thrinfo,
 									"could not send agtm port",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
@@ -1105,7 +1095,7 @@ connect_agtm_and_datanode(DispatchThreadInfo *thrinfo)
 					thrinfo->thread_id, PQerrorMessage(thrinfo->conn));
 		thrinfo->state = DISPATCH_THREAD_COPY_STATE_ERROR;
 
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"PQresultStatus is not PGRES_COPY_IN",
 									PQerrorMessage(thrinfo->conn), 0,
 									NULL, true);
@@ -1133,7 +1123,7 @@ connect_datanode(DispatchThreadInfo *thrinfo)
 	{
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"memory allocation failed",
 									NULL, 0, NULL, true);
 		return false;
@@ -1144,7 +1134,7 @@ connect_datanode(DispatchThreadInfo *thrinfo)
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
 					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->conn));
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"connect to agtm error",
 									PQerrorMessage((PGconn*)thrinfo->conn), 0,
 									NULL, true);
@@ -1168,7 +1158,7 @@ connect_agtm(DispatchThreadInfo *thrinfo)
 	{
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] memory allocation failed", thrinfo->thread_id);
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"memory allocation failed",
 									NULL, 0, NULL, true);
 		return false;
@@ -1179,7 +1169,7 @@ connect_agtm(DispatchThreadInfo *thrinfo)
 		ADBLOADER_LOG(LOG_ERROR,
 					"[DISPATCH][thread id : %ld ] connect to agtm error, error message :%s",
 					thrinfo->thread_id, PQerrorMessage((PGconn*)thrinfo->agtm_conn));
-		dispatch_write_error_message(thrinfo, 
+		dispatch_write_error_message(thrinfo,
 									"connect to agtm error",
 									PQerrorMessage((PGconn*)thrinfo->agtm_conn), 0,
 									NULL, true);
@@ -1269,7 +1259,7 @@ deal_after_thread_exit(void)
 }
 #endif
 
-void 
+void
 clean_dispatch_resource(void)
 {
 	int flag = 0;
@@ -1289,7 +1279,7 @@ clean_dispatch_resource(void)
 			DispatchThreadsFinish->send_threads[flag] = NULL;
 		}
 	}
-	pfree(DispatchThreadsFinish->send_threads);	
+	pfree(DispatchThreadsFinish->send_threads);
 
 	DispatchThreadsRun->send_threads = NULL;
 	DispatchThreadsRun->send_thread_count = 0;
@@ -1319,7 +1309,7 @@ get_dispatch_exit_threads(void)
 	return DispatchThreadsFinish;
 }
 
-void 
+void
 get_sent_conut(int * thread_send_num)
 {
 	int flag;
@@ -1375,7 +1365,7 @@ get_linevalue_from_PQerrormsg(char *PQerrormsg)
 	tmp = strstr(PQerrormsg, str_tok);
 	if (tmp == NULL)
 	{
-		return NULL;  
+		return NULL;
 	}
 	else
 	{
@@ -1392,7 +1382,7 @@ rollback_in_PQerrormsg(char *PQerrormsg)
 	tmp = strstr(PQerrormsg, str_tok);
 	if (tmp == NULL)
 	{
-		return false; 
+		return false;
 	}
 
 	return true;

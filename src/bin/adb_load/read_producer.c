@@ -137,7 +137,6 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	int         lineno = 0;
 	int         datanodes_num = 0;
 	int         threads_num_per_datanode= 0;
-	int         threads_total = 0;
 	LineBuffer *linebuf = NULL;
 	int         i = 0;
 	int         flag = 0;
@@ -146,7 +145,6 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	filter_first_line = thrinfo->filter_first_line;
 	datanodes_num = thrinfo->datanodes_num;
 	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
-	threads_total = datanodes_num * threads_num_per_datanode;
 
 	while ((fgets(buf, sizeof(buf), fp)) != NULL)
 	{
@@ -181,7 +179,7 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 				thrinfo->thread_id, linebuf->data, thrinfo->output_queue[i + j * threads_num_per_datanode]->name);
 			if (res < 0)
 			{
-				ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%ld, filepath :%s",
+				ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
 					thrinfo->thread_id, linebuf->data, lineno, thrinfo->file_path);
 				STATE = READ_PRODUCER_PROCESS_ERROR;
 				read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno,
@@ -275,7 +273,7 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 					thrinfo->thread_id, linebuf->data, thrinfo->output_queue[i + j * threads_num_per_datanode]->name);
 				if (res < 0)
 				{
-					ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%ld, filepath :%s",
+					ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
 						thrinfo->thread_id, linebuf->data, lineno, thrinfo->file_path);
 					STATE = READ_PRODUCER_PROCESS_ERROR;
 					read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno,
@@ -336,7 +334,7 @@ static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp)
 
 		if (res < 0)
 		{
-			ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%ld, filepath :%s",
+			ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
 				thrinfo->thread_id, linebuf->data, lineno, thrinfo->file_path);
 			STATE = READ_PRODUCER_PROCESS_ERROR;
 			read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno,

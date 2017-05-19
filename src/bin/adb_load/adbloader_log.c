@@ -60,8 +60,7 @@ void adbloader_log_type(LOG_TYPE type, const char *file, const char *fun, int li
 	char new_fmt[1024] = {0};
 	char *head_fmt = NULL;
 	va_list args;
-	int cnt;
-	int n;
+	int count = 0;
 	char *p_file_name = NULL;
 
 	if (type < log_output_type)
@@ -89,13 +88,13 @@ void adbloader_log_type(LOG_TYPE type, const char *file, const char *fun, int li
 
 	p_file_name = get_file_name(file);
 
-	n = sprintf(new_fmt, head_fmt, p_file_name, fun, line, get_current_time());
+	count = sprintf(new_fmt, head_fmt, p_file_name, fun, line, get_current_time());
 	free(p_file_name);
 
-	strcat(new_fmt + n, fmt);
+	strcat(new_fmt + count, fmt);
 
 	va_start(args, fmt);
-	cnt = vsnprintf(buffer, sizeof(buffer), new_fmt, args);
+	vsnprintf(buffer, sizeof(buffer), new_fmt, args);
 
 	if (adbloader_log_file_fd == NULL)
 	{

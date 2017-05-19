@@ -408,7 +408,7 @@ main(int argc, char **argv)
 	/* check again */
 	if(table_count != tables_ptr->table_nums)
 	{
-		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate: %d");
+		ADBLOADER_LOG(LOG_ERROR,"[main] The number of imported tables does not match the number of calcuate.");
 		return 0;
 	}
 
@@ -427,8 +427,9 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
                                 TableInfo *table_info_ptr)
 {
 	slist_mutable_iter siter;
-	LineBuffer *linebuff = NULL;
-	bool sent_ok = false;
+	LineBuffer    *linebuff = NULL;
+	FileLocation  *file_location = NULL;
+	bool           sent_ok = false;
 
 	/* the table may be split to more than one*/
 	slist_foreach_modify (siter, &table_info_ptr->file_head)
@@ -439,7 +440,7 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 		/* make sure threads_num_per_datanode < max_connect */
 		//check_get_enough_connect_num(table_info_ptr);
 
-		FileLocation * file_location = slist_container(FileLocation, next, siter.cur);
+		file_location = slist_container(FileLocation, next, siter.cur);
 		Assert(file_location->location != NULL);
 
 		/* begin record error file */
@@ -1314,7 +1315,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	bool                do_hash_success = true;
 	bool                do_dispatch_success = true;
 	bool                need_redo = false;
-	bool                hash_error = false;
 	int                 output_queue_total = 0;
 	int                 i = 0;
 
@@ -1540,7 +1540,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 
 				if (hash_thread_info->state != THREAD_EXIT_NORMAL)
 				{
-					hash_error = true;
 					do_hash_success = false;
 
 					pthread_mutex_unlock(&hash_exit->mutex);

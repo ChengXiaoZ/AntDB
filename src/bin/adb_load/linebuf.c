@@ -20,7 +20,8 @@ static void destroy_linebuf(LineBuffer *buf);
 static bool appendLineBufInfoVA(LineBuffer *buf,
 								int *need,
 								const char *fmt,
-								va_list args);
+								va_list args)
+__attribute__((format(PG_PRINTF_ATTRIBUTE, 3, 0)));
 
 void init_linebuf(int max_node)
 {
@@ -70,7 +71,7 @@ LineBuffer* get_linebuf(void)
 		pthread_mutex_unlock(&buf_mutex);
 		buf = dlist_container(LineBuffer, dnode, node);
 		memset(buf->data, 0, DEFAULT_BUF_LEN);
-		buf->len = 0;		
+		buf->len = 0;
 	}else
 	{
 		pthread_mutex_unlock(&buf_mutex);
