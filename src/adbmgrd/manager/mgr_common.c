@@ -28,7 +28,6 @@ static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
 static TupleDesc ha_replication_tuple_desc = NULL;
-static void myUsleep(long microsec);
 
 TupleDesc get_common_command_tuple_desc(void)
 {
@@ -390,74 +389,93 @@ bool is_valid_ip(char *ip)
 }
 
 /* ping someone node for monitor */
-int pingNode_user(char *host, char *port, char *user)
+int pingNode_user(char *host_addr, char *node_port, char *node_user)
 {
-	PGPing ret;
-	char conninfo[MAXLINE + 1] = {0};
-	char editBuf[MAXPATH + 1] = {0};
-	int retry;
+	int ping_status;
+	bool execok = false;
+	ManagerAgent *ma;
+	StringInfoData sendstrmsg;
+	StringInfoData buf;
+	int32 agent_port;
+	Relation rel;
+	HeapScanDesc rel_scan;
+	ScanKeyData key[1];
+	HeapTuple tuple;
+	Form_mgr_host mgr_host;
+	GetAgentCmdRst getAgentCmdRst;
+	Assert((host_addr != NULL) && (node_port != NULL) && (node_user != NULL));
 
-	if (host)
+	/*get the host port base on the port of node and host*/
+	ScanKeyInit(&key[0]
+				,Anum_mgr_host_hostaddr
+				,BTEqualStrategyNumber
+				,F_TEXTEQ
+				,CStringGetTextDatum(host_addr));
+	rel = heap_open(HostRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	tuple = heap_getnext(rel_scan, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
 	{
-		snprintf(editBuf, MAXPATH, "host='%s' ", host);
-		strncat(conninfo, editBuf, MAXLINE);
+		ereport(ERROR, (errmsg("host\"%s\" does not exist in the host table", host_addr)));
 	}
+	mgr_host = (Form_mgr_host)GETSTRUCT(tuple);
+	Assert(mgr_host);
+	agent_port = mgr_host->hostagentport;
+	heap_endscan(rel_scan);
+	heap_close(rel, AccessShareLock);
 
-	if (port)
+	/*send the node message to agent*/
+	initStringInfo(&sendstrmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	appendStringInfo(&sendstrmsg, "%s", host_addr);
+	appendStringInfoChar(&sendstrmsg, '\0');
+	appendStringInfo(&sendstrmsg, "%s", node_port);
+	appendStringInfoChar(&sendstrmsg, '\0');
+	appendStringInfo(&sendstrmsg, "%s", node_user);
+
+	ma = ma_connect(host_addr, agent_port);;
+	if (!ma_isconnected(ma))
 	{
-		snprintf(editBuf, MAXPATH, "port=%d ", atoi(port));
-		strncat(conninfo, editBuf, MAXLINE);
+		/*report error message*/
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
+		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+						host_addr)));
 	}
-
-	if (user)
+	getAgentCmdRst.ret = false;
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, AGT_CMD_PING_NODE);
+	mgr_append_infostr_infostr(&buf, &sendstrmsg);
+	pfree(sendstrmsg.data);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
 	{
-		snprintf(editBuf, MAXPATH, "user=%s ", user);
-		strncat(conninfo, editBuf, MAXLINE);
+		getAgentCmdRst.ret = false;
+		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
+		ma_close(ma);
+		return -1;
 	}
-
-	/*timeout set 10s, when the cluster at high press, it should enlarge the value*/
-	snprintf(editBuf, MAXPATH,"connect_timeout=10");
-	strncat(conninfo, editBuf, MAXLINE);
-
-	if (conninfo[0])
+	/*check the receive msg*/
+	mgr_recv_msg_for_monitor(ma, &execok, &getAgentCmdRst.description);
+	ma_close(ma);
+	if (!execok)
 	{
-		elog(DEBUG1, "Ping node string: %s.\n", conninfo);
-		for (retry = RETRY; retry; retry--)
-		{
-			ret = PQping(conninfo);
-			if (PQPING_OK != ret)
-				ret = PQping(conninfo);
-			switch (ret)
-			{
-				case PQPING_OK:
-					return PQPING_OK;
-				case PQPING_REJECT:
-					return PQPING_REJECT;
-				case PQPING_NO_ATTEMPT:
-					return PQPING_NO_ATTEMPT;
-				case PQPING_NO_RESPONSE:
-					return PQPING_NO_RESPONSE;
-				default:
-					myUsleep(SLEEP_MICRO);
-					continue;
-			}
-		}
+		ereport(WARNING, (errmsg("monitor (host=%s port=%s) fail \"%s\"",
+			host_addr, node_port, getAgentCmdRst.description.data)));
 	}
-
-	return -1;
-}
-
-static void
-myUsleep(long microsec)
-{
-    struct timeval delay;
-
-    if (microsec <= 0)
-        return; 
-
-    delay.tv_sec = microsec / 1000000L;
-    delay.tv_usec = microsec % 1000000L;
-    (void) select(0, NULL, NULL, NULL, &delay);
+	ping_status = getAgentCmdRst.description.data[0];
+	pfree(getAgentCmdRst.description.data);
+	switch(ping_status)
+	{
+		case PQPING_OK:
+		case PQPING_REJECT:
+		case PQPING_NO_ATTEMPT:
+		case PQPING_NO_RESPONSE:
+			return ping_status;
+		default:
+			return PQPING_NO_RESPONSE;
+	}
 }
 
 /*check the host in use or not*/
@@ -716,7 +734,7 @@ bool mgr_has_table_privilege_name(char *tablename, char *priv_type)
 */
 void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 {
-	char			msg_type;
+	char msg_type;
 	StringInfoData recvbuf;
 	initStringInfo(&recvbuf);
 	for(;;)
@@ -778,3 +796,5 @@ bool mgr_get_active_node(Name nodename, char nodetype)
 	
 	return bresult;
 }
+
+

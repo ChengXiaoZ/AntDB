@@ -59,6 +59,7 @@ typedef enum AgentCommand
 	,AGT_CMD_GET_EXPLAIN_STRINGVALUES
 	,AGT_CMD_GET_BATCH_JOB
 	,AGT_CMD_CHECK_DIR_EXIST
+	,AGT_CMD_PING_NODE
 }AgentCommand;
 
 #endif /* MGR_MSG_TYPE_H */

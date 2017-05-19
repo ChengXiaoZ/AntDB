@@ -32,6 +32,10 @@
 #define PSQL_VERSION "psql (Postgres-XC) " PGXC_VERSION "\n"
 #define PG_DUMPALL_VERSION "pg_dumpall (PostgreSQL) " PG_VERSION "\n"
 
+static void myUsleep(long microsec);
+static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user);
+static int exec_ping_node(char *host, char *port, char *user, StringInfo err_msg);
+static void cmd_ping_node(StringInfo msg);
 static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VERSION);
 static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg);
 static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bforce);
@@ -125,7 +129,7 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_CNDN_DELETE_PGHBACONF:
 		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_DELETE_PGHBACONF, buf);
 		break;
-	case AGT_CMD_CNDN_ALTER_PGHBACONF:		
+	case AGT_CMD_CNDN_ALTER_PGHBACONF:
 		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_DELETE_PGHBACONF, buf);
 		cmd_node_refresh_pghba_parse(AGT_CMD_CNDN_ADD_PGHBACONF, buf);
 		break;
@@ -168,10 +172,120 @@ void do_agent_command(StringInfo buf)
 	case AGT_CMD_CHECK_DIR_EXIST:
 		cmd_check_dir_exist(buf);
 		break;
+	case AGT_CMD_PING_NODE:
+		cmd_ping_node(buf);
+		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)
 			,errmsg("unknown agent command %d", cmd_type)));
 	}
+}
+
+/*check the node is running*/
+static void cmd_ping_node(StringInfo msg)
+{
+	bool is_success = false;
+	PGPing ping_status;
+	NameData host;
+	NameData port;
+	NameData user;
+	StringInfoData err_msg;
+	initStringInfo(&err_msg);
+
+	is_success = parse_ping_node_msg(msg, &host, &port, &user);
+	if (is_success != true)
+	{
+		ereport(ERROR, (errmsg("funciton:cmd_ping_node, error to get values of host, port and user")));
+	}
+	
+	ping_status = exec_ping_node(NameStr(host), NameStr(port), NameStr(user), &err_msg);
+	appendStringInfoCharMacro(&err_msg, ping_status);
+	agt_put_msg(AGT_MSG_RESULT, err_msg.data, err_msg.len);
+	agt_flush();
+	pfree(err_msg.data);
+}
+static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user)
+{
+	int index = msg->cursor;
+
+	if (index < msg->len)
+		snprintf(NameStr(*host), NAMEDATALEN, "%s", &(msg->data[index]));
+	else
+		return false;
+	index = index + strlen(&(msg->data[index])) + 1;
+	if (index < msg->len)
+		snprintf(NameStr(*port), NAMEDATALEN, "%s", &(msg->data[index]));
+	else
+		return false;
+	index = index + strlen(&(msg->data[index])) + 1;
+	if (index < msg->len)
+		snprintf(NameStr(*user), NAMEDATALEN, "%s", &(msg->data[index]));
+	else
+		return false;
+	return true;
+}
+static int exec_ping_node(char *host, char *port, char *user, StringInfo err_msg)
+{
+	char conninfo[NAMEDATALEN + 1] = {0};
+	char editBuf[NAMEDATALEN + 1] = {0};
+	int retry;
+	int RETRY = 3;
+	int ret = -1;
+	if (host)
+	{
+		snprintf(editBuf, NAMEDATALEN, "host='%s' ", host);
+		strncat(conninfo, editBuf, NAMEDATALEN);
+	}
+
+	if (port)
+	{
+		snprintf(editBuf, NAMEDATALEN, "port=%d ", atoi(port));
+		strncat(conninfo, editBuf, NAMEDATALEN);
+	}
+
+	if (user)
+	{
+		snprintf(editBuf, NAMEDATALEN, "user=%s ", user);
+		strncat(conninfo, editBuf, NAMEDATALEN);
+	}
+
+	/*timeout set 10s, when the cluster at high press, it should enlarge the value*/
+	snprintf(editBuf, NAMEDATALEN,"connect_timeout=10");
+	strncat(conninfo, editBuf, NAMEDATALEN);
+
+	if (conninfo[0])
+	{
+		elog(DEBUG1, "Ping node string: %s.\n", conninfo);
+		for (retry = RETRY; retry; retry--)
+		{
+			ret = PQping(conninfo);
+			switch (ret)
+			{
+				case PQPING_OK:
+				case PQPING_REJECT:
+				case PQPING_NO_ATTEMPT:
+				case PQPING_NO_RESPONSE:
+					return ret;
+				default:
+					myUsleep(100000); /*sleep 100ms*/
+					continue;
+			}
+		}
+	}
+	return -1;
+}
+
+static void
+myUsleep(long microsec)
+{
+    struct timeval delay;
+
+    if (microsec <= 0)
+        return;
+
+    delay.tv_sec = microsec / 1000000L;
+    delay.tv_usec = microsec % 1000000L;
+    (void) select(0, NULL, NULL, NULL, &delay);
 }
 
 static void cmd_check_dir_exist(StringInfo msg)
@@ -300,13 +414,13 @@ static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VER
 				ereport(ERROR, (errmsg("could not update recovery.conf to recovery.done in %s", path)));
 			}
 		}
-		
+
 	}
 	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
 	agt_flush();
 	pfree(exec.data);
 	pfree(output.data);
-	
+
 }
 
 /*parse the msg form manager,and write the hba msg to pg_hba.conf */
@@ -323,15 +437,15 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	MemoryContext pgconf_context;
 	MemoryContext oldcontext;
 	Assert(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type || AGT_CMD_CNDN_ADD_PGHBACONF == cmd_type);
-		
+
 	pgconf_context = AllocSetContextCreate(CurrentMemoryContext,
 										"pghbaconf",
 										ALLOCSET_DEFAULT_MINSIZE,
 										ALLOCSET_DEFAULT_INITSIZE,
 										ALLOCSET_DEFAULT_MAXSIZE);
 	oldcontext = MemoryContextSwitchTo(pgconf_context);
-	
-	rec_msg_string = agt_getmsgstring(msg);		 
+
+	rec_msg_string = agt_getmsgstring(msg);
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
 	initStringInfo(&output);
@@ -350,14 +464,14 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	infohead = parse_hba_file(pgconffile.data);
 	newinfo = (HbaInfo *)palloc(sizeof(HbaInfo));
 	while((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len))
-	{		
+	{
 		ptmp = pghba_info_parse(ptmp, newinfo, &infoparastr);
 		infohead = cmd_refresh_pghba_confinfo(cmd_type, newinfo, infohead, &err_msg);
 	}
 	if(check_hba_vaild(datapath, infohead) == true)
-	{		
+	{
 		/*use the new info list to refresh the pg_hba.conf*/
-		writehbafile(pgconffile.data, infohead);			
+		writehbafile(pgconffile.data, infohead);
 	}
 	else
 	{
@@ -383,25 +497,25 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	pfree(output.data);
 	pfree(err_msg.data);
 	MemoryContextSwitchTo(oldcontext);
-	MemoryContextDelete(pgconf_context);	
+	MemoryContextDelete(pgconf_context);
 }
 
 static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *checkinfo, HbaInfo *infohead, StringInfo err_msg)
-{	
+{
 	bool is_exist;
 	char *strtype;
 	Assert(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type || AGT_CMD_CNDN_ADD_PGHBACONF == cmd_type);
 	Assert(checkinfo);
 	Assert(infohead);
-	
+
 	is_exist = check_pghba_exist_info(checkinfo, infohead);
 	strtype = get_connect_type_str(checkinfo->type);
 	if(AGT_CMD_CNDN_ADD_PGHBACONF == cmd_type)
 	{
 		if(false == is_exist)
 		{
-			add_pghba_info_list(infohead, checkinfo);	
-		}	
+			add_pghba_info_list(infohead, checkinfo);
+		}
 /*		else
 		{
 			appendStringInfo(err_msg,"\"%s %s %s %s %s\"has exist in the pg_hba.conf.\n",strtype
@@ -414,7 +528,7 @@ static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *check
 	else if(AGT_CMD_CNDN_DELETE_PGHBACONF == cmd_type)
 	{
 		if(true == is_exist)
-		{			
+		{
 			infohead = delete_pghba_info_from_list(infohead, checkinfo);
 		}
 /*		else
@@ -424,7 +538,7 @@ static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *check
 																						,checkinfo->user
 																						,checkinfo->addr
 																						,checkinfo->auth_method);
-		}	*/	
+		}	*/
 	}
 
 	pfree(strtype);
@@ -432,7 +546,7 @@ static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *check
 }
 /*append the to the info list*/
 static void add_pghba_info_list(HbaInfo *infohead, HbaInfo *checkinfo)
-{	
+{
 	HbaInfo *infotail = infohead;
 	char *strtype;
 	char *database;
@@ -441,28 +555,28 @@ static void add_pghba_info_list(HbaInfo *infohead, HbaInfo *checkinfo)
 	char mark[4];
 	char *auth_method;
 	char *line;
-	int intervallen = 4;	
-	HbaInfo *newinfo;		
+	int intervallen = 4;
+	HbaInfo *newinfo;
 	Assert(infotail);
-	Assert(checkinfo);	
-	
-	newinfo = (HbaInfo *)palloc0(sizeof(HbaInfo)+1);	
+	Assert(checkinfo);
+
+	newinfo = (HbaInfo *)palloc0(sizeof(HbaInfo)+1);
 	newinfo->type = checkinfo->type;
 	/*database*/
 	database = (char *)palloc(strlen(checkinfo->database)+1);
-	memset(database, 0, strlen(checkinfo->database)+1);		
+	memset(database, 0, strlen(checkinfo->database)+1);
 	strncpy(database, checkinfo->database, strlen(checkinfo->database));
 	/*user*/
 	user = (char *)palloc(strlen(checkinfo->user)+1);
-	memset(user, 0, strlen(checkinfo->user)+1);		
+	memset(user, 0, strlen(checkinfo->user)+1);
 	strncpy(user, checkinfo->user, strlen(checkinfo->user));
 	/*addr*/
 	addr = (char *)palloc(strlen(checkinfo->addr)+1);
-	memset(addr, 0, strlen(checkinfo->addr)+1);		
+	memset(addr, 0, strlen(checkinfo->addr)+1);
 	strncpy(addr, checkinfo->addr, strlen(checkinfo->addr));
 	/*auth_method*/
 	auth_method = (char *)palloc(strlen(checkinfo->auth_method)+1);
-	memset(auth_method, 0, strlen(checkinfo->auth_method)+1);		
+	memset(auth_method, 0, strlen(checkinfo->auth_method)+1);
 	strncpy(auth_method, checkinfo->auth_method, strlen(checkinfo->auth_method));
 	newinfo->addr_mark = checkinfo->addr_mark;
 	newinfo->addr_is_ipv6 = false;
@@ -488,7 +602,7 @@ static void add_pghba_info_list(HbaInfo *infohead, HbaInfo *checkinfo)
 	newinfo->method_len = strlen(auth_method);
 	newinfo->opt_loc = newinfo->method_loc + newinfo->method_len + intervallen;
 	newinfo->opt_len = 0;
-	
+
 	line = (char *)palloc(newinfo->method_loc+newinfo->method_len+2);
 	memcpy(line, strtype, newinfo->type_len);
 	memset(line + newinfo->type_len, ' ', intervallen);
@@ -505,7 +619,7 @@ static void add_pghba_info_list(HbaInfo *infohead, HbaInfo *checkinfo)
 	line[newinfo->method_loc+newinfo->method_len+1] = '\0';
 	newinfo->line = line;
 	newinfo->next = NULL;
-	while(infotail->next) 
+	while(infotail->next)
 	{
 		infotail = infotail->next;
 	}
@@ -555,13 +669,13 @@ static HbaInfo *delete_pghba_info_from_list(HbaInfo *infohead, HbaInfo *checkinf
 		info_cur = info_cur->next;
 	}
 	/*delete from the list*/
-	
-	if(info_pre == infohead)	
+
+	if(info_pre == infohead)
 		infohead = NULL;
 	else
 		info_pre->next = info_cur->next;
 	/*release HbaInfo *info_cur memory*/
-	
+
 	return infohead;
 }
 
@@ -635,7 +749,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	ConfInfo *info,
 			*infohead;
 	FILE *create_recovery_file;
-	
+
 	MemoryContext pgconf_context;
 	MemoryContext oldcontext;
 
@@ -645,8 +759,8 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 										ALLOCSET_DEFAULT_INITSIZE,
 										ALLOCSET_DEFAULT_MAXSIZE);
 	oldcontext = MemoryContextSwitchTo(pgconf_context);
-	
-	rec_msg_string = agt_getmsgstring(msg);		 
+
+	rec_msg_string = agt_getmsgstring(msg);
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
 
@@ -708,12 +822,12 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 				}
 			}
 		}
-		
+
 	}
 	/*get the postgresql.conf content*/
 	info = parse_conf_file(pgconffile.data);
 	infohead = info;
-	
+
 	while((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len))
 	{
 		key = &(infoparastr.data[infoparastr.cursor]);
@@ -725,7 +839,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 		infoparastr.cursor = infoparastr.cursor + strlen(value) + 1;
 		cmd_refresh_confinfo(key, value, info, bforce);
 	}
-	
+
 	/*use the new info list to refresh the postgresql.conf*/
 	writefile(pgconffile.data, infohead);
 	initStringInfo(&output);
@@ -756,7 +870,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 }
 
 /*
-* the info is struct list for the content of postgresql , use key value to refresh info 
+* the info is struct list for the content of postgresql , use key value to refresh info
 *   list, if key not in info list, add the newlistnode to info
 */
 static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bforce)
@@ -809,7 +923,7 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bf
 			info = info->next;
 			break;
 		}
-		
+
 		infopre = info;
 		info = info->next;
 	}
@@ -898,7 +1012,7 @@ static bool check_hba_vaild(char * datapath, HbaInfo * info_head)
 		is_valid = false;
 		PG_RE_THROW();
 	}PG_END_TRY();
-	
+
 	fclose(fp);
 	remove(file_path);
 	return is_valid;
@@ -1027,7 +1141,7 @@ static bool cmd_rename_recovery(StringInfo msg)
 	StringInfoData strinfoname;
 	StringInfoData strinfonewname;
 	StringInfoData output;
-	
+
 	rec_msg_string = agt_getmsgstring(msg);
 	initStringInfo(&output);
 	initStringInfo(&strinfoname);
@@ -1113,7 +1227,7 @@ static void cmd_stop_agent(void)
 {
 	pid_t pid;
 	StringInfoData output;
-	
+
 	initStringInfo(&output);
 	appendStringInfoString(&output, "receive the stop agent command");
 	agt_put_msg(AGT_MSG_RESULT, output.data, output.len);
@@ -1139,7 +1253,7 @@ static void cmd_get_showparam_values(char cmdtype, StringInfo buf)
 	char *valuestr;
 	struct passwd *pwd;
 	int resultlen = 0;
-	
+
 	initStringInfo(&output);
 	initStringInfo(&sqlstr);
 	rec_msg_string = agt_getmsgstring(buf);
@@ -1192,7 +1306,7 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 	int nrow_all = 0;
 	int iloop = 0;
 	int jloop = 0;
-	
+
 	initStringInfo(&constr);
 	appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", user, address, port, dbname);
 	appendStringInfoCharMacro(&constr, '\0');
@@ -1200,7 +1314,7 @@ static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port
 		(errmsg("connect info: %s, sql: %s",constr.data, sqlstr)));
 	conn = PQconnectdb(constr.data);
 	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
+	if (PQstatus(conn) != CONNECTION_OK)
 	{
 		pfree(constr.data);
 		ereport(ERROR,
@@ -1276,7 +1390,7 @@ static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf)
 	char dbname[64];
 	char *address = "127.0.0.1";
 	int i = 0;
-	
+
 	initStringInfo(&output);
 	initStringInfo(&sqlstr);
 	rec_msg_string = agt_getmsgstring(buf);
@@ -1348,7 +1462,7 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 		(errmsg("connect info: %s, sql: %s",constr.data, sqlstring)));
 	conn = PQconnectdb(constr.data);
 	/* Check to see that the backend connection was successfully made */
-	if (PQstatus(conn) != CONNECTION_OK) 
+	if (PQstatus(conn) != CONNECTION_OK)
 	{
 		pfree(constr.data);
 		ereport(ERROR,
@@ -1390,7 +1504,7 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 }
 
 /*
-* get monitor job result, the job type is batch 
+* get monitor job result, the job type is batch
 */
 static void cmd_get_batch_job_result(int cmd_type, StringInfo buf)
 {
@@ -1401,7 +1515,7 @@ static void cmd_get_batch_job_result(int cmd_type, StringInfo buf)
 	char scriptpath[256];
 	char inputargs[1024];
 	char *resultHeadP = "{\"result\":\"";
-	
+
 	userpath = getenv("HOME");
   if (NULL != userpath)
 		chdir(userpath);
@@ -1431,7 +1545,6 @@ static void cmd_get_batch_job_result(int cmd_type, StringInfo buf)
 	agt_flush();
 	pfree(exec.data);
 	pfree(output.data);
-	
-}
 
+}
 

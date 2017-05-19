@@ -54,6 +54,9 @@ typedef enum
 extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest);
+extern bool check_node_running_by_socket(char *host, int port);
+extern bool port_occupancy_test(const char *ip_address, const int port);
+extern bool get_node_type_str(int node_type, Name node_type_str);
 
 extern Datum mgr_start_agent_all(PG_FUNCTION_ARGS);
 extern Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS);

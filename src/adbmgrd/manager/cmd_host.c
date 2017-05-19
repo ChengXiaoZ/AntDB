@@ -79,6 +79,7 @@ static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo 
 static void get_adbhome(char *adbhome);
 static void check_host_name_isvaild(List *host_name_list);
 
+
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
 	if (mgr_has_priv_add())
@@ -580,12 +581,11 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		/*check all node stop*/
+		/*check all node stop first, because monitor node need by agent*/
 		if (!mgr_check_cluster_stop(&resnamedata, &restypedata))
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("%s \"%s\" still running, please stop it before deploy", restypedata.data, resnamedata.data)
-				,errhint("try \"monitor all\" for more information")));			
-
+				,errhint("try \"monitor all\" for more information")));
 
 		/*check the agent all stop*/
 		if ((ret = SPI_connect()) < 0)
@@ -600,8 +600,9 @@ Datum mgr_deploy_all(PG_FUNCTION_ARGS)
 			SPI_finish();
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("on host \"%s\" the agent still running, please stop it before deploy", resnamedata.data)
-				,errhint("try \"monitor agent all\" for more information")));			
+				,errhint("try \"monitor agent all\" for more information")));
 		}
+
 		SPI_freetuptable(SPI_tuptable);
 		SPI_finish();
 
@@ -717,7 +718,7 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 		if (!mgr_check_cluster_stop(&resnamedata, &restypedata))
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("%s \"%s\" still running, please stop it before deploy", restypedata.data, resnamedata.data)
-				,errhint("try \"monitor all\" for more information")));			
+				,errhint("try \"monitor all\" for more information")));
 
 		/*check the agent all stop*/
 		if ((ret = SPI_connect()) < 0)
@@ -747,7 +748,7 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 			SPI_finish();
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 				,errmsg("on host \"%s\" the agent still running, please stop it before deploy", resnamedata.data)
-				,errhint("try \"monitor agent all\" for more information")));			
+				,errhint("try \"monitor agent all\" for more information")));
 		}
 		SPI_freetuptable(SPI_tuptable);
 		SPI_finish();
@@ -1178,7 +1179,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 	Datum datum_hostname_list;
 
 	Assert(PG_NARGS() == 2);
-	password = PG_GETARG_CSTRING(0);	
+	password = PG_GETARG_CSTRING(0);
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
@@ -1198,7 +1199,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 		MemoryContextSwitchTo(oldcontext);
 	}
 
-	funcctx = SRF_PERCALL_SETUP();	
+	funcctx = SRF_PERCALL_SETUP();
 	info = funcctx->user_fctx;
 	Assert(info);
 	lcp = info->lcp;
@@ -1287,7 +1288,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 }
 /*
 * command format:  start agent all password xxx;
-*/ 
+*/
 Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 {
 	InitNodeInfo *info;
@@ -1309,7 +1310,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 	FuncCallContext *funcctx;
 
 	Assert(PG_NARGS() == 1);
-	password = PG_GETARG_CSTRING(0);	
+	password = PG_GETARG_CSTRING(0);
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
@@ -1324,7 +1325,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 		while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 		{
 			mgr_host = (Form_mgr_host)GETSTRUCT(tup);
-			Assert(mgr_host);			
+			Assert(mgr_host);
 			listhost = lappend(listhost, mgr_host->hostname.data);
 		}
 		*(info->lcp) = list_head(listhost);
@@ -1332,7 +1333,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 		MemoryContextSwitchTo(oldcontext);
 	}
 
-	funcctx = SRF_PERCALL_SETUP();	
+	funcctx = SRF_PERCALL_SETUP();
 	info = funcctx->user_fctx;
 	Assert(info);
 	lcp = info->lcp;
@@ -1420,7 +1421,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
-Datum mgr_stop_agent_all(PG_FUNCTION_ARGS) 
+Datum mgr_stop_agent_all(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	StopAgentInfo *info;
@@ -1861,26 +1862,94 @@ static void check_host_name_isvaild(List *host_name_list)
 */
 bool mgr_check_cluster_stop(Name nodename, Name nodetypestr)
 {
-	int ret;
-	bool bresult = true;
-
+	Relation rel;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	char *ip_addr;
+	int port;
 	/*check all node stop*/
-	if ((ret = SPI_connect()) < 0)
-		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
-	ret = SPI_execute("select nodename, nodetype from mgr_monitor_all() where status = true;", false, 0);
-	if (ret != SPI_OK_SELECT)
-		ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
-	if (SPI_processed > 0 && SPI_tuptable != NULL)
+	rel = heap_open(NodeRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection))!= NULL)
 	{
-		namestrcpy(nodename, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
-		namestrcpy(nodetypestr, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 2));
-		bresult = false;
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		ip_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		port = mgr_node->nodeport;
+		if(check_node_running_by_socket(ip_addr, port))
+		{
+			get_node_type_str(mgr_node->nodetype, nodetypestr);
+			strcpy(nodename->data, mgr_node->nodename.data);
+			return false;
+		}
 	}
-	SPI_freetuptable(SPI_tuptable);
-	SPI_finish();
-	
-	return bresult;
+	heap_endscan(rel_scan);
+	heap_close(rel, AccessShareLock);
+	return true;
+}
+bool get_node_type_str(int node_type, Name node_type_str)
+{
+	bool ret = true;
+	Assert(node_type_str);
+	switch(node_type)
+    {
+        case GTM_TYPE_GTM_MASTER:
+			strcpy(NameStr(*node_type_str), "gtm master");
+			break;
+        case GTM_TYPE_GTM_SLAVE:
+			strcpy(NameStr(*node_type_str), "gtm slave");
+			break;
+        case GTM_TYPE_GTM_EXTRA:
+			strcpy(NameStr(*node_type_str), "gtm extra");
+			break;
+        case CNDN_TYPE_COORDINATOR_MASTER:
+			strcpy(NameStr(*node_type_str), "coordinator");
+			break;
+        case CNDN_TYPE_DATANODE_MASTER:
+			strcpy(NameStr(*node_type_str), "datanode master");
+			break;
+        case CNDN_TYPE_DATANODE_SLAVE:
+			strcpy(NameStr(*node_type_str), "datanode slave");
+			break;
+        case CNDN_TYPE_DATANODE_EXTRA:
+			strcpy(NameStr(*node_type_str), "datanode extra");
+			break;
+        default:
+			strcpy(NameStr(*node_type_str), "unknown type");
+			ret = false;
+			break;
+    }
+	return ret;
+}
+bool check_node_running_by_socket(char *host, int port)
+{
+	return port_occupancy_test(host, port);
 }
 
+bool port_occupancy_test(const char *ip_address, const int port)
+{
+	int ret = 0;
+	struct sockaddr_in serv_addr;
+	int fd = socket(AF_INET, SOCK_STREAM, 0);
+
+	if (fd == -1)
+	{
+		ereport(ERROR, (errmsg("on ADB manager create sock fail")));
+	}
+	/*init*/
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(port);
+	serv_addr.sin_addr.s_addr = inet_addr(ip_address);
+
+	/*connect*/
+	ret = connect(fd, &serv_addr, sizeof(struct sockaddr));
+	close(fd);
+	if (ret == -1)
+	{
+		return false;
+	}
+	return true;
+}
 
 
