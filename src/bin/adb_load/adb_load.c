@@ -931,7 +931,7 @@ get_table_name(char *file_name)
 		file_name_local_len --;
 	file_name_local[file_name_local_len] = '\0';
 
-	return file_name_local;
+	return adb_load_tolower(file_name_local);
 }
 
 static char *
