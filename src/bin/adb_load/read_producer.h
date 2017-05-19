@@ -10,21 +10,22 @@ typedef struct ReadInfo
 {
 	char             *filepath;
 	MessageQueuePipe *input_queue;
-	
+
 	MessageQueuePipe **output_queue;
 	int              output_queue_num;
-	
+
 	int              datanodes_num;
 	int              threads_num_per_datanode;
-	
+
 	bool             replication;
 	int              end_flag_num;
 	char            *start_cmd;
 	int              read_file_buffer;
-	
+
 	int             *redo_queue_index;
 	int              redo_queue_total;
 	bool             redo_queue;
+	bool             filter_first_line;
 } ReadInfo;
 
 typedef enum ReadProducerState
@@ -38,8 +39,8 @@ typedef enum ReadProducerState
 
 #if 0
 int
-init_read_thread(char *filepath, MessageQueuePipe *input_queue, 
-				MessageQueuePipe **output_queue, int output_queue_num, 
+init_read_thread(char *filepath, MessageQueuePipe *input_queue,
+				MessageQueuePipe **output_queue, int output_queue_num,
 				int datanodes_num, int threads_num_per_datanode,
 				bool replication, int end_flag_num, char * start_cmd,
 				int read_file_buffer, int *redo_queue_index, int redo_queue_total,

@@ -16,12 +16,10 @@ format_error_begin(char *file_name, char*table_type)
 	Assert(file_name != NULL);
 	Assert(table_type != NULL);
 
-	appendLineBufInfoString(linebuf, "------------------------begin file: ");
+	appendLineBufInfo(linebuf, "==================[%s]begin file: ", get_current_time());
 	appendLineBufInfoString(linebuf, file_name);
-	appendLineBufInfoString(linebuf, "---------------------------------\n");
-	appendLineBufInfoString(linebuf, "TableType : ");
-	appendLineBufInfoString(linebuf, table_type);
-	appendLineBufInfoString(linebuf, "\n");
+	appendLineBufInfoString(linebuf, "==================\n");
+
 	return linebuf;
 }
 
@@ -74,7 +72,7 @@ format_error_info(char *message, Module type, char *error_message,
 		appendLineBufInfoString(linebuf, "Failed line loc  : ");
 		appendLineBufInfo(linebuf, "%d", line_no);
 		appendLineBufInfoString(linebuf, "\n");
-		
+
 		appendLineBufInfoString(linebuf, "Failed line data : ");
 		if (line_data != NULL)
 			appendLineBufInfoString(linebuf, line_data);
@@ -86,10 +84,13 @@ format_error_info(char *message, Module type, char *error_message,
 LineBuffer *format_error_end (char *file_name)
 {
 	LineBuffer * linebuf = get_linebuf();
+
 	Assert(file_name != NULL);
-	appendLineBufInfoString(linebuf, "------------------------end file: ");
+
+	appendLineBufInfo(linebuf, "==================[%s]end file  : ", get_current_time());
 	appendLineBufInfoString(linebuf,file_name);
-	appendLineBufInfoString(linebuf, "---------------------------------\n");
+	appendLineBufInfoString(linebuf, "==================\n");
+
 	return linebuf;
 }
 
@@ -182,7 +183,7 @@ free_fileInfo(FileInfo *fileInfo)
 		fileInfo->connection = NULL;
 	}
 	pfree(fileInfo);
-	
+
 }
 
 char *
@@ -313,11 +314,11 @@ unsigned long file_size(const char *file)
 	struct stat statbuff;
 
 	if(stat(file, &statbuff) < 0)
-	{  
+	{
 		return filesize;
 	}
 	else
-	{  
+	{
 		filesize = statbuff.st_size;
 	}
 

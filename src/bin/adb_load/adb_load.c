@@ -1146,7 +1146,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	read_info->redo_queue_index = setting->redo_queue_index;
 	read_info->redo_queue_total = setting->redo_queue_total;
 	read_info->redo_queue = setting->redo_queue;
-
+	read_info->filter_first_line = setting->filter_first_line;
 	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"start read_producer module failed");
@@ -1457,6 +1457,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	read_info->redo_queue_index = setting->redo_queue_index;
 	read_info->redo_queue_total = setting->redo_queue_total;
 	read_info->redo_queue = setting->redo_queue;
+	read_info->filter_first_line = setting->filter_first_line;
 	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 
 	{

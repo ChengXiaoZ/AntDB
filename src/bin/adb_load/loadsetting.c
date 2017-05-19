@@ -51,7 +51,7 @@ static const char *ERROR_DATA_FILE_PATH = "ERROR_DATA_FILE_PATH";
 static const char *PROCESS_BAR       = "PROCESS_BAR";
 static const char *COPY_CMD_COMMENT  = "COPY_CMD_COMMENT";
 static const char *COPY_CMD_COMMENT_STR = "COPY_CMD_COMMENT_STR";
-//static const char *FILTER_FIRST_LINE = "FILTER_FIRST_LINE";
+static const char *FILTER_FIRST_LINE = "FILTER_FIRST_LINE";
 static const char *READ_FILE_BUFFER  = "READ_FILE_BUFFER";
 
 /* ERROR FILE */
@@ -84,6 +84,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		{"configfile",          required_argument, NULL, 'c'},
 		{"dbname",              required_argument, NULL, 'd'},
 		{"dynamic",                   no_argument, NULL, 'y'},
+		{"filter_first_line",		  no_argument, NULL, 'n'},
 		{"filter_queue_file",         no_argument, NULL, 'e'},
 		{"hash_threads",        required_argument, NULL, 'h'},
 		{"inputdir",            required_argument, NULL, 'i'},
@@ -108,21 +109,20 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 
 	if (argc > 1)
 	{
-		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0 ||
-			strcmp(argv[1], "-?") == 0)
+		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
 			print_help(stdout);
 			exit(EXIT_SUCCESS);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("adb_load 2.0 " PG_VERSION);
+			puts("adb_load 2.0 (based on " PG_VERSION ")");
 			exit(EXIT_SUCCESS);
 		}
 	}
 
 	setting = (ADBLoadSetting *)palloc0(sizeof(ADBLoadSetting));
-	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ejpm:", long_options, &option_index)) != -1)
+	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ejpm:n", long_options, &option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -168,6 +168,9 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 				}
 				break;
 			}
+		case 'n':
+			setting->filter_first_line = true;
+			break;
 		case 'o': //outputdir
 			setting->output_directory = pg_strdup(optarg);
 			break;
@@ -194,7 +197,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 			setting->user_name = pg_strdup(optarg);
 			break;
 		case 'V':
-			puts("adb_load (PostgreSQL) " PG_VERSION);
+			puts("adb_load 2.0 (based on " PG_VERSION ")");
 			exit(EXIT_SUCCESS);
 		case 'W': //password
 			setting->password = pg_strdup(optarg);
@@ -292,7 +295,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 	{
 		if (setting->input_file == NULL || setting->table_name == NULL)
 		{
-			fprintf(stderr, "Error: you should use -f/--inputfile or -t/--table option.\n");
+			fprintf(stderr, "Error: options -f/--inputfile and -t/--table must be use together.\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -638,34 +641,34 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 
 	setting->hash_config->text_delim = get_text_delim(get_config_file_value(COPY_DELIMITER));
 	setting->hash_config->hash_delim = pstrdup(HASH_DELIM);
-#if 0
-	copy_header_str = get_config_file_value(COPY_HEADER);
 
-	if (strcasecmp(copy_header_str, "on") == 0   ||
-		strcasecmp(copy_header_str, "true") == 0 ||
-		strcasecmp(copy_header_str, "1") == 0)
+	if (!setting->filter_first_line)
 	{
-		setting->hash_config->copy_header = true;
-	}
-	else if (strcasecmp(copy_header_str, "off") == 0  ||
-			strcasecmp(copy_header_str, "false") == 0 ||
-			strcasecmp(copy_header_str, "0") == 0)
-	{
-		setting->hash_config->copy_header = false;
-	}
-	else
-	{
-		fprintf(stderr, "the config parameter \"COPY_HEADER\" set wrong.\n");
-		exit(EXIT_FAILURE);
+		str_ptr = get_config_file_value(FILTER_FIRST_LINE);
+		if (strcasecmp(str_ptr, "on") == 0	 ||
+			strcasecmp(str_ptr, "true") == 0 ||
+			strcasecmp(str_ptr, "1") == 0)
+		{
+			setting->filter_first_line = true;
+		}
+		else if (strcasecmp(str_ptr, "off") == 0  ||
+				strcasecmp(str_ptr, "false") == 0 ||
+				strcasecmp(str_ptr, "0") == 0)
+		{
+			setting->filter_first_line = false;
+		}
+		else
+		{
+			pfree(str_ptr);
+			str_ptr = NULL;
+			fprintf(stderr, "the config parameter \"FILTER_FIRST_LINE\" set wrong.\n");
+			exit(EXIT_FAILURE);
+		}
+
+		pfree(str_ptr);
+		str_ptr = NULL;
 	}
 
-	if (setting->hash_config->copy_header &&
-		strcmp(setting->hash_config->text_delim, ",") != 0)
-	{
-		fprintf(stderr, "COPY HEADER available only COPY_DELIMITER = \',\'.\n");
-		exit(EXIT_FAILURE);
-	}
-#endif
 	setting->hash_config->copy_quotec = pstrdup("\"");
 	setting->hash_config->copy_escapec = pstrdup("NO");
 	setting->hash_config->copy_option = get_copy_options(setting->hash_config->text_delim,
@@ -856,6 +859,10 @@ static void print_help(FILE *fd)
 	fprintf(fd, _("  -i, --inputdir              data file directory\n"));
 	fprintf(fd, _("  -f, --inputfile             data file\n"));
 	fprintf(fd, _("  -t, --table                 table name\n\n"));
+
+	fprintf(fd, _("  -p, --copy_cmd_comment      enable copy command comment\n"));
+	fprintf(fd, _("  -m, --copy_cmd_comment_str  copy command comment string, must be the same two char\n"));
+	fprintf(fd, _("  -n, --filter_first_line     fiter the first line\n\n"));
 
 	fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
 	fprintf(fd, _("  -e, --filter_queue_file     filter queue data into file\n"));

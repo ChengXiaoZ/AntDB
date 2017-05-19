@@ -26,14 +26,14 @@ int fopen_error_file(char *adb_load_error_path)
 
 	if (adb_load_error_path == NULL)
 	{
-		snprintf(path, sizeof(path), "./adb_load_error_data.txt");
+		snprintf(path, sizeof(path), "./adb_load_error_data.log");
 	}
 	else
 	{
 		if (adb_load_error_path[strlen(adb_load_error_path) - 1] == '/')
-			snprintf(path, sizeof(path), "%s%s", adb_load_error_path, "adb_load_error_data.txt");
+			snprintf(path, sizeof(path), "%s%s", adb_load_error_path, "adb_load_error_data.log");
 		else
-			snprintf(path, sizeof(path), "%s/%s", adb_load_error_path, "adb_load_error_data.txt");
+			snprintf(path, sizeof(path), "%s/%s", adb_load_error_path, "adb_load_error_data.log");
 	}
 
 	if ((err_data_fd = fopen(path, "a")) == NULL)

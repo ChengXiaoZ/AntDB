@@ -38,7 +38,7 @@ typedef struct ModuleErrFile
 	char *hash_err_file;
 	char *dispatch_err_file;
 	char *read_err_file;
-	char *err_file_dir;	
+	char *err_file_dir;
 }HashLogField;
 
 typedef struct UserFuncInfo
@@ -77,7 +77,7 @@ typedef struct ADBLoadSetting
 	int   read_file_buffer;
 
 	NodeInfoData    *server_info;
-	NodeInfoData    *agtm_info;	
+	NodeInfoData    *agtm_info;
 	NodeInfoData    *coordinator_info;
 
 	NodeInfoData    **datanodes_info;
@@ -97,6 +97,8 @@ typedef struct ADBLoadSetting
 
 	bool             copy_cmd_comment;
 	char            *copy_cmd_comment_str;
+
+	bool            filter_first_line;
 } ADBLoadSetting;
 
 extern ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv);

@@ -30,6 +30,8 @@ typedef struct Read_ThreadInfo
 	int                  redo_queue_total;
 	bool                 redo_queue;
 
+	bool                filter_first_line;
+
 	char                *file_path;
 	char                *start_cmd;
 	int                  read_file_buffer; //unit is KB
@@ -139,7 +141,9 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	LineBuffer *linebuf = NULL;
 	int         i = 0;
 	int         flag = 0;
+	bool        filter_first_line = false;
 
+	filter_first_line = thrinfo->filter_first_line;
 	datanodes_num = thrinfo->datanodes_num;
 	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
 	threads_total = datanodes_num * threads_num_per_datanode;
@@ -149,6 +153,12 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 		int res = 0;
 		int j = 0;
 		lineno++;
+
+		if (filter_first_line)
+		{
+			filter_first_line = false;
+			continue;
+		}
 
 		pthread_testcancel();
 
@@ -207,7 +217,9 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	int          output_queue_index = 0;
 	int          flag = 0;
 	int          i = 0;
+	bool         filter_first_line = false;
 
+	filter_first_line = thrinfo->filter_first_line;
 	datanodes_num = thrinfo->datanodes_num;
 	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
 	threads_total = datanodes_num * threads_num_per_datanode;
@@ -228,6 +240,12 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 		int res = 0;
 		int j = 0;
 		lineno++;
+
+		if (filter_first_line)
+		{
+			filter_first_line = false;
+			continue;
+		}
 
 		pthread_testcancel();
 
@@ -264,7 +282,7 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 									linebuf->data, TRUE);
 					fclose(fp);
 					pthread_exit(thrinfo);
-				} 
+				}
 			}
 		}
 
@@ -288,11 +306,19 @@ static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp)
 	char        buf[READFILEBUFSIZE];
 	LineBuffer *linebuf = NULL;
 	int         flag = 0;
+	bool        filter_first_line = false;
 
+	filter_first_line = thrinfo->filter_first_line;
 	while ((fgets(buf, sizeof(buf), fp)) != NULL)
 	{
 		int res;
 		lineno++;
+
+		if (filter_first_line)
+		{
+			filter_first_line = false;
+			continue;
+		}
 
 		pthread_testcancel();
 
@@ -391,7 +417,7 @@ read_threadMain (void *argp)
 int init_read_thread(ReadInfo *read_info)
 {
 	Read_ThreadInfo *read_threadInfo = (Read_ThreadInfo*)palloc0(sizeof(Read_ThreadInfo));
-	int error;
+	int error = 0;
 
 	Assert(read_info->filepath != NULL);
 	Assert(read_info->start_cmd != NULL);
@@ -399,6 +425,7 @@ int init_read_thread(ReadInfo *read_info)
 	read_threadInfo->file_path = pg_strdup(read_info->filepath);
 	read_threadInfo->replication = read_info->replication;
 	read_threadInfo->start_cmd = pg_strdup(read_info->start_cmd);
+	read_threadInfo->filter_first_line = read_info->filter_first_line;
 	if (read_info->replication)
 	{
 
@@ -476,7 +503,7 @@ stop_read_thread(void)
 }
 
 
-static void	 
+static void
 read_write_error_message(Read_ThreadInfo  *thrinfo, char * message, char * error_message, int line_no,
 								char *line_data, bool redo)
 {

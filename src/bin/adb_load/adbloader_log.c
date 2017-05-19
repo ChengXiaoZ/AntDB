@@ -26,14 +26,14 @@ void adbLoader_log_init(char *logfilepath, LOG_TYPE type)
 
 	if (logfilepath == NULL)
 	{
-		snprintf(logpath, sizeof(logpath), "./adb_load_log_file.txt");
+		snprintf(logpath, sizeof(logpath), "./adb_load_log_file.log");
 	}
 	else
 	{
 		if (logfilepath[strlen(logfilepath) - 1] == '/')
-			snprintf(logpath, sizeof(logpath), "%s%s", logfilepath, "adb_load_log_file.txt");
+			snprintf(logpath, sizeof(logpath), "%s%s", logfilepath, "adb_load_log_file.log");
 		else
-			snprintf(logpath, sizeof(logpath), "%s/%s", logfilepath, "adb_load_log_file.txt");
+			snprintf(logpath, sizeof(logpath), "%s/%s", logfilepath, "adb_load_log_file.log");
 	}
 
 	adbloader_log_file_fd = fopen(logpath, "a+");
@@ -168,7 +168,7 @@ void check_db_load_error_data(char *path, char *tablename)
 	pfree(file_path);
 	file_path = NULL;
 
-	return;    
+	return;
 }
 
 void fwrite_adb_load_error_data(char *linedata)
@@ -210,14 +210,14 @@ static char *get_file_path(char *path, char *tablename)
 
 	if (path == NULL)
 	{
-		snprintf(error_path, sizeof(error_path), "./%s.txt", tablename);
+		snprintf(error_path, sizeof(error_path), "./%s.log", tablename);
 	}
 	else
 	{
 		if (path[strlen(path) - 1] == '/')
-			snprintf(error_path, sizeof(error_path), "%s%s.txt", path, tablename);
+			snprintf(error_path, sizeof(error_path), "%s%s.log", path, tablename);
 		else
-			snprintf(error_path, sizeof(error_path), "%s/%s.txt", path, tablename);
+			snprintf(error_path, sizeof(error_path), "%s/%s.log", path, tablename);
 	}
 
 	return pstrdup(error_path);
