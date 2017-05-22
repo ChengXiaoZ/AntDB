@@ -197,8 +197,13 @@ static void cmd_ping_node(StringInfo msg)
 	{
 		ereport(ERROR, (errmsg("funciton:cmd_ping_node, error to get values of host, port and user")));
 	}
-	
-	ping_status = exec_ping_node(NameStr(host), NameStr(port), NameStr(user), &err_msg);
+	/*
+	the database of hba in slave datanode is "replication" so the client cann't connect it,
+	so we use psql -p port -U username to connect, 
+	because the agent and the node has the same host,
+	so omit the host ip, the agent will use localhost as host ip
+	*/
+	ping_status = exec_ping_node(NULL, NameStr(port), NameStr(user), &err_msg);
 	appendStringInfoCharMacro(&err_msg, ping_status);
 	agt_put_msg(AGT_MSG_RESULT, err_msg.data, err_msg.len);
 	agt_flush();

@@ -89,6 +89,9 @@ extern bool mgr_check_cluster_stop(Name nodename, Name nodetypestr);
 /*parm commands, in cmd_parm.c*/
 extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceiver *dest);
 
+/*in cmd_node.c */
+extern void mgr_reload_conf(Oid hostoid, char *nodepath);
+
 /*coordinator datanode parse cmd*/
 extern Datum mgr_init_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_start_gtm_master(PG_FUNCTION_ARGS);
@@ -176,7 +179,7 @@ extern void mgr_add_parameters_pgsqlconf(Oid tupleOid, char nodetype, int cndnpo
 extern void mgr_append_pgconf_paras_str_quotastr(char *key, char *value, StringInfo infosendmsg);
 extern void mgr_add_parameters_recoveryconf(char nodetype, char *slavename, Oid tupleoid, StringInfo infosendparamsg);
 extern void mgr_add_parameters_hbaconf(Oid mastertupleoid, char nodetype, StringInfo infosendhbamsg);
-void mgr_add_oneline_info_pghbaconf(int type, char *database, char *user, char *addr, int addr_mark, char *auth_method, StringInfo infosendhbamsg);
+extern void mgr_add_oneline_info_pghbaconf(int type, char *database, char *user, char *addr, int addr_mark, char *auth_method, StringInfo infosendhbamsg);
 extern Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_one_dn_master(PG_FUNCTION_ARGS);
 extern char *mgr_get_slavename(Oid tupleOid, char nodetype);
@@ -264,8 +267,10 @@ extern Datum mgr_show_var_param(PG_FUNCTION_ARGS);
 Datum mgr_update_param_gtm_failover(PG_FUNCTION_ARGS);
 Datum mgr_update_param_datanode_failover(PG_FUNCTION_ARGS);
 
-/*mgr_hba*/
-	
+/*mgr_hba    mgr_hba.c*/
+
+extern void mgr_clean_hba_table(char *coord_name, char *values);
+
 extern Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS);
 extern Datum mgr_drop_hba(PG_FUNCTION_ARGS);
 extern Datum mgr_add_hba(PG_FUNCTION_ARGS);
