@@ -3149,13 +3149,6 @@ Datum mgr_append_dnslave(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-		/*param table*/
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&(getAgentCmdRst.description));
-		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_SLAVE, &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
-		if (!getAgentCmdRst.ret)
-			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 7: update datanode slave's recovery.conf. */
 		resetStringInfo(&infosendmsg);
