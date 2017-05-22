@@ -74,6 +74,9 @@
 #include "utils/tqual.h"
 #include "utils/typcache.h"
 #include "utils/xml.h"
+#ifdef ADB
+#include "utils/memutils.h"
+#endif
 
 /* ----------
  * Pretty formatting constants
@@ -2753,16 +2756,20 @@ set_rtable_names(deparse_namespace *dpns, List *parent_namespaces,
 			 * alias in the generated query.
 			 */
 #ifdef ADB
-			if (rte->alias && rte->alias->colnames)
 			{
-				char *aliasname = pstrdup(refname);
-				pfree(rte->alias->aliasname);
-				refname = rte->alias->aliasname = aliasname;
-			} else
-			{
-				alias = makeAlias(refname, NIL);
-				rte->alias = alias;
-				refname = alias->aliasname;
+				MemoryContext oldcxt = MemoryContextSwitchTo(GetMemoryChunkContext(rte));
+				if (rte->alias && rte->alias->colnames)
+				{
+					char *aliasname = pstrdup(refname);
+					pfree(rte->alias->aliasname);
+					refname = rte->alias->aliasname = aliasname;
+				} else
+				{
+					alias = makeAlias(refname, NIL);
+					rte->alias = alias;
+					refname = alias->aliasname;
+				}
+				(void) MemoryContextSwitchTo(oldcxt);
 			}
 #else
 			if (rte->alias && rte->alias->colnames)
