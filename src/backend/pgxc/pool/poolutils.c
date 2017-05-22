@@ -38,6 +38,7 @@
 #include "utils/memutils.h"
 #include "utils/resowner.h"
 
+#include "catalog/namespace.h"
 volatile bool need_reload_pooler = false;
 
 /*
@@ -445,6 +446,10 @@ HandlePoolerReload(void)
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
 	CurrentResourceOwner = ResourceOwnerGetParent(reload_ro);
 	ResourceOwnerDelete(reload_ro);
+	
+	StartTransactionCommand();
+        ResetTempTableNamespace();
+        CommitTransactionCommand();
 
 	MemoryContextSwitchTo(old_context);
 }
