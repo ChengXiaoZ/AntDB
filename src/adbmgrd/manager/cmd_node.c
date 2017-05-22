@@ -2892,13 +2892,6 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-		/*param table*/
-		resetStringInfo(&(getAgentCmdRst.description));
-		resetStringInfo(&infosendmsg);
-		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
-		if (!getAgentCmdRst.ret)
-			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 4: block all the DDL lock */
 		if (!mgr_get_active_hostoid_and_port(CNDN_TYPE_COORDINATOR_MASTER, &coordhostoid, &coordport, &appendnodeinfo, true))
@@ -3629,13 +3622,6 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-		/*param table*/
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&(getAgentCmdRst.description));
-		mgr_add_parm(appendnodeinfo.nodename, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
-		if (!getAgentCmdRst.ret)
-			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 3: update coordinator master's pg_hba.conf */
 		resetStringInfo(&infosendmsg);
@@ -3848,13 +3834,6 @@ Datum mgr_append_agtmslave(PG_FUNCTION_ARGS)
 								&getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-		/*param table*/
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&(getAgentCmdRst.description));
-		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_SLAVE, &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
-		if (!getAgentCmdRst.ret)
-			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 		/* step 5: update agtm slave's recovery.conf. */
 		resetStringInfo(&infosendmsg);
@@ -4063,13 +4042,6 @@ Datum mgr_append_agtmextra(PG_FUNCTION_ARGS)
 								&infosendmsg, 
 								appendnodeinfo.nodehost, 
 								&getAgentCmdRst);
-		if (!getAgentCmdRst.ret)
-			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
-		/*param table*/
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&(getAgentCmdRst.description));
-		mgr_add_parm(appendnodeinfo.nodename, GTM_TYPE_GTM_EXTRA, &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, appendnodeinfo.nodepath, &infosendmsg, appendnodeinfo.nodehost, &getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 			ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
