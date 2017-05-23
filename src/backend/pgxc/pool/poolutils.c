@@ -410,6 +410,10 @@ HandlePoolerReload(void)
 
 	/* Abort existing xact if any */
 	AbortCurrentTransaction();
+	/* Drop temp objects */
+	StartTransactionCommand();
+	ResetTempTableNamespace();
+	CommitTransactionCommand();
 
 	/* Session is being reloaded, drop prepared and temporary objects */
 	DropAllPreparedStatements();
@@ -446,10 +450,6 @@ HandlePoolerReload(void)
 	ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
 	CurrentResourceOwner = ResourceOwnerGetParent(reload_ro);
 	ResourceOwnerDelete(reload_ro);
-	
-	StartTransactionCommand();
-        ResetTempTableNamespace();
-        CommitTransactionCommand();
 
 	MemoryContextSwitchTo(old_context);
 }
