@@ -3234,6 +3234,28 @@ QueryRewrite(Query *parsetree)
 	Assert(parsetree->querySource == QSRC_ORIGINAL);
 	Assert(parsetree->canSetTag);
 
+#ifdef ADB
+	/*
+	 * See pg_rewrite_query.
+	 *
+	 * "CreateTableAsStmt" has been dealt with in pg_rewrite_query,
+	 * but such query like "EXPLAIN ANALYZE SELECT * INTO X FROM Y"
+	 * can not covered correctly.
+	 */
+	if (parsetree->commandType == CMD_UTILITY &&
+		IsA(parsetree->utilityStmt, CreateTableAsStmt) &&
+		((CreateTableAsStmt *)parsetree->utilityStmt)->relkind != OBJECT_MATVIEW)
+	{
+		/*
+		 * CREATE TABLE AS SELECT and SELECT INTO are rewritten so that the
+		 * target table is created first. The SELECT query is then transformed
+		 * into an INSERT INTO statement. This step is not carried out for
+		 * materialized views.
+		 */
+		return QueryRewriteCTAS(parsetree);
+	}
+#endif
+
 	/*
 	 * Step 1
 	 *
