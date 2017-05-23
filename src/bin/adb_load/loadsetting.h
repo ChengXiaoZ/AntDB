@@ -68,7 +68,8 @@ typedef struct ADBLoadSetting
 
 	bool  dynamic_mode;
 	bool  static_mode;
-	bool  single_file;
+	bool  single_file_mode;
+	bool  stream_mode;
 	bool  process_bar;
 	bool  just_check;
 	bool  config_datanodes_valid;

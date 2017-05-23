@@ -26,6 +26,7 @@ typedef struct ReadInfo
 	int              redo_queue_total;
 	bool             redo_queue;
 	bool             filter_first_line;
+	bool             stream_mode;
 } ReadInfo;
 
 typedef enum ReadProducerState

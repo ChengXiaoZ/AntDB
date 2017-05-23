@@ -221,7 +221,7 @@ create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *
 		appendLineBufInfoString(linebuf, new_file_path_suffix);
 		pg_free(new_file_path_suffix);
 		new_file_path_suffix = NULL;
-	}else if (setting->single_file)
+	}else if (setting->single_file_mode)
 	{
 		appendLineBufInfoString(linebuf, setting->input_file);
 	}

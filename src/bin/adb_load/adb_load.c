@@ -120,20 +120,22 @@ static void show_process(int total,	int datanodes, int * thread_send_total, DIST
 /*--------------------------------------------------------*/
 #define is_digit(c) ((unsigned)(c) - '0' <= 9)
 
-#define MAXPGPATH          1024
-#define QUERY_MAXLEN       1024
-#define DEFAULT_USER       "postgres"
+#define MAXPGPATH               1024
+#define QUERY_MAXLEN            1024
+#define DEFAULT_USER            "postgres"
 
 #define PROVOLATILE_IMMUTABLE   'i'   /* never changes for given input */
 #define PROVOLATILE_STABLE      's'   /* does not change within a scan */
 #define PROVOLATILE_VOLATILE    'v'   /* can change even within a scan */
 
-#define SUFFIX_SQL     ".sql"
-#define SUFFIX_SCAN    ".scan"
-#define SUFFIX_DOING   ".doing"
-#define SUFFIX_ADBLOAD ".adbload"
-#define SUFFIX_ERROR   ".error"
-#define END_FILE_NAME  "adbload_end"
+#define SUFFIX_SQL              ".sql"
+#define SUFFIX_SCAN             ".scan"
+#define SUFFIX_DOING            ".doing"
+#define SUFFIX_ADBLOAD          ".adbload"
+#define SUFFIX_ERROR            ".error"
+#define END_FILE_NAME           "adbload_end"
+
+#define NO_USE_PATH_IN_STREAM_MODE "no_use_path_in_stream_mode"
 
 #define CHECK_FILE_INFO_ALWAYS \
 do \
@@ -290,7 +292,7 @@ main(int argc, char **argv)
 		fopen_error_file(setting->log_field->log_path);
 	}
 
-	if (setting->single_file)
+	if (setting->single_file_mode || setting->stream_mode)
 	{
 		FileLocation *file_location = (FileLocation*)palloc0(sizeof(FileLocation));
 		tables_ptr = (Tables *)palloc0(sizeof(Tables));
@@ -307,7 +309,17 @@ main(int argc, char **argv)
 		table_info_ptr->table_name = pg_strdup(setting->table_name);
 		table_info_ptr->file_nums = 1; /* just one file in single node */
 		table_info_ptr->next = NULL;
-		file_location->location = pg_strdup(setting->input_file);
+
+		if (setting->stream_mode)
+		{
+			/* don't use input file in stream mode */
+			file_location->location = pg_strdup(NO_USE_PATH_IN_STREAM_MODE);
+		}
+		else if (setting->single_file_mode)
+		{
+			file_location->location = pg_strdup(setting->input_file);
+		}
+
 		slist_push_head(&table_info_ptr->file_head, &file_location->next);
 	}
 	else if (setting->static_mode || setting->dynamic_mode)
@@ -450,7 +462,15 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 							covert_distribute_type_to_string(table_info_ptr->distribute_type));
 		write_error(linebuff);
 		release_linebuf(linebuff);
-		fprintf(stderr, "file : %s -------------> ", file_location->location);
+
+		if (setting->stream_mode)
+		{
+			fprintf(stderr, "table: %s -------------> ", table_info_ptr->table_name);
+		}
+		else
+		{
+			fprintf(stderr, "file : %s -------------> ", file_location->location);
+		}
 
 		switch (distribute_by)
 		{
@@ -1150,6 +1170,7 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	read_info->redo_queue_total = setting->redo_queue_total;
 	read_info->redo_queue = setting->redo_queue;
 	read_info->filter_first_line = setting->filter_first_line;
+	read_info->stream_mode = setting->stream_mode;
 	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 	{
 		ADBLOADER_LOG(LOG_ERROR,"start read_producer module failed");
@@ -1461,6 +1482,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	read_info->redo_queue_total = setting->redo_queue_total;
 	read_info->redo_queue = setting->redo_queue;
 	read_info->filter_first_line = setting->filter_first_line;
+	read_info->stream_mode = setting->stream_mode;
 	if ((res = init_read_thread(read_info)) != READ_PRODUCER_OK)
 
 	{

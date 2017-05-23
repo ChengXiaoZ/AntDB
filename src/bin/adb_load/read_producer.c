@@ -35,7 +35,9 @@ typedef struct Read_ThreadInfo
 	char                *file_path;
 	char                *start_cmd;
 	int                  read_file_buffer; //unit is KB
-	void               * (* thr_startroutine)(void *);
+	bool                 stream_node;
+	FILE                *fp;
+	void                *(* thr_startroutine)(void *);
 } Read_ThreadInfo;
 
 static void *read_ThreadWrapper (void *argp);
@@ -43,9 +45,9 @@ static void  read_ThreadCleanup (void * argp);
 static void *read_threadMain (void *argp);
 static bool is_replication_table(Read_ThreadInfo *thrinfo);
 static bool need_redo_queue(Read_ThreadInfo *thrinfo);
-static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp);
-static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp);
-static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp);
+static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo);
+static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo);
+static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo);
 static void  read_write_error_message(Read_ThreadInfo *thrinfo,
 								char * message,
 								char * error_message,
@@ -131,7 +133,7 @@ check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag)
 	return false;
 }
 
-static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
+static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
 {
 	char        buf[READFILEBUFSIZE];
 	int         lineno = 0;
@@ -146,7 +148,7 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	datanodes_num = thrinfo->datanodes_num;
 	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
 
-	while ((fgets(buf, sizeof(buf), fp)) != NULL)
+	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
 	{
 		int res = 0;
 		int j = 0;
@@ -163,7 +165,7 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 		if (NEED_EXIT)
 		{
 			STATE = READ_PRODUCER_PROCESS_EXIT_BY_CALLER;
-			fclose(fp);
+			fclose(thrinfo->fp);
 			pthread_exit(thrinfo);
 		}
 
@@ -184,7 +186,7 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 				STATE = READ_PRODUCER_PROCESS_ERROR;
 				read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno,
 								linebuf->data, TRUE);
-				fclose(fp);
+				fclose(thrinfo->fp);
 				pthread_exit(thrinfo);
 			}
 		}
@@ -203,7 +205,7 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	return;
 }
 
-static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
+static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
 {
 	bool         need_redo_queue = false;
 	int          datanodes_num = 0;
@@ -233,7 +235,7 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 		}
 	}
 
-	while ((fgets(buf, sizeof(buf), fp)) != NULL)
+	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
 	{
 		int res = 0;
 		int j = 0;
@@ -250,7 +252,7 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 		if (NEED_EXIT)
 		{
 			STATE = READ_PRODUCER_PROCESS_EXIT_BY_CALLER;
-			fclose(fp);
+			fclose(thrinfo->fp);
 			pthread_exit(thrinfo);
 		}
 
@@ -278,7 +280,7 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 					STATE = READ_PRODUCER_PROCESS_ERROR;
 					read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno,
 									linebuf->data, TRUE);
-					fclose(fp);
+					fclose(thrinfo->fp);
 					pthread_exit(thrinfo);
 				}
 			}
@@ -298,7 +300,7 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo, FILE *fp)
 	return;
 }
 
-static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp)
+static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
 {
 	int         lineno = 0;
 	char        buf[READFILEBUFSIZE];
@@ -307,7 +309,7 @@ static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp)
 	bool        filter_first_line = false;
 
 	filter_first_line = thrinfo->filter_first_line;
-	while ((fgets(buf, sizeof(buf), fp)) != NULL)
+	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
 	{
 		int res;
 		lineno++;
@@ -323,7 +325,7 @@ static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp)
 		if (NEED_EXIT)
 		{
 			STATE = READ_PRODUCER_PROCESS_EXIT_BY_CALLER;
-			fclose(fp);
+			fclose(thrinfo->fp);
 			pthread_exit(thrinfo);
 		}
 
@@ -339,7 +341,7 @@ static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo, FILE *fp)
 			STATE = READ_PRODUCER_PROCESS_ERROR;
 			read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno,
 								linebuf->data, TRUE);
-			fclose(fp);
+			fclose(thrinfo->fp);
 			pthread_exit(thrinfo);
 		}
 	}
@@ -356,7 +358,6 @@ void *
 read_threadMain (void *argp)
 {
 	Read_ThreadInfo  *thrinfo = (Read_ThreadInfo*) argp;
-	FILE             *fp;
 	char             *vbuf = NULL;
 	unsigned long int vbuf_size = 0;
 
@@ -364,7 +365,7 @@ read_threadMain (void *argp)
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
-	if (!file_exists(thrinfo->file_path))
+	if (!thrinfo->stream_node && !file_exists(thrinfo->file_path))
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] %s is not a file",
 				thrinfo->thread_id, thrinfo->file_path);
@@ -372,42 +373,49 @@ read_threadMain (void *argp)
 		pthread_exit(thrinfo);
 	}
 
-	if ((fp = fopen(thrinfo->file_path, "r")) == NULL)
+	if (thrinfo->stream_node)
 	{
-		ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] could not open file: %s",
-				thrinfo->thread_id, thrinfo->file_path);
-		read_write_error_message(thrinfo, "could not open file, check file",
-								NULL, 0, NULL, TRUE);
-		pthread_exit(thrinfo);
+		thrinfo->fp = stdin;
 	}
-
-	/*set vbuf*/
-	/*use default value 512 byte, if thrinfo->read_file_buffer <= 0*/
-	if (thrinfo->read_file_buffer > 0)
+	else
 	{
-		vbuf_size = thrinfo->read_file_buffer * 1024 * sizeof(char);
-		vbuf = (char *)palloc0(vbuf_size);
-		setvbuf(fp, vbuf, _IOFBF, vbuf_size);
+		if ((thrinfo->fp = fopen(thrinfo->file_path, "r")) == NULL)
+		{
+			ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] could not open file: %s",
+					thrinfo->thread_id, thrinfo->file_path);
+			read_write_error_message(thrinfo, "could not open file, check file",
+									NULL, 0, NULL, TRUE);
+			pthread_exit(thrinfo);
+		}
+
+		/*set vbuf*/
+		/*use default value 512 byte, if thrinfo->read_file_buffer <= 0*/
+		if (thrinfo->read_file_buffer > 0)
+		{
+			vbuf_size = thrinfo->read_file_buffer * 1024 * sizeof(char);
+			vbuf = (char *)palloc0(vbuf_size);
+			setvbuf(thrinfo->fp, vbuf, _IOFBF, vbuf_size);
+		}
 	}
 
 	if (is_replication_table(thrinfo) && !need_redo_queue(thrinfo))
 	{
-		read_data_file_and_no_need_redo(thrinfo, fp);
+		read_data_file_and_no_need_redo(thrinfo);
 	}
 	else if (is_replication_table(thrinfo) && need_redo_queue(thrinfo))
 	{
-		read_data_file_and_need_redo(thrinfo, fp);
+		read_data_file_and_need_redo(thrinfo);
 	}
 	else /* for hash table */
 	{
-		read_data_file_for_hash_table(thrinfo, fp);
+		read_data_file_for_hash_table(thrinfo);
 	}
 
 	STATE = READ_PRODUCER_PROCESS_COMPLETE;
 	ADBLOADER_LOG(LOG_INFO, "[thread id : %ld ] read file complete, filepath :%s",
 				thrinfo->thread_id, thrinfo->file_path);
 
-	fclose(fp);
+	fclose(thrinfo->fp);
 
 	return NULL;
 }
@@ -424,6 +432,7 @@ int init_read_thread(ReadInfo *read_info)
 	read_threadInfo->replication = read_info->replication;
 	read_threadInfo->start_cmd = pg_strdup(read_info->start_cmd);
 	read_threadInfo->filter_first_line = read_info->filter_first_line;
+	read_threadInfo->stream_node = read_info->stream_mode;
 	if (read_info->replication)
 	{
 

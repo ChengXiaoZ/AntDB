@@ -94,6 +94,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		{"password",            required_argument, NULL, 'W'},
 		{"queue",               required_argument, NULL, 'Q'},
 		{"static",                    no_argument, NULL, 's'},
+		{"stream",                    no_argument, NULL, 'x'},
 		{"singlefile",                no_argument, NULL, 'g'},
 		{"table",               required_argument, NULL, 't'},
 		{"threads_per_datanode",required_argument, NULL, 'r'},
@@ -122,7 +123,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 	}
 
 	setting = (ADBLoadSetting *)palloc0(sizeof(ADBLoadSetting));
-	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ejpm:n", long_options, &option_index)) != -1)
+	while((c = getopt_long(argc, argv, "c:d:yi:f:o:W:sgt:U:Q:r:h:ejpm:nx", long_options, &option_index)) != -1)
 	{
 		switch(c)
 		{
@@ -139,7 +140,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 			setting->input_file = pg_strdup(optarg);
 			break;
 		case 'g': //single file mode
-			setting->single_file = true;
+			setting->single_file_mode = true;
 			break;
 		case 'h':
 			setting->hash_thread_num = atoi(optarg);
@@ -202,6 +203,9 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		case 'W': //password
 			setting->password = pg_strdup(optarg);
 			break;
+		case 'x': // data from stdin
+			setting->stream_mode = true;
+			break;
 		case 'y': //dynamic mode
 			setting->dynamic_mode = true;
 			break;
@@ -241,18 +245,18 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	if ((setting->single_file && setting->static_mode) ||
+	if ((setting->single_file_mode && setting->static_mode) ||
 		(setting->static_mode && setting->dynamic_mode)||
-		(setting->single_file && setting->dynamic_mode)||
-		(setting->single_file && setting->static_mode && setting->dynamic_mode))
+		(setting->single_file_mode && setting->dynamic_mode)||
+		(setting->single_file_mode && setting->static_mode && setting->dynamic_mode))
 	{
 		fprintf(stderr, "Error: options -s/--static, -y/--dysnamic and -g/--singlefile cannot be used together.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (!setting->single_file && !setting->static_mode && !setting->dynamic_mode)
+	if (!setting->single_file_mode && !setting->static_mode && !setting->dynamic_mode && !setting->stream_mode)
 	{
-		fprintf(stderr, "Error: you should specify one of the options -g/--singlefile, -s/--static and -y/--dysnamic.\n");
+		fprintf(stderr, "Error: you should specify one of the options -g/--singlefile, -s/--static, -y/--dysnamic and -x/--stream.\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -291,11 +295,25 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 		}
 	}
 
-	if (setting->single_file)
+	if (setting->single_file_mode)
 	{
 		if (setting->input_file == NULL || setting->table_name == NULL)
 		{
 			fprintf(stderr, "Error: options -f/--inputfile and -t/--table must be used together.\n");
+			exit(EXIT_FAILURE);
+		}
+	}
+
+	if (setting->stream_mode)
+	{
+		if (setting->input_file != NULL)
+		{
+			fprintf(stderr, "Error: options -f/--inputfile should not used in stream mode.\n");
+			exit(EXIT_FAILURE);
+		}
+		if (setting->table_name == NULL)
+		{
+			fprintf(stderr, "Error: options -t/----table should be used in stream mode.\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -309,11 +327,14 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 			make_directory(setting->output_directory);
 	}
 
-	if ((setting->input_file != NULL && setting->table_name == NULL) ||
-		(setting->input_file == NULL && setting->table_name != NULL))
+	if (setting->single_file_mode)
 	{
-		fprintf(stderr, "Error: options -f/--inputfile and -t/--table should be used together.\n");
-		exit(EXIT_FAILURE);
+		if ((setting->input_file != NULL && setting->table_name == NULL) ||
+			(setting->input_file == NULL && setting->table_name != NULL))
+		{
+			fprintf(stderr, "Error: options -f/--inputfile and -t/--table should be used together.\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	if (setting->input_file != NULL)
@@ -851,7 +872,8 @@ static void print_help(FILE *fd)
 
 	fprintf(fd, _("  -g, --singlefile            import data using single file mode\n"));
 	fprintf(fd, _("  -s, --static                import data using static mode\n"));
-	fprintf(fd, _("  -y, --dynamic               import data using dynamic mode\n\n"));
+	fprintf(fd, _("  -y, --dynamic               import data using dynamic mode\n"));
+	fprintf(fd, _("  -x, --stream                import data using stream mode\n\n"));
 
 	fprintf(fd, _("  -c, --configfile            config file path (default:adb_load.conf in the current directory)\n"));
 	fprintf(fd, _("  -o, --outputdir             output directory for log file and error file\n"));
