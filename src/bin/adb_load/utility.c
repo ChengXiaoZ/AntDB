@@ -327,15 +327,22 @@ unsigned long file_size(const char *file)
 
 bool file_exists(const char *file)
 {
-	FILE *fd = fopen(file, "r");
+	Assert(file != NULL);
 
-	if (fd == NULL)
+	struct stat st;
+
+	if (stat(file, &st) == 0)
 	{
-		return false;
+		return S_ISDIR(st.st_mode) ? false : true;
+	}
+	else if (!(errno == ENOENT   ||
+				errno == ENOTDIR ||
+				errno == EACCES))
+	{
+		fprintf(stderr, "Error: could not access file \"%s\".\n", file);
 	}
 
-	fclose(fd);
-	return true;
+	return false;
 }
 
 bool remove_file(const char *file)
