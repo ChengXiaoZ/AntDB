@@ -33,9 +33,11 @@
 #define PG_DUMPALL_VERSION "pg_dumpall (PostgreSQL) " PG_VERSION "\n"
 
 static void myUsleep(long microsec);
-static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user);
-static int exec_ping_node(char *host, char *port, char *user, StringInfo err_msg);
+static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user, char *file_path);
+static int exec_ping_node(const char *host, const char *port, const char *user, const char *file_path, StringInfo err_msg);
 static void cmd_ping_node(StringInfo msg);
+static long get_pgpid(const char *file_path);
+
 static void cmd_node_init(char cmdtype, StringInfo msg, char *cmdfile, char* VERSION);
 static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg);
 static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bforce);
@@ -189,10 +191,11 @@ static void cmd_ping_node(StringInfo msg)
 	NameData host;
 	NameData port;
 	NameData user;
+	char file_path[MAXPGPATH] = {0};
 	StringInfoData err_msg;
 	initStringInfo(&err_msg);
 
-	is_success = parse_ping_node_msg(msg, &host, &port, &user);
+	is_success = parse_ping_node_msg(msg, &host, &port, &user, file_path);
 	if (is_success != true)
 	{
 		ereport(ERROR, (errmsg("funciton:cmd_ping_node, error to get values of host, port and user")));
@@ -203,16 +206,19 @@ static void cmd_ping_node(StringInfo msg)
 	because the agent and the node has the same host,
 	so omit the host ip, the agent will use localhost as host ip
 	*/
-	ping_status = exec_ping_node(NULL, NameStr(port), NameStr(user), &err_msg);
+	ping_status = exec_ping_node(NULL, NameStr(port), NameStr(user), file_path, &err_msg);
+	
+	/*send msg to client */
 	appendStringInfoCharMacro(&err_msg, ping_status);
 	agt_put_msg(AGT_MSG_RESULT, err_msg.data, err_msg.len);
 	agt_flush();
 	pfree(err_msg.data);
 }
-static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user)
+static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user, char *file_path)
 {
 	int index = msg->cursor;
-
+	Assert(host && port && user && file_path);
+	
 	if (index < msg->len)
 		snprintf(NameStr(*host), NAMEDATALEN, "%s", &(msg->data[index]));
 	else
@@ -227,9 +233,15 @@ static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name
 		snprintf(NameStr(*user), NAMEDATALEN, "%s", &(msg->data[index]));
 	else
 		return false;
+	index = index + strlen(&(msg->data[index])) + 1;
+	if (index < msg->len)
+		snprintf(file_path, MAXPGPATH, "%s", &(msg->data[index]));
+	else
+		return false;
 	return true;
 }
-static int exec_ping_node(char *host, char *port, char *user, StringInfo err_msg)
+
+static int exec_ping_node(const char *host, const char *port, const char *user, const char *file_path, StringInfo err_msg)
 {
 	char conninfo[NAMEDATALEN + 1] = {0};
 	char editBuf[NAMEDATALEN + 1] = {0};
@@ -253,6 +265,8 @@ static int exec_ping_node(char *host, char *port, char *user, StringInfo err_msg
 		snprintf(editBuf, NAMEDATALEN, "user=%s ", user);
 		strncat(conninfo, editBuf, NAMEDATALEN);
 	}
+	if (get_pgpid(file_path) == 0)
+		return PQPING_NO_RESPONSE;
 
 	/*timeout set 10s, when the cluster at high press, it should enlarge the value*/
 	snprintf(editBuf, NAMEDATALEN,"connect_timeout=10");
@@ -279,9 +293,24 @@ static int exec_ping_node(char *host, char *port, char *user, StringInfo err_msg
 	}
 	return -1;
 }
+static long get_pgpid(const char *pid_file)
+{
+	FILE	   *pidf;
+	long		pid;
 
-static void
-myUsleep(long microsec)
+	pidf = fopen(pid_file, "r");
+	if (pidf == NULL)
+	{
+		return 0;
+	}
+	if (fscanf(pidf, "%ld", &pid) != 1)
+	{
+		return 0;
+	}
+	fclose(pidf);
+	return pid;
+}
+static void myUsleep(long microsec)
 {
     struct timeval delay;
 

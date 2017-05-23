@@ -396,6 +396,8 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	ManagerAgent *ma;
 	StringInfoData sendstrmsg;
 	StringInfoData buf;
+	char pid_file_path[MAXPATH] = {0};
+	Datum nodepath;
 	int32 agent_port;
 	Relation rel;
 	HeapScanDesc rel_scan;
@@ -403,6 +405,7 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	HeapTuple tuple;
 	Form_mgr_host mgr_host;
 	GetAgentCmdRst getAgentCmdRst;
+	bool isnull;
 	Assert((host_addr != NULL) && (node_port != NULL) && (node_user != NULL));
 
 	/*get the host port base on the port of node and host*/
@@ -424,6 +427,24 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	heap_endscan(rel_scan);
 	heap_close(rel, AccessShareLock);
 
+	/*get postmaster.pid file path */
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeport
+				,BTEqualStrategyNumber
+				,F_INT4EQ
+				,Int32GetDatum(atol(node_port)));
+	rel = heap_open(NodeRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	tuple = heap_getnext(rel_scan, ForwardScanDirection);
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR, (errmsg("port \"%s\" does not exist in the node table", node_port)));
+	}
+	nodepath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel), &isnull);
+	snprintf(pid_file_path, MAXPATH, "%s/postmaster.pid", TextDatumGetCString(nodepath));
+	heap_endscan(rel_scan);
+	heap_close(rel, AccessShareLock);
+	
 	/*send the node message to agent*/
 	initStringInfo(&sendstrmsg);
 	initStringInfo(&(getAgentCmdRst.description));
@@ -432,7 +453,9 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	appendStringInfo(&sendstrmsg, "%s", node_port);
 	appendStringInfoChar(&sendstrmsg, '\0');
 	appendStringInfo(&sendstrmsg, "%s", node_user);
-
+	appendStringInfoChar(&sendstrmsg, '\0');
+	appendStringInfo(&sendstrmsg, "%s", pid_file_path);
+	
 	ma = ma_connect(host_addr, agent_port);;
 	if (!ma_isconnected(ma))
 	{
@@ -476,6 +499,7 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 		default:
 			return PQPING_NO_RESPONSE;
 	}
+	pfree(buf.data);
 }
 
 /*check the host in use or not*/
