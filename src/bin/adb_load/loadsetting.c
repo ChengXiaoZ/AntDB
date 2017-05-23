@@ -219,7 +219,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 
 	if (setting->filter_queue_file && !setting->redo_queue)
 	{
-		fprintf(stderr, "Error: options -e/--filter_queue_file and -Q/--queue must be use together.\n");
+		fprintf(stderr, "Error: options -e/--filter_queue_file and -Q/--queue must be used together.\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -295,7 +295,7 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 	{
 		if (setting->input_file == NULL || setting->table_name == NULL)
 		{
-			fprintf(stderr, "Error: options -f/--inputfile and -t/--table must be use together.\n");
+			fprintf(stderr, "Error: options -f/--inputfile and -t/--table must be used together.\n");
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -525,7 +525,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 
 	if(setting->config_file_path == NULL)
 	{
-		fprintf(stderr, "Error: could not set config file.\n");
+		fprintf(stderr, "Error: the config file must be given.\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -607,7 +607,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 			pfree(str_ptr);
 			str_ptr = NULL;
 
-			fprintf(stderr, "Error: The variable value for \"THREADS_NUM_PER_DATANODE\" should be greater than 0.\n");
+			fprintf(stderr, "Error: the value for \"THREADS_NUM_PER_DATANODE\" must be greater than 0.\n");
 			exit(EXIT_FAILURE);
 		}
 
@@ -626,7 +626,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 			pfree(str_ptr);
 			str_ptr = NULL;
 
-			fprintf(stderr, "Error: The variable value for \"HASH_THREAD_NUM\" should be greater than 0.\n");
+			fprintf(stderr, "Error: the value for \"HASH_THREAD_NUM\" must be greater than 0.\n");
 			exit(EXIT_FAILURE);
 		}
 
@@ -660,7 +660,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		{
 			pfree(str_ptr);
 			str_ptr = NULL;
-			fprintf(stderr, "the config parameter \"FILTER_FIRST_LINE\" set wrong.\n");
+			fprintf(stderr, "Error: the value for \"FILTER_FIRST_LINE\" must be one of \"on/off, true/false, 1/0\".\n");
 			exit(EXIT_FAILURE);
 		}
 
@@ -719,7 +719,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		}
 		else
 		{
-			fprintf(stderr, "the config parameter \"copy_cmd_comment\" set wrong.\n");
+			fprintf(stderr, "Error: the value for \"copy_cmd_comment\" must be one of \"on/off, true/false, 1/0\".\n");
 			exit(EXIT_FAILURE);
 		}
 
@@ -736,7 +736,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		}
 		else
 		{
-			fprintf(stderr, "the config parameter \"copy_cmd_comment_str\" set wrong.\n");
+			fprintf(stderr, "Error: the config parameter \"copy_cmd_comment_str\" set wrong.\n");
 			exit(EXIT_FAILURE);
 		}
 
@@ -746,7 +746,7 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 
 	if (setting->copy_cmd_comment && setting->copy_cmd_comment_str == NULL)
 	{
-		fprintf(stderr, "\'COPY_CMD_COMMENT_STR\' do not is NULL when \'COPY_CMD_COMMENT\' is on.\n");
+		fprintf(stderr, "Error: the value for \'COPY_CMD_COMMENT_STR\' must be given when \'COPY_CMD_COMMENT\' is set on.\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -775,7 +775,7 @@ get_text_delim(char *text_delim)
 	}
 	else
 	{
-		fprintf(stderr, "COPY delimiter must be a single one-byte character.\n");
+		fprintf(stderr, "Error: the value for \"COPY_DELIMITER\" must be a single character.\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -830,8 +830,8 @@ static char *get_config_file_value(const char *key)
 	char *get_value = GetConfValue(key);
 	if(get_value == NULL)
 	{
-		fprintf(stderr, "Error: the config parameter \"%s\" need a value\n", key);
-		exit(1);
+		fprintf(stderr, "Error: the value for \"%s\" must be given.\n", key);
+		exit(EXIT_FAILURE);
 	}
 	return pstrdup(get_value);
 }
@@ -853,19 +853,19 @@ static void print_help(FILE *fd)
 	fprintf(fd, _("  -s, --static                import data using static mode\n"));
 	fprintf(fd, _("  -y, --dynamic               import data using dynamic mode\n\n"));
 
-	fprintf(fd, _("  -c, --configfile            config file path (default:adb_load.conf on current directory)\n"));
+	fprintf(fd, _("  -c, --configfile            config file path (default:adb_load.conf in the current directory)\n"));
 	fprintf(fd, _("  -o, --outputdir             output directory for log file and error file\n"));
 	fprintf(fd, _("  -i, --inputdir              data file directory\n"));
 	fprintf(fd, _("  -f, --inputfile             data file\n"));
 	fprintf(fd, _("  -t, --table                 table name\n\n"));
 
 	fprintf(fd, _("  -p, --copy_cmd_comment      enable copy command comment\n"));
-	fprintf(fd, _("  -m, --copy_cmd_comment_str  copy command comment string, must be the same two char\n"));
-	fprintf(fd, _("  -n, --filter_first_line     fiter the first line\n\n"));
+	fprintf(fd, _("  -m, --copy_cmd_comment_str  comment mark, must be two same characters, such as '\\','##'\n"));
+	fprintf(fd, _("  -n, --filter_first_line     filter the first line\n\n"));
 
 	fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
-	fprintf(fd, _("  -e, --filter_queue_file     filter queue data into file\n"));
-	fprintf(fd, _("  -j, --just_check            just check data, not send data\n"));
+	fprintf(fd, _("  -e, --filter_queue_file     redirect specific queue data into files\n"));
+	fprintf(fd, _("  -j, --just_check            just check if the data is correct, no importing data into the database\n"));
 	fprintf(fd, _("  -?, --help                  show this help, then exit\n"));
 	fprintf(fd, _("  -V, --version               output version information, then exit\n"));
 

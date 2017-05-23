@@ -319,7 +319,7 @@ main(int argc, char **argv)
 			tables_ptr->table_nums == 0 &&
 			tables_ptr->info == NULL)
 		{
-			fprintf(stderr, "Error: cannot get file information in \"%s\" \n", setting->input_directory);
+			fprintf(stderr, "Error: the folder is empty in path \"%s\".\n", setting->input_directory);
 			exit(EXIT_FAILURE);
 		}
 
