@@ -94,6 +94,8 @@ static bool do_hash_module(char *filepath, const TableInfo *table_info);
 static void clean_hash_module(void);
 static char *get_outqueue_name (int datanode_num);
 static void exit_nicely(PGconn *conn);
+static void deep_copy(HashField *dest, HashField *src);
+
 /*--------------------------------------------------------*/
 
 void file_name_print(char **file_list, int file_num);
@@ -1370,7 +1372,8 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	}
 
 	/* get table base attribute */
-	field = table_info->table_attribute;
+	field = (HashField *)palloc0(sizeof(HashField));
+	deep_copy(field, table_info->table_attribute);
 
 	/* start hash module first */
 	if (table_info->distribute_type == DISTRIBUTE_BY_DEFAULT_HASH ||
@@ -3053,5 +3056,27 @@ show_process(int total, int datanodes, int * thread_send_total, DISTRIBUTE type)
 		default:
 			break;
 	}
+}
+
+static void
+deep_copy(HashField *dest, HashField *src)
+{
+	memcpy(dest, src, sizeof(HashField));
+
+	dest->node_list = (Oid *)palloc0(src->datanodes_num * sizeof(Oid));
+	memcpy(dest->node_list, src->node_list, (src->datanodes_num * sizeof(Oid)));
+
+	dest->field_loc  = (int *)palloc0(src->field_nums * sizeof(int));
+	memcpy(dest->field_loc, src->field_loc, src->field_nums * sizeof(int));
+
+	dest->field_type = (Oid *)palloc0(src->field_nums * sizeof(Oid));
+	memcpy(dest->field_type, src->field_type, src->field_nums * sizeof(Oid));
+
+	dest->text_delim = pg_strdup(src->text_delim);
+	dest->hash_delim = pg_strdup(src->hash_delim);
+
+	dest->copy_options = pg_strdup(src->copy_options);
+
+	return;
 }
 
