@@ -33,6 +33,7 @@ SUBDIRS = \
 		pg_buffercache	\
 		pg_fix			\
 		pg_freespacemap \
+		pg_rewind \
 		pg_standby	\
 		pg_stat_statements \
 		pg_test_fsync	\

@@ -26,6 +26,9 @@
 
 
 static const char *progname;
+#ifdef ADB
+const char *nodename;
+#endif
 
 typedef struct XLogDumpPrivate
 {
@@ -387,6 +390,9 @@ usage(void)
 	printf("\nOptions:\n");
 	printf("  -b, --bkp-details      output detailed information about backup blocks\n");
 	printf("  -e, --end=RECPTR       stop reading at log position RECPTR\n");
+#ifdef ADB
+	printf("  -N, --nodename=NAME    set current node's name for ADB\n");
+#endif
 	printf("  -n, --limit=N          number of records to display\n");
 	printf("  -p, --path=PATH        directory in which to find log segment files\n");
 	printf("                         (default: ./pg_xlog)\n");
@@ -451,8 +457,13 @@ main(int argc, char **argv)
 		goto bad_argument;
 	}
 
+#ifdef ADB
+	while ((option = getopt_long(argc, argv, "be:?N:n:p:r:s:t:Vx:",
+								 long_options, &optindex)) != -1)
+#else
 	while ((option = getopt_long(argc, argv, "be:?n:p:r:s:t:Vx:",
 								 long_options, &optindex)) != -1)
+#endif
 	{
 		switch (option)
 		{
@@ -472,6 +483,16 @@ main(int argc, char **argv)
 				usage();
 				exit(EXIT_SUCCESS);
 				break;
+#ifdef ADB
+			case 'N':
+				nodename = pg_strdup(optarg);
+				if (strlen(nodename) > NAMEDATALEN)
+				{
+					fprintf(stderr, _("Invalid node name \"%s\""), nodename);
+					goto bad_argument;
+				}
+				break;
+#endif
 			case 'n':
 				if (sscanf(optarg, "%d", &config.stop_after_records) != 1)
 				{
@@ -553,6 +574,14 @@ main(int argc, char **argv)
 				progname, argv[optind + 2]);
 		goto bad_argument;
 	}
+
+#ifdef ADB
+	if (nodename == NULL)
+	{
+		fprintf(stderr, _("%s: need a valid node name\n"), progname);
+		goto bad_argument;
+	}
+#endif
 
 	if (private.inpath != NULL)
 	{
