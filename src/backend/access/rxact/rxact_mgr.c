@@ -773,13 +773,13 @@ static void RxactSaveLog(bool flush)
 
 	/* save remote node */
 	Assert(rxlf_remote_node != -1);
-	hash_seq_init(&hash_status, htab_remote_node);
 	cursor = FileSeek(rxlf_remote_node, 0, SEEK_SET);
 	if(cursor != 0)
 	{
 		ereport(ERROR, (errcode_for_file_access(),
 			errmsg("Can not seek file \"%s\" to start", FilePathName(rxlf_remote_node))));
 	}
+	hash_seq_init(&hash_status, htab_remote_node);
 	while((p=hash_seq_search(&hash_status))!=NULL)
 		rxact_log_simple_write(rxlf_remote_node, p, sizeof(RemoteNode));
 	cursor = FileSeek(rxlf_remote_node, 0, SEEK_CUR);
@@ -787,22 +787,22 @@ static void RxactSaveLog(bool flush)
 
 	/* save database node file*/
 	Assert(rxlf_db_node != -1);
-	hash_seq_init(&hash_status, htab_db_node);
 	cursor = FileSeek(rxlf_db_node, 0, SEEK_SET);
 	if(cursor != 0)
 	{
 		ereport(ERROR, (errcode_for_file_access(),
 			errmsg("Can not seek file \"%s\" to start", FilePathName(rxlf_db_node))));
 	}
+	hash_seq_init(&hash_status, htab_db_node);
 	while((p=hash_seq_search(&hash_status))!=NULL)
 		rxact_log_simple_write(rxlf_db_node, p, sizeof(DatabaseNode));
 	cursor = FileSeek(rxlf_db_node, 0, SEEK_CUR);
 	FileTruncate(rxlf_db_node, cursor);
 
 	/* save xact */
-	hash_seq_init(&hash_status, htab_rxid);
 	rfile = rxact_log_open_file(rxlf_xact_filename, O_WRONLY | O_TRUNC | PG_BINARY, 0);
 	rlog = rxact_begin_write_log(rfile);
+	hash_seq_init(&hash_status, htab_rxid);
 	while((rinfo = hash_seq_search(&hash_status)) != NULL)
 	{
 		rxact_log_write_string(rlog, rinfo->gid);
@@ -1356,9 +1356,9 @@ static void rxact_agent_get_running(RxactAgent *agent)
 	HASH_SEQ_STATUS seq_status;
 	Oid oid;
 
-	hash_seq_init(&seq_status, htab_rxid);
 	rxact_begin_msg(&buf, RXACT_MSG_RUNNING);
 	oid = InvalidOid;
+	hash_seq_init(&seq_status, htab_rxid);
 	while((info = hash_seq_search(&seq_status)) != NULL)
 	{
 		rxact_put_string(&buf, info->gid);
