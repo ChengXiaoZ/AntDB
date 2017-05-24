@@ -401,8 +401,9 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	int32 agent_port;
 	Relation rel;
 	HeapScanDesc rel_scan;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	HeapTuple tuple;
+	Oid host_tuple_oid;
 	Form_mgr_host mgr_host;
 	GetAgentCmdRst getAgentCmdRst;
 	bool isnull;
@@ -417,6 +418,7 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	rel = heap_open(HostRelationId, AccessShareLock);
 	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
 	tuple = heap_getnext(rel_scan, ForwardScanDirection);
+	host_tuple_oid = HeapTupleGetOid(tuple);
 	if (!HeapTupleIsValid(tuple))
 	{
 		ereport(ERROR, (errmsg("host\"%s\" does not exist in the host table", host_addr)));
@@ -433,8 +435,13 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 				,BTEqualStrategyNumber
 				,F_INT4EQ
 				,Int32GetDatum(atol(node_port)));
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodehost
+				,BTEqualStrategyNumber
+				,F_OIDEQ
+				,ObjectIdGetDatum(host_tuple_oid));
 	rel = heap_open(NodeRelationId, AccessShareLock);
-	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 2, key);
 	tuple = heap_getnext(rel_scan, ForwardScanDirection);
 	if (!HeapTupleIsValid(tuple))
 	{
