@@ -2962,10 +2962,35 @@ ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 
 	if (caseExpr->arg)
 	{
+#ifdef ADB
+		/*
+		 * fix bug abour CASE nested. for example:
+		 *
+		 * CREATE FUNCTION vol(text) returns text as
+		 * 'begin return $1; end' language plpgsql volatile;
+		 * SELECT CASE
+		 *            (CASE vol('bar')
+		 *             WHEN 'foo' THEN 'it was foo!'
+		 *             WHEN vol(null) THEN 'null input'
+		 *             WHEN 'bar' THEN 'it was bar!' END
+		 *            )
+		 *        WHEN 'it was foo!' THEN 'foo recognized'
+		 *        WHEN 'it was bar!' THEN 'bar recognized'
+		 *        ELSE 'unrecognized' END;
+		 */
+		bool	arg_isNull;
+#endif
 		econtext->caseValue_datum = ExecEvalExpr(caseExpr->arg,
 												 econtext,
+#ifdef ADB
+												 &arg_isNull,
+#else
 												 &econtext->caseValue_isNull,
+#endif
 												 NULL);
+#ifdef ADB
+		econtext->caseValue_isNull = arg_isNull;
+#endif
 	}
 
 	/*
