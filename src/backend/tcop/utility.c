@@ -859,7 +859,13 @@ standard_ProcessUtility(Node *parsetree,
 		case T_DropdbStmt:
 			{
 				DropdbStmt *stmt = (DropdbStmt *) parsetree;
-
+#ifdef PGXC
+				/* Allow this to be run inside transaction block on remote nodes */
+				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+					/* no event triggers for global objects */
+					PreventTransactionChain(isTopLevel, "DROP DATABASE");
+#endif
+				dropdb(stmt->dbname, stmt->missing_ok);
 #ifdef PGXC
 				/* Clean connections before dropping a database on local node */
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
@@ -875,13 +881,6 @@ standard_ProcessUtility(Node *parsetree,
 				}
 #endif
 
-#ifdef PGXC
-				/* Allow this to be run inside transaction block on remote nodes */
-				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-					/* no event triggers for global objects */
-					PreventTransactionChain(isTopLevel, "DROP DATABASE");
-#endif
-				dropdb(stmt->dbname, stmt->missing_ok);
 #ifdef ADB
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 					agtms_DropSequenceByDataBase(stmt->dbname);
