@@ -1234,23 +1234,32 @@ setval_oid(PG_FUNCTION_ARGS)
 	int64		next = PG_GETARG_INT64(1);
 	
 #ifdef ADB
-	Relation	seqrel;
-	SeqTable	elm;
-	int64		seq_val;
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		Relation	seqrel;
+		SeqTable	elm;
+		int64		seq_val;
+		bool		is_temp;
 
-	char * seqName = NULL;
-	char * databaseName = NULL;
-	char * schemaName = NULL;
+		char * seqName = NULL;
+		char * databaseName = NULL;
+		char * schemaName = NULL;
 
-	init_sequence(relid, &elm, &seqrel);
+		init_sequence(relid, &elm, &seqrel);
 
-	seqName = RelationGetRelationName(seqrel);
-	databaseName = get_database_name(seqrel->rd_node.dbNode);
-	schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+		is_temp = seqrel->rd_backend == MyBackendId;
+		if (!is_temp)
+		{
+			seqName = RelationGetRelationName(seqrel);
+			databaseName = get_database_name(seqrel->rd_node.dbNode);
+			schemaName = get_namespace_name(RelationGetNamespace(seqrel));
 
-	seq_val = agtm_SetSeqVal(seqName, databaseName, schemaName, next);
-	relation_close(seqrel, NoLock);
-	PG_RETURN_INT64(seq_val);
+			seq_val = agtm_SetSeqVal(seqName, databaseName, schemaName, next);
+			relation_close(seqrel, NoLock);
+			PG_RETURN_INT64(seq_val);
+		}
+		relation_close(seqrel, NoLock);
+	}
 #endif
 
 	do_setval(relid, next, true);
@@ -1268,25 +1277,35 @@ setval3_oid(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	int64		next = PG_GETARG_INT64(1);
 	bool		iscalled = PG_GETARG_BOOL(2);
-	
+
 #ifdef ADB
-	Relation	seqrel;
-	SeqTable	elm;
-	int64		seq_val;
-	char * seqName = NULL;
-	char * databaseName = NULL;
-	char * schemaName = NULL;
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		Relation	seqrel;
+		SeqTable	elm;
+		int64		seq_val;
+		bool		is_temp;
 
-	/* open and AccessShareLock sequence */
-	init_sequence(relid, &elm, &seqrel);
+		char * seqName = NULL;
+		char * databaseName = NULL;
+		char * schemaName = NULL;
 
-	seqName = RelationGetRelationName(seqrel);
-	databaseName = get_database_name(seqrel->rd_node.dbNode);
-	schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+		/* open and AccessShareLock sequence */
+		init_sequence(relid, &elm, &seqrel);
 
-	seq_val = agtm_SetSeqValCalled(seqName, databaseName, schemaName, next, iscalled);
-	relation_close(seqrel, NoLock);
-	PG_RETURN_INT64(seq_val);
+		is_temp = seqrel->rd_backend == MyBackendId;
+		if (!is_temp)
+		{
+			seqName = RelationGetRelationName(seqrel);
+			databaseName = get_database_name(seqrel->rd_node.dbNode);
+			schemaName = get_namespace_name(RelationGetNamespace(seqrel));
+
+			seq_val = agtm_SetSeqValCalled(seqName, databaseName, schemaName, next, iscalled);
+			relation_close(seqrel, NoLock);
+			PG_RETURN_INT64(seq_val);
+		}
+		relation_close(seqrel, NoLock);
+	}
 #endif
 
 	do_setval(relid, next, iscalled);
