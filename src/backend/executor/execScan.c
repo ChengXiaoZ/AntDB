@@ -139,10 +139,23 @@ ExecScan(ScanState *node,
 	 */
 	if (node->ps.ps_TupFromTlist)
 	{
+#ifdef ADB
+		Oid save_xcnodeoid = InvalidOid;
+#endif
 		Assert(projInfo);		/* can't get here if not projecting */
+#ifdef ADB
+		save_xcnodeoid = projInfo->pi_slot->tts_xcnodeoid;
+#endif
 		resultSlot = ExecProject(projInfo, &isDone);
 		if (isDone == ExprMultipleResult)
+#ifdef ADB
+		{
+			resultSlot->tts_xcnodeoid = save_xcnodeoid;
 			return resultSlot;
+		}
+#else
+			return resultSlot;
+#endif
 		/* Done with that source tuple... */
 		node->ps.ps_TupFromTlist = false;
 	}
