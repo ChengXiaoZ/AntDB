@@ -1059,7 +1059,8 @@ agent_destroy(PoolAgent *agent)
 				slot->slot_state != SLOT_STATE_QUERY_AGTM_PORT &&
 				slot->slot_state != SLOT_STATE_QUERY_PARAMS_SESSION	&&
 				slot->slot_state != SLOT_STATE_QUERY_PARAMS_LOCAL &&
-				slot->slot_state != SLOT_STATE_QUERY_RESET_ALL)
+				slot->slot_state != SLOT_STATE_QUERY_RESET_ALL &&
+				slot->current_list != NULL_SLOT)
 			{
 				Assert(slot->current_list != NULL_SLOT);
 				dlist_delete(&slot->dnode);
