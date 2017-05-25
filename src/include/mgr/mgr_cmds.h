@@ -24,6 +24,20 @@ typedef struct GetAgentCmdRst
 	StringInfoData description;
 }GetAgentCmdRst;
 
+typedef struct AppendNodeInfo
+{
+	char *nodename;
+	char *nodepath;
+	char  nodetype;
+	Oid   nodehost;
+	char *nodeaddr;
+	int32 nodeport;
+	Oid   nodemasteroid;
+	char *nodeusername;
+	Oid		tupleoid;
+	NameData sync_state;
+}AppendNodeInfo;
+
 /* for table: monitor_alarm */
 typedef struct Monitor_Alarm
 {
@@ -51,6 +65,7 @@ typedef enum
 }extension_operator;
 
 /* host commands, in cmd_host.c */
+
 extern void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_drop_host(MGRDropHost *node, ParamListInfo params, DestReceiver *dest);
 extern void mgr_alter_host(MGRAlterHost *node, ParamListInfo params, DestReceiver *dest);
@@ -91,7 +106,7 @@ extern void mgr_alter_parm(MGRAlterParm *node, ParamListInfo params, DestReceive
 
 /*in cmd_node.c */
 extern void mgr_reload_conf(Oid hostoid, char *nodepath);
-
+extern bool get_active_node_info(const char node_type, const char *node_name, AppendNodeInfo *nodeinfo);
 /*coordinator datanode parse cmd*/
 extern Datum mgr_init_gtm_master(PG_FUNCTION_ARGS);
 extern Datum mgr_start_gtm_master(PG_FUNCTION_ARGS);
@@ -270,10 +285,12 @@ Datum mgr_update_param_datanode_failover(PG_FUNCTION_ARGS);
 /*mgr_hba    mgr_hba.c*/
 
 extern void mgr_clean_hba_table(char *coord_name, char *values);
-
+extern void add_hba_table_to_file(char *coord_name);
+extern void add_one_to_hba_file(const char *coord_name, const char *hba_value, GetAgentCmdRst *err_msg);
 extern Datum mgr_list_hba_by_name(PG_FUNCTION_ARGS);
 extern Datum mgr_drop_hba(PG_FUNCTION_ARGS);
 extern Datum mgr_add_hba(PG_FUNCTION_ARGS);
+
 /*monitor_jobitem.c*/
 extern void monitor_jobitem_add(MonitorJobitemAdd *node, ParamListInfo params, DestReceiver *dest);
 extern void monitor_jobitem_alter(MonitorJobitemAlter *node, ParamListInfo params, DestReceiver *dest);

@@ -407,7 +407,7 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 	Form_mgr_host mgr_host;
 	GetAgentCmdRst getAgentCmdRst;
 	bool isnull;
-	Assert((host_addr != NULL) && (node_port != NULL) && (node_user != NULL));
+	Assert(host_addr && node_port && node_user);
 
 	/*get the host port base on the port of node and host*/
 	ScanKeyInit(&key[0]
@@ -494,7 +494,10 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 		ereport(WARNING, (errmsg("monitor (host=%s port=%s) fail \"%s\"",
 			host_addr, node_port, getAgentCmdRst.description.data)));
 	}
-	ping_status = getAgentCmdRst.description.data[0];
+	if (getAgentCmdRst.description.len == 1)
+		ping_status = getAgentCmdRst.description.data[0];
+	else
+		ereport(ERROR, (errmsg("receive msg from agent \"%s\" error.", host_addr)));
 	pfree(getAgentCmdRst.description.data);
 	switch(ping_status)
 	{
