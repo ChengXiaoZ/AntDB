@@ -1017,12 +1017,17 @@ currval_oid(PG_FUNCTION_ARGS)
 	int64		result;
 	SeqTable	elm;
 	Relation	seqrel;
-	
+#ifdef ADB
+	bool		is_temp;
+#endif	
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
 #ifdef ADB
 {
+	is_temp = seqrel->rd_backend == MyBackendId;
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && !is_temp)
+	{
 		int64		seq_val;
 
 		char * seqName = NULL;
@@ -1036,6 +1041,7 @@ currval_oid(PG_FUNCTION_ARGS)
 		seq_val = agtm_GetSeqCurrVal(seqName, databaseName, schemaName);
 		relation_close(seqrel, NoLock);
 		PG_RETURN_INT64(seq_val);
+	}
 }
 #endif
 
