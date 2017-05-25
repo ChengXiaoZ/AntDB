@@ -1019,7 +1019,7 @@ currval_oid(PG_FUNCTION_ARGS)
 	Relation	seqrel;
 #ifdef ADB
 	bool		is_temp;
-#endif	
+#endif
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
 
@@ -1041,6 +1041,10 @@ currval_oid(PG_FUNCTION_ARGS)
 		seq_val = agtm_GetSeqCurrVal(seqName, databaseName, schemaName);
 		relation_close(seqrel, NoLock);
 		PG_RETURN_INT64(seq_val);
+	}
+	else
+	{
+		PreventCommandIfReadOnly("currval()");
 	}
 }
 #endif
@@ -1084,6 +1088,10 @@ lastval(PG_FUNCTION_ARGS)
 			PG_RETURN_INT64(seq_val);
 		}
     }
+	else
+	{
+		PreventCommandIfReadOnly("lastval()");
+	}
 #endif
 
 	if (last_used_seq == NULL)
@@ -1260,6 +1268,10 @@ setval_oid(PG_FUNCTION_ARGS)
 		}
 		relation_close(seqrel, NoLock);
 	}
+	else
+	{
+		PreventCommandIfReadOnly("setval()");
+	}
 #endif
 
 	do_setval(relid, next, true);
@@ -1305,6 +1317,10 @@ setval3_oid(PG_FUNCTION_ARGS)
 			PG_RETURN_INT64(seq_val);
 		}
 		relation_close(seqrel, NoLock);
+	}
+	else
+	{
+		PreventCommandIfReadOnly("setval()");
 	}
 #endif
 
