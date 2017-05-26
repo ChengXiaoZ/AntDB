@@ -1,5 +1,5 @@
-#ifndef COMPUTE_HASH_H
-#define COMPUTE_HASH_H
+#ifndef ADB_LOAD_COMPUTE_HASH_H
+#define ADB_LOAD_COMPUTE_HASH_H
 
 #include "libpq-fe.h"
 
@@ -136,4 +136,5 @@ extern int stop_hash_threads(void);
 extern void clean_hash_resource(void);
 extern void fclose_filter_queue_file_fd(int fd_total);
 extern void set_hash_file_start_cmd(char * start_cmd);
-#endif
+
+#endif /* ADB_LOAD_COMPUTE_HASH_H */

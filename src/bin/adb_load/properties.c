@@ -2,19 +2,22 @@
 
 #include "properties.h"
 #include "nodes/pg_list.h"
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 
 #define KEY_SIZE        128 /* key cache size */
-#define VALUE_SIZE      128 /* value cache size */ 
+#define VALUE_SIZE      128 /* value cache size */
 #define LINE_BUF_SIZE   256 /* line cache size */
 
-typedef struct PropertieNode {
+typedef struct PropertieNode
+{
     char *key;
     char *value;
 	struct PropertieNode *pNext;
 } PropertieNode;
 
-typedef struct PROPS_HANDLE {
+typedef struct PROPS_HANDLE
+{
     PropertieNode *pHead;  /* attribute head point */
     char *filepath;        /* config file path */
 } PROPS_HANDLE;
@@ -53,18 +56,18 @@ InitConfig (const char *filepath)
 
 	/* open file */
 	fp = fopen(filepath, "r");
-	if (!fp) 
+	if (!fp)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[CONFIG][thread main ] open file failed, filepath : %s",filepath);
 		exit(1);
-	} 
+	}
 	pHead = create_props_node();
 	Properties->pHead = pHead;
 	pCurrent = pHead;
 	/* read all data from config file */
 	while (!feof(fp))
 	{
-		if(fgets(line, LINE_BUF_SIZE, fp) == NULL)   
+		if(fgets(line, LINE_BUF_SIZE, fp) == NULL)
 			break;
 
 		/* wipe off \n or \t */
@@ -73,7 +76,7 @@ InitConfig (const char *filepath)
 			line[strlen(line) -1] = '\0';
 
 		 /* find "=" */
-		if ((pLine = strstr(line, "=")) == NULL) 
+		if ((pLine = strstr(line, "=")) == NULL)
 			/* if "=" unexist continue next line */
 			continue;
 
@@ -189,7 +192,7 @@ create_props_node (void)
 	return node;
 }
 
-void 
+void
 clean_props_node(PropertieNode *node)
 {
 	Assert(node != NULL);
@@ -234,7 +237,7 @@ saveConfig(const char *filepath)
 	return 0;
 }
 
-void 
+void
 trime_symbol_copy (const char *src, char **dest)
 {
 	const char *psrc = src;
@@ -246,11 +249,11 @@ trime_symbol_copy (const char *src, char **dest)
 		i++;
 	}
 
-	while (psrc[j] == ' ' || psrc[j] == '\t' || psrc[j] == '\r') 
+	while (psrc[j] == ' ' || psrc[j] == '\t' || psrc[j] == '\r')
 	{
 		j--;
 	}
- 
+
 	if (psrc[i] == '\"' && psrc[j] == '\"' && i != j)
 	{
 		i++;
@@ -259,11 +262,11 @@ trime_symbol_copy (const char *src, char **dest)
 
 	len = j - i + 1;
 	*dest = (char*)palloc0(len + 1);
-	memcpy(*dest, psrc+i, len);	
-	*(*dest+len) = '\0';   
+	memcpy(*dest, psrc+i, len);
+	*(*dest+len) = '\0';
 }
 
-int 
+int
 PropsDel(const char *key)
 {
 	PROPS_HANDLE *ph = NULL;
@@ -273,7 +276,7 @@ PropsDel(const char *key)
 	pPrev = ph->pHead;
 	pCurrent = ph->pHead->pNext;
 
-	while (pCurrent != NULL) 
+	while (pCurrent != NULL)
 	{
 		if (strcmp(pCurrent->key, key) == 0)
 			break;
@@ -392,7 +395,7 @@ DestoryConfig (void)
 		pfree(Properties->filepath);
 	Properties->filepath = NULL;
 	if (Properties->pHead)
-		clean_props_node(Properties->pHead);		
+		clean_props_node(Properties->pHead);
 	Properties->pHead = NULL;
 	pfree(Properties);
 	Properties = NULL;

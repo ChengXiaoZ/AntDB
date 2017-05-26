@@ -8,7 +8,8 @@
 
 #include "postgres_fe.h"
 #include "loadsetting.h"
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 
 static void *pthread_start(void *args);
 
@@ -37,7 +38,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	adbLoader_log_end();
+	close_log_process_fd();
 	return 0;
 }
 

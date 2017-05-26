@@ -27,7 +27,7 @@ int main(int argc, char **argv)
 	init_linebuf(2);
 	buf1 = get_linebuf();
 	buf2 = get_linebuf();
-	buf3 = get_linebuf();	
+	buf3 = get_linebuf();
 
 	appendLineBufInfoString(buf1, string1);
 	appendLineBufInfoString(buf2, string2);
@@ -61,12 +61,12 @@ int main(int argc, char **argv)
 	field->quotec = '"';
 	field->has_qoute = true;
 
-	fopen_error_file(NULL);
+	open_log_detail_fd(NULL);
 	init_hash_compute(thread_nums, func_name, conninfo, input_queue,
 		output_queue, output_queue_size, field);
 
 	mq_pipe_put(input_queue, NULL);
-	
+
 	for(;;)
 	{}
 	fclose_error_file();

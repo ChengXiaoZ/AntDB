@@ -1,5 +1,5 @@
-#ifndef UTILITY_H
-#define UTILITY_H
+#ifndef ADB_LOAD_UTILITY_H
+#define ADB_LOAD_UTILITY_H
 
 #include "linebuf.h"
 #include "compute_hash.h"
@@ -62,33 +62,33 @@ typedef struct TableInfo
 } TableInfo;
 
 /* module error file format */
-LineBuffer *format_error_begin (char *file_name, char *table_type);
+extern LineBuffer *format_error_begin (char *file_name, char *table_type);
+extern LineBuffer *format_error_info (char *message, Module type, char *error_message,
+								      int line_no, char *line_data);
 
-LineBuffer *format_error_info (char *message, Module type, char *error_message,
-								int line_no, char *line_data);
+extern LineBuffer *format_error_end (char *file_name);
 
-LineBuffer *format_error_end (char *file_name);
+extern ConnectionNode *create_connectionNode(char *database, char *user, char *passw);
 
-ConnectionNode *create_connectionNode(char *database, char *user, char *passw);
-
-FileInfo *create_fileInfo (char *file_path, char *table_name, char *config_path,
+extern FileInfo *create_fileInfo (char *file_path, char *table_name, char *config_path,
 							char *database, char *user, char *passw);
 
-void free_conenctionNode (ConnectionNode *connection);
+extern void free_conenctionNode (ConnectionNode *connection);
 
-void free_fileInfo (FileInfo *fileInfo);
+extern void free_fileInfo (FileInfo *fileInfo);
 
-char * create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *table_info);
+extern char * create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *table_info);
 
-char* get_current_time(void);
+extern char* get_current_time(void);
 
-bool directory_exists(char *dir);
-void make_directory(const char *dir);
+extern bool directory_exists(char *dir);
+extern void make_directory(const char *dir);
 
-unsigned long file_size(const char *file);
-bool file_exists(const char *file);
-bool remove_file(const char *file);
+extern unsigned long file_size(const char *file);
+extern bool file_exists(const char *file);
+extern bool remove_file(const char *file);
 
-char *adb_load_tolower(char *str);
-bool check_copy_comment_str_valid(char *copy_cmd_comment_str);
-#endif
+extern char *adb_load_tolower(char *str);
+extern bool check_copy_comment_str_valid(char *copy_cmd_comment_str);
+
+#endif /* ADB_LOAD_UTILITY_H */

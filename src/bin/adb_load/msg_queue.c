@@ -6,7 +6,8 @@
 
 #include "msg_queue.h"
 #include "lib/ilist.h"
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 
 static bool full (MessageQueue *queue);
 
@@ -71,7 +72,7 @@ mq_put (MessageQueue *queue, LineBuffer* lineBuffer)
 	return 1;
 }
 
-int 
+int
 mq_put_element (MessageQueue *queue, QueueElement *element)
 {
 	Assert(queue != NULL && element != NULL);
@@ -98,7 +99,7 @@ mq_put_batch (MessageQueue *queue, LineBuffer ** lineBuffer, int size)
 	QueueElement *element;
 	int			  flag;
 
-	Assert(queue != NULL && lineBuffer != NULL && size > 0);	
+	Assert(queue != NULL && lineBuffer != NULL && size > 0);
 	pthread_mutex_lock(&queue->queue_mutex);
 	for(flag = 0; flag < size; flag++)
 	{
@@ -154,16 +155,16 @@ int
 mq_poll_batch (MessageQueue *queue, QueueElement **element_array, int size)
 {
 	int 		 flag ;
-	dlist_node 	 *node;	
+	dlist_node 	 *node;
 
 	Assert(queue != NULL && element_array != NULL && size > 0);
-	pthread_mutex_lock(&queue->queue_mutex);	
+	pthread_mutex_lock(&queue->queue_mutex);
 	for(flag = 0; flag < size; flag++)
 	{
 		if(mq_empty(queue))
 		{
 			pthread_mutex_unlock(&queue->queue_mutex);
-			return flag;		
+			return flag;
 		}
 		node = dlist_pop_head_node(&queue->queue_head);
 		queue->cur_size--;

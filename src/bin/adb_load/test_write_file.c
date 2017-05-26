@@ -24,13 +24,13 @@ int main(int argc, char **argv)
     {
         fprintf(stderr, "create thread failed! \n");
     }
-    
+
     if (pthread_join(thread_id[1], NULL) != 0)
     {
         fprintf(stderr, "pthread_join() failed! \n");
     }
 
-    
+
     /*
 	for (i = 0; i < 10; i++)
 	{
@@ -49,7 +49,7 @@ int main(int argc, char **argv)
 	}
     */
     printf("sssssss");
-    
+
 	fclose_error_file();
 	return 0;
 }
@@ -68,7 +68,7 @@ static void *pthread_start_write_file(void *args)
 
 	for (i = 0; i < 2; i++)
     {
-		write_error(linebuffer);
+		write_log_summary_fd(linebuffer);
 	}
 
 	return NULL;

@@ -1,5 +1,5 @@
-#ifndef READ_PRODUCER_H
-#define READ_PRODUCER_H
+#ifndef ADB_LOAD_READ_PRODUCER_H
+#define ADB_LOAD_READ_PRODUCER_H
 
 #include "msg_queue_pipe.h"
 
@@ -38,24 +38,10 @@ typedef enum ReadProducerState
 	READ_PRODUCER_PROCESS_COMPLETE
 } ReadProducerState;
 
-#if 0
-int
-init_read_thread(char *filepath, MessageQueuePipe *input_queue,
-				MessageQueuePipe **output_queue, int output_queue_num,
-				int datanodes_num, int threads_num_per_datanode,
-				bool replication, int end_flag_num, char * start_cmd,
-				int read_file_buffer, int *redo_queue_index, int redo_queue_total,
-				bool redo_queue);
-#endif
+extern int init_read_thread(ReadInfo *read_info);
+extern ReadProducerState GetReadModule(void);
+extern bool check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag);
+extern int get_filter_queue_file_fd_index(int redo_queue_total, int *redo_queue_index, int flag);
+extern void stop_read_thread(void);
 
-int
-init_read_thread(ReadInfo *read_info);
-
-ReadProducerState GetReadModule(void);
-
-bool check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag);
-
-int get_filter_queue_file_fd_index(int redo_queue_total, int *redo_queue_index, int flag);
-
-void stop_read_thread(void);
-#endif
+#endif /* ADB_LOAD_READ_PRODUCER_H */

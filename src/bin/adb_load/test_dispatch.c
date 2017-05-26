@@ -1,7 +1,8 @@
 #include "postgres_fe.h"
 #include "dispatch.h"
 #include "msg_queue_pipe.h"
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 #include "read_write_file.h"
 int main(int argc, char **argv)
 {
@@ -49,12 +50,12 @@ int main(int argc, char **argv)
 	dispatch->copy_options = "with (DELIMITER ',')";
 
  	adbLoader_log_init(NULL, LOG_INFO);
-	fopen_error_file(NULL);
+	open_log_detail_fd(NULL);
 	init_dispatch_threads(dispatch, TABLE_REPLICATION);
 
 	buf1 = get_linebuf();
 	buf2 = get_linebuf();
-	buf3 = get_linebuf();	
+	buf3 = get_linebuf();
 
 	appendLineBufInfoString(buf1, string1);
 	appendLineBufInfoString(buf2, string2);
@@ -72,7 +73,7 @@ int main(int argc, char **argv)
 	pfree(dispatch);
 	dispatch = NULL;
 	fclose_error_file();
-	adbLoader_log_end();
+	close_log_process_fd();
 	return 0;
 }
 

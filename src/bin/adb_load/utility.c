@@ -16,7 +16,8 @@ format_error_begin(char *file_name, char*table_type)
 	Assert(file_name != NULL);
 	Assert(table_type != NULL);
 
-	appendLineBufInfo(linebuf, "==================[%s]begin file: ", get_current_time());
+	appendLineBufInfoString(linebuf, "==================");
+	appendLineBufInfo(linebuf, "[%s]begin file: ", get_current_time());
 	appendLineBufInfoString(linebuf, file_name);
 	appendLineBufInfoString(linebuf, "==================\n");
 
@@ -81,15 +82,17 @@ format_error_info(char *message, Module type, char *error_message,
 	return linebuf;
 }
 
-LineBuffer *format_error_end (char *file_name)
+LineBuffer *
+format_error_end (char *file_name)
 {
 	LineBuffer * linebuf = get_linebuf();
 
 	Assert(file_name != NULL);
 
-	appendLineBufInfo(linebuf, "==================[%s]end file  : ", get_current_time());
+	appendLineBufInfoString(linebuf, "==================");
+	appendLineBufInfo(linebuf, "[%s]end file  : ", get_current_time());
 	appendLineBufInfoString(linebuf,file_name);
-	appendLineBufInfoString(linebuf, "==================\n");
+	appendLineBufInfoString(linebuf, "==================\n\n");
 
 	return linebuf;
 }
@@ -252,7 +255,8 @@ create_start_command(char *file_path, ADBLoadSetting *setting, const TableInfo *
 }
 
 
-static char *rename_string_suffix(char *file_path, char *suffix)
+static char *
+rename_string_suffix(char *file_path, char *suffix)
 {
 	char new_string_suffix[1024];
 	char tmp[1024] ;
@@ -270,7 +274,8 @@ static char *rename_string_suffix(char *file_path, char *suffix)
 	return pstrdup(new_string_suffix);
 }
 
-char* get_current_time()
+char *
+get_current_time()
 {
 	static char nowtime[20];
 	time_t rawtime;
@@ -283,7 +288,8 @@ char* get_current_time()
 	return nowtime;
 }
 
-bool directory_exists(char *dir)
+bool
+directory_exists(char *dir)
 {
 	struct stat st;
 
@@ -295,7 +301,8 @@ bool directory_exists(char *dir)
 }
 
 /* make a directory */
-void make_directory(const char *dir)
+void
+make_directory(const char *dir)
 {
 	if (mkdir(dir, S_IRWXU | S_IRWXG | S_IRWXO) < 0)
 	{
@@ -308,7 +315,8 @@ void make_directory(const char *dir)
 /*
  * Count bytes in file
  */
-unsigned long file_size(const char *file)
+unsigned long
+file_size(const char *file)
 {
 	unsigned long filesize = -1;
 	struct stat statbuff;
@@ -325,11 +333,12 @@ unsigned long file_size(const char *file)
 	return filesize;
 }
 
-bool file_exists(const char *file)
+bool
+file_exists(const char *file)
 {
-	Assert(file != NULL);
-
 	struct stat st;
+
+	Assert(file != NULL);
 
 	if (stat(file, &st) == 0)
 	{
@@ -345,7 +354,8 @@ bool file_exists(const char *file)
 	return false;
 }
 
-bool remove_file(const char *file)
+bool
+remove_file(const char *file)
 {
 	int res = 0;
 
@@ -359,7 +369,8 @@ bool remove_file(const char *file)
 	return true;
 }
 
-char *adb_load_tolower(char *str)
+char *
+adb_load_tolower(char *str)
 {
 	char *orign = str;
 

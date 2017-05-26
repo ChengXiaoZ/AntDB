@@ -4,10 +4,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 #include "read_producer.h"
 #include "utility.h"
-#include "read_write_file.h"
+#include "log_summary_fd.h"
 
 typedef pthread_t Read_ThreadID;
 
@@ -133,7 +134,8 @@ check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag)
 	return false;
 }
 
-static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
+static void
+read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
 {
 	char        buf[READFILEBUFSIZE];
 	int         lineno = 0;
@@ -205,7 +207,8 @@ static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
 	return;
 }
 
-static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
+static void
+read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
 {
 	bool         need_redo_queue = false;
 	int          datanodes_num = 0;
@@ -300,7 +303,8 @@ static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
 	return;
 }
 
-static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
+static void
+read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
 {
 	int         lineno = 0;
 	char        buf[READFILEBUFSIZE];
@@ -420,7 +424,8 @@ read_threadMain (void *argp)
 	return NULL;
 }
 
-int init_read_thread(ReadInfo *read_info)
+int
+init_read_thread(ReadInfo *read_info)
 {
 	Read_ThreadInfo *read_threadInfo = (Read_ThreadInfo*)palloc0(sizeof(Read_ThreadInfo));
 	int error = 0;
@@ -536,7 +541,7 @@ read_write_error_message(Read_ThreadInfo  *thrinfo, char * message, char * error
 		appendLineBufInfoString(error_buffer, "must deal this data alone");
 		appendLineBufInfoString(error_buffer, "\n");
 	}
-	write_error(error_buffer);
+	write_log_summary_fd(error_buffer);
 	release_linebuf(error_buffer);
 }
 

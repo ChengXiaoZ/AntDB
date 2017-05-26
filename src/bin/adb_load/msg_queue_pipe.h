@@ -1,5 +1,5 @@
-#ifndef MSG_QUEUE_PIPE_H
-#define MSG_QUEUE_PIPE_H
+#ifndef ADB_LOAD_MSG_QUEUE_PIPE_H
+#define ADB_LOAD_MSG_QUEUE_PIPE_H
 
 #include "linebuf.h"
 
@@ -31,4 +31,5 @@ extern int mq_pipe_put_batch (MessageQueuePipe *queue, LineBuffer ** lineBuffer,
 extern LineBuffer * mq_pipe_poll (MessageQueuePipe *queue);
 
 extern void mq_pipe_destory (MessageQueuePipe *queue);
-#endif
+
+#endif /* ADB_LOAD_MSG_QUEUE_PIPE_H */

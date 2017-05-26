@@ -37,11 +37,6 @@ static const char *DATANODE1_DB     = "DATANODE1_DB";
 static const char *HASH_THREAD_NUM  = "HASH_THREAD_NUM";
 static const char *COPY_DELIMITER   = "COPY_DELIMITER";
 static const char *COPY_NULL        = "COPY_NULL";
-//static const char*  COPY_HEADER      = "COPY_HEADER";
-//static const char*  HASH_DELIM       = "HASH_DELIM";
-//static const char*  COPY_QUOTEC      = "COPY_QUOTEC";
-//static const char*  COPY_ESCAPEC     = "COPY_ESCAPEC";
-//static const char*  COPY_OPTIONS     = "COPY_OPTIONS";
 
 /* LOG INFO WARNNING, ERROR */
 static const char *LOG_LEVEL         = "LOG_LEVEL";
@@ -53,16 +48,9 @@ static const char *COPY_CMD_COMMENT  = "COPY_CMD_COMMENT";
 static const char *COPY_CMD_COMMENT_STR = "COPY_CMD_COMMENT_STR";
 static const char *FILTER_FIRST_LINE = "FILTER_FIRST_LINE";
 static const char *READ_FILE_BUFFER  = "READ_FILE_BUFFER";
-
-/* ERROR FILE */
-// static const char *HASH_ERROR_FILE      = "HASH_ERROR_FILE";
-// static const char *DISPATCH_ERROR_FILE  = "DISPATCH_ERROR_FILE";
-// static const char *READ_ERROR_FILE      = "READ_ERROR_FILE";
-// static const char *ERROR_FILE_DIRECTORY = "ERROR_FILE_DIRECTORY";
+static const char *ERROR_THRESHOLD   = "ERROR_THRESHOLD";
 
 static void print_help(FILE *fd);
-//static void get_node_conn_info(ADBLoadSetting *setting);
-//static void get_settings_by_config_file(ADBLoadSetting *setting);
 static char *replace_string(const char *string, const char *replace, const char *replacement);
 static char *get_config_file_value(const char *key);
 static void check_configfile(ADBLoadSetting *setting);
@@ -76,7 +64,8 @@ static char * get_text_delim(char *text_delim);
 #define DEFAULT_CONFIGFILENAME "./adb_load.conf"
 #define HASH_DELIM             ","
 
-ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
+ADBLoadSetting *
+cmdline_adb_load_setting(int argc, char **argv)
 {
 	static struct option long_options[] = {
 		{"copy_cmd_comment",          no_argument, NULL, 'p'},
@@ -349,7 +338,8 @@ ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv)
 	return setting;
 }
 
-static int get_redo_queue_total(char *optarg)
+static int
+get_redo_queue_total(char *optarg)
 {
 	char *local_optarg = NULL;
 	char *token = NULL;
@@ -381,7 +371,8 @@ static int get_redo_queue_total(char *optarg)
 	return redo_queue_total;
 }
 
-static int *get_redo_queue(char *optarg, int redo_queue_total)
+static int *
+get_redo_queue(char *optarg, int redo_queue_total)
 {
 	char *local_optarg = NULL;
 	int  *redo_queue = NULL;
@@ -412,7 +403,8 @@ static int *get_redo_queue(char *optarg, int redo_queue_total)
 	return redo_queue;
 }
 
-static void check_configfile(ADBLoadSetting *setting)
+static void
+check_configfile(ADBLoadSetting *setting)
 {
 	int ret;
 
@@ -450,7 +442,8 @@ static void check_configfile(ADBLoadSetting *setting)
     return;
 }
 
-void get_node_conn_info(ADBLoadSetting *setting)
+void
+get_node_conn_info(ADBLoadSetting *setting)
 {
 	char conn_info_string[1024];
 	int i = 0;
@@ -518,7 +511,8 @@ void get_node_conn_info(ADBLoadSetting *setting)
 	}
 }
 
-void check_node_connection_valid(const char *host_ip, const char *host_port, const char *connection_str)
+void
+check_node_connection_valid(const char *host_ip, const char *host_port, const char *connection_str)
 {
 	PGconn *conn = NULL;
 	conn = PQconnectdb(connection_str);
@@ -536,7 +530,8 @@ void check_node_connection_valid(const char *host_ip, const char *host_port, con
 	conn = NULL;
 }
 
-void get_settings_by_config_file(ADBLoadSetting *setting)
+void
+get_settings_by_config_file(ADBLoadSetting *setting)
 {
 	char num_str[4];
 	char *datanode_valid = NULL;
@@ -771,6 +766,8 @@ void get_settings_by_config_file(ADBLoadSetting *setting)
 		exit(EXIT_FAILURE);
 	}
 
+	setting->error_threshold = atoi(get_config_file_value(ERROR_THRESHOLD));
+
 	return;
 }
 
@@ -829,7 +826,8 @@ get_copy_options(char *text_delim, char *copy_null)
 	return copy_options;
 }
 
-static char *replace_string(const char *string, const char *replace, const char *replacement)
+static char *
+replace_string(const char *string, const char *replace, const char *replacement)
 {
 	char *ptr = NULL;
 	int new_str_len = 0;
@@ -846,7 +844,8 @@ static char *replace_string(const char *string, const char *replace, const char 
 	return new_str;
 }
 
-static char *get_config_file_value(const char *key)
+static char *
+get_config_file_value(const char *key)
 {
 	char *get_value = GetConfValue(key);
 	if(get_value == NULL)
@@ -857,7 +856,8 @@ static char *get_config_file_value(const char *key)
 	return pstrdup(get_value);
 }
 
-static void print_help(FILE *fd)
+static void
+print_help(FILE *fd)
 {
 	fprintf(fd, _("adb_load import data to datanode.\n\n"));
 	fprintf(fd, _("Usage:\n"));
@@ -882,7 +882,7 @@ static void print_help(FILE *fd)
 	fprintf(fd, _("  -t, --table                 table name\n\n"));
 
 	fprintf(fd, _("  -p, --copy_cmd_comment      enable copy command comment\n"));
-	fprintf(fd, _("  -m, --copy_cmd_comment_str  comment mark, must be two same characters, such as '\\','##'\n"));
+	fprintf(fd, _("  -m, --copy_cmd_comment_str  comment mark, must be two same characters, such as '\\\\','##'\n"));
 	fprintf(fd, _("  -n, --filter_first_line     filter the first line\n\n"));
 
 	fprintf(fd, _("  -Q, --queue                 queues that need to be re-imported\n"));
@@ -894,7 +894,8 @@ static void print_help(FILE *fd)
 	return;
 }
 
-void pg_free_adb_load_setting(ADBLoadSetting *setting)
+void
+pg_free_adb_load_setting(ADBLoadSetting *setting)
 {
 	int i = 0;
 
@@ -967,7 +968,8 @@ void pg_free_adb_load_setting(ADBLoadSetting *setting)
 	return;
 }
 
-static void pg_free_log_field(LogField *logfield)
+static void
+pg_free_log_field(LogField *logfield)
 {
 	Assert(logfield != NULL);
 
@@ -980,7 +982,8 @@ static void pg_free_log_field(LogField *logfield)
 	return;
 }
 
-static void pg_free_hash_config(HashConfig *hash_config)
+static void
+pg_free_hash_config(HashConfig *hash_config)
 {
 	if (hash_config == NULL)
 		return;
@@ -1003,7 +1006,8 @@ static void pg_free_hash_config(HashConfig *hash_config)
 	return;
 }
 
-void pg_free_NodeInfoData(NodeInfoData *pt)
+void
+pg_free_NodeInfoData(NodeInfoData *pt)
 {
 	Assert(pt != NULL);
 

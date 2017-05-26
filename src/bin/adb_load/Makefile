@@ -18,19 +18,19 @@ override CPPFLAGS := -I. -I$(srcdir) -I$(libpq_srcdir) $(CPPFLAGS)
 LIBS := $(filter-out -lz -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
 
 OBJS = adb_load.o loadsetting.o linebuf.o ilist.o compute_hash.o msg_queue.o \
-       read_write_file.o msg_queue_pipe.o adbloader_log.o dispatch.o read_producer.o \
-       properties.o utility.o \
+        msg_queue_pipe.o dispatch.o read_producer.o properties.o utility.o \
+       log_summary.o log_summary_fd.o log_detail_fd.o log_process_fd.o \
 	   $(WIN32RES)
 
-OBJ_TEST_QUEUE = test_queue.o msg_queue.o linebuf.o adbloader_log.o
-OBJ_TEST_QUEUE_PIPE = test_queue_pipe.o msg_queue_pipe.o linebuf.o adbloader_log.o
-OBJ_TEST_COMPUTE = test_compute_hash.o msg_queue.o linebuf.o compute_hash.o read_write_file.o msg_queue_pipe.o adbloader_log.o utility.o
-OBJ_TEST_DISPATCH = msg_queue.o linebuf.o read_write_file.o msg_queue_pipe.o adbloader_log.o dispatch.o test_dispatch.o utility.o
-OBJ_TEST_LOG = test_log.o adbloader_log.o
-OBJ_TEST_WRITE_FILE = test_write_file.o linebuf.o msg_queue.o read_write_file.o adbloader_log.o
+OBJ_TEST_QUEUE = test_queue.o msg_queue.o linebuf.o log_process_fd.o
+OBJ_TEST_QUEUE_PIPE = test_queue_pipe.o msg_queue_pipe.o linebuf.o log_process_fd.o
+OBJ_TEST_COMPUTE = test_compute_hash.o msg_queue.o linebuf.o compute_hash.o log_summary_fd.o msg_queue_pipe.o log_process_fd.o utility.o
+OBJ_TEST_DISPATCH = msg_queue.o linebuf.o log_summary_fd.o msg_queue_pipe.o log_process_fd.o dispatch.o test_dispatch.o utility.o
+OBJ_TEST_LOG = test_log.o log_process_fd.o
+OBJ_TEST_WRITE_FILE = test_write_file.o linebuf.o msg_queue.o log_summary_fd.o log_process_fd.o
 OBJ_TEST_COMMUNICATE = test_communicat.o
-OBJ_TEST_READ = test_read.o msg_queue_pipe.o read_producer.o adbloader_log.o linebuf.o utility.o read_write_file.o
-OBJ_TEST_PROPERTIES = adbloader_log.o test_properties.o properties.o
+OBJ_TEST_READ = test_read.o msg_queue_pipe.o read_producer.o log_process_fd.o linebuf.o utility.o log_summary_fd.o
+OBJ_TEST_PROPERTIES = log_process_fd.o test_properties.o properties.o
 OBJ_TEST_LIST = test_list.o
 all: adb_load
 
@@ -51,7 +51,7 @@ test_compute: $(OBJ_TEST_COMPUTE) | submake-libpgport submake-libpq
 	$(CC) $(CFLAGS) $(OBJ_TEST_COMPUTE) $(LDFLAGS) $(LDFLAGS_EX) -lpthread $(LIBS) $(libpq) -o $@$(X)
 
 test_queue_pipe:$(OBJ_TEST_QUEUE_PIPE) | submake-libpgport submake-libpq
-	$(CC) $(CFLAGS) $(OBJ_TEST_QUEUE_PIPE) $(LDFLAGS) $(LDFLAGS_EX) -lpthread $(LIBS) $(libpq) -o $@$(X)	
+	$(CC) $(CFLAGS) $(OBJ_TEST_QUEUE_PIPE) $(LDFLAGS) $(LDFLAGS_EX) -lpthread $(LIBS) $(libpq) -o $@$(X)
 
 test_dispatch:$(OBJ_TEST_DISPATCH) | submake-libpgport submake-libpq
 	$(CC) $(CFLAGS) $(OBJ_TEST_DISPATCH) $(LDFLAGS) $(LDFLAGS_EX) -lpthread $(LIBS) $(libpq) -o $@$(X)
@@ -103,5 +103,5 @@ clean distclean:
 	rm -f test_properties
 	rm -f test_list
 #maintainer-clean: distclean
-#	rm -f 
+#	rm -f
 

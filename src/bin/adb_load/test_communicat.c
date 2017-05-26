@@ -41,7 +41,7 @@ int main(int argc, char **argv)
 
 	if (pqSendAgtmListenPort(pg_conn_dn1, atoi(agtm_port)) < 0)
 		fprintf(stderr, "could not send agtm port: %s", PQerrorMessage(pg_conn_dn1));
-		
+
 	res = PQexec(pg_conn_dn1, "COPY test FROM STDIN DELIMITER ',';");
  	if (PQresultStatus(res) != PGRES_COPY_IN)
     {
@@ -54,10 +54,10 @@ int main(int argc, char **argv)
 	{
 		res = PQgetResult(pg_conn_dn1);
 		if (PQresultStatus(res) == PGRES_COMMAND_OK)
-		{  
-			
+		{
+
 		}
-	}	
+	}
 	return 0;
 }
 

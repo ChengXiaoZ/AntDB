@@ -1,5 +1,5 @@
-#ifndef ADB_LOAD_SETTING_H_
-#define ADB_LOAD_SETTING_H_
+#ifndef ADB_LOAD_SETTING_H
+#define ADB_LOAD_SETTING_H
 
 FILE *fp_hash_error;
 
@@ -99,7 +99,8 @@ typedef struct ADBLoadSetting
 	bool             copy_cmd_comment;
 	char            *copy_cmd_comment_str;
 
-	bool            filter_first_line;
+	int              error_threshold;
+	bool             filter_first_line;
 } ADBLoadSetting;
 
 extern ADBLoadSetting *cmdline_adb_load_setting(int argc, char **argv);
@@ -109,4 +110,4 @@ extern void get_node_conn_info(ADBLoadSetting *setting);
 extern void get_settings_by_config_file(ADBLoadSetting *setting);
 extern void check_node_connection_valid(const char *host_ip, const char *host_port, const char *connection_str);
 
-#endif /* ADB_LOAD_SETTING_H_ */
+#endif /* ADB_LOAD_SETTING_H */

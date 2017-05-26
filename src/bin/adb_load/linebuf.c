@@ -39,7 +39,8 @@ void init_linebuf(int max_node)
 	max_nodes = max_node;
 }
 
-void end_linebuf(void)
+void
+end_linebuf(void)
 {
 	dlist_node *node;
 	LineBuffer *buf;
@@ -58,7 +59,8 @@ void end_linebuf(void)
 	max_nodes = -1;
 }
 
-LineBuffer* get_linebuf(void)
+LineBuffer*
+get_linebuf(void)
 {
 	LineBuffer *buf;
 	dlist_node *node;
@@ -84,7 +86,8 @@ LineBuffer* get_linebuf(void)
 	return buf;
 }
 
-void release_linebuf(LineBuffer *buf)
+void
+release_linebuf(LineBuffer *buf)
 {
 	AssertArg(buf);
 	Assert(IsInitedLineBuf());
@@ -93,35 +96,40 @@ void release_linebuf(LineBuffer *buf)
 	pthread_mutex_unlock(&buf_mutex);
 }
 
-void markall_linebuf(LineBuffer *buf)
+void
+markall_linebuf(LineBuffer *buf)
 {
 	Assert(IsInitedLineBuf());
 	AssertArg(max_nodes > 0);
 	memcpy(buf->marks, bit_all_marked, max_nodes);
 }
 
-void unmarkall_linebuf(LineBuffer *buf)
+void
+unmarkall_linebuf(LineBuffer *buf)
 {
 	Assert(IsInitedLineBuf());
 	AssertArg(max_nodes > 0);
 	memcpy(buf->marks, bit_all_unmarked, max_nodes);
 }
 
-bool is_markedall_linebuf(const LineBuffer *buf)
+bool
+is_markedall_linebuf(const LineBuffer *buf)
 {
 	Assert(IsInitedLineBuf());
 	AssertArg(max_nodes > 0);
 	return memcmp(buf->marks, bit_all_marked, max_nodes) == 0 ? true:false;
 }
 
-bool is_unmarkedall_linebuf(const LineBuffer *buf)
+bool
+is_unmarkedall_linebuf(const LineBuffer *buf)
 {
 	Assert(IsInitedLineBuf());
 	AssertArg(max_nodes > 0);
 	return memcmp(buf->marks, bit_all_unmarked, max_nodes) == 0 ? true:false;
 }
 
-static void destroy_linebuf(LineBuffer *buf)
+static void
+destroy_linebuf(LineBuffer *buf)
 {
 	if(buf)
 	{
@@ -131,7 +139,8 @@ static void destroy_linebuf(LineBuffer *buf)
 	}
 }
 
-static bool appendLineBufInfoVA(LineBuffer *buf, int *need, const char *fmt, va_list args)
+static bool
+appendLineBufInfoVA(LineBuffer *buf, int *need, const char *fmt, va_list args)
 {
 	int			avail,
 				nprinted;
@@ -183,7 +192,8 @@ static bool appendLineBufInfoVA(LineBuffer *buf, int *need, const char *fmt, va_
 	return false;
 }
 
-void appendLineBufInfo(LineBuffer *buf, const char *fmt, ...)
+void
+appendLineBufInfo(LineBuffer *buf, const char *fmt, ...)
 {
 	va_list		args;
 	int			need;
@@ -203,12 +213,14 @@ void appendLineBufInfo(LineBuffer *buf, const char *fmt, ...)
 	}
 }
 
-void appendLineBufInfoString(LineBuffer *buf, const char *str)
+void
+appendLineBufInfoString(LineBuffer *buf, const char *str)
 {
 	appendLineBufInfoBinary(buf, str, strlen(str));
 }
 
-void appendLineBufInfoBinary(LineBuffer *buf, const void *bin, int len)
+void
+appendLineBufInfoBinary(LineBuffer *buf, const void *bin, int len)
 {
 	Assert(buf != NULL);
 
@@ -227,7 +239,8 @@ void appendLineBufInfoBinary(LineBuffer *buf, const void *bin, int len)
 	buf->data[buf->len] = '\0';
 }
 
-void enlargeLineBuf(LineBuffer *buf, int needed)
+void
+enlargeLineBuf(LineBuffer *buf, int needed)
 {
 	int new_size;
 	int need_maxsize;
@@ -242,3 +255,4 @@ void enlargeLineBuf(LineBuffer *buf, int needed)
 		new_size += DEFAULT_BUF_STEP;
 	buf->data = realloc(buf->data, new_size);
 }
+

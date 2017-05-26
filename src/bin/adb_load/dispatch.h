@@ -1,5 +1,5 @@
-#ifndef DISPATCH_H
-#define DISPATCH_H
+#ifndef ADB_LOAD_DISPATCH_H
+#define ADB_LOAD_DISPATCH_H
 
 #include "libpq-fe.h"
 #include "msg_queue_pipe.h"
@@ -98,4 +98,4 @@ extern DispatchThreads *get_dispatch_exit_threads(void);
 extern void get_sent_conut(int * thread_send_num);
 extern void set_dispatch_file_start_cmd(char * start_cmd);
 
-#endif
+#endif /* ADB_LOAD_DISPATCH_H */

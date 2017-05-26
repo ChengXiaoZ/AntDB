@@ -17,13 +17,15 @@
 #include "linebuf.h"
 #include "msg_queue.h"
 #include "msg_queue_pipe.h"
-#include "read_write_file.h"
-#include "adbloader_log.h"
+#include "log_summary_fd.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 #include "read_producer.h"
 #include "dispatch.h"
 #include "lib/ilist.h"
 #include "utility.h"
 #include "properties.h"
+#include "log_summary.h"
 
 typedef struct tables
 {
@@ -109,7 +111,7 @@ static void free_datanode_info (DatanodeInfo *datanode_info);
 static void free_dispatch_info (DispatchInfo *dispatch_info);
 static void free_hash_info(HashComputeInfo *hash_info);
 static void free_read_info(ReadInfo *read_info);
-static LOG_TYPE covert_loglevel_from_char_type (char *type);
+static LOG_LEVEL covert_loglevel_from_char_type (char *type);
 static char *covert_distribute_type_to_string (DISTRIBUTE type);
 static void main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd);
 static int get_file_total_line_num (char *file_path);
@@ -201,7 +203,7 @@ clean_hash_field (HashField *hash_field)
 	return;
 }
 
-LOG_TYPE
+LOG_LEVEL
 covert_loglevel_from_char_type (char *type)
 {
 	Assert(type != NULL);
@@ -282,14 +284,14 @@ main(int argc, char **argv)
 	/* open log file if not exist create. */
 	if (setting->output_directory != NULL)
 	{
-		adbLoader_log_init(setting->output_directory,
+		open_log_process_fd(setting->output_directory,
 			covert_loglevel_from_char_type(setting->log_field->log_level));
-		fopen_error_file(setting->output_directory);
+		open_log_summary_fd(setting->output_directory);
 	}else if (setting->log_field->log_path != NULL)
 	{
-		adbLoader_log_init(setting->log_field->log_path,
+		open_log_process_fd(setting->log_field->log_path,
 			covert_loglevel_from_char_type(setting->log_field->log_level));
-		fopen_error_file(setting->log_field->log_path);
+		open_log_summary_fd(setting->log_field->log_path);
 	}
 
 	if (setting->single_file_mode || setting->stream_mode)
@@ -398,13 +400,13 @@ main(int argc, char **argv)
 		/* check -Q valid*/
 		check_queue_num_valid(setting, table_info_ptr);
 
-		fopen_adb_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
+		open_log_detail_fd(setting->log_field->log_path, table_info_ptr->table_name);
 
 		/* create all threads and send data to datanode */
 		send_data_to_datanode(table_info_ptr->distribute_type, setting, table_info_ptr);
 
-		fclose_adb_load_error_data();
-		check_db_load_error_data(setting->error_data_file_path, table_info_ptr->table_name);
+		close_log_detail_fd();
+		check_log_detail_fd(setting->error_data_file_path, table_info_ptr->table_name);
 
 		if (setting->dynamic_mode && update_tables)
 		{
@@ -417,7 +419,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	fclose_error_file();
+	close_log_summary_fd();
 
 	/* check again */
 	if(table_count != tables_ptr->table_nums)
@@ -427,7 +429,7 @@ main(int argc, char **argv)
 	}
 
 	tables_list_free(tables_ptr);
-	adbLoader_log_end();
+	close_log_process_fd();
 	pg_free_adb_load_setting(setting);
 	end_linebuf();
 	DestoryConfig();
@@ -454,13 +456,20 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 		/* make sure threads_num_per_datanode < max_connect */
 		//check_get_enough_connect_num(table_info_ptr);
 
+		/* set ERROR_THRESHOLD value */
+		set_error_threshold(setting->error_threshold);
+
+		/* init error struct list */
+		init_error_info_list();
+
 		file_location = slist_container(FileLocation, next, siter.cur);
 		Assert(file_location->location != NULL);
 
 		/* begin record error file */
 		linebuff = format_error_begin(file_location->location,
 							covert_distribute_type_to_string(table_info_ptr->distribute_type));
-		write_error(linebuff);
+		write_log_summary_fd(linebuff);
+		write_log_detail_fd(linebuff->data);
 		release_linebuf(linebuff);
 
 		if (setting->stream_mode)
@@ -499,7 +508,8 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 
 		/* end record error file */
 		linebuff = format_error_end(file_location->location);
-		write_error(linebuff);
+		write_log_detail_fd(linebuff->data);
+		write_log_summary_fd(linebuff);
 		release_linebuf(linebuff);
 
 		/* print exec status */
@@ -1025,11 +1035,10 @@ is_suffix(char *str, char *suffix)
 	char *ptr = NULL;
 
 	Assert(str != NULL);
+
 	ptr = strrchr(str, '.');
 	if (ptr == NULL)
-	{
 		return false;
-	}
 
 	if (strcmp(ptr, suffix) == 0)
 		return true;
@@ -1076,6 +1085,8 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 
 	Assert(filepath != NULL);
 	Assert(table_info != NULL);
+
+	linebuf = get_linebuf();
 
 	if (setting->process_bar)
 	{
@@ -1234,7 +1245,6 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 		}
 		else
 		{
-			linebuf = get_linebuf();
 			appendLineBufInfo(linebuf, "%s", start);
 			appendLineBufInfo(linebuf, "%s", " -Q ");
 
@@ -1259,12 +1269,6 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 				local_char = strrchr(linebuf->data, ',');
 				*local_char = ' ';
 
-				/*don't display this error message in check tool.*/
-				if (!setting->just_check)
-				{
-					ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
-					main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
-				}
 				do_success = false;
 			}
 			else
@@ -1273,11 +1277,22 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 			}
 
 			dispatch_finish = true;
-			release_linebuf(linebuf);
+
 		}
 
 		sleep(1);
 	}
+
+	/* print summary log */
+	write_error_info_list_to_file();
+
+	if (need_redo && !setting->just_check)
+	{
+		ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
+		main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
+	}
+
+	release_linebuf(linebuf);
 
 	clean_dispatch_resource();
 
@@ -1613,12 +1628,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 				local_char = strrchr(linebuf->data, ',');
 				*local_char = ' ';
 
-				/*don't display this error message in check tool.*/
-				if (!setting->just_check)
-				{
-					ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
-					main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
-				}
 				do_dispatch_success = false;
 			}
 			else
@@ -1627,13 +1636,23 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 			}
 
 			dispatch_finish = true;
-			release_linebuf(linebuf);
 
 			pthread_mutex_unlock(&dispatch_exit->mutex);
 		}
 
 		sleep(2);
 	}
+
+	/* print summary log */
+	write_error_info_list_to_file();
+
+	if (need_redo && !setting->just_check)
+	{
+		ADBLOADER_LOG(LOG_ERROR,"dispatch module failed");
+		main_write_error_message(table_info->distribute_type, "dispatch module failed", linebuf->data);
+	}
+
+	release_linebuf(linebuf);
 
 	do_success = (do_read_file_success && do_hash_success && do_dispatch_success);
 
@@ -2952,7 +2971,7 @@ main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd)
 	}
 	appendLineBufInfoString(error_buffer, "---------------------------------------------------------\n");
 
-	write_error(error_buffer);
+	write_log_summary_fd(error_buffer);
 	release_linebuf(error_buffer);
 }
 

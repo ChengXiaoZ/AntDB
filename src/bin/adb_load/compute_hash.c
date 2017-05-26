@@ -2,13 +2,15 @@
 #include <unistd.h>
 
 #include "postgres_fe.h"
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 #include "read_producer.h"
 #include "compute_hash.h"
 #include "libpq-fe.h"
 #include "libpq-int.h"
-#include "read_write_file.h"
+#include "log_summary_fd.h"
 #include "utility.h"
+#include "log_summary.h"
 #include "../../include/utils/pg_crc.h"
 #include "../../include/utils/pg_crc_tables.h"
 
@@ -122,15 +124,11 @@ static void free_buff (char ** buff, int len);
 static void print_struct (HashComputeInfo * hash_computeInfo, HashField * hash_field);
 static void * adbLoader_ThreadMainWrapper (void *argp);
 static char * create_copy_string (char *func, int parameter_nums, char *copy_options);
-//static LineBuffer * get_field (char **fields, char *line, int * loc, char *delim, int size);
 static LineBuffer * get_field_quote (char **fields, char *line, int * loc, char *text_delim, char quotec,
                                      char escapec, int size, ComputeThreadInfo * thrinfo);
-//static LineBuffer * get_field_for_tab(char *line_data,  char *text_delim, int *field_loc, int field_nums);
-//static bool in_field_loc(int num, int *field_loc, int field_nums);
 static void * hash_threadMain (void *argp);
 static LineBuffer * package_field (LineBuffer *lineBuffer, ComputeThreadInfo *thrinfo);
 static PGconn * reconnect (ComputeThreadInfo *thrinfo);
-//static void set_other_threads_exit(void);
 static void hash_write_error_message(ComputeThreadInfo *thrinfo,
                                     char * message,
                                     char * hash_error_message,
@@ -164,7 +162,8 @@ static char        *g_start_cmd = NULL;
 
 FILE **filter_queue_file_fd = NULL;
 
-int init_hash_compute(HashComputeInfo * hash_info)
+int
+init_hash_compute(HashComputeInfo * hash_info)
 {
 	int res = 0;
 
@@ -289,25 +288,6 @@ stop_hash_threads(void)
 	return 0;
 }
 
-#if 0
-static void
-set_other_threads_exit(void)
-{
-	int flag;
-	pthread_mutex_lock(&RunThreads->mutex);
-	for (flag = 0; flag < RunThreads->hs_thread_count; flag++)
-	{
-		ComputeThreadInfo *thrinfo = RunThreads->hs_threads[flag];
-		if (thrinfo != NULL)
-		{
-			thrinfo->exit = true;
-			ADBLOADER_LOG(LOG_INFO, "[HASH] current thread error , set other threads exit");
-		}
-	}
-	pthread_mutex_unlock(&RunThreads->mutex);
-}
-#endif
-
 static void
 hash_write_error_message(ComputeThreadInfo *thrinfo, char * message,
                         char * hash_error_message, int line_no, char *line_data, bool redo)
@@ -322,7 +302,6 @@ hash_write_error_message(ComputeThreadInfo *thrinfo, char * message,
 
 	if (redo)
 	{
-		appendLineBufInfoString(error_buffer, "\n");
 		appendLineBufInfoString(error_buffer, "suggest : ");
 		if (thrinfo)
 			appendLineBufInfoString(error_buffer, g_start_cmd);
@@ -334,15 +313,13 @@ hash_write_error_message(ComputeThreadInfo *thrinfo, char * message,
 	{
 		if (line_data)
 		{
-			appendLineBufInfoString(error_buffer, "\n");
 			appendLineBufInfoString(error_buffer, "suggest : ");
 			appendLineBufInfoString(error_buffer, "must deal this data alone");
 			appendLineBufInfoString(error_buffer, "\n");
 		}
 	}
 	appendLineBufInfoString(error_buffer, "-------------------------------------------------------\n");
-	appendLineBufInfoString(error_buffer, "\n");
-	write_error(error_buffer);
+	write_log_detail_fd(error_buffer->data);
 	release_linebuf(error_buffer);
 }
 
@@ -1148,138 +1125,6 @@ package_field (LineBuffer *lineBuffer, ComputeThreadInfo * thrinfo)
 	return buf;
 }
 
-#if 0
-static LineBuffer *
-get_field_for_tab(char *line_data,  char *text_delim, int *field_loc, int field_nums)
-{
-	char *token = NULL;
-	int num = 1;
-	int used_num = 0;
-	LineBuffer *buf = NULL;
-
-	buf = get_linebuf();
-
-	while ((token = strsep(&line_data, text_delim)) != NULL)
-	{
-		if (in_field_loc(num, field_loc, field_nums))
-		{
-			used_num++;
-			if (used_num <= field_nums)
-			{
-				appendLineBufInfo(buf, "%s", token);
-				appendLineBufInfo(buf, "%c", ',');
-			}
-			else
-			{
-				break;
-			}
-		}
-		else
-		{
-			num++;
-			continue;
-		}
-	}
-
-	if (buf->data != NULL)
-	{
-		char *local_char = NULL;
-
-		local_char = strrchr(buf->data, ',');
-		*local_char = '\0';
-	}
-
-	return buf;
-}
-
-
-static bool in_field_loc(int num, int *field_loc, int field_nums)
-{
-	int i = 0;
-
-	Assert(num > 0);
-	Assert(field_loc != NULL);
-
-	for (i = 0; i < field_nums; i++)
-	{
-		if (num == field_loc[i])
-			return true;
-	}
-
-	return false;
-}
-#endif
-
-#if 0
-static LineBuffer *
-get_field (char **fields, char *line, int * loc, char *delim, int size)
-{
-
-	int         flag = 0;
-	int         split = 0;
-	char       *field = NULL;
-	char       *tmp = NULL;
-	int         max_loc;
-	int         len = 0;
-	int         cur;
-	int         tmp_loc;
-	LineBuffer	*buf;
-
-	max_loc = max_value(loc, size);
-	split++;
-	if (split <= max_loc)
-	{
-		field = strtok(line, delim);
-		if (NULL == field)
-			return NULL;
-	}
-
-	len = strlen(field);
-	tmp = (char*)palloc0(len + 1);
-	memcpy(tmp, field, len);
-	tmp[len] = '\0';
-	fields[flag] = tmp;
-	flag++;
-
-	while (field != NULL)
-	{
-		split++;
-		if (split > max_loc)
-			break;
-		field = strtok(NULL, delim);
-		if (NULL != field)
-		{
-			len = strlen(field);
-			tmp = (char*)palloc0(len + 1);
-			memcpy(tmp, field, len);
-			tmp[len] = '\0';
-			fields[flag] = tmp;
-			flag++;
-		}
-	}
-	if (split <= max_loc)
-	{
-
-		for (cur = 0; cur < flag; cur++)
-		{
-			pfree(fields[cur]);
-			fields[cur] = NULL;
-		}
-		return NULL;
-	}
-	buf = get_linebuf();
-	for (tmp_loc = 0; tmp_loc < size -1; tmp_loc++)
-	{
-		int field_loc;
-		field_loc = loc[tmp_loc]-1;
-		appendLineBufInfo(buf, "%s", fields[field_loc]);
-		appendLineBufInfo(buf, "%c", ',');
-	}
-	appendLineBufInfo(buf, "%s", fields[loc[size -1]-1]);
-	return buf;
-}
-#endif
-
 static LineBuffer *
 get_field_quote (char **fields, char *line, int * loc, char *text_delim, char quotec, char escapec,
 							int size, ComputeThreadInfo * thrinfo)
@@ -1477,11 +1322,12 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 																	thrinfo->copy_cmd_comment_str)))
 				{
 					thrinfo->happen_error = true;
-					fwrite_adb_load_error_data(element->lineBuffer->data);
 					hash_write_error_message(thrinfo,
 											"get hash restult error, can't get hash",
 											PQerrorMessage(conn),
 											0, element->lineBuffer->data, false);
+
+					append_error_info_list(ERRCODE_COMPUTE_HASH, element->lineBuffer->data);
 
 					release_linebuf(element->lineBuffer);
 				}
@@ -1508,13 +1354,13 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 
 			thrinfo->happen_error = true;
             element = mq_poll(thrinfo->inner_queue);
-            fwrite_adb_load_error_data(element->lineBuffer->data);
 
             hash_write_error_message(thrinfo,
                                     "get hash restult error, can't get hash",
                                     PQerrorMessage(conn),
                                     0, element->lineBuffer->data, false);
 
+			append_error_info_list(ERRCODE_COMPUTE_HASH, element->lineBuffer->data);
             release_linebuf(element->lineBuffer);
 
 			check_restart_hash_stream(thrinfo);
@@ -1994,9 +1840,10 @@ calc_send_datanode (uint32 hash, HashField *hash_field)
 static int
 max_value (int * values, int size)
 {
-	int tmp;
-	int flag;
+	int tmp = 0;
+	int flag = 0;
 	int result = 0;
+
 	for (flag = 0; flag < size; flag++)
 	{
 		tmp = values[flag];
@@ -2009,10 +1856,11 @@ max_value (int * values, int size)
 static void
 free_buff(char **buff, int len)
 {
-	char *tmp;
-	int   flag;
+	char *tmp = NULL;
+	int   flag = 0;
 
 	Assert(buff != NULL);
+
 	for (flag = 0; flag < len; flag++)
 	{
 		tmp = buff[flag];
@@ -2022,8 +1870,11 @@ free_buff(char **buff, int len)
 			tmp = NULL;
 		}
 	}
+
 	pfree(buff);
 	buff = NULL;
+
+	return;
 }
 
 static void
@@ -2158,205 +2009,6 @@ compute_hash_modulo(unsigned int numerator, unsigned int denominator)
 	}
 	return numerator % denominator;
 }
-
-#if 0
-static uint32 hash_any(register const unsigned char *k, register int keylen)
-{
-	register uint32 a;
-	register uint32	b;
-	register uint32 c;
-	register uint32	len;
-
-	/* Set up the internal state */
-	len = keylen;
-	a = b = c = 0x9e3779b9 + len + 3923095;
-
-	/* If the source pointer is word-aligned, we use word-wide fetches */
-	if (((intptr_t) k & UINT32_ALIGN_MASK) == 0)
-	{
-		/* Code path for aligned source data */
-		register const uint32 *ka = (const uint32 *) k;
-
-		/* handle most of the key */
-		while (len >= 12)
-		{
-			a += ka[0];
-			b += ka[1];
-			c += ka[2];
-			mix(a, b, c);
-			ka += 3;
-			len -= 12;
-		}
-
-		/* handle the last 11 bytes */
-		k = (const unsigned char *) ka;
-#ifdef WORDS_BIGENDIAN
-		switch (len)
-		{
-			case 11:
-				c += ((uint32) k[10] << 8);
-				/* fall through */
-			case 10:
-				c += ((uint32) k[9] << 16);
-				/* fall through */
-			case 9:
-				c += ((uint32) k[8] << 24);
-				/* the lowest byte of c is reserved for the length */
-				/* fall through */
-			case 8:
-				b += ka[1];
-				a += ka[0];
-				break;
-			case 7:
-				b += ((uint32) k[6] << 8);
-				/* fall through */
-			case 6:
-				b += ((uint32) k[5] << 16);
-				/* fall through */
-			case 5:
-				b += ((uint32) k[4] << 24);
-				/* fall through */
-			case 4:
-				a += ka[0];
-				break;
-			case 3:
-				a += ((uint32) k[2] << 8);
-				/* fall through */
-			case 2:
-				a += ((uint32) k[1] << 16);
-				/* fall through */
-			case 1:
-				a += ((uint32) k[0] << 24);
-				/* case 0: nothing left to add */
-		}
-#else  /* !WORDS_BIGENDIAN */
-		switch (len)
-		{
-			case 11:
-				c += ((uint32) k[10] << 24);
-				/* fall through */
-			case 10:
-				c += ((uint32) k[9] << 16);
-				/* fall through */
-			case 9:
-				c += ((uint32) k[8] << 8);
-				/* the lowest byte of c is reserved for the length */
-				/* fall through */
-			case 8:
-				b += ka[1];
-				a += ka[0];
-				break;
-			case 7:
-				b += ((uint32) k[6] << 16);
-				/* fall through */
-			case 6:
-				b += ((uint32) k[5] << 8);
-				/* fall through */
-			case 5:
-				b += k[4];
-				/* fall through */
-			case 4:
-				a += ka[0];
-				break;
-			case 3:
-				a += ((uint32) k[2] << 16);
-				/* fall through */
-			case 2:
-				a += ((uint32) k[1] << 8);
-				/* fall through */
-			case 1:
-				a += k[0];
-				/* case 0: nothing left to add */
-		}
-#endif   /* WORDS_BIGENDIAN */
-	}
-	else
-	{
-		/* Code path for non-aligned source data */
-
-		/* handle most of the key */
-		while (len >= 12)
-		{
-#ifdef WORDS_BIGENDIAN
-			a += (k[3] + ((uint32) k[2] << 8) + ((uint32) k[1] << 16) + ((uint32) k[0] << 24));
-			b += (k[7] + ((uint32) k[6] << 8) + ((uint32) k[5] << 16) + ((uint32) k[4] << 24));
-			c += (k[11] + ((uint32) k[10] << 8) + ((uint32) k[9] << 16) + ((uint32) k[8] << 24));
-#else    /* !WORDS_BIGENDIAN */
-			a += (k[0] + ((uint32) k[1] << 8) + ((uint32) k[2] << 16) + ((uint32) k[3] << 24));
-			b += (k[4] + ((uint32) k[5] << 8) + ((uint32) k[6] << 16) + ((uint32) k[7] << 24));
-			c += (k[8] + ((uint32) k[9] << 8) + ((uint32) k[10] << 16) + ((uint32) k[11] << 24));
-#endif   /* WORDS_BIGENDIAN */
-			mix(a, b, c);
-			k += 12;
-			len -= 12;
-		}
-
-		/* handle the last 11 bytes */
-#ifdef WORDS_BIGENDIAN
-		switch (len)  /* all the case statements fall through */
-		{
-			case 11:
-				c += ((uint32) k[10] << 8);
-			case 10:
-				c += ((uint32) k[9] << 16);
-			case 9:
-				c += ((uint32) k[8] << 24);
-				/* the lowest byte of c is reserved for the length */
-			case 8:
-				b += k[7];
-			case 7:
-				b += ((uint32) k[6] << 8);
-			case 6:
-				b += ((uint32) k[5] << 16);
-			case 5:
-				b += ((uint32) k[4] << 24);
-			case 4:
-				a += k[3];
-			case 3:
-				a += ((uint32) k[2] << 8);
-			case 2:
-				a += ((uint32) k[1] << 16);
-			case 1:
-				a += ((uint32) k[0] << 24);
-				/* case 0: nothing left to add */
-		}
-#else /* !WORDS_BIGENDIAN */
-		switch (len) /* all the case statements fall through */
-		{
-			case 11:
-				c += ((uint32) k[10] << 24);
-			case 10:
-				c += ((uint32) k[9] << 16);
-			case 9:
-				c += ((uint32) k[8] << 8);
-				/* the lowest byte of c is reserved for the length */
-			case 8:
-				b += ((uint32) k[7] << 24);
-			case 7:
-				b += ((uint32) k[6] << 16);
-			case 6:
-				b += ((uint32) k[5] << 8);
-			case 5:
-				b += k[4];
-			case 4:
-				a += ((uint32) k[3] << 24);
-			case 3:
-				a += ((uint32) k[2] << 16);
-			case 2:
-				a += ((uint32) k[1] << 8);
-			case 1:
-				a += k[0];
-				/* case 0: nothing left to add */
-		}
-#endif   /* WORDS_BIGENDIAN */
-	}
-
-	adb_load_final(a, b, c);
-
-	/* report the result */
-	return (c);
-}
-#endif
 
 static uint32 hash_uint32(uint32 k)
 {

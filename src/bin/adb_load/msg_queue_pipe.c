@@ -6,7 +6,8 @@
 #include <fcntl.h>
 
 #include "msg_queue_pipe.h"
-#include "adbloader_log.h"
+#include "log_process_fd.h"
+#include "log_detail_fd.h"
 
 static ssize_t readn (int fd, void *ptr, size_t n);
 static ssize_t writen (int fd, const void *ptr, size_t n);
@@ -119,7 +120,7 @@ int
 mq_pipe_put (MessageQueuePipe *queue, LineBuffer* lineBuffer)
 {
 	int num = 0;
- 
+
 	Assert(queue != NULL);
 
 	if (queue->write_lock)
@@ -156,7 +157,7 @@ mq_pipe_put_element (MessageQueuePipe *queue, QueueElementPipe *element)
 	return num;
 }
 
-int 
+int
 mq_pipe_put_batch (MessageQueuePipe *queue, LineBuffer ** lineBuffer, int size)
 {
 	QueueElementPipe *element;

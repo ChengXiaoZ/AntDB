@@ -1,5 +1,5 @@
-#ifndef LINE_BUFFER_H_
-#define LINE_BUFFER_H_
+#ifndef ADB_LOAD_LINE_BUFFER_H
+#define ADB_LOAD_LINE_BUFFER_H
 
 #include "postgres_fe.h"
 #include "lib/ilist.h"
@@ -36,4 +36,4 @@ void appendLineBufInfoString(LineBuffer *buf, const char *str);
 void appendLineBufInfoBinary(LineBuffer *buf, const void *bin, int len);
 void enlargeLineBuf(LineBuffer *buf, int needed);
 
-#endif /* LINE_BUFFER_H_ */
+#endif /* ADB_LOAD_LINE_BUFFER_H */
