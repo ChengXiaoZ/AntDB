@@ -146,7 +146,7 @@ write_error_info_list_to_file()
 	{
 		log_buf = get_linebuf();
 		appendLineBufInfoString(log_buf, "success");
-		write_log_summary(log_buf);
+		write_log_summary_fd(log_buf);
 
 		return;
 	}
@@ -157,7 +157,7 @@ write_error_info_list_to_file()
 		ErrorInfo *error_info_local = slist_container(ErrorInfo, next, iter.cur);
 
 		log_buf = get_log_buf(error_info_local);
-		write_log_summary(log_buf);
+		write_log_summary_fd(log_buf);
 
 		free_error_info(error_info_local);
 		slist_delete_current(&iter);
