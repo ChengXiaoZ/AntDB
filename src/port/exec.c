@@ -331,7 +331,7 @@ find_other_exec(const char *argv0, const char *target,
 
 	if (strcmp(line, versionstr) != 0)
 	{
-/*		log_error(_("the agent %d still using old version, please restart agent"), getppid()); */
+		log_error(_("the agent %d still using old version, please restart agent"), getppid()); 
 		return -2;
 	}
 	return 0;
