@@ -18,6 +18,7 @@ typedef struct ReadInfo
 	int              threads_num_per_datanode;
 
 	bool             replication;
+	bool             roundrobin;
 	int              end_flag_num;
 	char            *start_cmd;
 	int              read_file_buffer;

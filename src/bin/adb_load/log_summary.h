@@ -6,7 +6,7 @@ typedef struct ErrorData
 	char      *error_code;
 	char      *error_desc;
 	uint32     error_total;
-	uint32     error_threshold;
+	int        error_threshold;
 	slist_head line_data_list;
 } ErrorData;
 
@@ -25,7 +25,7 @@ typedef struct LineDataInfo
 extern slist_head error_info_list;
 
 /* for hash stage error code */
-#define ERRCODE_COMPUTE_HASH                "hash_error_code"
+#define ERRCODE_COMPUTE_HASH                "hash09"
 
 /* for send stage error code */
 #define ERRCODE_INVALID_TEXT_REPRESENTATION "22P02"
@@ -35,7 +35,7 @@ extern slist_head error_info_list;
 
 
 extern void init_error_info_list(void);
-extern void set_error_threshold(int value);
+extern void set_error_threshold(int threshold_value);
 extern void append_error_info_list(char *error_code, char *line_data);
 extern void write_error_info_list_to_file(void);
 

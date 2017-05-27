@@ -20,6 +20,7 @@ typedef struct Read_ThreadInfo
 {
 	Read_ThreadID        thread_id;
 	bool                 replication;
+	bool                 roundrobin;
 	MessageQueuePipe    *input_queue;
 	MessageQueuePipe   **output_queue;
 	int                  output_queue_num;
@@ -45,9 +46,12 @@ static void *read_ThreadWrapper (void *argp);
 static void  read_ThreadCleanup (void * argp);
 static void *read_threadMain (void *argp);
 static bool is_replication_table(Read_ThreadInfo *thrinfo);
+static bool is_roundrobin_table(Read_ThreadInfo *thrinfo);
 static bool need_redo_queue(Read_ThreadInfo *thrinfo);
-static void read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo);
-static void read_data_file_and_need_redo(Read_ThreadInfo *thrinfo);
+static void read_data_file_and_no_need_redo_for_replication(Read_ThreadInfo *thrinfo);
+static void read_data_file_and_need_redo_for_replication(Read_ThreadInfo *thrinfo);
+static void read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo);
+static void read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo);
 static void read_data_file_for_hash_table(Read_ThreadInfo *thrinfo);
 static void  read_write_error_message(Read_ThreadInfo *thrinfo,
 								char * message,
@@ -55,6 +59,7 @@ static void  read_write_error_message(Read_ThreadInfo *thrinfo,
 								int line_no,
 								char *line_data,
 								bool redo);
+static int *get_array_output_queue(int output_queue_total);
 
 static ReadProducerState    STATE = READ_PRODUCER_PROCESS_OK;
 static bool                 NEED_EXIT = false;
@@ -78,6 +83,14 @@ is_replication_table(Read_ThreadInfo *thrinfo)
 	Assert(thrinfo != NULL);
 
 	return thrinfo->replication;
+}
+
+static bool
+is_roundrobin_table(Read_ThreadInfo *thrinfo)
+{
+	Assert(thrinfo != NULL);
+
+	return thrinfo->roundrobin;
 }
 
 static bool
@@ -135,7 +148,7 @@ check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag)
 }
 
 static void
-read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
+read_data_file_and_no_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 {
 	char        buf[READFILEBUFSIZE];
 	int         lineno = 0;
@@ -173,14 +186,17 @@ read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
 
 		for (j = 0; j < datanodes_num; j++)
 		{
+			int output_queue_index = 0;
+
 			linebuf = get_linebuf();
 			appendLineBufInfoString(linebuf, buf);
 			linebuf->fileline = lineno;
 
-			res = mq_pipe_put(thrinfo->output_queue[i + j * threads_num_per_datanode], linebuf);
+			output_queue_index = i + j * threads_num_per_datanode;
+			res = mq_pipe_put(thrinfo->output_queue[output_queue_index], linebuf);
 			ADBLOADER_LOG(LOG_DEBUG,
 				"[READ_PRODUCER][thread id : %ld ] send data: %s TO queue num:%s \n",
-				thrinfo->thread_id, linebuf->data, thrinfo->output_queue[i + j * threads_num_per_datanode]->name);
+				thrinfo->thread_id, linebuf->data, thrinfo->output_queue[output_queue_index]->name);
 			if (res < 0)
 			{
 				ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
@@ -208,7 +224,7 @@ read_data_file_and_no_need_redo(Read_ThreadInfo *thrinfo)
 }
 
 static void
-read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
+read_data_file_and_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 {
 	bool         need_redo_queue = false;
 	int          datanodes_num = 0;
@@ -275,7 +291,7 @@ read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
 				res = mq_pipe_put(thrinfo->output_queue[output_queue_index], linebuf);
 				ADBLOADER_LOG(LOG_DEBUG,
 					"[READ_PRODUCER][thread id : %ld ] send data: %s TO queue num:%s \n",
-					thrinfo->thread_id, linebuf->data, thrinfo->output_queue[i + j * threads_num_per_datanode]->name);
+					thrinfo->thread_id, linebuf->data, thrinfo->output_queue[output_queue_index]->name);
 				if (res < 0)
 				{
 					ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
@@ -298,6 +314,177 @@ read_data_file_and_need_redo(Read_ThreadInfo *thrinfo)
 	for (flag = 0; flag < thrinfo->redo_queue_total; flag++)
 	{
 		mq_pipe_put(thrinfo->output_queue[thrinfo->redo_queue_index[flag]], NULL);
+	}
+
+	return;
+}
+
+static void
+read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
+{
+	char        buf[READFILEBUFSIZE];
+	int         lineno = 0;
+	int         datanodes_num = 0;
+	int         threads_num_per_datanode= 0;
+	LineBuffer *linebuf = NULL;
+	int         flag = 0;
+	bool        filter_first_line = false;
+	int         output_queue_total = 0;
+	int         output_queue_index = 0;
+	int        *array_output_queue = NULL;
+	bool        need_redo_queue = false;
+
+	filter_first_line = thrinfo->filter_first_line;
+	datanodes_num = thrinfo->datanodes_num;
+	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
+
+	output_queue_total = datanodes_num * threads_num_per_datanode;
+	array_output_queue = get_array_output_queue(output_queue_total);
+
+	for (flag = 0; flag < output_queue_total; flag++)
+	{
+		need_redo_queue = check_need_redo_queue(thrinfo->redo_queue_total,
+												thrinfo->redo_queue_index,
+												flag);
+		if (!need_redo_queue)
+		{
+			mq_pipe_put(thrinfo->output_queue[flag], NULL);
+		}
+	}
+
+	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	{
+		int res = 0;
+		int output_queue_num = 0;
+		lineno++;
+
+		if (filter_first_line)
+		{
+			filter_first_line = false;
+			continue;
+		}
+
+		pthread_testcancel();
+
+		if (NEED_EXIT)
+		{
+			STATE = READ_PRODUCER_PROCESS_EXIT_BY_CALLER;
+			fclose(thrinfo->fp);
+			pthread_exit(thrinfo);
+		}
+
+		linebuf = get_linebuf();
+		appendLineBufInfoString(linebuf, buf);
+		linebuf->fileline = lineno;
+
+		output_queue_num = array_output_queue[output_queue_index];
+		need_redo_queue = check_need_redo_queue(thrinfo->redo_queue_total,
+												thrinfo->redo_queue_index,
+												output_queue_num);
+
+		if (need_redo_queue)
+		{
+			res = mq_pipe_put(thrinfo->output_queue[output_queue_num], linebuf);
+			ADBLOADER_LOG(LOG_DEBUG,
+					"[READ_PRODUCER][thread id : %ld ] send data: %s TO queue num:%s \n",
+					thrinfo->thread_id, linebuf->data, thrinfo->output_queue[output_queue_num]->name);
+			if (res < 0)
+			{
+				ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
+					thrinfo->thread_id, linebuf->data, lineno, thrinfo->file_path);
+				STATE = READ_PRODUCER_PROCESS_ERROR;
+				read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno, linebuf->data, TRUE);
+
+				fclose(thrinfo->fp);
+				pthread_exit(thrinfo);
+			}
+		}
+
+		output_queue_index ++;
+		if (output_queue_index < output_queue_total)
+			output_queue_index = 0;
+	}
+
+	/* insert NULL flag, it means read data file over. */
+	for (flag = 0; flag < thrinfo->redo_queue_total; flag++)
+	{
+		mq_pipe_put(thrinfo->output_queue[thrinfo->redo_queue_index[flag]], NULL);
+	}
+
+	return;
+}
+
+static void
+read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
+{
+	char        buf[READFILEBUFSIZE];
+	int         lineno = 0;
+	int         datanodes_num = 0;
+	int         threads_num_per_datanode= 0;
+	LineBuffer *linebuf = NULL;
+	int         flag = 0;
+	bool        filter_first_line = false;
+	int         output_queue_total = 0;
+	int         output_queue_index = 0;
+	int        *array_output_queue = NULL;
+
+	filter_first_line = thrinfo->filter_first_line;
+	datanodes_num = thrinfo->datanodes_num;
+	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
+
+	output_queue_total = datanodes_num * threads_num_per_datanode;
+	array_output_queue = get_array_output_queue(output_queue_total);
+
+	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	{
+		int res = 0;
+		int output_queue_num = 0;
+		lineno++;
+
+		if (filter_first_line)
+		{
+			filter_first_line = false;
+			continue;
+		}
+
+		pthread_testcancel();
+
+		if (NEED_EXIT)
+		{
+			STATE = READ_PRODUCER_PROCESS_EXIT_BY_CALLER;
+			fclose(thrinfo->fp);
+			pthread_exit(thrinfo);
+		}
+
+		linebuf = get_linebuf();
+		appendLineBufInfoString(linebuf, buf);
+		linebuf->fileline = lineno;
+
+		output_queue_num = array_output_queue[output_queue_index];
+		res = mq_pipe_put(thrinfo->output_queue[output_queue_num], linebuf);
+		ADBLOADER_LOG(LOG_DEBUG,
+				"[READ_PRODUCER][thread id : %ld ] send data: %s TO queue num:%s \n",
+				thrinfo->thread_id, linebuf->data, thrinfo->output_queue[output_queue_num]->name);
+		if (res < 0)
+		{
+			ADBLOADER_LOG(LOG_ERROR, "[thread id : %ld ] put linebuf to messagequeue failed, data :%s, lineno :%d, filepath :%s",
+				thrinfo->thread_id, linebuf->data, lineno, thrinfo->file_path);
+			STATE = READ_PRODUCER_PROCESS_ERROR;
+			read_write_error_message(thrinfo, "put linebuf to messagequeue failed", NULL, lineno, linebuf->data, TRUE);
+
+			fclose(thrinfo->fp);
+			pthread_exit(thrinfo);
+		}
+
+		output_queue_index ++;
+		if (output_queue_index < output_queue_total)
+			output_queue_index = 0;
+	}
+
+	/* insert NULL flag, it means read data file over. */
+	for (flag = 0; flag < thrinfo->output_queue_num; flag++)
+	{
+		mq_pipe_put(thrinfo->output_queue[flag], NULL);
 	}
 
 	return;
@@ -358,6 +545,30 @@ read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
 	return;
 }
 
+static int *
+get_array_output_queue(int output_queue_total)
+{
+	int i = 0;
+	int index = 0;
+	int *array_output_queue = NULL;
+
+	array_output_queue = (int *)palloc0(output_queue_total * sizeof(int));
+
+	for (i = 0; i < output_queue_total; i += 2)
+	{
+		array_output_queue[i] = index;
+		index++;
+	}
+
+	for (i = 1; i < output_queue_total; i += 2)
+	{
+		array_output_queue[i] = index;
+		index++;
+	}
+
+	return array_output_queue;
+}
+
 void *
 read_threadMain (void *argp)
 {
@@ -402,13 +613,27 @@ read_threadMain (void *argp)
 		}
 	}
 
-	if (is_replication_table(thrinfo) && !need_redo_queue(thrinfo))
+	if (is_replication_table(thrinfo))
 	{
-		read_data_file_and_no_need_redo(thrinfo);
+		if (need_redo_queue(thrinfo))
+		{
+			read_data_file_and_need_redo_for_replication(thrinfo);
+		}
+		else
+		{
+			read_data_file_and_no_need_redo_for_replication(thrinfo);
+		}
 	}
-	else if (is_replication_table(thrinfo) && need_redo_queue(thrinfo))
+	else if (is_roundrobin_table(thrinfo))
 	{
-		read_data_file_and_need_redo(thrinfo);
+		if (need_redo_queue(thrinfo))
+		{
+			read_data_file_and_need_redo_for_roundrobin(thrinfo);
+		}
+		else
+		{
+			read_data_file_and_no_need_redo_for_roundrobin(thrinfo);
+		}
 	}
 	else /* for hash table */
 	{
@@ -435,10 +660,11 @@ init_read_thread(ReadInfo *read_info)
 
 	read_threadInfo->file_path = pg_strdup(read_info->filepath);
 	read_threadInfo->replication = read_info->replication;
+	read_threadInfo->roundrobin = read_info->roundrobin;
 	read_threadInfo->start_cmd = pg_strdup(read_info->start_cmd);
 	read_threadInfo->filter_first_line = read_info->filter_first_line;
 	read_threadInfo->stream_node = read_info->stream_mode;
-	if (read_info->replication)
+	if (read_info->replication || read_info->roundrobin)
 	{
 
 		Assert(read_info->output_queue != NULL);

@@ -108,6 +108,8 @@ extern void pg_free_adb_load_setting(ADBLoadSetting *setting);
 extern void pg_free_NodeInfoData(NodeInfoData *pt);
 extern void get_node_conn_info(ADBLoadSetting *setting);
 extern void get_settings_by_config_file(ADBLoadSetting *setting);
-extern void check_node_connection_valid(const char *host_ip, const char *host_port, const char *connection_str);
+extern void check_node_connection_valid(const char *host_ip,
+										const char *host_port,
+										const char *connection_str);
 
 #endif /* ADB_LOAD_SETTING_H */

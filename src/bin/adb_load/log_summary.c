@@ -24,9 +24,9 @@ init_error_info_list()
 }
 
 void
-set_error_threshold(int value)
+set_error_threshold(int threshold_value)
 {
-	error_threshold = value;
+	error_threshold = threshold_value;
 	return;
 }
 
@@ -67,6 +67,8 @@ get_new_error_info(char *error_code, char *line_data)
 
 	error_data->error_code = pg_strdup(error_code);
 	error_data->error_desc = pg_strdup(get_error_desc(error_code));
+
+	/* new error_info it's error_total is 1 */
 	error_data->error_total = 1;
 	error_data->error_threshold = error_threshold;
 
@@ -138,13 +140,12 @@ write_error_info_list_to_file()
 	slist_mutable_iter iter;
 	LineBuffer *log_buf = NULL;
 
-	init_linebuf(5);
+	log_buf = get_linebuf();
 
 	pthread_mutex_destroy(&error_info_list_mutex);
 
 	if (slist_is_empty(&error_info_list))
 	{
-		log_buf = get_linebuf();
 		appendLineBufInfoString(log_buf, "success");
 		write_log_summary_fd(log_buf);
 
@@ -153,7 +154,6 @@ write_error_info_list_to_file()
 
 	slist_foreach_modify(iter, &error_info_list)
 	{
-
 		ErrorInfo *error_info_local = slist_container(ErrorInfo, next, iter.cur);
 
 		log_buf = get_log_buf(error_info_local);

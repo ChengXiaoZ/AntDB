@@ -89,7 +89,10 @@ static void send_data_to_datanode(DISTRIBUTE distribute_by,
                                 ADBLoadSetting *setting,
                                 TableInfo *table_info_ptr);
 
-static bool do_replaciate_roundrobin(char *filepath, TableInfo *table_info);
+static bool do_replaciate_roundrobin(DISTRIBUTE distribute_by,
+									char *filepath,
+									TableInfo *table_info);
+
 static void clean_replaciate_roundrobin(void);
 
 static bool do_hash_module(char *filepath, const TableInfo *table_info);
@@ -486,7 +489,7 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 			case DISTRIBUTE_BY_REPLICATION:
 			case DISTRIBUTE_BY_ROUNDROBIN:
 				{
-					sent_ok = do_replaciate_roundrobin(file_location->location, table_info_ptr);
+					sent_ok = do_replaciate_roundrobin(distribute_by, file_location->location, table_info_ptr);
 
 					/* stop module and clean resource */
 					clean_replaciate_roundrobin();
@@ -1064,7 +1067,7 @@ get_outqueue_name (int datanode_num)
 }
 
 static bool
-do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
+do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *table_info)
 {
 	MessageQueuePipe **output_queue = NULL;
 	DispatchInfo      *dispatch = NULL;
@@ -1173,7 +1176,21 @@ do_replaciate_roundrobin(char *filepath, TableInfo *table_info)
 	read_info->output_queue_num = output_queue_total;
 	read_info->datanodes_num = table_info->use_datanodes_num;
 	read_info->threads_num_per_datanode = setting->threads_num_per_datanode;
-	read_info->replication = true;
+
+	if (distribute_by == DISTRIBUTE_BY_REPLICATION)
+	{
+		read_info->replication = true;
+	}
+	else if (distribute_by == DISTRIBUTE_BY_ROUNDROBIN)
+	{
+		read_info->roundrobin = true;
+	}else
+	{
+		ADBLOADER_LOG(LOG_ERROR, "distribute by for table is wrong.\n");
+		main_write_error_message(table_info->distribute_type, "distribute by for table is wrong.", start);
+		exit(EXIT_FAILURE);
+	}
+
 	read_info->end_flag_num = 0;
 	read_info->start_cmd = start;
 	read_info->read_file_buffer = setting->read_file_buffer;
@@ -2951,7 +2968,6 @@ main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd)
 
 	if (start_cmd != NULL)
 	{
-		appendLineBufInfoString(error_buffer, "\n");
 		appendLineBufInfoString(error_buffer, "suggest       : ");
 		appendLineBufInfoString(error_buffer, "Please choose the following different processing options according to the different error information:\n");
 		appendLineBufInfoString(error_buffer, "               If it is a non-primary key error, please proceed as follows\n");
