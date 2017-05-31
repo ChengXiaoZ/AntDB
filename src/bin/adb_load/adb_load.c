@@ -409,7 +409,7 @@ main(int argc, char **argv)
 		send_data_to_datanode(table_info_ptr->distribute_type, setting, table_info_ptr);
 
 		close_log_detail_fd();
-		check_log_detail_fd(setting->error_data_file_path, table_info_ptr->table_name);
+		check_log_detail_fd(setting->log_field->log_path, table_info_ptr->table_name);
 
 		if (setting->dynamic_mode && update_tables)
 		{

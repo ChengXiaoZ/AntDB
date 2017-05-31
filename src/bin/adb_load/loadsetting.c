@@ -42,7 +42,6 @@ static const char *COPY_NULL        = "COPY_NULL";
 static const char *LOG_LEVEL         = "LOG_LEVEL";
 static const char *LOG_PATH          = "LOG_PATH";
 static const char *FILTER_QUEUE_FILE_PATH = "FILTER_QUEUE_FILE_PATH";
-static const char *ERROR_DATA_FILE_PATH = "ERROR_DATA_FILE_PATH";
 static const char *PROCESS_BAR       = "PROCESS_BAR";
 static const char *COPY_CMD_COMMENT  = "COPY_CMD_COMMENT";
 static const char *COPY_CMD_COMMENT_STR = "COPY_CMD_COMMENT_STR";
@@ -702,16 +701,6 @@ get_settings_by_config_file(ADBLoadSetting *setting)
 
 	if (!directory_exists(setting->filter_queue_file_path))
 		make_directory(setting->filter_queue_file_path);
-
-	str_ptr = get_config_file_value(ERROR_DATA_FILE_PATH);
-	if (str_ptr[strlen(str_ptr) - 1] == '/')
-		str_ptr[strlen(str_ptr) - 1] = '\0';
-	setting->error_data_file_path = pstrdup(str_ptr);
-	pfree(str_ptr);
-	str_ptr = NULL;
-
-	if (!directory_exists(setting->error_data_file_path))
-		make_directory(setting->error_data_file_path);
 
 	str_ptr = get_config_file_value(READ_FILE_BUFFER);
 	setting->read_file_buffer = atoi(str_ptr);
