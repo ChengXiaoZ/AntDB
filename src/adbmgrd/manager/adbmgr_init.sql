@@ -1487,3 +1487,6 @@ INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.max', '1000', 'postmast
 INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.track', 'top', 'superuser', 'enum', NULL, NULL, NULL, '{none,top,all}');
 INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.save', 'on', 'sighup', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'pg_stat_statements.track_utility', 'on', 'superuser', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'copy_cmd_comment', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'copy_cmd_comment_str', '//', 'user', 'bool', NULL, NULL, NULL, NULL);
+
