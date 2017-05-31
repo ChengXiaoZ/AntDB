@@ -638,7 +638,7 @@ save_error_message(PGresult *res)
 	error_context = PQresultErrorField(res, PG_DIAG_CONTEXT);
 	line_data = get_linevalue_from_PQerrormsg(error_context);
 
-	append_error_info_list(error_code, line_data);
+	save_to_log_summary(error_code, line_data);
 
 	return;
 }

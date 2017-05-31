@@ -1327,7 +1327,7 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
 											PQerrorMessage(conn),
 											0, element->lineBuffer->data, false);
 
-					append_error_info_list(ERRCODE_COMPUTE_HASH, element->lineBuffer->data);
+					save_to_log_summary(ERRCODE_COMPUTE_HASH, element->lineBuffer->data);
 
 					release_linebuf(element->lineBuffer);
 				}
@@ -1360,7 +1360,7 @@ get_data_from_server(PGconn *conn, char *read_buff, ComputeThreadInfo *thrinfo)
                                     PQerrorMessage(conn),
                                     0, element->lineBuffer->data, false);
 
-			append_error_info_list(ERRCODE_COMPUTE_HASH, element->lineBuffer->data);
+			save_to_log_summary(ERRCODE_COMPUTE_HASH, element->lineBuffer->data);
             release_linebuf(element->lineBuffer);
 
 			check_restart_hash_stream(thrinfo);

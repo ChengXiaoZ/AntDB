@@ -422,8 +422,6 @@ main(int argc, char **argv)
 		}
 	}
 
-	close_log_summary_fd();
-
 	/* check again */
 	if(table_count != tables_ptr->table_nums)
 	{
@@ -458,12 +456,6 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 
 		/* make sure threads_num_per_datanode < max_connect */
 		//check_get_enough_connect_num(table_info_ptr);
-
-		/* set ERROR_THRESHOLD value */
-		set_error_threshold(setting->error_threshold);
-
-		/* init error struct list */
-		init_error_info_list();
 
 		file_location = slist_container(FileLocation, next, siter.cur);
 		Assert(file_location->location != NULL);
@@ -513,6 +505,7 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 		linebuff = format_error_end(file_location->location);
 		write_log_detail_fd(linebuff->data);
 		write_log_summary_fd(linebuff);
+		close_log_summary_fd();
 		release_linebuf(linebuff);
 
 		/* print exec status */
@@ -1085,6 +1078,7 @@ do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *ta
 	int                output_queue_total;
 	int                i = 0;
 	LineBuffer        *linebuf = NULL;
+	LogSummaryThreadInfo * log_summary_thread_info = NULL;
 
 	Assert(filepath != NULL);
 	Assert(table_info != NULL);
@@ -1206,6 +1200,15 @@ do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *ta
 		exit(EXIT_FAILURE);
 	}
 
+	log_summary_thread_info = (LogSummaryThreadInfo *)palloc0(sizeof(LogSummaryThreadInfo));
+	log_summary_thread_info->threshold_value = setting->error_threshold;
+	if ((res = init_log_summary_thread(log_summary_thread_info)) != LOG_SUMMARY_RES_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR,"start log summary module failed");
+		main_write_error_message(table_info->distribute_type, "start log summary module failed", start);
+		exit(EXIT_FAILURE);
+	}
+
 	/* check module state every 1s */
 	for (;;)
 	{
@@ -1300,8 +1303,12 @@ do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *ta
 		sleep(1);
 	}
 
-	/* print summary log */
-	write_error_info_list_to_file();
+	if (!stop_log_summary_thread())
+	{
+		ADBLOADER_LOG(LOG_ERROR, "stop log summary thread failed");
+		main_write_error_message(table_info->distribute_type, "stop log summary module failed", start);
+		exit(EXIT_FAILURE);
+	}
 
 	if (need_redo && !setting->just_check)
 	{
@@ -1372,6 +1379,7 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	bool                need_redo = false;
 	int                 output_queue_total = 0;
 	int                 i = 0;
+	LogSummaryThreadInfo *log_summary_thread_info = NULL;
 
 	if (setting->process_bar)
 	{
@@ -1523,6 +1531,15 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		exit(EXIT_FAILURE);
 	}
 
+	log_summary_thread_info = (LogSummaryThreadInfo *)palloc0(sizeof(LogSummaryThreadInfo));
+	log_summary_thread_info->threshold_value = setting->error_threshold;
+	if ((res = init_log_summary_thread(log_summary_thread_info)) != LOG_SUMMARY_RES_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR,"start log summary module failed");
+		main_write_error_message(table_info->distribute_type, "start log summary module failed", start);
+		exit(EXIT_FAILURE);
+	}
+
 	/* check module state every 1s */
 	for (;;)
 	{
@@ -1660,8 +1677,12 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		sleep(2);
 	}
 
-	/* print summary log */
-	write_error_info_list_to_file();
+	if (!stop_log_summary_thread())
+	{
+		ADBLOADER_LOG(LOG_ERROR, "stop log summary thread failed");
+		main_write_error_message(table_info->distribute_type, "stop log summary module failed", start);
+		exit(EXIT_FAILURE);
+	}
 
 	if (need_redo && !setting->just_check)
 	{

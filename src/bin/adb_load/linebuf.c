@@ -209,7 +209,7 @@ appendLineBufInfo(LineBuffer *buf, const char *fmt, ...)
 		if (success)
 			break;
 
-		enlargeLineBuf(buf, need);
+		enlargeLineBuf(buf, need + (buf->maxlen - buf->len));
 	}
 }
 

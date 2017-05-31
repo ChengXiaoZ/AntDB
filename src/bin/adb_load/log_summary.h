@@ -1,28 +1,30 @@
-#ifndef ADB_LOAD_LOG_SUMMARY_H
+ #ifndef ADB_LOAD_LOG_SUMMARY_H
 #define ADB_LOAD_LOG_SUMMARY_H
 
-typedef struct ErrorData
-{
-	char      *error_code;
-	char      *error_desc;
-	uint32     error_total;
-	int        error_threshold;
-	slist_head line_data_list;
-} ErrorData;
+typedef pthread_t LogSummaryThreadID;
 
-typedef struct ErrorInfo
+typedef enum LogSummaryThreadState
 {
-	ErrorData *error_data;
-	slist_node next;
-} ErrorInfo;
+	LOGSUMMARY_THREAD_EXIT_NORMAL,
+	LOGSUMMARY_THREAD_RUNNING
+} LogSummaryThreadState;
 
-typedef struct LineDataInfo
+typedef struct GlobleInfo
 {
-	char *data;
-	slist_node next;
-} LineDataInfo;
+	pthread_mutex_t mutex;
+	slist_head      g_slist;
+} GlobleInfo;
 
-extern slist_head error_info_list;
+typedef struct LogSummaryThreadInfo
+{
+	LogSummaryThreadID thread_id;
+	int                threshold_value;
+	void               (*thr_startroutine)(void *);
+} LogSummaryThreadInfo;
+
+
+#define LOG_SUMMARY_RES_OK      0
+#define LOG_SUMMARY_RES_ERROR  -1
 
 /* for hash stage error code */
 #define ERRCODE_COMPUTE_HASH                "hash09"
@@ -33,10 +35,11 @@ extern slist_head error_info_list;
 #define ERRCODE_UNIQUE_VIOLATION            "23505"
 #define ERRCODE_OTHER                       "other"
 
+extern bool g_log_summary_exit;
+extern LogSummaryThreadState log_summary_thread_state;
 
-extern void init_error_info_list(void);
-extern void set_error_threshold(int threshold_value);
-extern void append_error_info_list(char *error_code, char *line_data);
-extern void write_error_info_list_to_file(void);
+extern int init_log_summary_thread(LogSummaryThreadInfo *log_summary_info);
+extern void save_to_log_summary(char *error_code, char *line_data);
+extern bool stop_log_summary_thread(void);
 
 #endif /* ADB_LOAD_LOG_SUMMARY_H */
