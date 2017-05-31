@@ -213,7 +213,7 @@ extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);
 extern int pingNode_user(char *host, char *port, char *user);
 extern bool is_valid_ip(char *ip);
-extern bool	mgr_check_host_in_use(Oid hostoid);
+extern bool	mgr_check_host_in_use(Oid hostoid, bool check_inited);
 extern void mgr_mark_node_in_cluster(Relation rel);
 extern TupleDesc get_showparam_command_tuple_desc(void);
 HeapTuple build_list_acl_command_tuple(const Name name, const char *message);

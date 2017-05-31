@@ -345,7 +345,7 @@ Datum mgr_drop_host_func(PG_FUNCTION_ARGS)
 					,errmsg("host \"%s\" dose not exist", NameStr(name))));
 		}
 		/*check the tuple has been used or not*/
-		if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
+		if(mgr_check_host_in_use(HeapTupleGetOid(tuple), false))
 		{
 			ReleaseSysCache(tuple);
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
@@ -524,7 +524,7 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 	}
 
 	/*check the tuple has been used or not*/
-	if(mgr_check_host_in_use(HeapTupleGetOid(tuple)))
+	if(mgr_check_host_in_use(HeapTupleGetOid(tuple), true))
 	{
 		if (got[Anum_mgr_host_hostadbhome-1] || got[Anum_mgr_host_hostuser-1]
 			|| got[Anum_mgr_host_hostport-1] || got[Anum_mgr_host_hostproto-1] || got[Anum_mgr_host_hostagentport-1])

@@ -513,22 +513,30 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 }
 
 /*check the host in use or not*/
-bool mgr_check_host_in_use(Oid hostoid)
+bool mgr_check_host_in_use(Oid hostoid, bool check_inited)
 {
 	HeapScanDesc rel_scan;
 	HeapTuple tuple =NULL;
 	Form_mgr_node mgr_node;
 	Relation rel;
+	ScanKeyData key[1];
 	bool is_using = false;
 	rel = heap_open(NodeRelationId, AccessShareLock);
-	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+	if (!check_inited)
+		rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	else
+		rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		/* check this tuple incluster or not, if it has incluster, cannot be dropped/alter. */
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		if(mgr_node->nodehost == hostoid && 
-			( mgr_node->nodeincluster || mgr_node->nodeinited))
+		if(mgr_node->nodehost == hostoid)
 		{
 			break;
 		}
