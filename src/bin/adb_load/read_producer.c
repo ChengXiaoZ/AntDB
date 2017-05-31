@@ -401,7 +401,7 @@ read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		}
 
 		output_queue_index ++;
-		if (output_queue_index < output_queue_total)
+		if (output_queue_index == output_queue_total)
 			output_queue_index = 0;
 	}
 
@@ -477,7 +477,7 @@ read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		}
 
 		output_queue_index ++;
-		if (output_queue_index < output_queue_total)
+		if (output_queue_index == output_queue_total)
 			output_queue_index = 0;
 	}
 

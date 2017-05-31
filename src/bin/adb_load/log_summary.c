@@ -73,14 +73,12 @@ stop_log_summary_thread()
 	{
 		if (log_summary_thread_state == LOGSUMMARY_THREAD_EXIT_NORMAL)
 		{
-			ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] stop log summary thread success.");
 			return true;
 		}
-		ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] stop log summary thread running: %d.", i);
+
 		sleep(1);
 	}
 
-	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] stop log summary thread failed.");
 	return false;
 }
 
@@ -139,7 +137,6 @@ log_summary_thread_main(void *arg)
 		{
 			write_error_info_list_to_file();
 			log_summary_thread_state = LOGSUMMARY_THREAD_EXIT_NORMAL;
-			ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] stop log summary success.");
 
 			pthread_mutex_unlock(&global_info->mutex);
 			pthread_exit((void*)0);
@@ -150,9 +147,6 @@ log_summary_thread_main(void *arg)
 			slist_foreach_modify(siter, &global_info->g_slist)
 			{
 				 ErrorMsg *msg = slist_container(ErrorMsg, next, siter.cur);
-
-				 ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] append error msg: error_code: %s, line_data:%s.\n",
-					msg->error_msg->error_code, msg->error_msg->line_data);
 
 				 append_error_info_list(msg->error_msg->error_code, msg->error_msg->line_data);
 
@@ -177,9 +171,6 @@ save_to_log_summary(char *error_code, char *line_data)
 	ErrorMsg *msg = NULL;
 
 	pthread_mutex_lock(&global_info->mutex);
-
-	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] get new error msg: error_code: %s, line_data:%s.\n",
-					error_code, line_data);
 
 	msg = get_error_msg(error_code, line_data);
 	slist_push_head(&global_info->g_slist, &msg->next);
@@ -400,8 +391,6 @@ get_log_buf(ErrorInfo *error_info)
 	}
 
 	appendLineBufInfoString(log_buf, "-------------------------\n");
-
-	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] get log buf: %s\n", log_buf->data);
 
 	return log_buf;
 }

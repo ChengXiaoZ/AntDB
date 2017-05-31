@@ -1317,7 +1317,6 @@ do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *ta
 	}
 
 	release_linebuf(linebuf);
-
 	clean_dispatch_resource();
 
     /* just free output queeu once , read threads and dispatch threads all used */
