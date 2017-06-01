@@ -422,6 +422,8 @@ main(int argc, char **argv)
 		}
 	}
 
+	close_log_summary_fd();
+
 	/* check again */
 	if(table_count != tables_ptr->table_nums)
 	{
@@ -505,7 +507,7 @@ send_data_to_datanode(DISTRIBUTE distribute_by,
 		linebuff = format_error_end(file_location->location);
 		write_log_detail_fd(linebuff->data);
 		write_log_summary_fd(linebuff);
-		close_log_summary_fd();
+
 		release_linebuf(linebuff);
 
 		/* print exec status */
@@ -2988,9 +2990,10 @@ main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd)
 
 	if (start_cmd != NULL)
 	{
-		appendLineBufInfoString(error_buffer, "suggest       : ");
-		appendLineBufInfoString(error_buffer, "Please choose the following different processing options according to the different error information:\n");
-		appendLineBufInfoString(error_buffer, "               If it is a non-primary key error, please proceed as follows\n");
+		appendLineBufInfoString(error_buffer, "Suggest       : ");
+		appendLineBufInfoString(error_buffer, "Please choose one of the following options according to if it is a primary key error\n");
+		appendLineBufInfoString(error_buffer, "Information   : ");
+		appendLineBufInfoString(error_buffer, "If it is a non-primary key error, please proceed as follows\n");
 		appendLineBufInfoString(error_buffer, "                   1,Manually modify the original data\n");
 		appendLineBufInfoString(error_buffer, "                   2,Execute the following command\n");
 		appendLineBufInfoString(error_buffer, "                     ");
