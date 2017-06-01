@@ -33,6 +33,7 @@ typedef struct LogSummaryThreadInfo
 #define ERRCODE_INVALID_TEXT_REPRESENTATION "22P02"
 #define ERRCODE_BAD_COPY_FILE_FORMAT        "22P04"
 #define ERRCODE_UNIQUE_VIOLATION            "23505"
+#define ERRCODE_FOREIGN_KEY_VIOLATION       "23503"
 #define ERRCODE_OTHER                       "other"
 
 extern bool g_log_summary_exit;

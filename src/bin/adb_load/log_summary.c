@@ -170,6 +170,9 @@ save_to_log_summary(char *error_code, char *line_data)
 {
 	ErrorMsg *msg = NULL;
 
+	Assert(error_code != NULL);
+	Assert(line_data != NULL);
+
 	pthread_mutex_lock(&global_info->mutex);
 
 	msg = get_error_msg(error_code, line_data);
@@ -185,6 +188,9 @@ get_error_msg(char *error_code, char *line_data)
 {
 	ErrorMsg * msg = NULL;
 	ErrorMsgElem *msgelem = NULL;
+
+	Assert(error_code != NULL);
+	Assert(line_data != NULL);
 
 	msg = (ErrorMsg *)palloc0(sizeof(ErrorMsg));
 	msgelem = (ErrorMsgElem *)palloc0(sizeof(ErrorMsgElem));
@@ -221,7 +227,10 @@ get_error_desc(char *error_code)
 	{
 		return "Data type mismatch";
 	}
-	else
+	else if (strcmp(error_code, ERRCODE_FOREIGN_KEY_VIOLATION) == 0)
+	{
+		return "foreign key violation error";
+	}else
 	{
 		return "other error";
 	}
@@ -233,6 +242,9 @@ get_new_error_info(char *error_code, char *line_data)
 	ErrorInfo    *error_info = NULL;
 	ErrorData    *error_data = NULL;
 	LineDataInfo *line_data_info = NULL;
+
+	Assert(error_code != NULL);
+	Assert(line_data != NULL);
 
 	error_info = (ErrorInfo *)palloc0(sizeof(ErrorInfo));
 	error_data = (ErrorData *)palloc0(sizeof(ErrorData));
@@ -355,6 +367,8 @@ get_log_buf(ErrorInfo *error_info)
 {
 	LineBuffer *log_buf = NULL;
 	slist_mutable_iter iter;
+
+	Assert(error_info != NULL);
 
 	log_buf = get_linebuf();
 

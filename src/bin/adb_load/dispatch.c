@@ -636,7 +636,14 @@ save_error_message(PGresult *res)
 
 	error_code = PQresultErrorField(res, PG_DIAG_SQLSTATE);
 	error_context = PQresultErrorField(res, PG_DIAG_CONTEXT);
-	line_data = get_linevalue_from_PQerrormsg(error_context);
+	if (error_context == NULL)
+	{
+		line_data = " ";
+	}
+	else
+	{
+		line_data = get_linevalue_from_PQerrormsg(error_context);
+	}
 
 	save_to_log_summary(error_code, line_data);
 
