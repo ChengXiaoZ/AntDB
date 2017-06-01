@@ -1494,6 +1494,14 @@ CleanAllStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
 			$$ = (Node*)stmt;
 		}
+	| CLEAN MONITOR ICONST
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_delete_data_interval_days", args));
+			$$ = (Node*)stmt;
+		}
 	;
 /*hba start*/
 

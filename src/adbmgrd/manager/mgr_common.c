@@ -839,4 +839,54 @@ bool mgr_get_active_node(Name nodename, char nodetype)
 	return bresult;
 }
 
+/*
+* given the input parameter n_days as interval time, the data in the table before n_days will be droped
+*
+*/
+
+Datum monitor_delete_data_interval_days(PG_FUNCTION_ARGS)
+{
+	int interval_days = PG_GETARG_INT32(0);
+	int ret;
+	int iloop = 0;
+	const int table_num = 10;
+	StringInfoData sqlstrdata;
+	struct del_tablename
+	{
+		char *tbname;
+		char *coltimename;
+	}del_tablename[10]={
+		{"monitor_cpu", "mc_timestamptz"},
+		{"monitor_disk", "md_timestamptz"},
+		{"monitor_host", "mh_current_time"},
+		{"monitor_mem", "mm_timestamptz"},
+		{"monitor_net", "mn_timestamptz"},
+		{"monitor_resolve", "mr_resolve_timetz"},
+		{"monitor_alarm", "ma_alarm_timetz"},
+		{"monitor_databaseitem", "monitor_databaseitem_time"},
+		{"monitor_databasetps", "monitor_databasetps_time"},
+		{"monitor_slowlog", "slowlogtime"}
+		};
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("ADB Monitor SPI_connect failed: error code %d", ret)));
+	
+	initStringInfo(&sqlstrdata);
+	
+	for(iloop=0; iloop < table_num; iloop++)
+	{
+		appendStringInfo(&sqlstrdata, "delete from %s where %s < timestamp'now()' - interval'%d day';", del_tablename[iloop].tbname, del_tablename[iloop].coltimename, interval_days);
+		ret = SPI_execute(sqlstrdata.data, false, 0);
+		if (ret != SPI_OK_DELETE )
+			ereport(ERROR, (errmsg("ADB Monitor SPI_execute \"%s\"failed: error code %d", sqlstrdata.data, ret)));
+		ereport(LOG, (errmsg("ADB Monitor clean data table \"%s\", data before \"%d\" days of now", del_tablename[iloop].tbname, interval_days)));
+		resetStringInfo(&sqlstrdata);
+		SPI_freetuptable(SPI_tuptable);
+	}
+	/*monitor_net table*/
+	SPI_finish();
+	
+	PG_RETURN_BOOL(true);
+}
+
 

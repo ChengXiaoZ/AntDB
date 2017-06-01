@@ -5351,6 +5351,9 @@ DESCR("mgr remove node");
 DATA(insert OID = 4970 (  mgr_monitor_ha            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,19,19,19,19,19,19,19,19,19}" "{o,o,o,o,o,o,o,o,o,o,o}" "{type,nodename, application_name, client_addr,state,sent_location,replay_location,sync_state,master_location,sent_delay,replay_deplay}" _null_ mgr_monitor_ha _null_ _null_ _null_ ));
 DESCR("monitor hba");
 
+DATA(insert OID = 4971 ( monitor_delete_data_interval_days  PGNSP PGUID 12 1 0 0 0 f f f f t f s 1 0 16 "23" _null_ _null_ _null_ _null_ monitor_delete_data_interval_days _null_ _null_ _null_ ));
+DESCR("clean data");
+
 #endif
 
 #ifdef ADB
