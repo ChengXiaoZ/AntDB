@@ -1187,6 +1187,15 @@ do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *ta
 		exit(EXIT_FAILURE);
 	}
 
+	log_summary_thread_info = (LogSummaryThreadInfo *)palloc0(sizeof(LogSummaryThreadInfo));
+	log_summary_thread_info->threshold_value = setting->error_threshold;
+	if ((res = init_log_summary_thread(log_summary_thread_info)) != LOG_SUMMARY_RES_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR,"start log summary module failed");
+		main_write_error_message(table_info->distribute_type, "start log summary module failed", start);
+		exit(EXIT_FAILURE);
+	}
+
 	read_info->end_flag_num = 0;
 	read_info->start_cmd = start;
 	read_info->read_file_buffer = setting->read_file_buffer;
@@ -1199,15 +1208,6 @@ do_replaciate_roundrobin(DISTRIBUTE distribute_by, char *filepath, TableInfo *ta
 	{
 		ADBLOADER_LOG(LOG_ERROR,"start read_producer module failed");
 		main_write_error_message(table_info->distribute_type, "start read_producer module failed", start);
-		exit(EXIT_FAILURE);
-	}
-
-	log_summary_thread_info = (LogSummaryThreadInfo *)palloc0(sizeof(LogSummaryThreadInfo));
-	log_summary_thread_info->threshold_value = setting->error_threshold;
-	if ((res = init_log_summary_thread(log_summary_thread_info)) != LOG_SUMMARY_RES_OK)
-	{
-		ADBLOADER_LOG(LOG_ERROR,"start log summary module failed");
-		main_write_error_message(table_info->distribute_type, "start log summary module failed", start);
 		exit(EXIT_FAILURE);
 	}
 
@@ -1507,6 +1507,15 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 		exit(EXIT_FAILURE);
 	}
 
+	log_summary_thread_info = (LogSummaryThreadInfo *)palloc0(sizeof(LogSummaryThreadInfo));
+	log_summary_thread_info->threshold_value = setting->error_threshold;
+	if ((res = init_log_summary_thread(log_summary_thread_info)) != LOG_SUMMARY_RES_OK)
+	{
+		ADBLOADER_LOG(LOG_ERROR,"start log summary module failed");
+		main_write_error_message(table_info->distribute_type, "start log summary module failed", start);
+		exit(EXIT_FAILURE);
+	}
+
 	/* start read_producer module last */
 	read_info = (ReadInfo *)palloc0(sizeof(ReadInfo));
 	read_info->filepath = pg_strdup(filepath);
@@ -1529,15 +1538,6 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "start read module failed");
 		main_write_error_message(table_info->distribute_type, "start read module failed", start);
-		exit(EXIT_FAILURE);
-	}
-
-	log_summary_thread_info = (LogSummaryThreadInfo *)palloc0(sizeof(LogSummaryThreadInfo));
-	log_summary_thread_info->threshold_value = setting->error_threshold;
-	if ((res = init_log_summary_thread(log_summary_thread_info)) != LOG_SUMMARY_RES_OK)
-	{
-		ADBLOADER_LOG(LOG_ERROR,"start log summary module failed");
-		main_write_error_message(table_info->distribute_type, "start log summary module failed", start);
 		exit(EXIT_FAILURE);
 	}
 
@@ -2999,7 +2999,7 @@ main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd)
 		appendLineBufInfoString(error_buffer, "                     ");
 		appendLineBufInfoString(error_buffer, start_cmd);
 		appendLineBufInfoString(error_buffer, "\n");
-		appendLineBufInfoString(error_buffer, "               If it is a primary key error, please proceed as follows\n");
+		appendLineBufInfoString(error_buffer, "                If it is a primary key error, please proceed as follows\n");
 		appendLineBufInfoString(error_buffer, "                   1,Execute the following command, gets the data in each queue into file\n");
 		appendLineBufInfoString(error_buffer, "                     ");
 		appendLineBufInfoString(error_buffer, start_cmd);

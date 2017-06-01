@@ -92,11 +92,11 @@ init_log_summary_thread(LogSummaryThreadInfo *log_summary_info)
 
 	if ((pthread_create(&log_summary_info->thread_id, NULL, build_log_summary_thread_main, log_summary_info)) < 0)
 	{
-		ADBLOADER_LOG(LOG_ERROR, "[LOG_SUMMARY][thread main ] create log summary thread error");
+		ADBLOADER_LOG(LOG_ERROR, "[LOG_SUMMARY] create log summary thread error");
 		return LOG_SUMMARY_RES_ERROR;
 	}
 
-	ADBLOADER_LOG(LOG_INFO, "[DISPATCH][thread main ] create log summary thread : %ld ", log_summary_info->thread_id);
+	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY]create log summary thread : %ld ", log_summary_info->thread_id);
 	return LOG_SUMMARY_RES_OK;
 }
 
@@ -148,6 +148,9 @@ log_summary_thread_main(void *arg)
 			{
 				 ErrorMsg *msg = slist_container(ErrorMsg, next, siter.cur);
 
+				 ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY] get data from global info: error_code:%s, line_data: %s",
+							msg->error_msg->error_code, msg->error_msg->line_data);
+
 				 append_error_info_list(msg->error_msg->error_code, msg->error_msg->line_data);
 
 				 pg_free_error_msg(msg);
@@ -162,7 +165,6 @@ log_summary_thread_main(void *arg)
 	}
 
 	return;
-
 }
 
 void
@@ -230,7 +232,24 @@ get_error_desc(char *error_code)
 	else if (strcmp(error_code, ERRCODE_FOREIGN_KEY_VIOLATION) == 0)
 	{
 		return "foreign key violation error";
-	}else
+	}
+	else if (strcmp(error_code, ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION) == 0)
+	{
+		return "integrity constraint violation";
+	}
+	else if (strcmp(error_code, ERRCODE_NOT_NULL_VIOLATION) == 0)
+	{
+		return "not null violation";
+	}
+	else if (strcmp(error_code, ERRCODE_CHECK_VIOLATION) == 0)
+	{
+		return "check violation";
+	}
+	else if (strcmp(error_code, ERRCODE_EXCLUSION_VIOLATION) == 0)
+	{
+		return "exclusion violation";
+	}
+	else
 	{
 		return "other error";
 	}
@@ -358,6 +377,7 @@ init_global_info()
 	}
 
 	slist_init(&global_info->g_slist);
+	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] global info global slist init. ");
 
 	return;
 }

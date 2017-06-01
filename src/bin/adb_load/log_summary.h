@@ -30,11 +30,15 @@ typedef struct LogSummaryThreadInfo
 #define ERRCODE_COMPUTE_HASH                "hash09"
 
 /* for send stage error code */
-#define ERRCODE_INVALID_TEXT_REPRESENTATION "22P02"
-#define ERRCODE_BAD_COPY_FILE_FORMAT        "22P04"
-#define ERRCODE_UNIQUE_VIOLATION            "23505"
-#define ERRCODE_FOREIGN_KEY_VIOLATION       "23503"
-#define ERRCODE_OTHER                       "other"
+#define ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION "23000"
+#define ERRCODE_INVALID_TEXT_REPRESENTATION    "22P02"
+#define ERRCODE_BAD_COPY_FILE_FORMAT           "22P04"
+#define ERRCODE_UNIQUE_VIOLATION               "23505"
+#define ERRCODE_FOREIGN_KEY_VIOLATION          "23503"
+#define ERRCODE_NOT_NULL_VIOLATION             "23502"
+#define ERRCODE_CHECK_VIOLATION                "23514"
+#define ERRCODE_EXCLUSION_VIOLATION            "23P01"
+#define ERRCODE_OTHER                          "other"
 
 extern bool g_log_summary_exit;
 extern LogSummaryThreadState log_summary_thread_state;

@@ -442,6 +442,18 @@ put_end_to_datanode(DispatchThreadInfo *thrinfo)
 					PQresultErrorField(res, PG_DIAG_SEVERITY));
 			thrinfo->state = DISPATCH_THREAD_COPY_END_ERROR;
 			thrinfo->need_redo = true;
+
+			if (!rollback_in_PQerrormsg(PQerrorMessage(thrinfo->conn)))
+			{
+				dispatch_write_error_message(thrinfo,
+											"thread send copy end error",
+											PQerrorMessage(thrinfo->conn), 0,
+											NULL, true);
+
+				save_error_message(res);
+			}
+
+
 		}
 	}
 	else
@@ -452,22 +464,21 @@ put_end_to_datanode(DispatchThreadInfo *thrinfo)
 		thrinfo->need_redo = true;
 	}
 
+#if 0
 	if (thrinfo->state == DISPATCH_THREAD_COPY_END_ERROR)
 	{
 		if (!rollback_in_PQerrormsg(PQerrorMessage(thrinfo->conn)))
 		{
-			char *linedata = NULL;
 			dispatch_write_error_message(thrinfo,
 										"thread send copy end error",
 										PQerrorMessage(thrinfo->conn), 0,
 										NULL, true);
 
-			linedata = get_linevalue_from_PQerrormsg(PQerrorMessage(thrinfo->conn));
+			res = PQgetResult(thrinfo->conn);
 			save_error_message(res);
-			pg_free(linedata);
-			linedata = NULL;
 		}
 	}
+#endif
 
 	PQfinish(thrinfo->conn);
 	thrinfo->conn = NULL;
