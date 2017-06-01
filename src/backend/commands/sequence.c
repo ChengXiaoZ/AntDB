@@ -1074,6 +1074,11 @@ lastval(PG_FUNCTION_ARGS)
 	Relation	seqrel;
 	int64		result;
 
+	if (last_used_seq == NULL)
+	ereport(ERROR,
+			(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+			 errmsg("lastval is not yet defined in this session")));
+
 #ifdef ADB
     if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
     {
@@ -1093,11 +1098,6 @@ lastval(PG_FUNCTION_ARGS)
 		PreventCommandIfReadOnly("lastval()");
 	}
 #endif
-
-	if (last_used_seq == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("lastval is not yet defined in this session")));
 
 	/* Someone may have dropped the sequence since the last nextval() */
 	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(last_used_seq->relid)))
