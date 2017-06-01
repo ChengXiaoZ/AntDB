@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <stdio.h>
 
 #include "log_process_fd.h"
 #include "log_detail_fd.h"
@@ -150,7 +151,9 @@ check_need_redo_queue(int redo_queue_total, int *redo_queue_index, int flag)
 static void
 read_data_file_and_no_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 {
-	char        buf[READFILEBUFSIZE];
+	char       *line = NULL;
+	size_t      len = 0;
+	ssize_t     read_count = 0;
 	int         lineno = 0;
 	int         datanodes_num = 0;
 	int         threads_num_per_datanode= 0;
@@ -163,7 +166,7 @@ read_data_file_and_no_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 	datanodes_num = thrinfo->datanodes_num;
 	threads_num_per_datanode = thrinfo->threads_num_per_datanode;
 
-	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	while((read_count = getline(&line, &len, thrinfo->fp)) != -1)
 	{
 		int res = 0;
 		int j = 0;
@@ -189,7 +192,7 @@ read_data_file_and_no_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 			int output_queue_index = 0;
 
 			linebuf = get_linebuf();
-			appendLineBufInfoString(linebuf, buf);
+			appendLineBufInfoString(linebuf, line);
 			linebuf->fileline = lineno;
 
 			output_queue_index = i + j * threads_num_per_datanode;
@@ -220,18 +223,22 @@ read_data_file_and_no_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 		mq_pipe_put(thrinfo->output_queue[flag], NULL);
 	}
 
+	pg_free(line);
+
 	return;
 }
 
 static void
 read_data_file_and_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 {
+	char        *line = NULL;
+	size_t       len = 0;
+	ssize_t      read_count = 0;
 	bool         need_redo_queue = false;
 	int          datanodes_num = 0;
 	int          threads_num_per_datanode= 0;
 	int          threads_total = 0;
 	int          lineno = 0;
-	char         buf[READFILEBUFSIZE];
 	LineBuffer  *linebuf = NULL;
 	int          output_queue_index = 0;
 	int          flag = 0;
@@ -254,7 +261,7 @@ read_data_file_and_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 		}
 	}
 
-	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	while((read_count = getline(&line, &len, thrinfo->fp)) != -1)
 	{
 		int res = 0;
 		int j = 0;
@@ -278,7 +285,7 @@ read_data_file_and_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 		for (j = 0; j < datanodes_num; j++)
 		{
 			linebuf = get_linebuf();
-			appendLineBufInfoString(linebuf, buf);
+			appendLineBufInfoString(linebuf, line);
 			linebuf->fileline = lineno;
 
 			output_queue_index = i + j * threads_num_per_datanode;
@@ -316,13 +323,17 @@ read_data_file_and_need_redo_for_replication(Read_ThreadInfo *thrinfo)
 		mq_pipe_put(thrinfo->output_queue[thrinfo->redo_queue_index[flag]], NULL);
 	}
 
+	pg_free(line);
+
 	return;
 }
 
 static void
 read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 {
-	char        buf[READFILEBUFSIZE];
+	char       *line = NULL;
+	size_t      len = 0;
+	ssize_t     read_count = 0;
 	int         lineno = 0;
 	int         datanodes_num = 0;
 	int         threads_num_per_datanode= 0;
@@ -352,7 +363,7 @@ read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		}
 	}
 
-	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	while((read_count = getline(&line, &len, thrinfo->fp)) != -1)
 	{
 		int res = 0;
 		int output_queue_num = 0;
@@ -374,7 +385,7 @@ read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		}
 
 		linebuf = get_linebuf();
-		appendLineBufInfoString(linebuf, buf);
+		appendLineBufInfoString(linebuf, line);
 		linebuf->fileline = lineno;
 
 		output_queue_num = array_output_queue[output_queue_index];
@@ -411,13 +422,17 @@ read_data_file_and_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		mq_pipe_put(thrinfo->output_queue[thrinfo->redo_queue_index[flag]], NULL);
 	}
 
+	pg_free(line);
+
 	return;
 }
 
 static void
 read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 {
-	char        buf[READFILEBUFSIZE];
+	char       *line = NULL;
+	size_t      len = 0;
+	ssize_t     read_count = 0;
 	int         lineno = 0;
 	int         datanodes_num = 0;
 	int         threads_num_per_datanode= 0;
@@ -435,7 +450,7 @@ read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 	output_queue_total = datanodes_num * threads_num_per_datanode;
 	array_output_queue = get_array_output_queue(output_queue_total);
 
-	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	while((read_count = getline(&line, &len, thrinfo->fp)) != -1)
 	{
 		int res = 0;
 		int output_queue_num = 0;
@@ -457,7 +472,7 @@ read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		}
 
 		linebuf = get_linebuf();
-		appendLineBufInfoString(linebuf, buf);
+		appendLineBufInfoString(linebuf, line);
 		linebuf->fileline = lineno;
 
 		output_queue_num = array_output_queue[output_queue_index];
@@ -487,20 +502,24 @@ read_data_file_and_no_need_redo_for_roundrobin(Read_ThreadInfo *thrinfo)
 		mq_pipe_put(thrinfo->output_queue[flag], NULL);
 	}
 
+	pg_free(line);
+
 	return;
 }
 
 static void
 read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
 {
+	char       *line = NULL;
+	size_t      len = 0;
+	ssize_t     read_count = 0;
 	int         lineno = 0;
-	char        buf[READFILEBUFSIZE];
 	LineBuffer *linebuf = NULL;
 	int         flag = 0;
 	bool        filter_first_line = false;
 
 	filter_first_line = thrinfo->filter_first_line;
-	while ((fgets(buf, sizeof(buf), thrinfo->fp)) != NULL)
+	while((read_count = getline(&line, &len, thrinfo->fp)) != -1)
 	{
 		int res;
 		lineno++;
@@ -521,7 +540,7 @@ read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
 		}
 
 		linebuf = get_linebuf();
-		appendLineBufInfoString(linebuf, buf);
+		appendLineBufInfoString(linebuf, line);
 		linebuf->fileline = lineno;
 		res = mq_pipe_put(thrinfo->input_queue, linebuf);
 
@@ -541,6 +560,8 @@ read_data_file_for_hash_table(Read_ThreadInfo *thrinfo)
 	{
 		mq_pipe_put(thrinfo->input_queue, NULL);
 	}
+
+	pg_free(line);
 
 	return;
 }
