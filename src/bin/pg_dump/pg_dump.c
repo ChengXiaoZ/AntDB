@@ -119,6 +119,9 @@ static SimpleStringList table_exclude_patterns = {NULL, NULL};
 static SimpleOidList table_exclude_oids = {NULL, NULL};
 static SimpleStringList tabledata_exclude_patterns = {NULL, NULL};
 static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
+#ifdef MGR_DUMP
+static void dumpAdbmgrTable(Archive *fout);
+#endif
 
 /* default, if no "inclusion" switches appear, is to dump everything */
 static bool include_everything = true;
@@ -142,6 +145,10 @@ static int	no_unlogged_table_data = 0;
 static int	serializable_deferrable = 0;
 #ifdef PGXC
 static int	include_nodes = 0;
+#endif
+
+#ifdef MGR_DUMP
+static int	adbmgr_table = 0;
 #endif
 
 static void help(const char *progname);
@@ -368,7 +375,9 @@ main(int argc, char **argv)
 #ifdef PGXC
 		{"include-nodes", no_argument, &include_nodes, 1},
 #endif
-
+#ifdef MGR_DUMP
+		{"mgr_table", no_argument, &adbmgr_table, 1},
+#endif
 		{NULL, 0, NULL, 0}
 	};
 
@@ -649,8 +658,19 @@ main(int argc, char **argv)
 	 * death.
 	 */
 	ConnectDatabase(fout, dbname, pghost, pgport, username, prompt_password);
-	setup_connection(fout, dumpencoding, use_role);
+#ifdef MGR_DUMP
+	if (!adbmgr_table)
+#endif
+		setup_connection(fout, dumpencoding, use_role);
 
+#ifdef MGR_DUMP
+	if (adbmgr_table)
+	{
+		dataOnly = false;
+		dumpAdbmgrTable(fout);
+		goto mgr_table_final;
+	}
+#endif
 	/*
 	 * Disable security label support if server version < v9.1.x (prevents
 	 * access to nonexistent pg_seclabel catalog)
@@ -739,7 +759,6 @@ main(int argc, char **argv)
 	 */
 	if (include_everything && !schemaOnly)
 		outputBlobs = true;
-
 	/*
 	 * Now scan the database and create DumpableObject structs for all the
 	 * objects we intend to dump.
@@ -809,11 +828,12 @@ main(int argc, char **argv)
 	/* The database item is always next, unless we don't want it at all */
 	if (include_everything && !dataOnly)
 		dumpDatabase(fout);
-
 	/* Now the rearrangeable objects. */
 	for (i = 0; i < numObjs; i++)
 		dumpDumpableObject(fout, dobjs[i]);
-
+#ifdef MGR_DUMP
+mgr_table_final:
+#endif
 	/*
 	 * Set up options info to ensure we dump what we want.
 	 */
@@ -917,7 +937,9 @@ help(const char *progname)
 #ifdef PGXC
 	printf(_("  --include-nodes              include TO NODE clause in the dumped CREATE TABLE commands\n"));
 #endif
-
+#ifdef MGR_DUMP
+	printf(_("  --mgr_table                  dump only ADBMGR host, node, param, hba table data\n"));
+#endif
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=DBNAME      database to dump\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -1048,7 +1070,6 @@ setup_connection(Archive *AH, const char *dumpencoding, char *use_role)
 	else
 		ExecuteSqlStatement(AH,
 							"SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-
 
 
 	if (AH->numWorkers > 1 && AH->remoteVersion >= 90200 && !no_synchronized_snapshots)
@@ -15646,3 +15667,138 @@ ExecuteSqlQueryForSingleRow(Archive *fout, char *query)
 
 	return res;
 }
+
+#ifdef MGR_DUMP
+static void
+dumpAdbmgrTable(Archive *fout)
+{
+	PQExpBuffer dbQry = createPQExpBuffer();
+	PQExpBuffer delQry = createPQExpBuffer();
+	PQExpBuffer creaQry = createPQExpBuffer();
+	PQExpBuffer addstrdata = createPQExpBuffer();
+	PGconn *conn = GetConnection(fout);
+	PGresult *res;
+	const char *datname;
+	int i = 0;
+
+	datname = PQdb(conn);
+	if (g_verbose)
+		write_msg(NULL, "saving mgr_host,mgr_node definition\n");
+	/* Make sure we are in proper schema */
+	selectSourceSchema(fout, "pg_catalog");
+
+	/* Get the mgr_host table*/
+	appendPQExpBuffer(dbQry, "LIST HOST;");
+	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
+	Assert(PQnfields(res) == 7);
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		resetPQExpBuffer(addstrdata);
+		appendPQExpBuffer(addstrdata, "ADD HOST %s (user=%s, port=%s, protocol=%s, agentport=%s, address='%s', adbhome='%s');",
+			PQgetvalue(res, i, 0),
+			PQgetvalue(res, i, 1),
+			PQgetvalue(res, i, 2),
+			PQgetvalue(res, i, 3),
+			PQgetvalue(res, i, 4),
+			PQgetvalue(res, i, 5),
+			PQgetvalue(res, i, 6));
+
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+			"mgr_host",
+			"pg_catalog",
+			NULL, "",
+			false, "DEFAULT", SECTION_NONE,
+			addstrdata->data, "", "",
+			NULL, 0,
+			NULL, NULL);
+	}
+	PQclear(res);
+
+	/* Get the mgr_node table*/
+	resetPQExpBuffer(dbQry);
+	appendPQExpBuffer(dbQry, "LIST NODE;");
+	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
+	Assert(PQnfields(res) == 9);
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		resetPQExpBuffer(addstrdata);
+		if (strlen(PQgetvalue(res, i, 5)))
+			appendPQExpBuffer(addstrdata, "ADD %s %s (host=%s, port=%s, sync_state='%s',path='%s');",
+				PQgetvalue(res, i, 2),
+				PQgetvalue(res, i, 0),
+				PQgetvalue(res, i, 1),
+				PQgetvalue(res, i, 4),
+				PQgetvalue(res, i, 5),
+				PQgetvalue(res, i, 6));
+		else
+			appendPQExpBuffer(addstrdata, "ADD %s %s (host=%s, port=%s, path='%s');",
+				PQgetvalue(res, i, 2),
+				PQgetvalue(res, i, 0),
+				PQgetvalue(res, i, 1),
+				PQgetvalue(res, i, 4),
+				PQgetvalue(res, i, 6));
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+			"mgr_node",
+			"pg_catalog",
+			NULL, "",
+			false, "DEFAULT", SECTION_NONE,
+			addstrdata->data, "", "",
+			NULL, 0,
+			NULL, NULL);
+	}
+	PQclear(res);
+	
+	/* Get the mgr_updateparm table*/
+	resetPQExpBuffer(dbQry);
+	appendPQExpBuffer(dbQry, "LIST PARAM;");	
+	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
+	Assert(PQnfields(res) == 4);
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		resetPQExpBuffer(addstrdata);
+		appendPQExpBuffer(addstrdata, "SET %s %s(\"%s\"='%s');",
+			strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode":(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm":PQgetvalue(res, i, 1)),
+			strcmp(PQgetvalue(res, i, 0), "*") == 0 ? "all":PQgetvalue(res, i, 0),
+			PQgetvalue(res, i, 2),
+			PQgetvalue(res, i, 3));
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+			"mgr_updateparm",
+			"pg_catalog",
+			NULL, "",
+			false, "DEFAULT", SECTION_NONE,
+			addstrdata->data, "", "",
+			NULL, 0,
+			NULL, NULL);
+	}
+	PQclear(res);
+	
+	/* Get the mgr_hba table*/
+	resetPQExpBuffer(dbQry);
+	appendPQExpBuffer(dbQry, "LIST HBA");	
+	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
+	Assert(PQnfields(res) == 2);
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		resetPQExpBuffer(addstrdata);
+		appendPQExpBuffer(addstrdata, "ADD HBA %s(\"%s\");",
+			PQgetvalue(res, i, 0),
+			PQgetvalue(res, i, 1));
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+			"mgr_hba",
+			"pg_catalog",
+			NULL, "",
+			false, "DEFAULT", SECTION_DATA,
+			addstrdata->data, "", "",
+			NULL, 0,
+			NULL, NULL);
+	}
+	PQclear(res);
+
+	destroyPQExpBuffer(addstrdata);
+	destroyPQExpBuffer(dbQry);
+	destroyPQExpBuffer(delQry);
+	destroyPQExpBuffer(creaQry);
+
+}
+#endif
+
