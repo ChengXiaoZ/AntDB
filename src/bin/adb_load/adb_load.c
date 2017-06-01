@@ -3006,9 +3006,7 @@ main_write_error_message(DISTRIBUTE distribute, char * message, char *start_cmd)
 		appendLineBufInfoString(error_buffer, " -e \n");
 		appendLineBufInfoString(error_buffer, "                   2,Manually modify the error data in the queue data file\n");
 		appendLineBufInfoString(error_buffer, "                   3,Import data using single file mode or static folder mode\n");
-		appendLineBufInfoString(error_buffer, "\n");
 	}
-	appendLineBufInfoString(error_buffer, "---------------------------------------------------------\n");
 
 	write_log_summary_fd(error_buffer);
 	release_linebuf(error_buffer);

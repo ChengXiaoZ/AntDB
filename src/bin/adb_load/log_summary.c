@@ -390,7 +390,7 @@ get_log_buf(ErrorInfo *error_info)
 		slist_delete_current(&iter);
 	}
 
-	appendLineBufInfoString(log_buf, "-------------------------\n");
+	appendLineBufInfoString(log_buf, "-------------------------------------------------------\n");
 
 	return log_buf;
 }
