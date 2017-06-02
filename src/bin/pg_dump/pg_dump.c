@@ -15756,8 +15756,10 @@ dumpAdbmgrTable(Archive *fout)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
-		appendPQExpBuffer(addstrdata, "SET %s %s(\"%s\"='%s');",
-			strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode":(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm":PQgetvalue(res, i, 1)),
+		appendPQExpBuffer(addstrdata, "SET %s %s(\"%s\"=\"%s\");",
+			strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode"
+				:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm"
+				:PQgetvalue(res, i, 1)),
 			strcmp(PQgetvalue(res, i, 0), "*") == 0 ? "all":PQgetvalue(res, i, 0),
 			PQgetvalue(res, i, 2),
 			PQgetvalue(res, i, 3));
@@ -15785,6 +15787,55 @@ dumpAdbmgrTable(Archive *fout)
 			PQgetvalue(res, i, 1));
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 			"mgr_hba",
+			"pg_catalog",
+			NULL, "",
+			false, "DEFAULT", SECTION_DATA,
+			addstrdata->data, "", "",
+			NULL, 0,
+			NULL, NULL);
+	}
+	PQclear(res);
+	
+	/* Get the job table*/
+	resetPQExpBuffer(dbQry);
+	appendPQExpBuffer(dbQry, "LIST JOB");	
+	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
+	Assert(PQnfields(res) == 7);
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		resetPQExpBuffer(addstrdata);
+		appendPQExpBuffer(addstrdata, "ADD JOB %s(nexttime='%s', interval=%s, status=%s, command='%s', desc='%s');",
+			PQgetvalue(res, i, 1),
+			PQgetvalue(res, i, 2),
+			PQgetvalue(res, i, 3),
+			strcasecmp(PQgetvalue(res, i, 4), "t")==0 ? "true":"false",
+			PQgetvalue(res, i, 5),
+			PQgetvalue(res, i, 6));
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+			"monitor_job",
+			"pg_catalog",
+			NULL, "",
+			false, "DEFAULT", SECTION_DATA,
+			addstrdata->data, "", "",
+			NULL, 0,
+			NULL, NULL);
+	}
+	PQclear(res);
+
+	/* Get the item table*/
+	resetPQExpBuffer(dbQry);
+	appendPQExpBuffer(dbQry, "LIST ITEM");	
+	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
+	Assert(PQnfields(res) == 3);
+	for (i = 0; i < PQntuples(res); i++)
+	{
+		resetPQExpBuffer(addstrdata);
+		appendPQExpBuffer(addstrdata, "ADD ITEM %s(path='%s', desc='%s');",
+			PQgetvalue(res, i, 0),
+			PQgetvalue(res, i, 1),
+			PQgetvalue(res, i, 2));
+		ArchiveEntry(fout, nilCatalogId, createDumpId(),
+			"monitor_item",
 			"pg_catalog",
 			NULL, "",
 			false, "DEFAULT", SECTION_DATA,
