@@ -132,6 +132,11 @@ cmdline_adb_load_setting(int argc, char **argv)
 			break;
 		case 'h':
 			setting->hash_thread_num = atoi(optarg);
+			if (setting->hash_thread_num == 0)
+			{
+				fprintf(stderr, "Error: option -h/--hash_thread_num can not be less then or equal to 0.\n");
+				exit(EXIT_FAILURE);
+			}
 			break;
 		case 'i': //inputdir
 			{
@@ -175,6 +180,10 @@ cmdline_adb_load_setting(int argc, char **argv)
 			}
 		case 'r':
 			setting->threads_num_per_datanode = atoi(optarg);
+			{
+				fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less then or equal to 0.\n");
+				exit(EXIT_FAILURE);
+			}
 			break;
 		case 's': //static mode
 			setting->static_mode = true;
@@ -215,13 +224,13 @@ cmdline_adb_load_setting(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	if (setting->threads_num_per_datanode <= 0)
+	if (setting->threads_num_per_datanode < 0)
 	{
 		fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less then or equal to 0.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (setting->hash_thread_num <= 0)
+	if (setting->hash_thread_num < 0)
 	{
 		fprintf(stderr, "Error: option -h/--hash_thread_num can not be less then or equal to 0.\n");
 		exit(EXIT_FAILURE);
@@ -630,7 +639,7 @@ get_settings_by_config_file(ADBLoadSetting *setting)
 		str_ptr = NULL;
 	}
 
-	setting->hash_config = (HashConfig *)palloc0(sizeof(HashConfig ));
+	setting->hash_config = (HashConfig *)palloc0(sizeof(HashConfig));
 	if (setting->hash_thread_num == 0)
 	{
 		str_ptr = get_config_file_value(HASH_THREAD_NUM);
@@ -779,6 +788,11 @@ get_text_delim(char *text_delim)
 			local_text_delim[1] = '\0';
 			return local_text_delim;
 		}
+		else
+		{
+			fprintf(stderr, "Error: the value for \"COPY_DELIMITER\" must be a single character.\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 	else
 	{
@@ -794,6 +808,9 @@ get_copy_options(char *text_delim, char *copy_null)
 {
 	LineBuffer *buf = NULL;
 	char *copy_options = NULL;
+
+	Assert(text_delim != NULL);
+	Assert(copy_null != NULL);
 
 	init_linebuf(3);
 	buf = get_linebuf();
