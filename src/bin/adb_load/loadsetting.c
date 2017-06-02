@@ -215,15 +215,15 @@ cmdline_adb_load_setting(int argc, char **argv)
 		exit(EXIT_FAILURE);
 	}
 
-	if (setting->threads_num_per_datanode < 0)
+	if (setting->threads_num_per_datanode <= 0)
 	{
-		fprintf(stderr, "Error: option -r/--thrds_num_per_dn can not less then 0.\n");
+		fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less then or equal to 0.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	if (setting->hash_thread_num < 0)
+	if (setting->hash_thread_num <= 0)
 	{
-		fprintf(stderr, "Error: option -h/--hash_thread_num can not less then 0.\n");
+		fprintf(stderr, "Error: option -h/--hash_thread_num can not be less then or equal to 0.\n");
 		exit(EXIT_FAILURE);
 	}
 
