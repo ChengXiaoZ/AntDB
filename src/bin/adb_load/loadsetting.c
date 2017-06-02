@@ -744,6 +744,11 @@ get_settings_by_config_file(ADBLoadSetting *setting)
 	if (setting->copy_cmd_comment_str == NULL)
 	{
 		str_ptr = get_config_file_value(COPY_CMD_COMMENT_STR);
+		if (strcasecmp(str_ptr, "\\") == 0 && strlen(str_ptr) == 1)
+		{
+			setting->copy_cmd_comment_str = "\\\\";
+		}
+
 		if (check_copy_comment_str_valid(str_ptr))
 		{
 			setting->copy_cmd_comment_str = pg_strdup(str_ptr);
