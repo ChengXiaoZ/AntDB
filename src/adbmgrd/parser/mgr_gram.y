@@ -178,7 +178,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 
 %type <chr>		node_type cluster_type
 
-%token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE ACL
+%token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE ACL CLUSTER
 %token<keyword>	IF_P EXISTS NOT
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARAM HBA HA
@@ -1191,6 +1191,13 @@ AddUpdataparmStmt:
 				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
+		}
+	| SET CLUSTER INIT
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_set_init_cluster", NULL));
+			$$ = (Node*)stmt;
 		}
 		;
 ResetUpdataparmStmt:
@@ -2573,6 +2580,7 @@ unreserved_keyword:
 	| CHECK_USER
 	| CLEAN
 /*	| CONFIG */
+	| CLUSTER
 	| DEPLOY
 	| DROP
 	| EXISTS

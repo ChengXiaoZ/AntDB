@@ -5352,7 +5352,10 @@ DATA(insert OID = 4970 (  mgr_monitor_ha            PGNSP PGUID 12 10 400 0 0 f 
 DESCR("monitor hba");
 
 DATA(insert OID = 4971 ( monitor_delete_data_interval_days  PGNSP PGUID 12 1 0 0 0 f f f f t f s 1 0 16 "23" _null_ _null_ _null_ _null_ monitor_delete_data_interval_days _null_ _null_ _null_ ));
-DESCR("clean data");
+DESCR("clean monitor data");
+
+DATA(insert OID = 4972 ( mgr_set_init_cluster  PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ mgr_set_init_cluster _null_ _null_ _null_ ));
+DESCR("set init cluster");
 
 #endif
 

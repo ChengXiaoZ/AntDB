@@ -877,16 +877,38 @@ Datum monitor_delete_data_interval_days(PG_FUNCTION_ARGS)
 	{
 		appendStringInfo(&sqlstrdata, "delete from %s where %s < timestamp'now()' - interval'%d day';", del_tablename[iloop].tbname, del_tablename[iloop].coltimename, interval_days);
 		ret = SPI_execute(sqlstrdata.data, false, 0);
-		if (ret != SPI_OK_DELETE )
+		if (ret != SPI_OK_DELETE)
 			ereport(ERROR, (errmsg("ADB Monitor SPI_execute \"%s\"failed: error code %d", sqlstrdata.data, ret)));
 		ereport(LOG, (errmsg("ADB Monitor clean data table \"%s\", data before \"%d\" days of now", del_tablename[iloop].tbname, interval_days)));
 		resetStringInfo(&sqlstrdata);
 		SPI_freetuptable(SPI_tuptable);
 	}
-	/*monitor_net table*/
 	SPI_finish();
 	
+	pfree(sqlstrdata.data);
 	PG_RETURN_BOOL(true);
 }
 
+/*
+* update mgr_node table, set initialized=true, incluster=true
+*/
+
+Datum mgr_set_init_cluster(PG_FUNCTION_ARGS)
+{
+	char *sqlstr = "update mgr_node set nodeinited=true,nodeincluster=true;";
+	int ret;
+
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+
+	ret = SPI_execute(sqlstr, false, 0);
+	if (ret != SPI_OK_UPDATE)
+		ereport(ERROR, (errmsg("ADB Manager SPI_execute \"%s\"failed: error code %d", sqlstr, ret)));
+	ereport(LOG, (errmsg("update mgr_node table, set initialized=true, incluster=true")));
+	SPI_freetuptable(SPI_tuptable);
+	SPI_finish();
+	
+	PG_RETURN_BOOL(true);
+	
+}
 

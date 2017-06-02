@@ -255,6 +255,7 @@ extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);
 extern void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname, StringInfo resultstrdata);
 extern Datum monitor_delete_data_interval_days(PG_FUNCTION_ARGS);
+extern Datum mgr_set_init_cluster(PG_FUNCTION_ARGS);
 
 /*monitor_slowlog.c*/
 extern char *monitor_get_onestrvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname);
