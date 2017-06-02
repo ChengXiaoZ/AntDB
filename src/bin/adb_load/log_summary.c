@@ -10,10 +10,10 @@
 #include "linebuf.h"
 
 LogSummaryThreadState log_summary_thread_state;
-GlobleInfo *global_info = NULL;
 bool g_log_summary_exit = false;
 
-static slist_head error_info_list;
+static slist_head  error_info_list;
+static GlobleInfo *global_info = NULL;
 static int error_threshold = 0;
 
 typedef struct ErrorData
@@ -49,10 +49,10 @@ typedef struct ErrorMsg
 	slist_node next;
 }ErrorMsg;
 
-static ErrorMsg * get_error_msg(char *error_code, char *line_data);
+static ErrorMsg *get_error_msg(char *error_code, char *line_data);
 static void set_error_threshold(int threshold_value);
 static char *get_error_desc(char *error_code);
-static ErrorInfo * get_new_error_info(char *error_code, char *line_data);
+static ErrorInfo *get_new_error_info(char *error_code, char *line_data);
 static void append_error_info_list(char *error_code, char *line_data);
 static void write_error_info_list_to_file(void);
 static LineBuffer *get_log_buf(ErrorInfo *error_info);
@@ -86,10 +86,9 @@ int
 init_log_summary_thread(LogSummaryThreadInfo *log_summary_info)
 {
 	init_global_info();
-
 	set_error_threshold(log_summary_info->threshold_value);
-	log_summary_info->thr_startroutine = log_summary_thread_main;
 
+	log_summary_info->thr_startroutine = log_summary_thread_main;
 	if ((pthread_create(&log_summary_info->thread_id, NULL, build_log_summary_thread_main, log_summary_info)) < 0)
 	{
 		ADBLOADER_LOG(LOG_ERROR, "[LOG_SUMMARY] create log summary thread error");
@@ -117,6 +116,12 @@ static void
 log_summary_thread_clean(void *arg)
 {
 	pthread_mutex_destroy(&global_info->mutex);
+
+	/* reset false */
+	g_log_summary_exit = false;
+
+	pg_free(global_info);
+	global_info = NULL;
 
 	return;
 }
@@ -146,21 +151,19 @@ log_summary_thread_main(void *arg)
 		{
 			slist_foreach_modify(siter, &global_info->g_slist)
 			{
-				 ErrorMsg *msg = slist_container(ErrorMsg, next, siter.cur);
+				ErrorMsg *msg = slist_container(ErrorMsg, next, siter.cur);
 
-				 ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY] get data from global info: error_code:%s, line_data: %s",
-							msg->error_msg->error_code, msg->error_msg->line_data);
+				ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY] get data from global info: error_code:%s, line_data: %s",
+						msg->error_msg->error_code, msg->error_msg->line_data);
 
-				 append_error_info_list(msg->error_msg->error_code, msg->error_msg->line_data);
+				append_error_info_list(msg->error_msg->error_code, msg->error_msg->line_data);
 
-				 pg_free_error_msg(msg);
-				 slist_delete_current(&siter);
+				pg_free_error_msg(msg);
+				slist_delete_current(&siter);
 			}
-
 		}
 
 		pthread_mutex_unlock(&global_info->mutex);
-
 		sleep(1);
 	}
 
@@ -375,6 +378,7 @@ init_global_info()
 		ADBLOADER_LOG(LOG_ERROR, "[LOG_SUMMARY][thread main ] Can not initialize log summary mutex: %s",
 						strerror(errno));
 	}
+	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] global info mutex init success. ");
 
 	slist_init(&global_info->g_slist);
 	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] global info global slist init. ");
