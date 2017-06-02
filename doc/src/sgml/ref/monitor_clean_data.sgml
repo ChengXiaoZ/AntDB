@@ -1,0 +1,64 @@
+<!--
+doc/src/sgml/ref/monitor_clean_data.sgml
+ADB documentation
+-->
+
+<refentry id="MONITOR-CLEANDATA">
+  <refmeta>
+    <refentrytitle>CLEAN MONITOR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CLEAN MONITOR</refname>
+    <refpurpose>clean the monitor table's data, which has been stored longer than given days</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="monitor-cleandata">
+    <primary>CLEAN MONITOR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+CLEAN MONITOR <replaceable class="parameter">number_days</replaceable>
+</synopsis>
+    </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>CLEAN MONITOR</command> clean the monitor table's data, which has been stored longer than given days.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">number_days</replaceable>
+        </term>
+        <listitem>
+          <para>
+    the number days.
+          </para>
+        </listitem>
+      </varlistentry>
+
+    </variablelist>
+  </refsect1>
+
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+Clean the monitor data, which has been stored longer than 60 days:
+      <programlisting>
+CLEAN MONITOR 60;
+</programlisting>
+    </para>
+  </refsect1>
+</refentry>

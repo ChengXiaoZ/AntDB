@@ -243,6 +243,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrSetCoordinator  SYSTEM "mgr_set_coordinator.sgml">
 <!ENTITY mgrSetDatanode     SYSTEM "mgr_set_datanode.sgml">
 <!ENTITY mgrSetGtm          SYSTEM "mgr_set_gtm.sgml">
+<!ENTITY mgrSetClusterInit  SYSTEM "mgr_set_cluster_init.sgml">
 <!ENTITY mgrShow            SYSTEM "mgr_show.sgml">
 <!ENTITY mgrStartAgent      SYSTEM "mgr_start_agent.sgml">
 <!ENTITY mgrStartAll        SYSTEM "mgr_start_all.sgml">
@@ -260,7 +261,8 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY monitorAddJobItem  SYSTEM "monitor_add_jobitem.sgml">
 <!ENTITY monitorAlterJobItem   SYSTEM "monitor_alter_jobitem.sgml">
 <!ENTITY monitorAlterJob    SYSTEM "monitor_alter_job.sgml">
+<!ENTITY monitorCleanData   SYSTEM "monitor_clean_data.sgml">
 <!ENTITY monitorDropJobItem SYSTEM "monitor_drop_jobitem.sgml">
 <!ENTITY monitorDropJob     SYSTEM "monitor_drop_job.sgml">
 <!ENTITY monitorListJobItem   SYSTEM "monitor_list_jobitem.sgml">
-<!ENTITY monitorListJob    SYSTEM "monitor_list_job.sgml">
+<!ENTITY monitorListJob     SYSTEM "monitor_list_job.sgml">

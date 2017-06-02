@@ -1,0 +1,51 @@
+<!--
+doc/src/sgml/ref/mgr_set_cluster_init.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-SETCLUSTERINIT">
+  <refmeta>
+    <refentrytitle>SET CLUSTER INIT</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>SET CLUSTER INIT</refname>
+    <refpurpose>Set all nodes as initialized and incluster in the node table</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-setclusterinit">
+    <primary>SET CLUSTER INIT</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+<synopsis>
+SET CLUSTER INIT
+</synopsis>
+  </refsynopsisdiv>
+  <refsect1>
+    <title>Description</title>
+    <para>
+    <command>SET CLUSTER INIT</command> set all nodes as initialized and incluster in the node table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+  <title>Examples</title>
+ <para>
+Set all nodes as initialized and incluster in the node table:
+<programlisting>
+SET CLUSTER INIT;
+</programlisting>
+</para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-cleanall"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

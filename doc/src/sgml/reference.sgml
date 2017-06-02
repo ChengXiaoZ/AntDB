@@ -321,6 +321,7 @@
    &mgrSetCoordinator;
    &mgrSetDatanode;
    &mgrSetGtm;
+	 &mgrSetClusterInit;
    &mgrShow;
    &mgrStartAgent;
    &mgrStartAll;
@@ -348,6 +349,7 @@
    &monitorAddJobItem;
    &monitorAlterJobItem;
    &monitorAlterJob;
+	 &monitorCleanData;
    &monitorDropJobItem;
    &monitorDropJob;
    &monitorListJobItem;
