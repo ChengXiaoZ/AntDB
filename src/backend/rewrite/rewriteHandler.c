@@ -3355,6 +3355,7 @@ QueryRewriteCTAS(Query *parsetree)
 	CreateTableAsStmt *stmt;
 	IntoClause *into;
 	ListCell *lc;
+	bool	skip_data = false;
 
 	if (parsetree->commandType != CMD_UTILITY ||
 		!IsA(parsetree->utilityStmt, CreateTableAsStmt))
@@ -3368,6 +3369,7 @@ QueryRewriteCTAS(Query *parsetree)
 	create_stmt = makeNode(CreateStmt);
 	create_stmt->relation = relation;
 	into = stmt->into;
+	skip_data = stmt->into->skipData;
 
 	/* Obtain the target list of new table */
 	Assert(IsA(stmt->query, Query));
@@ -3472,6 +3474,9 @@ QueryRewriteCTAS(Query *parsetree)
 	 * utility is no more required.
 	 */
 	parsetree->utilityStmt = NULL;
+
+	if(skip_data)
+		return NIL;
 
 	/* Get the SELECT query string */
 	initStringInfo(&cquery);
