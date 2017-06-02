@@ -734,7 +734,7 @@ insert into pg_catalog.monitor_host_threshold values(32, 1, 100, 0, 0);
 --slow query min time
 insert into pg_catalog.monitor_host_threshold values(33, 1, 2, 0, 0);
 --get limit num slowlog from database cluster once time
-insert into pg_catalog.monitor_host_threshold values(34, 1, 5, 0, 0);
+insert into pg_catalog.monitor_host_threshold values(34, 1, 100, 0, 0);
 
 -- for ADB monitor the topology in home page : get datanode node topology
 CREATE VIEW adbmgr.get_datanode_node_topology AS

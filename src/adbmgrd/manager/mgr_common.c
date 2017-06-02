@@ -349,7 +349,7 @@ bool mgr_recv_msg_for_monitor(ManagerAgent *ma, bool *ret, StringInfo agentRstSt
 		else if (msg_type == AGT_MSG_RESULT)
 		{
 			*ret = true;
-			ereport(LOG, (errmsg("receive msg: %s", agentRstStr->data)));
+			ereport(DEBUG1, (errmsg("receive msg: %s", agentRstStr->data)));
 			initdone = true;
 			break;
 		}
