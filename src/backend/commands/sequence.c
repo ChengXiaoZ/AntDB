@@ -1084,6 +1084,13 @@ lastval(PG_FUNCTION_ARGS)
     {
 		int64		seq_val;
 		bool		is_temp;
+
+		/* Someone may have dropped the sequence since the last nextval() */
+		if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(last_used_seq->relid)))
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("lastval is not yet defined in this session")));
+
 		seqrel = open_share_lock(last_used_seq);
 		is_temp = seqrel->rd_backend == MyBackendId;
 		relation_close(seqrel, NoLock);
