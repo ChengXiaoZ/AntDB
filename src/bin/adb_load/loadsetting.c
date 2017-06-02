@@ -134,7 +134,7 @@ cmdline_adb_load_setting(int argc, char **argv)
 			setting->hash_thread_num = atoi(optarg);
 			if (setting->hash_thread_num == 0)
 			{
-				fprintf(stderr, "Error: option -h/--hash_thread_num can not be less then or equal to 0.\n");
+				fprintf(stderr, "Error: option -h/--hash_thread_num can not be less than or equal to 0.\n");
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -181,7 +181,7 @@ cmdline_adb_load_setting(int argc, char **argv)
 		case 'r':
 			setting->threads_num_per_datanode = atoi(optarg);
 			{
-				fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less then or equal to 0.\n");
+				fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less than or equal to 0.\n");
 				exit(EXIT_FAILURE);
 			}
 			break;
@@ -226,13 +226,13 @@ cmdline_adb_load_setting(int argc, char **argv)
 
 	if (setting->threads_num_per_datanode < 0)
 	{
-		fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less then or equal to 0.\n");
+		fprintf(stderr, "Error: option -r/--threads_per_datanode can not be less than or equal to 0.\n");
 		exit(EXIT_FAILURE);
 	}
 
 	if (setting->hash_thread_num < 0)
 	{
-		fprintf(stderr, "Error: option -h/--hash_thread_num can not be less then or equal to 0.\n");
+		fprintf(stderr, "Error: option -h/--hash_thread_num can not be less than or equal to 0.\n");
 		exit(EXIT_FAILURE);
 	}
 
