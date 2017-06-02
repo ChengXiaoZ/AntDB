@@ -71,6 +71,12 @@ const char *mgr_CreateCommandTag(Node *parsetree)
 	case T_MgrRemoveNode:
 		tag = "REMOVE NODE";
 		break;
+	case T_MGRSetClusterInit:
+		tag = "SET CLUSTER INIT";
+		break;
+	case T_MonitorDeleteData:
+		tag = "CLEAN MONITOR DATA";
+		break;
 	default:
 		ereport(WARNING, (errmsg("unrecognized node type: %d", (int)nodeTag(parsetree))));
 		tag = "???";
@@ -140,6 +146,12 @@ void mgr_ProcessUtility(Node *parsetree, const char *queryString,
 		break;
 	case T_MgrRemoveNode:
 		mgr_remove_node((MgrRemoveNode*)parsetree, params, dest);
+		break;
+	case T_MGRSetClusterInit:
+		mgr_set_init((MGRSetClusterInit*)parsetree, params, dest);
+		break;
+	case T_MonitorDeleteData:
+		monitor_delete_data((MonitorDeleteData*)parsetree, params, dest);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)

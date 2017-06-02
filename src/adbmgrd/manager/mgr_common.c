@@ -843,6 +843,25 @@ bool mgr_get_active_node(Name nodename, char nodetype)
 * given the input parameter n_days as interval time, the data in the table before n_days will be droped
 *
 */
+void monitor_delete_data(MonitorDeleteData *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_alter())
+	{
+		DirectFunctionCall1(monitor_delete_data_interval_days, Int32GetDatum(node->days));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+
+}
+
+/*
+* given the input parameter n_days as interval time, the data in the table before n_days will be droped
+*
+*/
 
 Datum monitor_delete_data_interval_days(PG_FUNCTION_ARGS)
 {
@@ -889,6 +908,23 @@ Datum monitor_delete_data_interval_days(PG_FUNCTION_ARGS)
 	SPI_finish();
 	
 	PG_RETURN_BOOL(true);
+}
+
+/*
+* set cluster init in mgr_node table,initialized=true, incluster=true
+*/
+void mgr_set_init(MGRSetClusterInit *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_add())
+	{
+		DirectFunctionCall1(mgr_set_init_cluster, (Datum)0);
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
 }
 
 /*

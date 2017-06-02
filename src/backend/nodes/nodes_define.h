@@ -4247,4 +4247,14 @@ BEGIN_NODE(MgrRemoveNode)
 END_NODE(MgrRemoveNode)
 #endif /*NO_NODE_MgrRemoveNode*/
 
+#ifndef NO_NODE_MGRSetClusterInit
+BEGIN_NODE(MGRSetClusterInit)
+END_NODE(MGRSetClusterInit)
+#endif /* NO_NODE_MGRSetClusterInit */
+
+#ifndef NO_NODE_MonitorDeleteData
+BEGIN_NODE(MonitorDeleteData)
+END_NODE(MonitorDeleteData)
+#endif /* NO_NODE_MonitorDeleteData */
+
 #endif /* ADBMGRD */

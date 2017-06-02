@@ -1194,10 +1194,8 @@ AddUpdataparmStmt:
 		}
 	| SET CLUSTER INIT
 		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_set_init_cluster", NULL));
-			$$ = (Node*)stmt;
+			MGRSetClusterInit *node = makeNode(MGRSetClusterInit);
+			$$ = (Node*)node;
 		}
 		;
 ResetUpdataparmStmt:
@@ -1503,11 +1501,9 @@ CleanAllStmt:
 		}
 	| CLEAN MONITOR ICONST
 		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeIntConst($3, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("monitor_delete_data_interval_days", args));
-			$$ = (Node*)stmt;
+			MonitorDeleteData *node = makeNode(MonitorDeleteData);
+			node->days = $3;
+			$$ = (Node*)node;
 		}
 	;
 /*hba start*/

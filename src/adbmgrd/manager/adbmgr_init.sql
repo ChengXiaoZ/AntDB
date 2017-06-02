@@ -1098,7 +1098,7 @@ grant usage on schema adbmgr to public;
 -- clean
 revoke execute on function mgr_clean_all() from public;
 revoke execute on function mgr_clean_node("any") from public;
-
+revoke execute on function monitor_delete_data_interval_days(int) from public;
 -- failover
 revoke execute on function mgr_failover_gtm(cstring, cstring, bool), mgr_failover_one_dn(cstring, cstring, bool) from public;
 
@@ -1122,7 +1122,8 @@ mgr_monitor_agent_hostlist(text[]),
 mgr_monitor_gtm_all(),
 mgr_monitor_datanode_all(),
 mgr_monitor_nodetype_namelist(bigint, "any"),
-mgr_monitor_nodetype_all(bigint)
+mgr_monitor_nodetype_all(bigint),
+mgr_monitor_ha()
 from public;
 
 revoke execute on function mgr_priv_manage(bigint,text[],text[]) from public;
@@ -1166,7 +1167,8 @@ from public;
 
 --set
 revoke execute on function
-mgr_add_updateparm_func("char", cstring, "char", boolean, "any")
+mgr_add_updateparm_func("char", cstring, "char", boolean, "any"),
+mgr_set_init_cluster()
 from public;
 
 --reset
@@ -1195,7 +1197,6 @@ from public;
 
 --flush host
 revoke execute on function mgr_flush_host() from public;
-
 
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;

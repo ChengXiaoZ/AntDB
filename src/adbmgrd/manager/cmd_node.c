@@ -9438,13 +9438,15 @@ static void mgr_manage_set(char command_type, char *user_list_str)
 	{
 		/*grant execute on function func_name [, ...] to user_name [, ...] */
 		appendStringInfoString(&commandsql, "GRANT EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\") ");
+		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_set_init_cluster()");
 		appendStringInfoString(&commandsql, "TO ");
 	}else if (command_type == PRIV_REVOKE)
 	{
 		/*revoke execute on function func_name [, ...] from user_name [, ...] */
 		appendStringInfoString(&commandsql, "REVOKE EXECUTE ON FUNCTION ");
-		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\") ");
+		appendStringInfoString(&commandsql, "mgr_add_updateparm_func(\"char\", cstring, \"char\", boolean, \"any\"), ");
+		appendStringInfoString(&commandsql, "mgr_set_init_cluster()");
 		appendStringInfoString(&commandsql, "FROM ");
 	}
 	else
@@ -9702,7 +9704,8 @@ static void mgr_manage_monitor(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "mgr_monitor_gtm_all(), ");
 		appendStringInfoString(&commandsql, "mgr_monitor_datanode_all(), ");
 		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_namelist(bigint, \"any\"), ");
-		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_all(bigint) ");
+		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_all(bigint), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_ha() ");
 		appendStringInfoString(&commandsql, "TO ");
 		appendStringInfoString(&commandsql, user_list_str);
 		appendStringInfoString(&commandsql, ";");
@@ -9719,7 +9722,8 @@ static void mgr_manage_monitor(char command_type, char *user_list_str)
 		appendStringInfoString(&commandsql, "mgr_monitor_gtm_all(), ");
 		appendStringInfoString(&commandsql, "mgr_monitor_datanode_all(), ");
 		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_namelist(bigint, \"any\"), ");
-		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_all(bigint) ");
+		appendStringInfoString(&commandsql, "mgr_monitor_nodetype_all(bigint), ");
+		appendStringInfoString(&commandsql, "mgr_monitor_ha() ");
 		appendStringInfoString(&commandsql, "FROM ");
 		appendStringInfoString(&commandsql, user_list_str);
 		appendStringInfoString(&commandsql, ";");
@@ -10329,7 +10333,7 @@ static bool mgr_acl_show(char *username)
 
 static bool mgr_acl_monitor(char *username)
 {
-	bool f1, f2, f3, f4, f5, f6;
+	bool f1, f2, f3, f4, f5, f6, f7;
 	bool t1;
 
 	f1 = mgr_has_func_priv(username, "mgr_monitor_agent_all()", "execute");
@@ -10338,10 +10342,11 @@ static bool mgr_acl_monitor(char *username)
 	f4 = mgr_has_func_priv(username, "mgr_monitor_datanode_all()", "execute");
 	f5 = mgr_has_func_priv(username, "mgr_monitor_nodetype_namelist(bigint, \"any\")", "execute");
 	f6 = mgr_has_func_priv(username, "mgr_monitor_nodetype_all(bigint)", "execute");
+	f7 = mgr_has_func_priv(username, "mgr_monitor_ha()", "execute");
 
 	t1 = mgr_has_table_priv(username, "adbmgr.monitor_all", "select");
 
-	return (f1 && f2 && f3 && f4 && f5 && f6 && t1);
+	return (f1 && f2 && f3 && f4 && f5 && f6 && f7 && t1);
 }
 
 static bool mgr_acl_list(char *username)
@@ -10401,7 +10406,6 @@ static bool mgr_acl_clean(char *username)
 
 	f1 = mgr_has_func_priv(username, "mgr_clean_all()", "execute");
 	f2 = mgr_has_func_priv(username, "mgr_clean_node (\"any\")", "execute");
-
 	return (f1 && f2);
 }
 

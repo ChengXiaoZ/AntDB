@@ -181,4 +181,15 @@ typedef struct MgrRemoveNode
 	List            *names;
 }MgrRemoveNode;
 
+typedef struct MGRSetClusterInit
+{
+        NodeTag         type;
+}MGRSetClusterInit;
+
+typedef struct MonitorDeleteData
+{
+	NodeTag         type;
+	int32		days;
+}MonitorDeleteData;
+
 #endif /* MGR_NODE_H */
