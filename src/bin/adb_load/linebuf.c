@@ -244,6 +244,8 @@ enlargeLineBuf(LineBuffer *buf, int needed)
 {
 	int new_size;
 	int need_maxsize;
+	void *temp_ptr;
+
 	Assert(buf != NULL);
 
 	if(buf->maxlen - buf->len > needed)
@@ -253,6 +255,10 @@ enlargeLineBuf(LineBuffer *buf, int needed)
 	new_size = (need_maxsize / DEFAULT_BUF_STEP) * DEFAULT_BUF_STEP;
 	if(new_size < need_maxsize)
 		new_size += DEFAULT_BUF_STEP;
-	buf->data = realloc(buf->data, new_size);
+
+	temp_ptr = realloc(buf->data, new_size);
+
+	buf->data = temp_ptr;
+	buf->maxlen = new_size;
 }
 

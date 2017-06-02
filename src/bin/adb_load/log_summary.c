@@ -151,19 +151,21 @@ log_summary_thread_main(void *arg)
 		{
 			slist_foreach_modify(siter, &global_info->g_slist)
 			{
-				ErrorMsg *msg = slist_container(ErrorMsg, next, siter.cur);
+				 ErrorMsg *msg = slist_container(ErrorMsg, next, siter.cur);
 
-				ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY] get data from global info: error_code:%s, line_data: %s",
-						msg->error_msg->error_code, msg->error_msg->line_data);
+				 ADBLOADER_LOG(LOG_DEBUG, "[LOG_SUMMARY] get data from global info: error_code:%s, line_data: %s",
+							msg->error_msg->error_code, msg->error_msg->line_data);
 
-				append_error_info_list(msg->error_msg->error_code, msg->error_msg->line_data);
+				 append_error_info_list(msg->error_msg->error_code, msg->error_msg->line_data);
 
-				pg_free_error_msg(msg);
-				slist_delete_current(&siter);
+				 pg_free_error_msg(msg);
+				 slist_delete_current(&siter);
 			}
+
 		}
 
 		pthread_mutex_unlock(&global_info->mutex);
+
 		sleep(1);
 	}
 
@@ -242,15 +244,15 @@ get_error_desc(char *error_code)
 	}
 	else if (strcmp(error_code, ERRCODE_NOT_NULL_VIOLATION) == 0)
 	{
-		return "not null violation";
+		return "not null violation error";
 	}
 	else if (strcmp(error_code, ERRCODE_CHECK_VIOLATION) == 0)
 	{
-		return "check violation";
+		return "check violation error";
 	}
 	else if (strcmp(error_code, ERRCODE_EXCLUSION_VIOLATION) == 0)
 	{
-		return "exclusion violation";
+		return "exclusion violation error";
 	}
 	else
 	{
@@ -378,10 +380,8 @@ init_global_info()
 		ADBLOADER_LOG(LOG_ERROR, "[LOG_SUMMARY][thread main ] Can not initialize log summary mutex: %s",
 						strerror(errno));
 	}
-	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] global info mutex init success. ");
 
 	slist_init(&global_info->g_slist);
-	ADBLOADER_LOG(LOG_INFO, "[LOG_SUMMARY][thread main ] global info global slist init. ");
 
 	return;
 }

@@ -424,7 +424,7 @@ check_configfile(ADBLoadSetting *setting)
 	{
 		if (!file_exists(DEFAULT_CONFIGFILENAME))
 		{
-			fprintf(stderr, "Error: default config file is not exit, please use -c/--configfile.\n");
+			fprintf(stderr, "Error: default config file does not exist, please use -c/--configfile.\n");
 			exit(EXIT_FAILURE);
 		}
 		else if ((ret = access(DEFAULT_CONFIGFILENAME, 4)) == -1)
