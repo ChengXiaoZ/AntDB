@@ -45,6 +45,7 @@ SELECT
 FROM pg_catalog.mgr_updateparm order by 1,2;
 
 CREATE VIEW adbmgr.node AS
+	SELECT * FROM(
   SELECT
     mgrnode.nodename    AS  name,
     hostname   AS  host,
@@ -64,8 +65,17 @@ CREATE VIEW adbmgr.node AS
     mgrnode.nodepath    AS  path,
     mgrnode.nodeinited  AS  initialized,
     mgrnode.nodeincluster AS incluster
-  FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid LEFT JOIN pg_catalog.mgr_node AS node_alise
-  ON node_alise.oid = mgrnode.nodemasternameoid order by 1,3;
+  FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid 
+		LEFT JOIN pg_catalog.mgr_node AS node_alise ON node_alise.oid = mgrnode.nodemasternameoid) AS node_tb 
+		order by 1,(case type 
+			when 'gtm master' then 0 
+			when 'gtm slave' then 1 
+			when 'gtm extra' then 2 
+			when 'coordinator' then 3 
+			when 'datanode master' then 4 
+			when 'datanode slave' then 5 
+			when 'datanode extra' then 6 
+			End) ASC;
 
 CREATE VIEW adbmgr.job AS
   SELECT
