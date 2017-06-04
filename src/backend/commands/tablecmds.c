@@ -4514,27 +4514,27 @@ find_composite_type_dependencies(Oid typeOid, Relation origRelation,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot alter type \"%s\" because column \"%s.%s\" uses it",
 								origTypeName,
-								RelationGetRelationName(rel),
+								quote_identifier(RelationGetRelationName(rel)),
 								NameStr(att->attname))));
 			else if (origRelation->rd_rel->relkind == RELKIND_COMPOSITE_TYPE)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot alter type \"%s\" because column \"%s.%s\" uses it",
-								RelationGetRelationName(origRelation),
+								quote_identifier(RelationGetRelationName(origRelation)),
 								RelationGetRelationName(rel),
 								NameStr(att->attname))));
 			else if (origRelation->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot alter foreign table \"%s\" because column \"%s.%s\" uses its row type",
-								RelationGetRelationName(origRelation),
+								quote_identifier(RelationGetRelationName(origRelation)),
 								RelationGetRelationName(rel),
 								NameStr(att->attname))));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot alter table \"%s\" because column \"%s.%s\" uses its row type",
-								RelationGetRelationName(origRelation),
+								quote_identifier(RelationGetRelationName(origRelation)),
 								RelationGetRelationName(rel),
 								NameStr(att->attname))));
 		}

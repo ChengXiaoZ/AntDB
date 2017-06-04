@@ -53,6 +53,7 @@
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
 #include "utils/tqual.h"
+#include "utils/builtins.h"
 
 #ifdef ADB
 #include "catalog/pg_operator.h"
@@ -327,7 +328,7 @@ analyze_rel_coordinator(Relation onerel, bool inh, int attr_cnt,
 	relname = RelationGetRelationName(onerel);
 	nspname = get_namespace_name(RelationGetNamespace(onerel));
 
-	elog(LOG, "Getting detailed statistics for %s.%s", nspname, relname);
+	elog(LOG, "Getting detailed statistics for %s.%s", quote_identifier(nspname), relname);
 
 	/* Make up query string */
 	initStringInfo(&query);
@@ -776,12 +777,12 @@ do_analyze_rel(Relation onerel, VacuumStmt *vacstmt,
 	if (inh)
 		ereport(elevel,
 				(errmsg("analyzing \"%s.%s\" inheritance tree",
-						get_namespace_name(RelationGetNamespace(onerel)),
+						quote_identifier(get_namespace_name(RelationGetNamespace(onerel))),
 						RelationGetRelationName(onerel))));
 	else
 		ereport(elevel,
 				(errmsg("analyzing \"%s.%s\"",
-						get_namespace_name(RelationGetNamespace(onerel)),
+						quote_identifier(get_namespace_name(RelationGetNamespace(onerel))),
 						RelationGetRelationName(onerel))));
 
 	/*
@@ -1132,7 +1133,7 @@ do_analyze_rel(Relation onerel, VacuumStmt *vacstmt,
 			ereport(LOG,
 					(errmsg("automatic analyze of table \"%s.%s.%s\" system usage: %s",
 							get_database_name(MyDatabaseId),
-							get_namespace_name(RelationGetNamespace(onerel)),
+							quote_identifier(get_namespace_name(RelationGetNamespace(onerel))),
 							RelationGetRelationName(onerel),
 							pg_rusage_show(&ru0))));
 	}

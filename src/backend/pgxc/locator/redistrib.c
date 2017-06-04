@@ -29,6 +29,7 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/snapmgr.h"
+#include "utils/builtins.h"
 
 #define IsCommandTypePreUpdate(x) (x == CATALOG_UPDATE_BEFORE || \
 								   x == CATALOG_UPDATE_BOTH)
@@ -407,7 +408,7 @@ distrib_copy_to(RedistribState *distribState)
 	/* Inform client of operation being done */
 	ereport(DEBUG1,
 			(errmsg("Copying data for relation \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(rel)),
+					quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					RelationGetRelationName(rel))));
 
 	/* Begin the COPY process */
@@ -489,7 +490,7 @@ distrib_copy_from(RedistribState *distribState, ExecNodes *exec_nodes)
 	/* Inform client of operation being done */
 	ereport(DEBUG1,
 			(errmsg("Redistributing data for relation \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(rel)),
+					quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					RelationGetRelationName(rel))));
 
 	/* Begin redistribution on remote nodes */
@@ -632,7 +633,7 @@ distrib_truncate(RedistribState *distribState, ExecNodes *exec_nodes)
 	/* Inform client of operation being done */
 	ereport(DEBUG1,
 			(errmsg("Truncating data for relation \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(rel)),
+					quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					RelationGetRelationName(rel))));
 
 	/* Initialize buffer */
@@ -640,7 +641,7 @@ distrib_truncate(RedistribState *distribState, ExecNodes *exec_nodes)
 
 	/* Build query to clean up table before redistribution */
 	appendStringInfo(buf, "TRUNCATE %s.%s",
-					 get_namespace_name(RelationGetNamespace(rel)),
+					quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					 RelationGetRelationName(rel));
 
 	/*
@@ -679,7 +680,7 @@ distrib_reindex(RedistribState *distribState, ExecNodes *exec_nodes)
 	/* Inform client of operation being done */
 	ereport(DEBUG1,
 			(errmsg("Reindexing relation \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(rel)),
+					quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					RelationGetRelationName(rel))));
 
 	/* Initialize buffer */
@@ -687,7 +688,7 @@ distrib_reindex(RedistribState *distribState, ExecNodes *exec_nodes)
 
 	/* Generate the query */
 	appendStringInfo(buf, "REINDEX TABLE %s.%s",
-					 get_namespace_name(RelationGetNamespace(rel)),
+					 quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					 RelationGetRelationName(rel));
 
 	/* Execute the query */
@@ -726,7 +727,7 @@ distrib_delete_hash(RedistribState *distribState, ExecNodes *exec_nodes)
 	/* Inform client of operation being done */
 	ereport(DEBUG1,
 			(errmsg("Deleting necessary tuples \"%s.%s\"",
-					get_namespace_name(RelationGetNamespace(rel)),
+					quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					RelationGetRelationName(rel))));
 
 	/* Initialize buffer */
@@ -734,7 +735,7 @@ distrib_delete_hash(RedistribState *distribState, ExecNodes *exec_nodes)
 
 	/* Build query to clean up table before redistribution */
 	appendStringInfo(buf, "DELETE FROM %s.%s",
-					 get_namespace_name(RelationGetNamespace(rel)),
+					 quote_identifier(get_namespace_name(RelationGetNamespace(rel))),
 					 RelationGetRelationName(rel));
 
 	/*

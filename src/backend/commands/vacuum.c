@@ -49,6 +49,7 @@
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
 #include "utils/tqual.h"
+#include "utils/builtins.h"
 
 #ifdef PGXC
 #include "pgxc/pgxc.h"
@@ -1720,7 +1721,7 @@ vacuum_rel_coordinator(Relation onerel, bool is_outer)
 	relname = RelationGetRelationName(onerel);
 	nspname = get_namespace_name(RelationGetNamespace(onerel));
 
-	elog(LOG, "Getting relation statistics for %s.%s", nspname, relname);
+	elog(LOG, "Getting relation statistics for %s.%s", quote_identifier(nspname), relname);
 
 	replicated = IsLocatorReplicated(RelationGetLocatorType(onerel));
 	/*

@@ -49,7 +49,7 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 #include "utils/tuplesort.h"
-
+#include "utils/builtins.h"
 
 /*
  * This struct is used to pass around the information on tables to be
@@ -930,18 +930,18 @@ copy_heap_data(Oid OIDNewHeap, Oid OIDOldHeap, Oid OIDOldIndex,
 	if (indexScan != NULL)
 		ereport(elevel,
 				(errmsg("clustering \"%s.%s\" using index scan on \"%s\"",
-						get_namespace_name(RelationGetNamespace(OldHeap)),
+						quote_identifier(get_namespace_name(RelationGetNamespace(OldHeap))),
 						RelationGetRelationName(OldHeap),
 						RelationGetRelationName(OldIndex))));
 	else if (tuplesort != NULL)
 		ereport(elevel,
 				(errmsg("clustering \"%s.%s\" using sequential scan and sort",
-						get_namespace_name(RelationGetNamespace(OldHeap)),
+						quote_identifier(get_namespace_name(RelationGetNamespace(OldHeap))),
 						RelationGetRelationName(OldHeap))));
 	else
 		ereport(elevel,
 				(errmsg("vacuuming \"%s.%s\"",
-						get_namespace_name(RelationGetNamespace(OldHeap)),
+						quote_identifier(get_namespace_name(RelationGetNamespace(OldHeap))),
 						RelationGetRelationName(OldHeap))));
 
 	/*
