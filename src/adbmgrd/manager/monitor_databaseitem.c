@@ -88,8 +88,12 @@ int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, c
 	char *user = NULL;
 	
 	monitor_get_one_node_user_address_port(rel_node, &agentport, &user, &hostaddress, &coordport, nodetype);
-	Assert(hostaddress != NULL);
-	Assert(user != NULL);
+	if (!user)
+		ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED)
+			,errmsg("cannot get user name in host table")));
+	if (!hostaddress)
+		ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED)
+			,errmsg("cannot get IP address in host table")));
 	ret = monitor_get_onesqlvalue_one_node(agentport, sqlstr, user, hostaddress, coordport, dbname);
 	pfree(user);
 	pfree(hostaddress);
@@ -213,8 +217,12 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	/*get database list*/
 	monitor_get_one_node_user_address_port(rel_node, &agentport, &user, &hostaddress, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
-	Assert(user != NULL);
-	Assert(hostaddress != NULL);
+	if (!user)
+		ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED)
+			,errmsg("cannot get user name in host table")));
+	if (!hostaddress)
+		ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED)
+			,errmsg("cannot get IP address in host table")));
 	dbnamelist = monitor_get_dbname_list(user, hostaddress, coordport);
 	if(dbnamelist == NULL)
 	{
@@ -433,8 +441,12 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	/*get user, address, port of coordinator*/
 	monitor_get_one_node_user_address_port(rel_node, &agentport, &user, &hostaddress, &coordport, CNDN_TYPE_COORDINATOR_MASTER);
-	Assert(user != NULL);
-	Assert(hostaddress != NULL);
+	if (!user)
+		ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED)
+			,errmsg("cannot get user name in host table")));
+	if (!hostaddress)
+		ereport(ERROR, (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED)
+			,errmsg("cannot get IP address in host table")));
 	/*get database namelist*/
 	dbnamelist = monitor_get_dbname_list(user, hostaddress, coordport);
 	pfree(user);
