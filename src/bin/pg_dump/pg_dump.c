@@ -121,6 +121,7 @@ static SimpleStringList tabledata_exclude_patterns = {NULL, NULL};
 static SimpleOidList tabledata_exclude_oids = {NULL, NULL};
 #ifdef MGR_DUMP
 static void dumpAdbmgrTable(Archive *fout);
+static char *respacechr(char *str,char chr, char *strr);
 #endif
 
 /* default, if no "inclusion" switches appear, is to dump everything */
@@ -15669,6 +15670,10 @@ ExecuteSqlQueryForSingleRow(Archive *fout, char *query)
 }
 
 #ifdef MGR_DUMP
+
+/*
+* dump the adbmgr table: host, node, param, hba, job, item
+*/
 static void
 dumpAdbmgrTable(Archive *fout)
 {
@@ -15679,6 +15684,7 @@ dumpAdbmgrTable(Archive *fout)
 	PGconn *conn = GetConnection(fout);
 	PGresult *res;
 	const char *datname;
+	char *retstr;
 	int i = 0;
 
 	datname = PQdb(conn);
@@ -15694,7 +15700,7 @@ dumpAdbmgrTable(Archive *fout)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
-		appendPQExpBuffer(addstrdata, "ADD HOST %s (user=%s, port=%s, protocol=%s, agentport=%s, address='%s', adbhome='%s');",
+		appendPQExpBuffer(addstrdata, "ADD HOST \"%s\" (user=\"%s\", port=%s, protocol=%s, agentport=%s, address=\"%s\", adbhome=\"%s\");",
 			PQgetvalue(res, i, 0),
 			PQgetvalue(res, i, 1),
 			PQgetvalue(res, i, 2),
@@ -15723,7 +15729,7 @@ dumpAdbmgrTable(Archive *fout)
 	{
 		resetPQExpBuffer(addstrdata);
 		if (strlen(PQgetvalue(res, i, 5)))
-			appendPQExpBuffer(addstrdata, "ADD %s %s (host=%s, port=%s, sync_state='%s',path='%s');",
+			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" (host=\"%s\", port=%s, sync_state=\"%s\",path=\"%s\");",
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 0),
 				PQgetvalue(res, i, 1),
@@ -15731,7 +15737,7 @@ dumpAdbmgrTable(Archive *fout)
 				PQgetvalue(res, i, 5),
 				PQgetvalue(res, i, 6));
 		else
-			appendPQExpBuffer(addstrdata, "ADD %s %s (host=%s, port=%s, path='%s');",
+			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" (host=\"%s\", port=%s, path=\"%s\");",
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 0),
 				PQgetvalue(res, i, 1),
@@ -15756,13 +15762,22 @@ dumpAdbmgrTable(Archive *fout)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
-		appendPQExpBuffer(addstrdata, "SET %s %s(\"%s\"=\"%s\");",
-			strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode"
-				:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm"
-				:PQgetvalue(res, i, 1)),
-			strcmp(PQgetvalue(res, i, 0), "*") == 0 ? "all":PQgetvalue(res, i, 0),
-			PQgetvalue(res, i, 2),
-			PQgetvalue(res, i, 3));
+		if (strcmp(PQgetvalue(res, i, 0), "*") == 0)
+			appendPQExpBuffer(addstrdata, "SET %s %s (\"%s\"=\"%s\");",
+				strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode"
+					:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm"
+					:PQgetvalue(res, i, 1)),
+				"all",
+				PQgetvalue(res, i, 2),
+				PQgetvalue(res, i, 3));
+		else
+			appendPQExpBuffer(addstrdata, "SET %s \"%s\" (\"%s\"=\"%s\");",
+				strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode"
+					:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm"
+					:PQgetvalue(res, i, 1)),
+				PQgetvalue(res, i, 0),
+				PQgetvalue(res, i, 2),
+				PQgetvalue(res, i, 3));
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 			"mgr_updateparm",
 			"pg_catalog",
@@ -15782,7 +15797,7 @@ dumpAdbmgrTable(Archive *fout)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
-		appendPQExpBuffer(addstrdata, "ADD HBA %s(\"%s\");",
+		appendPQExpBuffer(addstrdata, "ADD HBA \"%s\" (\"%s\");",
 			PQgetvalue(res, i, 0),
 			PQgetvalue(res, i, 1));
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
@@ -15804,13 +15819,15 @@ dumpAdbmgrTable(Archive *fout)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
-		appendPQExpBuffer(addstrdata, "ADD JOB %s(nexttime='%s', interval=%s, status=%s, command='%s', desc='%s');",
+		retstr = respacechr(PQgetvalue(res, i, 5), '\'', "''");
+		appendPQExpBuffer(addstrdata, "ADD JOB \"%s\" (nexttime=\"%s\", interval=%s, status=%s, command='%s', desc=\"%s\");",
 			PQgetvalue(res, i, 1),
 			PQgetvalue(res, i, 2),
 			PQgetvalue(res, i, 3),
 			strcasecmp(PQgetvalue(res, i, 4), "t")==0 ? "true":"false",
-			PQgetvalue(res, i, 5),
-			PQgetvalue(res, i, 6));
+			retstr,
+			strcmp(PQgetvalue(res, i, 6), "") != 0 ? PQgetvalue(res, i, 6):" ");
+		pfree(retstr);
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 			"monitor_job",
 			"pg_catalog",
@@ -15830,10 +15847,10 @@ dumpAdbmgrTable(Archive *fout)
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
-		appendPQExpBuffer(addstrdata, "ADD ITEM %s(path='%s', desc='%s');",
+		appendPQExpBuffer(addstrdata, "ADD ITEM \"%s\" (path=\"%s\", desc=\"%s\");",
 			PQgetvalue(res, i, 0),
 			PQgetvalue(res, i, 1),
-			PQgetvalue(res, i, 2));
+			strcmp(PQgetvalue(res, i, 2), "") != 0 ? PQgetvalue(res, i, 2):" ");
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 			"monitor_item",
 			"pg_catalog",
@@ -15851,5 +15868,44 @@ dumpAdbmgrTable(Archive *fout)
 	destroyPQExpBuffer(creaQry);
 
 }
+/*
+* given the source string str, replace the character chr by string strr
+*
+*/
+static char 
+*respacechr(char *str,char chr, char *strr)
+{
+	char *retstr;
+	char *p;
+	int i = 0;
+	int num = 0;
+	if (!str || !strr)
+		return NULL;
+
+	p = str;
+	while(*(p++))
+	{
+		if (chr == *p)
+			num++;
+	}
+
+	retstr = (char *)pg_malloc(strlen(str) + 1 + strlen(strr)*(num-1));
+	p = str;
+	i = 0;
+	while(*p)
+	{
+		if (chr == *p)
+		{
+			strncpy(&retstr[i], strr, strlen(strr));
+			i = i + strlen(strr);
+		}
+		else
+			retstr[i++] = *p;
+		p++;
+	}
+
+	return retstr;
+}
+
 #endif
 
