@@ -10,6 +10,9 @@
 #include <signal.h>
 #include <pwd.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <string.h>
+#include <errno.h>
 
 #include "agent.h"
 #include "agt_msg.h"
@@ -327,7 +330,9 @@ static void cmd_check_dir_exist(StringInfo msg)
 	const char *dir_path = NULL;
 	StringInfoData output;
 	struct stat stat_buf;
-
+	DIR *chkdir;
+	struct dirent *file;
+	
 	initStringInfo(&output);
 	dir_path = agt_getmsgstring(msg);
 
@@ -345,12 +350,32 @@ static void cmd_check_dir_exist(StringInfo msg)
 			return ;
 		}
 	}
-
 	/* data directory exist */
 	if (S_ISDIR(stat_buf.st_mode))
 	{
 		if ((chmod(dir_path, 0700))!= 0)
-			appendStringInfoString(&output, "append master node: chmod fail.");
+			ereport(ERROR,
+				(errmsg("append master node: chmod \"%s\" 0700 fail, %s", dir_path, strerror(errno))));
+	}
+	/* data directory exists and not empty*/
+	chkdir = opendir(dir_path);
+	if (chkdir == NULL)
+	{
+		ereport(ERROR, 
+			(errmsg("append master node: open directory \"%s\" fail, %s", dir_path, strerror(errno))));
+	}
+	else
+	{
+		while ((file = readdir(chkdir)) != NULL)
+		{
+			if (strcmp(".", file->d_name) == 0 || strcmp("..", file->d_name) == 0)
+			{
+				/* skip this and parent directory */
+				continue;
+			}
+			ereport(ERROR, 
+				(errmsg("append master node: directory \"%s\" is not empty", dir_path)));
+		}
 	}
 
 	appendStringInfoString(&output, "success");
