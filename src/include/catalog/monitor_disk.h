@@ -17,7 +17,7 @@
 
 CATALOG(monitor_disk,4925)
 {
-    Oid         host_oid;           /* host oid */
+    NameData    hostname;           /* host name */
     timestamptz md_timestamptz;     /* monitor disk timestamp */
     int64       md_total;           /* monitor disk total size */
     int64       md_used;       /* monitor disk available size */
@@ -43,7 +43,7 @@ typedef FormData_monitor_disk *Form_monitor_disk;
  * ----------------
  */
 #define Natts_monitor_disk                          8
-#define Anum_monitor_disk_host_oid                  1
+#define Anum_monitor_disk_host_name                 1
 #define Anum_monitor_disk_md_timestamptz            2
 #define Anum_monitor_disk_md_total                  3
 #define Anum_monitor_disk_md_used                   4

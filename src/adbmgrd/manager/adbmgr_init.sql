@@ -282,28 +282,28 @@ CREATE VIEW adbmgr.get_all_host_parm AS
         
         (
             select * from (
-                            select *, (ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.mc_timestamptz desc)) as rm
+                            select *, (ROW_NUMBER()OVER(PARTITION BY T.hostname ORDER BY T.mc_timestamptz desc)) as rm
                             from monitor_cpu t
                            ) tt where tt.rm = 1
         ) c,
         
         (
             select * from (
-                            select *,(ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.mm_timestamptz desc)) as rm
+                            select *,(ROW_NUMBER()OVER(PARTITION BY T.hostname ORDER BY T.mm_timestamptz desc)) as rm
                             from monitor_mem t
                            ) tt where tt.rm =1
         ) m,
         
         (
             select * from (
-                            select *, (ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.md_timestamptz desc)) as rm
+                            select *, (ROW_NUMBER()OVER(PARTITION BY T.hostname ORDER BY T.md_timestamptz desc)) as rm
                             from monitor_disk t
                            ) tt where tt.rm = 1
         ) d,
         
         (
             select * from (
-                            select *, (ROW_NUMBER()OVER(PARTITION BY T.host_oid ORDER BY T.mh_current_time desc)) as rm
+                            select *, (ROW_NUMBER()OVER(PARTITION BY T.hostname ORDER BY T.mh_current_time desc)) as rm
                             from monitor_host t
                            ) tt where tt.rm = 1
         ) nh,
@@ -319,10 +319,10 @@ CREATE VIEW adbmgr.get_all_host_parm AS
         (
             select * from monitor_host_threshold where mt_type = 3
         )mtd
-    where mgh.oid = c.host_oid and
-        c.host_oid = m.host_oid and
-        m.host_oid = d.host_oid and
-        d.host_oid = nh.host_oid;
+    where mgh.hostname = c.hostname and
+        c.hostname	 = m.hostname and
+        m.hostname = d.hostname and
+        d.hostname = nh.hostname;
 
 -- for ADB monitor host page: get specific host various parameters.
 CREATE VIEW adbmgr.get_spec_host_parm AS
@@ -346,43 +346,43 @@ CREATE VIEW adbmgr.get_spec_host_parm AS
     
         (
             select * from (
-                            select *, (ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mh_current_time desc)) as rm
+                            select *, (ROW_NUMBER()OVER(PARTITION BY t.hostname ORDER BY t.mh_current_time desc)) as rm
                             from monitor_host t
                            ) tt where tt.rm = 1
         ) mh,
         
         (
             select * from (
-                            select *,(ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mc_timestamptz desc)) as rm
+                            select *,(ROW_NUMBER()OVER(PARTITION BY t.hostname ORDER BY t.mc_timestamptz desc)) as rm
                             from monitor_cpu t
                            ) tt where tt.rm = 1
         ) mc,
         
         (
             select * from (
-                            select *,(ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mm_timestamptz desc)) as rm
+                            select *,(ROW_NUMBER()OVER(PARTITION BY t.hostname ORDER BY t.mm_timestamptz desc)) as rm
                             from monitor_mem t
                            ) tt where tt.rm =1
         ) mm,
         
         (
             select * from (
-                            select *, (ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.md_timestamptz desc)) as rm
+                            select *, (ROW_NUMBER()OVER(PARTITION BY t.hostname ORDER BY t.md_timestamptz desc)) as rm
                             from monitor_disk t
                            ) tt where tt.rm = 1
         ) md,
         
         (
             select * from (
-                            select *, (ROW_NUMBER()OVER(PARTITION BY t.host_oid ORDER BY t.mn_timestamptz desc)) as rm
+                            select *, (ROW_NUMBER()OVER(PARTITION BY t.hostname ORDER BY t.mn_timestamptz desc)) as rm
                             from monitor_net t
                            ) tt where tt.rm = 1
         ) mn
-    where mgh.oid = mh.host_oid and
-        mh.host_oid = mc.host_oid and
-        mc.host_oid = mm.host_oid and
-        mm.host_oid = md.host_oid and
-        md.host_oid = mn.host_oid;
+    where mgh.hostname = mh.hostname and
+        mh.hostname = mc.hostname and
+        mc.hostname = mm.hostname and
+        mm.hostname = md.hostname and
+        md.hostname = mn.hostname;
 
 -- for ADB monitor host page: get cpu, memory, i/o and net info for specific time period.
 CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i int)
@@ -406,13 +406,13 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage(hostname text, i in
            round((d.md_io_write_bytes/1024.0/1024.0)/(d.md_io_write_time/1000.0), 1) as iowriteps,
            round(n.mn_recv/1024.0,1) as netinps,
            round(n.mn_sent/1024.0,1) as netoutps
-    from monitor_cpu c left join monitor_mem  m on(c.host_oid = m.host_oid and c.mc_timestamptz = m.mm_timestamptz)
-                       left join monitor_disk d on(c.host_oid = d.host_oid and c.mc_timestamptz = d.md_timestamptz)
-                       left join monitor_net  n on(c.host_oid = n.host_oid and c.mc_timestamptz = n.mn_timestamptz)
-                       left join monitor_host h on(c.host_oid = h.host_oid and c.mc_timestamptz = h.mh_current_time)
-                       left join mgr_host   mgr on(c.host_oid = mgr.oid),
+    from monitor_cpu c left join monitor_mem  m on(c.hostname = m.hostname and c.mc_timestamptz = m.mm_timestamptz)
+                       left join monitor_disk d on(c.hostname = d.hostname and c.mc_timestamptz = d.md_timestamptz)
+                       left join monitor_net  n on(c.hostname = n.hostname and c.mc_timestamptz = n.mn_timestamptz)
+                       left join monitor_host h on(c.hostname = h.hostname and c.mc_timestamptz = h.mh_current_time)
+                       left join mgr_host   mgr on(c.hostname = mgr.hostname),
 
-                       (select mh.host_oid, mh.mh_current_time 
+                       (select mh.hostname, mh.mh_current_time 
                         from monitor_host mh 
                         order by mh.mh_current_time desc 
                         limit 1) as temp
@@ -449,13 +449,13 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_host_history_usage_by_time_period(host
            round((d.md_io_write_bytes/1024.0/1024.0)/(d.md_io_write_time/1000.0), 1) as iowriteps,
            round(n.mn_recv/1024.0,1) as netinps,
            round(n.mn_sent/1024.0,1) as netoutps
-    from monitor_cpu c left join monitor_mem  m on(c.host_oid = m.host_oid and c.mc_timestamptz = m.mm_timestamptz)
-                       left join monitor_disk d on(c.host_oid = d.host_oid and c.mc_timestamptz = d.md_timestamptz)
-                       left join monitor_net  n on(c.host_oid = n.host_oid and c.mc_timestamptz = n.mn_timestamptz)
-                       left join monitor_host h on(c.host_oid = h.host_oid and c.mc_timestamptz = h.mh_current_time)
-                       left join mgr_host   mgr on(c.host_oid = mgr.oid),
+    from monitor_cpu c left join monitor_mem  m on(c.hostname = m.hostname and c.mc_timestamptz = m.mm_timestamptz)
+                       left join monitor_disk d on(c.hostname = d.hostname and c.mc_timestamptz = d.md_timestamptz)
+                       left join monitor_net  n on(c.hostname = n.hostname and c.mc_timestamptz = n.mn_timestamptz)
+                       left join monitor_host h on(c.hostname = h.hostname and c.mc_timestamptz = h.mh_current_time)
+                       left join mgr_host   mgr on(c.hostname = mgr.hostname),
 
-                       (select mh.host_oid, mh.mh_current_time 
+                       (select mh.hostname, mh.mh_current_time 
                         from monitor_host mh 
                         order by mh.mh_current_time desc 
                         limit 1) as temp
@@ -561,7 +561,7 @@ AS
 		GROUP BY  monitor_databasetps_time
 	) AS d
 	join 
-	( SELECT (sum(md_total/1024.0/1024)/1024)::numeric(18,2) AS md_total FROM (SELECT  host_oid,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY host_oid  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
+	( SELECT (sum(md_total/1024.0/1024)/1024)::numeric(18,2) AS md_total FROM (SELECT  hostname,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY hostname  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
 	) AS e
 	on 1=1;
 

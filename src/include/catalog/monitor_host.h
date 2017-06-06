@@ -18,7 +18,7 @@
 
 CATALOG(monitor_host,4921)
 {
-    Oid             host_oid;               /* host name */
+    NameData       	hostname;               /* host name */
     int16           mh_run_state;           /* host run state */
     timestamptz     mh_current_time;        /* host cuttent time */
     int64           mh_seconds_since_boot;  /* host seconds since boot */
@@ -47,7 +47,7 @@ typedef FormData_monitor_host *Form_monitor_host;
  * ----------------
  */
 #define Natts_monitor_host                          8
-#define Anum_monitor_host_host_oid                  1
+#define Anum_monitor_host_host_name                 1
 #define Anum_monitor_host_mh_run_state              2
 #define Anum_monitor_host_mh_current_time           3
 #define Anum_monitor_host_mh_seconds_since_boot     4

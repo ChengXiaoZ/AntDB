@@ -19,7 +19,7 @@
 
 CATALOG(monitor_mem,4923)
 {
-    Oid         host_oid;           /* host oid */
+    NameData   	hostname;           /* host name */
     timestamptz mm_timestamptz;     /* monitor memory timestamp */
     int64       mm_total;           /* monitor memory total */
     int64       mm_used;            /* monitor memory used */
@@ -42,7 +42,7 @@ typedef FormData_monitor_mem *Form_monitor_mem;
  * ----------------
  */
 #define Natts_monitor_mem                       5
-#define Anum_monitor_mem_host_oid               1
+#define Anum_monitor_mem_host_name              1
 #define Anum_monitor_mem_mm_timestamptz         2
 #define Anum_monitor_mem_mm_total               3
 #define Anum_monitor_mem_mm_used                4

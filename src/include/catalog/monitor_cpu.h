@@ -18,7 +18,7 @@
 
 CATALOG(monitor_cpu,4922)
 {
-    Oid         host_oid;           /* host oid */
+    NameData    hostname;           /* host name */
     timestamptz mc_timestamptz;     /* monitor cpu timestamptz */
     float4      mc_cpu_usage;       /* monitor cpu usage */
 
@@ -43,7 +43,7 @@ typedef FormData_monitor_cpu *Form_monitor_cpu;
  * ----------------
  */
 #define Natts_monitor_cpu                           4
-#define Anum_monitor_cpu_host_oid                   1
+#define Anum_monitor_cpu_host_name                  1
 #define Anum_monitor_cpu_mc_timestamptz             2
 #define Anum_monitor_cpu_mc_usage                   3
 #define Anum_monitor_cpu_mc_freq                    4
