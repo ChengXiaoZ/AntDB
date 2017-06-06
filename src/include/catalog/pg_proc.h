@@ -5096,6 +5096,10 @@ DATA(insert OID = 5302 ( ora_date_mi_interval ORANSP PGUID 12 1 0 0 0 f f f f t 
 DATA(insert OID = 5303 (  pool_close_idle_conn		PGNSP PGUID 12 1 0 0 0 f f f f f f v 0 0 16 "" _null_ _null_ _null_ _null_ pool_close_idle_conn _null_ _null_ _null_ ));
 DESCR("close pool connection in  idle_slot");
 
+DATA(insert OID = 5320 (  pool_close_all_conn		PGNSP PGUID 12 1 0 0 0 f f f f f f v 0 0 16 "" _null_ _null_ _null_ _null_ pool_close_all_conn _null_ _null_ _null_ ));
+DESCR("close pool all connections");
+
+
 DATA(insert OID = 5304 ( sync_agtm_xid	PGNSP PGUID 12 10 100 0 0 f f f f t t s 0 0 2249 "" "{19,28,28}" "{o,o,o}" "{node,local,agtm}" _null_ sync_agtm_xid _null_ _null_ _null_ ));
 DESCR("synchronize the next XID with AGTM");
 

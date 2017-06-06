@@ -55,6 +55,7 @@
 #define PM_MSG_CLOSE_CONNECT		'C'
 #define PM_MSG_ERROR				'E'
 #define PM_MSG_CLOSE_IDLE_CONNECT	'S'
+#define PM_MSG_CLOSE_ALL_CONNECT	'K'
 
 typedef enum SlotStateType
 {
@@ -255,6 +256,7 @@ static int pool_wait_pq(PGconn *conn);
 static int pq_custom_msg(PGconn *conn, char id, int msgLength);
 static void close_idle_connection(void);
 static void check_idle_slot(void);
+static void close_all_connection(PoolAgent *poolAgent);
 
 /* for hash DatabasePool */
 static HTAB *htab_database;
@@ -1535,6 +1537,11 @@ static void agent_handle_input(PoolAgent * agent, StringInfo s)
 		case PM_MSG_CLOSE_IDLE_CONNECT:
 			{
 				close_idle_connection();
+			}
+			break;
+		case PM_MSG_CLOSE_ALL_CONNECT:
+			{
+				close_all_connection(agent);
 			}
 			break;
 		default:
@@ -3445,12 +3452,113 @@ static void check_idle_slot(void)
 	}
 }
 
-Datum pool_close_idle_conn(PG_FUNCTION_ARGS)
+Datum
+pool_close_idle_conn(PG_FUNCTION_ARGS)
 {
 	StringInfoData buf;
 	Assert(poolHandle != NULL);
 
 	pq_beginmessage(&buf, PM_MSG_CLOSE_IDLE_CONNECT);
+	/* send message */
+	pool_putmessage(&poolHandle->port, (char)(buf.cursor), buf.data, buf.len);
+	pool_flush(&poolHandle->port);
+
+	pfree(buf.data);
+	PG_RETURN_BOOL(true);
+}
+
+/* 
+ * this function only called by system fucntion pool_close_all_conn
+ *
+ * step 1: destory all agents, except current agent
+ * step 2: close all node_pool slot
+ * step 3: send signal SIGTERM to other backends
+ */
+static void close_all_connection(PoolAgent *poolAgent)
+{
+	HASH_SEQ_STATUS hash_database_stats;
+	HASH_SEQ_STATUS hash_nodepool_status;
+	DatabasePool *db_pool;
+	ADBNodePool *node_pool;
+	int	agent_count;
+
+	if(htab_database == NULL)
+		return;
+
+	/* step 1 */
+	agent_count = agentCount;
+	while(agent_count)
+	{
+		ADBNodePoolSlot *slot = NULL;
+		PoolAgent *agent = poolAgents[--agent_count];
+
+		/* my agent not deal */
+		if (agent == poolAgent)
+			continue;
+
+		while(agent->list_wait != NIL)
+		{
+			slot = linitial(agent->list_wait);
+			agent->list_wait = list_delete_first(agent->list_wait);
+
+			if (NULL == slot)
+				continue;
+
+			Assert(slot->owner == agent);
+			/* these state in node busy_slot, step 2 will PQfinish them */
+			if(slot->slot_state != SLOT_STATE_CONNECTING &&
+				slot->slot_state != SLOT_STATE_QUERY_AGTM_PORT &&
+				slot->slot_state != SLOT_STATE_QUERY_PARAMS_SESSION	&&
+				slot->slot_state != SLOT_STATE_QUERY_PARAMS_LOCAL &&
+				slot->slot_state != SLOT_STATE_QUERY_RESET_ALL &&
+				slot->current_list != NULL_SLOT)
+			{
+				Assert(slot->current_list != NULL_SLOT);
+				dlist_delete(&slot->dnode);
+				slot->current_list = NULL_SLOT;
+			}
+
+			idle_slot(slot, true);
+		}
+	}
+
+	/* step 2 */
+	hash_seq_init(&hash_database_stats, htab_database);
+	while((db_pool = hash_seq_search(&hash_database_stats)) != NULL)
+	{
+		hash_seq_init(&hash_nodepool_status, db_pool->htab_nodes);
+		while((node_pool = hash_seq_search(&hash_nodepool_status)) != NULL)
+		{
+			destroy_node_pool(node_pool, false);
+		}
+	}
+
+	/* step 3 */
+	agent_count = agentCount;
+	while(agent_count)
+	{
+		int			pid;
+		PoolAgent *agent = poolAgents[--agent_count];
+
+		/* my agent not deal */
+		if (agent == poolAgent)
+			continue;
+
+		pid = agent->pid;
+		kill(pid, SIGTERM);
+	}
+}
+
+/*
+ * this function used for extend cluster
+ */
+Datum
+pool_close_all_conn(PG_FUNCTION_ARGS)
+{
+	StringInfoData buf;
+	Assert(poolHandle != NULL);
+
+	pq_beginmessage(&buf, PM_MSG_CLOSE_ALL_CONNECT);
 	/* send message */
 	pool_putmessage(&poolHandle->port, (char)(buf.cursor), buf.data, buf.len);
 	pool_flush(&poolHandle->port);

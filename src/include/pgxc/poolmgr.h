@@ -157,4 +157,6 @@ extern int PoolManagerSendLocalCommand(int dn_count, int* dn_list, int co_count,
 
 extern Datum pool_close_idle_conn(PG_FUNCTION_ARGS);
 
+extern Datum pool_close_all_conn(PG_FUNCTION_ARGS);
+
 #endif
