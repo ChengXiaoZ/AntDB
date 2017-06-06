@@ -111,11 +111,11 @@ static void pfree_all_table(Monitor_Host *monitor_host,
                             Monitor_Disk *Monitor_disk,
                             Monitor_Alarm *Monitor_alarm);
 
-static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu);
-static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem);
-static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk);
-static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net);
-static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host);
+static void insert_into_monotor_cpu(const char *hostname, Monitor_Cpu *monitor_cpu);
+static void insert_into_monotor_mem(const char *hostname, Monitor_Mem *monitor_mem);
+static void insert_into_monotor_disk(const char *hostname, Monitor_Disk *monitor_disk);
+static void insert_into_monotor_net(const char *hostname, Monitor_Net *monitor_net);
+static void insert_into_monotor_host(const char *hostname, Monitor_Host *monitor_host);
 static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm);
 static void get_mem_usage_alarm(float mem_usage, Monitor_Alarm *monitor_alarm);
 static void get_disk_usage_alarm(float disk_usage, Monitor_Alarm *monitor_alarm);
@@ -140,7 +140,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     bool ret;
     StringInfoData agentRstStr;
     ManagerAgent *ma;
-    Oid host_oid;
+    NameData hostname;
     Datum datum;
     bool isNull;
     char *host_addr;
@@ -209,8 +209,7 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     resetStringInfo(&monitor_alarm.alarm_source);
     appendStringInfoString(&monitor_alarm.alarm_source, host_addr);
 
-    host_oid = HeapTupleGetOid(tup);
-    
+		namestrcpy(&hostname, NameStr(mgr_host->hostname));
     ma = ma_connect_hostoid(HeapTupleGetOid(tup));
     
     if (!ma_isconnected(ma))
@@ -347,11 +346,11 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
     appendStringInfoString(&monitor_net.net_timestamp, monitor_cpu.cpu_timestamp.data);
     appendStringInfoString(&monitor_host.current_time, monitor_cpu.cpu_timestamp.data);
 
-    insert_into_monotor_cpu(host_oid, &monitor_cpu);
-    insert_into_monotor_mem(host_oid, &monitor_mem);
-    insert_into_monotor_disk(host_oid, &monitor_disk);
-    insert_into_monotor_net(host_oid, &monitor_net);
-    insert_into_monotor_host(host_oid, &monitor_host);
+    insert_into_monotor_cpu(hostname.data, &monitor_cpu);
+    insert_into_monotor_mem(hostname.data, &monitor_mem);
+    insert_into_monotor_disk(hostname.data, &monitor_disk);
+    insert_into_monotor_net(hostname.data, &monitor_net);
+    insert_into_monotor_host(hostname.data, &monitor_host);
 
     appendStringInfoString(&monitor_alarm.alarm_timetz, monitor_cpu.cpu_timestamp.data);
     monitor_alarm.alarm_type = 1;
@@ -384,15 +383,13 @@ monitor_get_hostinfo(PG_FUNCTION_ARGS)
 }
 
 
-static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu)
+static void insert_into_monotor_cpu(const char *hostname, Monitor_Cpu *monitor_cpu)
 {
     Relation monitorcpu;
     HeapTuple newtuple;
     Datum datum[Natts_monitor_cpu];
     bool isnull[Natts_monitor_cpu];
-    char *hostname;
 
-    hostname = get_hostname_from_hostoid(host_oid);
     datum[Anum_monitor_cpu_host_name - 1] = NameGetDatum(hostname);
     datum[Anum_monitor_cpu_mc_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_cpu->cpu_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
@@ -406,19 +403,16 @@ static void insert_into_monotor_cpu(Oid host_oid, Monitor_Cpu *monitor_cpu)
     simple_heap_insert(monitorcpu, newtuple);
 
     heap_freetuple(newtuple);
-    pfree(hostname);
     heap_close(monitorcpu, RowExclusiveLock);
 }
 
-static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem)
+static void insert_into_monotor_mem(const char *hostname, Monitor_Mem *monitor_mem)
 {
     Relation monitormem;
     HeapTuple newtuple;
     Datum datum[Natts_monitor_mem];
     bool isnull[Natts_monitor_mem];
-    char *hostname;
 
-    hostname = get_hostname_from_hostoid(host_oid);
     datum[Anum_monitor_mem_host_name - 1] = NameGetDatum(hostname);
     datum[Anum_monitor_mem_mm_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_mem->mem_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
@@ -433,19 +427,16 @@ static void insert_into_monotor_mem(Oid host_oid, Monitor_Mem *monitor_mem)
     simple_heap_insert(monitormem, newtuple);
 
     heap_freetuple(newtuple);
-    pfree(hostname);
     heap_close(monitormem, RowExclusiveLock);
 }
 
-static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk)
+static void insert_into_monotor_disk(const char *hostname, Monitor_Disk *monitor_disk)
 {
     Relation monitordisk;
     HeapTuple newtuple;
     Datum datum[Natts_monitor_disk];
     bool isnull[Natts_monitor_disk];
-    char *hostname;
 
-    hostname = get_hostname_from_hostoid(host_oid);
     datum[Anum_monitor_disk_host_name - 1] = NameGetDatum(hostname);
     datum[Anum_monitor_disk_md_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_disk->disk_timestamptz.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
@@ -463,19 +454,16 @@ static void insert_into_monotor_disk(Oid host_oid, Monitor_Disk *monitor_disk)
     simple_heap_insert(monitordisk, newtuple);
 
     heap_freetuple(newtuple);
-    pfree(hostname);
     heap_close(monitordisk, RowExclusiveLock);
 }
 
-static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net)
+static void insert_into_monotor_net(const char *hostname, Monitor_Net *monitor_net)
 {
     Relation monitornet;
     HeapTuple newtuple;
     Datum datum[Natts_monitor_net];
     bool isnull[Natts_monitor_net];
-    char *hostname;
 
-    hostname = get_hostname_from_hostoid(host_oid);
     datum[Anum_monitor_net_host_name - 1] = NameGetDatum(hostname);
     datum[Anum_monitor_net_mn_timestamptz - 1] = 
         DirectFunctionCall3(timestamptz_in, CStringGetDatum(monitor_net->net_timestamp.data), ObjectIdGetDatum(InvalidOid), Int32GetDatum(-1));
@@ -489,19 +477,16 @@ static void insert_into_monotor_net(Oid host_oid, Monitor_Net *monitor_net)
     simple_heap_insert(monitornet, newtuple);
 
     heap_freetuple(newtuple);
-    pfree(hostname);
     heap_close(monitornet, RowExclusiveLock);
 }
 
-static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
+static void insert_into_monotor_host(const char *hostname, Monitor_Host *monitor_host)
 {
     Relation monitorhost;
     HeapTuple newtuple;
     Datum datum[Natts_monitor_host];
     bool isnull[Natts_monitor_host];
-    char *hostname;
 
-    hostname = get_hostname_from_hostoid(host_oid);
     datum[Anum_monitor_host_host_name - 1] = NameGetDatum(hostname);
     datum[Anum_monitor_host_mh_run_state - 1] = Int16GetDatum(monitor_host->run_state);
     datum[Anum_monitor_host_mh_current_time - 1] = 
@@ -519,7 +504,6 @@ static void insert_into_monotor_host(Oid host_oid, Monitor_Host *monitor_host)
     simple_heap_insert(monitorhost, newtuple);
 
     heap_freetuple(newtuple);
-    pfree(hostname);
     heap_close(monitorhost, RowExclusiveLock);
 }
 void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm)
