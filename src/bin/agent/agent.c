@@ -27,11 +27,22 @@ static void service_run(void) __attribute__((noreturn));
 static void agt_sig_die(SIGNAL_ARGS);
 static void agt_sig_cancel(SIGNAL_ARGS);
 static void apt_sig_child(SIGNAL_ARGS);
+static void agt_add_environment_var(char *path);
 
 int main(int argc, char **argv)
 {
+	char adbhome[MAXPGPATH];
+
 	agent_argv0 = argv[0];
 	progname = get_progname(argv[0]);
+
+	/*set enviroment variables: PATH, LD_LIBRARY_PATH*/
+	strncpy(adbhome, agent_argv0, MAXPGPATH-1);
+	adbhome[strlen(adbhome)] = '\0';
+	get_parent_directory(adbhome);
+	get_parent_directory(adbhome);
+	agt_add_environment_var(adbhome);
+
 	parse_options(argc, argv);
 	start_listen();
 	MemoryContextInit();
@@ -327,4 +338,49 @@ void agt_ProcessInterrupts(void)
 		ereport(ERROR, (errcode(ERRCODE_QUERY_CANCELED),
 			errmsg("canceling authentication due to timeout")));
 	}
+}
+
+static void
+agt_add_environment_var(char *path)
+{
+	const char *userpath;
+	const char *env_path;
+	const char *env_lib;
+	char strdata[MAXPGPATH];
+	char envstrdata[MAXPGPATH];
+	char bashrcpathdata[MAXPGPATH];
+	FILE *fp;
+
+	userpath = getenv("HOME");
+	env_path = getenv("PATH");
+	env_lib = getenv("LD_LIBRARY_PATH");
+
+	if (!userpath)
+		return;
+	/* the file of enviroment variables*/
+	snprintf(bashrcpathdata, MAXPGPATH, "%s/.bashrc", userpath);
+	if((fp = fopen(bashrcpathdata, "a")) == NULL)
+	{
+		ereport(WARNING, (errmsg("add enviroment variables on \"%s\" fail: %s", bashrcpathdata, strerror(errno))));
+		return;
+	}
+
+	/*check if repeate*/
+	snprintf(envstrdata, MAXPGPATH, "%s/bin", path);
+	if (!env_path || (!strstr(env_path, envstrdata)))
+	{
+		/* enviroment var of PATH*/
+		snprintf(strdata, MAXPGPATH, "\nexport PATH=%s/bin:$PATH", path);
+		fwrite(strdata, strlen(strdata), 1, fp);
+	}
+	memset(envstrdata, 0, sizeof(char)*MAXPGPATH);
+	snprintf(envstrdata, MAXPGPATH, "%s/lib", path);
+	if (!env_lib || (!strstr(env_lib, envstrdata)))
+	{
+		memset(strdata, 0, sizeof(char)*MAXPGPATH);
+		/* enviroment var of LD_LIBRARY_PATH*/
+		snprintf(strdata, MAXPGPATH, "\nexport LD_LIBRARY_PATH=%s/lib:$LD_LIBRARY_PATH", path);
+		fwrite(strdata, strlen(strdata), 1, fp);
+	}
+	fclose(fp);
 }
