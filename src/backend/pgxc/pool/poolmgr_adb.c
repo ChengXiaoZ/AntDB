@@ -34,6 +34,8 @@
 #include "pgxc/pause.h"
 #endif
 
+#include "storage/procarray.h"
+
 #define START_POOL_ALLOC	512
 #define STEP_POLL_ALLOC		8
 
@@ -256,6 +258,7 @@ static int pool_wait_pq(PGconn *conn);
 static int pq_custom_msg(PGconn *conn, char id, int msgLength);
 static void close_idle_connection(void);
 static void check_idle_slot(void);
+static bool backend_is_alive(int pid);
 static void close_all_connection(PoolAgent *poolAgent);
 
 /* for hash DatabasePool */
@@ -3467,12 +3470,24 @@ pool_close_idle_conn(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(true);
 }
 
+static bool backend_is_alive(int pid)
+{
+	PGPROC	   *result = NULL;
+	result = BackendPidGetProc(pid);
+
+	if (NULL != result)
+		return true;
+
+	return false;
+}
+
 /* 
  * this function only called by system fucntion pool_close_all_conn
  *
- * step 1: destory all agents, except current agent
- * step 2: close all node_pool slot
- * step 3: send signal SIGTERM to other backends
+ * step 1  send signal SIGTERM to other backends
+ * step 2  wait other backends exit
+ * step 3: close all agent's wait_list  solt which not int busy_slot
+ * step 4: close all node_pool slot
  */
 static void close_all_connection(PoolAgent *poolAgent)
 {
@@ -3480,12 +3495,53 @@ static void close_all_connection(PoolAgent *poolAgent)
 	HASH_SEQ_STATUS hash_nodepool_status;
 	DatabasePool *db_pool;
 	ADBNodePool *node_pool;
-	int	agent_count;
+	int	agent_count = 0;
+	bool	all_exit = true;
 
 	if(htab_database == NULL)
 		return;
 
-	/* step 1 */
+	/* step 1  send signal SIGTERM to other backends*/
+	agent_count = agentCount;
+	while(agent_count)
+	{
+		int			pid;
+		PoolAgent *agent = poolAgents[--agent_count];
+
+		/* my agent not deal */
+		if (agent == poolAgent)
+			continue;
+
+		pid = agent->pid;
+		kill(pid, SIGTERM);
+	}
+
+	/* step 2  wait other backends exit */
+check:
+	agent_count = agentCount;
+	while(agent_count)
+	{
+		int			pid;
+		PoolAgent *agent = poolAgents[--agent_count];
+
+		/* my agent not deal */
+		if (agent == poolAgent)
+			continue;
+
+		pid = agent->pid;
+		if (backend_is_alive(pid))
+			all_exit = false;
+	}
+
+	if (!all_exit)
+	{		
+		all_exit = true;
+		/* sleep three sencods*/
+		sleep(3);
+		goto check;
+	}
+
+	/* step 3: close all agent's wait_list  solt which not int busy_slot */
 	agent_count = agentCount;
 	while(agent_count)
 	{
@@ -3522,7 +3578,7 @@ static void close_all_connection(PoolAgent *poolAgent)
 		}
 	}
 
-	/* step 2 */
+	/* step 4: close all node_pool slot */
 	hash_seq_init(&hash_database_stats, htab_database);
 	while((db_pool = hash_seq_search(&hash_database_stats)) != NULL)
 	{
@@ -3531,21 +3587,6 @@ static void close_all_connection(PoolAgent *poolAgent)
 		{
 			destroy_node_pool(node_pool, false);
 		}
-	}
-
-	/* step 3 */
-	agent_count = agentCount;
-	while(agent_count)
-	{
-		int			pid;
-		PoolAgent *agent = poolAgents[--agent_count];
-
-		/* my agent not deal */
-		if (agent == poolAgent)
-			continue;
-
-		pid = agent->pid;
-		kill(pid, SIGTERM);
 	}
 }
 
