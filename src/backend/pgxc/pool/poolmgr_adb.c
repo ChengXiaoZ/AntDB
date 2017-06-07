@@ -3488,6 +3488,8 @@ static bool backend_is_alive(int pid)
  * step 2  wait other backends exit
  * step 3: close all agent's wait_list  solt which not int busy_slot
  * step 4: close all node_pool slot
+ * step 5: send message to current backend,if use system function 
+ *  		pool_close_all_conn, don't care this step
  */
 static void close_all_connection(PoolAgent *poolAgent)
 {
@@ -3588,6 +3590,14 @@ check:
 			destroy_node_pool(node_pool, false);
 		}
 	}
+
+	 /* step 5: send message to current backend,if use system function 
+ 	  *  		pool_close_all_conn, don't care this step
+ 	  */
+ 	  if(pool_putmessage(&poolAgent->port, PM_MSG_CLOSE_ALL_CONNECT, NULL, 0) != 0 )
+	  		ereport(ERROR, (errmsg("can not send message")));
+
+		pool_flush(&poolAgent->port);
 }
 
 /*
