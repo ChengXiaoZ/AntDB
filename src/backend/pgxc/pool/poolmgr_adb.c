@@ -3607,6 +3607,7 @@ Datum
 pool_close_all_conn(PG_FUNCTION_ARGS)
 {
 	StringInfoData buf;
+	char type;
 	Assert(poolHandle != NULL);
 
 	pq_beginmessage(&buf, PM_MSG_CLOSE_ALL_CONNECT);
@@ -3614,7 +3615,12 @@ pool_close_all_conn(PG_FUNCTION_ARGS)
 	pool_putmessage(&poolHandle->port, (char)(buf.cursor), buf.data, buf.len);
 	pool_flush(&poolHandle->port);
 
+	type = pool_getbyte(&poolHandle->port);
 	pfree(buf.data);
-	PG_RETURN_BOOL(true);
+
+	if (type == PM_MSG_CLOSE_ALL_CONNECT)
+		PG_RETURN_BOOL(true);
+	else
+		PG_RETURN_BOOL(false);
 }
 
