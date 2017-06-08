@@ -70,6 +70,12 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define SHUTDOWN_I  "immediate"
 #define TAKEPLAPARM_N  "none"
 
+typedef enum AGENT_STATUS
+{
+	AGENT_DOWN = 4, /*the number is enum PGPing max_value + 1*/
+	AGENT_RUNNING
+}agent_status;
+
 struct enum_sync_state
 {
 	int type;

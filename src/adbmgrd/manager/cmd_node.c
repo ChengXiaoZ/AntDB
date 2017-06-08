@@ -2146,6 +2146,7 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
+	StringInfoData strdata;
 	char *host_addr = NULL;
 	char *user = NULL;
 	const char *error_str = NULL;
@@ -2212,6 +2213,13 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 			case PQPING_NO_ATTEMPT:
 				error_str = "connection not attempted (bad params)";
 				break;
+			case AGENT_DOWN:
+			{
+				initStringInfo(&strdata);
+				appendStringInfo(&strdata, "could not connect socket for agent \"%s\"", host_addr);
+				error_str = strdata.data;
+				break;
+			}
 			default:
 				break;
 		}
@@ -2225,7 +2233,8 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 				,mgr_node->nodetype
 				,ret == PQPING_OK ? true:false
 				,error_str);
-
+	if(AGENT_DOWN == ret)
+		pfree(strdata.data);
 	pfree(port.data);
 	pfree(host_addr);
 	pfree(user);
@@ -2243,6 +2252,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
+	StringInfoData strdata;
 	char *host_addr = NULL;
 	bool is_valid = false;
 	const char *error_str = NULL;
@@ -2303,7 +2313,15 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 					case PQPING_NO_ATTEMPT:
 						error_str = "connection not attempted (bad params)";
 						break;
+					case AGENT_DOWN:
+					{
+						initStringInfo(&strdata);
+						appendStringInfo(&strdata, "could not connect socket for agent \"%s\"", host_addr);
+						error_str = strdata.data;
+						break;
+					}
 					default:
+						error_str = "unknown the type of ping node return";
 						break;
 				}
 			}
@@ -2319,6 +2337,8 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 			pfree(user);
 			pfree(port.data);
 			pfree(host_addr);
+			if(AGENT_DOWN == ret)
+				pfree(strdata.data);
 			SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 		}
 		else
@@ -2342,6 +2362,7 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
+	StringInfoData strdata;
 	char *host_addr;
 	bool is_valid = false;
 	const char *error_str = NULL;
@@ -2400,7 +2421,15 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 					case PQPING_NO_ATTEMPT:
 						error_str = "connection not attempted (bad params)";
 						break;
+					case AGENT_DOWN:
+					{
+						initStringInfo(&strdata);
+						appendStringInfo(&strdata, "could not connect socket for agent \"%s\"", host_addr);
+						error_str = strdata.data;
+						break;
+					}
 					default:
+						error_str = "unknown the type of ping node return";
 						break;
 				}
 			}
@@ -2414,6 +2443,8 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 						,error_str);
 			pfree(port.data);
 			pfree(host_addr);
+			if(AGENT_DOWN == ret)
+				pfree(strdata.data);
 			SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 		}
 		else
@@ -2438,6 +2469,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	HeapTuple tup, tup_result;
 	Form_mgr_node mgr_node;
 	StringInfoData port;
+	StringInfoData strdata;
 	char *host_addr;
 	char *nodename;
 	bool is_valid = false;
@@ -2544,7 +2576,15 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 			case PQPING_NO_ATTEMPT:
 				error_str = "connection not attempted (bad params)";
 				break;
+			case AGENT_DOWN:
+			{
+				initStringInfo(&strdata);
+				appendStringInfo(&strdata, "could not connect socket for agent \"%s\"", host_addr);
+				error_str = strdata.data;
+				break;
+			}
 			default:
+				error_str = "unknown the type of ping node return";
 				break;
 		}
 	}
@@ -2560,6 +2600,8 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	pfree(user);
 	pfree(port.data);
 	pfree(host_addr);
+	if(AGENT_DOWN == ret)
+		pfree(strdata.data);
 	heap_freetuple(tup);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
@@ -2576,6 +2618,7 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	ScanKeyData  key[1];
 	StringInfoData port;
+	StringInfoData strdata;
 	char *host_addr;
 	char *user;
 	int ret = 0;
@@ -2653,7 +2696,15 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 			case PQPING_NO_ATTEMPT:
 				error_str = "connection not attempted (bad params)";
 				break;
+			case AGENT_DOWN:
+			{
+				initStringInfo(&strdata);
+				appendStringInfo(&strdata, "could not connect socket for agent \"%s\"", host_addr);
+				error_str = strdata.data;
+				break;
+			}
 			default:
+				error_str = "unknown the type of ping node return";
 				break;
 		}
 	}
@@ -2669,6 +2720,8 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	pfree(user);
 	pfree(port.data);
 	pfree(host_addr);
+	if(AGENT_DOWN == ret)
+		pfree(strdata.data);
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 

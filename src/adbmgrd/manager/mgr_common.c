@@ -470,8 +470,11 @@ int pingNode_user(char *host_addr, char *node_port, char *node_user)
 		getAgentCmdRst.ret = false;
 		appendStringInfoString(&(getAgentCmdRst.description), ma_last_error_msg(ma));
 		ma_close(ma);
-		ereport(ERROR, (errmsg("could not connect socket for agent \"%s\".",
+		ereport(LOG, (errmsg("could not connect socket for agent \"%s\".",
 						host_addr)));
+		pfree(sendstrmsg.data);
+		pfree(getAgentCmdRst.description.data);
+		return AGENT_DOWN;
 	}
 	getAgentCmdRst.ret = false;
 	ma_beginmessage(&buf, AGT_MSG_COMMAND);
