@@ -3141,18 +3141,28 @@ deep_copy(HashField *dest, HashField *src)
 {
 	memcpy(dest, src, sizeof(HashField));
 
-	dest->node_list = (Oid *)palloc0(src->datanodes_num * sizeof(Oid));
-	memcpy(dest->node_list, src->node_list, (src->datanodes_num * sizeof(Oid)));
-
+	/* for field_loc */
 	dest->field_loc  = (int *)palloc0(src->field_nums * sizeof(int));
 	memcpy(dest->field_loc, src->field_loc, src->field_nums * sizeof(int));
 
+	/* for field_type */
 	dest->field_type = (Oid *)palloc0(src->field_nums * sizeof(Oid));
 	memcpy(dest->field_type, src->field_type, src->field_nums * sizeof(Oid));
 
+	/* for func_name */
+	dest->func_name = pg_strdup(src->func_name);
+
+	/* for node_list */
+	dest->node_list = (Oid *)palloc0(src->datanodes_num * sizeof(Oid));
+	memcpy(dest->node_list, src->node_list, (src->datanodes_num * sizeof(Oid)));
+
+	/* for text_delim */
 	dest->text_delim = pg_strdup(src->text_delim);
+
+	/* for hash_delim */
 	dest->hash_delim = pg_strdup(src->hash_delim);
 
+	/* for copy_options */
 	dest->copy_options = pg_strdup(src->copy_options);
 
 	return;
