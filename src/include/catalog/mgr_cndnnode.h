@@ -89,4 +89,5 @@ typedef enum SYNC_STATE
 	SYNC_STATE_POTENTIAL,
 }sync_state;
 
+extern bool with_data_checksums;
 #endif /* MGR_CNDNNODE_H */

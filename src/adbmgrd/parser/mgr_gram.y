@@ -187,7 +187,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
-%token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE
+%token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -447,6 +447,16 @@ AppendNodeStmt:
 			List *args = list_make1(makeStringConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnmaster", args));
+			with_data_checksums = false;
+			$$ = (Node*)stmt;
+		}
+		|	APPEND DATANODE MASTER Ident DATA_CHECKSUMS
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnmaster", args));
+			with_data_checksums = true;
 			$$ = (Node*)stmt;
 		}
 		| APPEND DATANODE SLAVE Ident
@@ -471,6 +481,16 @@ AppendNodeStmt:
 			List *args = list_make1(makeStringConst($3, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordmaster", args));
+			with_data_checksums = false;
+			$$ = (Node*)stmt;
+		}
+		| APPEND COORDINATOR Ident DATA_CHECKSUMS
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordmaster", args));
+			with_data_checksums = true;
 			$$ = (Node*)stmt;
 		}
 		| APPEND GTM SLAVE Ident
@@ -1879,6 +1899,15 @@ INIT ALL
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("initall"), -1));
+			with_data_checksums = false;
+			$$ = (Node*)stmt;
+	}
+| INIT ALL DATA_CHECKSUMS
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("initall"), -1));
+			with_data_checksums = true;
 			$$ = (Node*)stmt;
 	}
 	;
@@ -2577,6 +2606,7 @@ unreserved_keyword:
 	| CLEAN
 /*	| CONFIG */
 	| CLUSTER
+	| DATA_CHECKSUMS
 	| DEPLOY
 	| DROP
 	| EXISTS
