@@ -1447,7 +1447,8 @@ do_hash_module(char *filepath, const TableInfo *table_info)
 	else if (table_info->distribute_type == DISTRIBUTE_BY_USERDEFINED)
 	{
 		Assert(field->field_nums > 0);
-		func_name = pg_strdup(field->func_name);
+		func_name = pg_strdup(table_info->table_attribute->func_name);
+		field->func_name = pg_strdup(table_info->table_attribute->func_name);
 	}
 
 	set_hash_file_start_cmd(start);
@@ -3150,7 +3151,7 @@ deep_copy(HashField *dest, HashField *src)
 	memcpy(dest->field_type, src->field_type, src->field_nums * sizeof(Oid));
 
 	/* for func_name */
-	dest->func_name = pg_strdup(src->func_name);
+	//to do nothing
 
 	/* for node_list */
 	dest->node_list = (Oid *)palloc0(src->datanodes_num * sizeof(Oid));
