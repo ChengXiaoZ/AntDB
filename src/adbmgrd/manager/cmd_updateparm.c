@@ -299,7 +299,10 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 		else
 		{
 			/*add single quota for it if it not using single quota*/
-			mgr_string_add_single_quota(&value);
+			if (strcasecmp(value.data, "on") != 0 && strcasecmp(value.data, "off") != 0
+			&& strcasecmp(value.data, "true") != 0 && strcasecmp(value.data, "false") != 0
+			&& strspn(value.data, "0123456789.") != strlen(value.data))
+				mgr_string_add_single_quota(&value);
 		}
 		key_value = palloc(sizeof(struct keyvalue));
 		strncpy(key_value->key, key.data, namemaxlen-1);

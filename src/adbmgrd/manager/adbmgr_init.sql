@@ -1211,7 +1211,8 @@ revoke execute on function mgr_flush_host() from public;
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
 --insert into parm select '*', name, setting, context, vartype, unit, min_val, max_val, enumvals from pg_settings order by 2;
---update parm set id1='#' where name in ('adb_ha_param_delimiter', 'agtm_host', 'agtm_port', 'enable_adb_ha_sync', 'enable_adb_ha_sync_select', 'enable_fast_query_shipping', 'enable_remotegroup', 'enable_remotejoin', 'enable_remotelimit', 'enable_remotesort', 'enforce_two_phase_commit', 'grammar', 'max_coordinators', 'max_datanodes', 'max_pool_size', 'min_pool_size', 'nls_date_format', 'nls_timestamp_format', 'nls_timestamp_tz_format', 'persistent_datanode_connections', 'pgxc_node_name', 'pgxcnode_cancel_delay', 'pool_remote_cmd_timeout', 'remotetype', 'require_replicated_table_pkey', 'snapshot_level', 'xc_enable_node_tcp_log', 'xc_maintenance_mode');
+--update parm set id1='#' where name in ('adb_ha_param_delimiter', 'agtm_host', 'agtm_port', 'enable_adb_ha_sync', 'enable_adb_ha_sync_select', 'enable_fast_query_shipping', 'enable_remotegroup', 'enable_remotejoin', 'enable_remotelimit', 'enable_remotesort', 'enforce_two_phase_commit', 'grammar', 'max_coordinators', 'max_datanodes', 'max_pool_size', 'min_pool_size', 'nls_date_format', 'nls_timestamp_format', 'nls_timestamp_tz_format', 'persistent_datanode_connections', 'pgxc_node_name', 'pgxcnode_cancel_delay', 'pool_remote_cmd_timeout', 'remotetype', 'require_replicated_table_pkey', 'snapshot_level', 'xc_enable_node_tcp_log', 'xc_maintenance_mode', 'distribute_by_replication_default', 'rep_max_avail_flag', 'rep_max_avail_lsn_lag', 'rep_read_archive_path', 'rep_read_archive_path_flag', 'adb_slot_enable_mvcc', 'enable_distrib_on_dn', 'enable_slot');
+
 --update parm set setting='minimal' where name = 'wal_level';
 --update parm set setting='localhost' where name = 'agtm_host';
 --update parm set unit='8kB' where name = 'wal_buffers';
@@ -1229,6 +1230,7 @@ revoke execute on function mgr_flush_host() from public;
 INSERT INTO adbmgr.parm VALUES ('*', 'DateStyle', 'ISO, MDY', 'user', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'IntervalStyle', 'postgres', 'user', 'enum', NULL, NULL, NULL, '{postgres,postgres_verbose,sql_standard,iso_8601}');
 INSERT INTO adbmgr.parm VALUES ('*', 'TimeZone', 'PRC', 'user', 'string', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('*', 'adb_debug', 'off', 'superuser', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'allow_system_table_mods', 'off', 'postmaster', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'application_name', 'psql', 'user', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'archive_command', '(disabled)', 'sighup', 'string', NULL, NULL, NULL, NULL);
@@ -1290,7 +1292,6 @@ INSERT INTO adbmgr.parm VALUES ('*', 'default_transaction_deferrable', 'off', 'u
 INSERT INTO adbmgr.parm VALUES ('*', 'default_transaction_isolation', 'read committed', 'user', 'enum', NULL, NULL, NULL, '{serializable,"repeatable read","read committed","read uncommitted"}');
 INSERT INTO adbmgr.parm VALUES ('*', 'default_transaction_read_only', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'default_with_oids', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
-INSERT INTO adbmgr.parm VALUES ('*', 'distribute_by_replication_default', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'dynamic_library_path', '$libdir', 'superuser', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'effective_cache_size', '16384', 'user', 'integer', '8kB', '1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'effective_io_concurrency', '1', 'user', 'integer', '', '0', '1000', NULL);
@@ -1387,7 +1388,6 @@ INSERT INTO adbmgr.parm VALUES ('*', 'max_standby_archive_delay', '30000', 'sigh
 INSERT INTO adbmgr.parm VALUES ('*', 'max_standby_streaming_delay', '30000', 'sighup', 'integer', 'ms', '-1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'max_wal_senders', '5', 'postmaster', 'integer', '', '0', '8388607', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'password_encryption', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
-INSERT INTO adbmgr.parm VALUES ('#', 'pgxc_node_name', 'cn1', 'postmaster', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'pool_time_out', '60', 'backend', 'integer', 's', '1', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'port', '55100', 'postmaster', 'integer', '', '1', '65535', NULL);
 INSERT INTO adbmgr.parm VALUES ('*', 'post_auth_delay', '0', 'backend', 'integer', 's', '0', '2147', NULL);
@@ -1468,14 +1468,18 @@ INSERT INTO adbmgr.parm VALUES ('*', 'xmlbinary', 'base64', 'user', 'enum', NULL
 INSERT INTO adbmgr.parm VALUES ('*', 'xmloption', 'content', 'user', 'enum', NULL, NULL, NULL, '{content,document}');
 INSERT INTO adbmgr.parm VALUES ('*', 'zero_damaged_pages', 'off', 'superuser', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'adb_ha_param_delimiter', '$&#$', 'user', 'string', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'adb_slot_enable_mvcc', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'agtm_port', '56666', 'sighup', 'integer', '', '1', '65535', NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'distribute_by_replication_default', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_adb_ha_sync', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_adb_ha_sync_select', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'enable_distrib_on_dn', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_fast_query_shipping', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_remotegroup', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_remotejoin', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_remotelimit', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enable_remotesort', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'enable_slot', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'enforce_two_phase_commit', 'on', 'superuser', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'grammar', 'postgres', 'user', 'enum', NULL, NULL, NULL, '{postgres,oracle}');
 INSERT INTO adbmgr.parm VALUES ('#', 'max_coordinators', '16', 'postmaster', 'integer', '', '2', '65535', NULL);
@@ -1487,8 +1491,14 @@ INSERT INTO adbmgr.parm VALUES ('#', 'nls_timestamp_format', 'YYYY-MM-DD HH24:MI
 INSERT INTO adbmgr.parm VALUES ('#', 'nls_timestamp_tz_format', 'YYYY-MM-DD HH24:MI:SS.US TZ', 'user', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'persistent_datanode_connections', 'off', 'backend', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'pgxcnode_cancel_delay', '10', 'user', 'integer', 'ms', '0', '2147483647', NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'pgxc_node_name', 'cn1', 'postmaster', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'pool_remote_cmd_timeout', '10', 'postmaster', 'integer', 'ms', '0', '2147483647', NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'remotetype', 'application', 'backend', 'enum', NULL, NULL, NULL, '{application,coordinator,datanode,rxactmgr}');
+INSERT INTO adbmgr.parm VALUES ('#', 'rep_max_avail_flag', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'rep_max_avail_lsn_lag', '8192', 'postmaster', 'integer', '', '1', '81920', NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'rep_read_archive_path', '', 'user', 'string', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'rep_read_archive_path_flag', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
+INSERT INTO adbmgr.parm VALUES ('#', 'adb_ha_parm_delimiter', '$&#$', 'user', 'string', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'require_replicated_table_pkey', 'on', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'xc_enable_node_tcp_log', 'off', 'user', 'bool', NULL, NULL, NULL, NULL);
 INSERT INTO adbmgr.parm VALUES ('#', 'xc_maintenance_mode', 'off', 'superuser', 'bool', NULL, NULL, NULL, NULL);
