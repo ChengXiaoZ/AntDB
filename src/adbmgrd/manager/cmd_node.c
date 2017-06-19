@@ -7503,7 +7503,6 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	Datum datumpath;
 	GetAgentCmdRst getAgentCmdRst;
-	ScanKeyData key[1];
 	char *nodepath;
 	bool isNull;
 	char cmdtype = AGT_CMD_CLEAN_NODE;
@@ -7514,15 +7513,9 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
 		info = palloc(sizeof(*info));
-					ScanKeyInit(&key[0],
-						Anum_mgr_node_nodeincluster
-						,BTEqualStrategyNumber
-						,F_BOOLEQ
-						,BoolGetDatum(true));
 		info->rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 0, NULL);
 		info->lcp =NULL;
 
 		/* save info */
