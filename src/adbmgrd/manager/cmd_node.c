@@ -7555,7 +7555,9 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 	/*update node systbl, set inited and incluster to false*/
 	if ( true == getAgentCmdRst.ret)
 	{
-		mgr_set_inited_incluster(NameStr(mgr_node->nodename), mgr_node->nodetype, true, false);
+		mgr_node->nodeinited = false;
+		mgr_node->nodeincluster = false;
+		heap_inplace_update(info->rel_node, tuple);
 	}
 	tup_result = build_common_command_tuple_for_monitor(
 		&(mgr_node->nodename)

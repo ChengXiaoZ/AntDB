@@ -42,6 +42,7 @@
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst);
 static bool mgr_recv_showparam_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
 static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, char nodetype, Relation rel_node, Relation rel_updateparm, Relation rel_parm, bool bneednotice);
+static int mgr_get_character_num(char *str, char character);
 
 /*if the parmeter in gtm or coordinator or datanode pg_settins, the nodetype in mgr_parm is '*'
  , if the parmeter in coordinator or datanode pg_settings, the nodetype in mgr_parm is '#'
@@ -301,7 +302,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 			/*add single quota for it if it not using single quota*/
 			if (strcasecmp(value.data, "on") != 0 && strcasecmp(value.data, "off") != 0
 			&& strcasecmp(value.data, "true") != 0 && strcasecmp(value.data, "false") != 0
-			&& strspn(value.data, "0123456789.") != strlen(value.data))
+			&& (!(strspn(value.data, "0123456789.") == strlen(value.data) && mgr_get_character_num(value.data, '.')<2)))
 				mgr_string_add_single_quota(&value);
 		}
 		key_value = palloc(sizeof(struct keyvalue));
@@ -1919,4 +1920,26 @@ Datum mgr_update_param_datanode_failover(PG_FUNCTION_ARGS)
 	mgr_update_parm_after_dn_failover(&oldmastername, oldmastertype, &newmastername, newmastertype);
 
 	PG_RETURN_BOOL(true);
+}
+
+/*
+* get the number of character in string
+*
+*/
+
+static int mgr_get_character_num(char *str, char character)
+{
+	int result = 0;
+	char *p = str;
+
+	if (!str)
+		return 0;
+	while(*p != '\0')
+	{
+		if (*p == character)
+			result++;
+		p++;
+	}
+	
+	return result;
 }

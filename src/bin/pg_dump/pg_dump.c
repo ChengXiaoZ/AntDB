@@ -15825,7 +15825,7 @@ dumpAdbmgrTable(Archive *fout)
 			PQgetvalue(res, i, 2),
 			PQgetvalue(res, i, 3),
 			strcasecmp(PQgetvalue(res, i, 4), "t")==0 ? "true":"false",
-			retstr,
+			retstr == NULL ? "''" : retstr,
 			strcmp(PQgetvalue(res, i, 6), "") != 0 ? PQgetvalue(res, i, 6):" ");
 		pfree(retstr);
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
@@ -15888,7 +15888,8 @@ static char
 		if (chr == *p)
 			num++;
 	}
-
+	if (!num)
+		num = 1;
 	retstr = (char *)pg_malloc(strlen(str) + 1 + strlen(strr)*(num-1));
 	p = str;
 	i = 0;
