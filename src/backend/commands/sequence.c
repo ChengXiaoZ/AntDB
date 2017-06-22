@@ -783,10 +783,14 @@ nextval_internal(Oid relid)
 
 		/* save info in local cache */
 		elm->last = result;			/* last returned number */
-		elm->cached = result;		/* last fetched number */
+		elm->cached = result + seq->cache_value -1;
 		elm->last_valid = true;
 
 		last_used_seq = elm;
+
+		UnlockReleaseBuffer(buf);
+		relation_close(seqrel, NoLock);
+		return result;
 	}
 	else
 	{
@@ -1005,6 +1009,10 @@ nextval_internal(Oid relid)
 #endif
 	UnlockReleaseBuffer(buf);
 
+#ifdef AGTM
+	elm->last = elm->cached;
+#endif
+
 	relation_close(seqrel, NoLock);
 
 	return result;
@@ -1017,37 +1025,9 @@ currval_oid(PG_FUNCTION_ARGS)
 	int64		result;
 	SeqTable	elm;
 	Relation	seqrel;
-#ifdef ADB
-	bool		is_temp;
-#endif
+
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
-
-#ifdef ADB
-{
-	is_temp = seqrel->rd_backend == MyBackendId;
-	if (IS_PGXC_COORDINATOR && !IsConnFromCoord() && !is_temp)
-	{
-		int64		seq_val;
-
-		char * seqName = NULL;
-		char * databaseName = NULL;
-		char * schemaName = NULL;
-
-		seqName = RelationGetRelationName(seqrel);
-		databaseName = get_database_name(seqrel->rd_node.dbNode);
-		schemaName = get_namespace_name(RelationGetNamespace(seqrel));
-		
-		seq_val = agtm_GetSeqCurrVal(seqName, databaseName, schemaName);
-		relation_close(seqrel, NoLock);
-		PG_RETURN_INT64(seq_val);
-	}
-	else
-	{
-		PreventCommandIfReadOnly("currval()");
-	}
-}
-#endif
 
 	if (pg_class_aclcheck(elm->relid, GetUserId(), ACL_SELECT) != ACLCHECK_OK &&
 		pg_class_aclcheck(elm->relid, GetUserId(), ACL_USAGE) != ACLCHECK_OK)
@@ -1062,9 +1042,17 @@ currval_oid(PG_FUNCTION_ARGS)
 				 errmsg("currval of sequence \"%s\" is not yet defined in this session",
 						RelationGetRelationName(seqrel))));
 
-	result = elm->last;
-	relation_close(seqrel, NoLock);
-
+#ifdef ADB
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+#endif
+		result = elm->last;
+		relation_close(seqrel, NoLock);
+#ifdef ADB
+	}
+	else
+		PreventCommandIfReadOnly("currval()");
+#endif
 	PG_RETURN_INT64(result);
 }
 
@@ -1078,33 +1066,6 @@ lastval(PG_FUNCTION_ARGS)
 	ereport(ERROR,
 			(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 			 errmsg("lastval is not yet defined in this session")));
-
-#ifdef ADB
-    if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
-    {
-		int64		seq_val;
-		bool		is_temp;
-
-		/* Someone may have dropped the sequence since the last nextval() */
-		if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(last_used_seq->relid)))
-		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("lastval is not yet defined in this session")));
-
-		seqrel = open_share_lock(last_used_seq);
-		is_temp = seqrel->rd_backend == MyBackendId;
-		relation_close(seqrel, NoLock);
-		if (!is_temp)
-		{
-			seq_val = agtm_GetSeqLastVal(" "," "," ");
-			PG_RETURN_INT64(seq_val);
-		}
-    }
-	else
-	{
-		PreventCommandIfReadOnly("lastval()");
-	}
-#endif
 
 	/* Someone may have dropped the sequence since the last nextval() */
 	if (!SearchSysCacheExists1(RELOID, ObjectIdGetDatum(last_used_seq->relid)))
@@ -1124,9 +1085,17 @@ lastval(PG_FUNCTION_ARGS)
 				 errmsg("permission denied for sequence %s",
 						RelationGetRelationName(seqrel))));
 
-	result = last_used_seq->last;
-	relation_close(seqrel, NoLock);
-
+#ifdef ADB
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+#endif
+		result = last_used_seq->last;
+		relation_close(seqrel, NoLock);
+#ifdef ADB
+	}
+	else
+		PreventCommandIfReadOnly("lastval()");
+#endif
 	PG_RETURN_INT64(result);
 }
 
