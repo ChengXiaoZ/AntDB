@@ -34,6 +34,7 @@
 #define PG_CTL_VERSION "pg_ctl (PostgreSQL) " PG_VERSION "\n"
 #define PSQL_VERSION "psql (Postgres-XC) " PGXC_VERSION "\n"
 #define PG_DUMPALL_VERSION "pg_dumpall (PostgreSQL) " PG_VERSION "\n"
+#define PG_REWIND_VERSION "pg_rewind 1.0.0""\n"
 
 static void myUsleep(long microsec);
 static bool parse_ping_node_msg(const StringInfo msg, Name host, Name port, Name user, char *file_path);
@@ -179,6 +180,9 @@ void do_agent_command(StringInfo buf)
 		break;
 	case AGT_CMD_PING_NODE:
 		cmd_ping_node(buf);
+		break;
+	case AGT_CMD_NODE_REWIND:
+		cmd_node_init(cmd_type, buf, "pg_rewind", PG_REWIND_VERSION);
 		break;
 	default:
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION)

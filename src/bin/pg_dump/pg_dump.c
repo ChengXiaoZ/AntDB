@@ -15681,13 +15681,12 @@ dumpAdbmgrTable(Archive *fout)
 	PQExpBuffer delQry = createPQExpBuffer();
 	PQExpBuffer creaQry = createPQExpBuffer();
 	PQExpBuffer addstrdata = createPQExpBuffer();
-	PGconn *conn = GetConnection(fout);
+	PGconn *conn;
 	PGresult *res;
-	const char *datname;
 	char *retstr;
 	int i = 0;
 
-	datname = PQdb(conn);
+	conn = GetConnection(fout);
 	if (g_verbose)
 		write_msg(NULL, "saving mgr_host,mgr_node definition\n");
 	/* Make sure we are in proper schema */

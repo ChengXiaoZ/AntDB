@@ -146,14 +146,14 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 				ListParmStmt StartAgentStmt AddNodeStmt StopAgentStmt
 				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
-				MonitorStmt FailoverStmt /* ConfigAllStmt */ DeploryStmt
+				MonitorStmt FailoverStmt /* ConfigAllStmt */DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
 				Get_host_threshold Get_alarm_info AppendNodeStmt
 				AddUpdataparmStmt CleanAllStmt ResetUpdataparmStmt ShowStmt FlushHost
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt ListJobStmt
-				AddExtensionStmt DropExtensionStmt RemoveNodeStmt
+				AddExtensionStmt DropExtensionStmt RemoveNodeStmt FailoverManualStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -165,7 +165,8 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 
 %type <defelt>	CreateOptRoleElem AlterOptRoleElem
 
-%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type opt_general_force
+%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type opt_general_force 
+							opt_slave_inner_type
 %type <vsetstmt> set_rest set_rest_more
 %type <value>	NumericOnly
 
@@ -186,8 +187,9 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> PASSWORD CLEAN RESET WHERE ROW_ID
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
-%token<keyword> APPEND /* CONFIG */ MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
+%token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 %token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
+%token<keyword> PROMOTE ADBMGR REWIND
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -251,7 +253,7 @@ stmt :
 	| StartNodeMasterStmt
 	| StopNodeMasterStmt
 	| FailoverStmt
-/*	| ConfigAllStmt */
+	/* | ConfigAllStmt */
 	| DeploryStmt
 	| Gethostparm     /* for ADB monitor host page */
 	| Gettopologyparm /* for ADB monitor home page */
@@ -275,6 +277,7 @@ stmt :
 	| AddExtensionStmt
 	| DropExtensionStmt
 	| RemoveNodeStmt
+	| FailoverManualStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -671,14 +674,15 @@ Get_host_threshold:
 		;
 
 /*ConfigAllStmt:
- *	CONFIG ALL
- *	{
- *		SelectStmt *stmt = makeNode(SelectStmt);
- *		stmt->targetList = list_make1(make_star_target(-1));
- *		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_configure_nodes_all", NULL));
- *		$$ = (Node*)stmt;
- *	};
- */
+*		CONFIG ALL
+*		{
+*			SelectStmt *stmt = makeNode(SelectStmt);
+*			stmt->targetList = list_make1(make_star_target(-1));
+*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_configure_nodes_all", NULL));
+*			$$ = (Node*)stmt;
+*		}
+*	;
+*/
 
 MonitorStmt:
 		MONITOR opt_general_all
@@ -2269,6 +2273,12 @@ opt_dn_inner_type:
 	|SLAVE { $$ = CNDN_TYPE_DATANODE_SLAVE; }
 	| EXTRA { $$ = CNDN_TYPE_DATANODE_EXTRA; }
 	;
+opt_slave_inner_type:
+		GTM SLAVE { $$ = GTM_TYPE_GTM_SLAVE; }
+	|	GTM EXTRA { $$ = GTM_TYPE_GTM_EXTRA; }
+	|	DATANODE SLAVE { $$ = CNDN_TYPE_DATANODE_SLAVE; }
+	|	DATANODE EXTRA { $$ = CNDN_TYPE_DATANODE_EXTRA; }
+	;
 
 cluster_type:
 	GTM               {$$ = GTM_TYPE;}
@@ -2595,8 +2605,57 @@ RemoveNodeStmt:
 		}	
 	;
 
+FailoverManualStmt:
+		ADBMGR PROMOTE opt_slave_inner_type Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_adbmgr_func", args));
+			$$ = (Node*)stmt;
+		}
+	|	PROMOTE GTM opt_gtm_inner_type Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_promote_func", args));
+			$$ = (Node*)stmt;
+		}
+	| PROMOTE DATANODE opt_dn_inner_type Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_promote_func", args));
+			$$ = (Node*)stmt;
+		}
+	|	CONFIG DATANODE MASTER Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst(CNDN_TYPE_DATANODE_MASTER, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_pgxcnode_func", args));
+			$$ = (Node*)stmt;
+		}
+	| REWIND opt_slave_inner_type Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($2, @2));
+			args = lappend(args, makeStringConst($3, @3));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_rewind_func", args));
+			$$ = (Node*)stmt;
+		}
+	;
+
 unreserved_keyword:
 	  ACL
+	| ADBMGR
 	| ADD_P
 	| AGENT
 	| ALTER
@@ -2604,7 +2663,7 @@ unreserved_keyword:
 	| CHECK_PASSWORD
 	| CHECK_USER
 	| CLEAN
-/*	| CONFIG */
+	| CONFIG
 	| CLUSTER
 	| DATA_CHECKSUMS
 	| DEPLOY
@@ -2657,10 +2716,12 @@ unreserved_keyword:
 	| OFF
 	| PARAM
 	| PASSWORD
+	| PROMOTE
 	| REMOVE
 	| RESET
 	| REVOKE
 	| RESOLVE_ALARM
+	| REWIND
 	| S
 	| SET
 	| SHOW

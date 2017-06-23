@@ -5361,6 +5361,18 @@ DESCR("clean monitor data");
 DATA(insert OID = 4972 ( mgr_set_init_cluster  PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ mgr_set_init_cluster _null_ _null_ _null_ ));
 DESCR("set init cluster");
 
+DATA(insert OID = 4973 ( mgr_failover_manual_adbmgr_func  PGNSP PGUID 12 1 0 0 0 f f f f t f s 2 0 16 "23 2275" _null_ _null_ _null_ _null_ mgr_failover_manual_adbmgr_func _null_ _null_ _null_ ));
+DESCR("manual promote adbmgr");
+
+DATA(insert OID = 4974 ( mgr_failover_manual_promote_func  PGNSP PGUID 12 1 0 0 0 f f f f t f s 2 0 16 "23 2275" _null_ _null_ _null_ _null_ mgr_failover_manual_promote_func _null_ _null_ _null_ ));
+DESCR("manual promote node");
+
+DATA(insert OID = 4975 ( mgr_failover_manual_pgxcnode_func  PGNSP PGUID 12 1 0 0 0 f f f f t f s 2 0 16 "23 2275" _null_ _null_ _null_ _null_ mgr_failover_manual_pgxcnode_func _null_ _null_ _null_ ));
+DESCR("manual refresh pgxcnode");
+
+DATA(insert OID = 4976 ( mgr_failover_manual_rewind_func  PGNSP PGUID 12 1 0 0 0 f f f f t f s 2 0 16 "23 2275" _null_ _null_ _null_ _null_ mgr_failover_manual_rewind_func _null_ _null_ _null_ ));
+DESCR("manual wind");
+
 #endif
 
 #ifdef ADB

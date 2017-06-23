@@ -953,3 +953,231 @@ Datum mgr_set_init_cluster(PG_FUNCTION_ARGS)
 	
 }
 
+
+/*
+* promote the gtm or datanode node
+*
+*/
+
+bool mgr_promote_node(char cmdtype, Oid hostOid, char *path, StringInfo strinfo)
+{
+	bool res = false;
+	StringInfoData infosendmsg;
+
+	/*check the cmdtype*/
+	if (AGT_CMD_GTM_SLAVE_FAILOVER != cmdtype || AGT_CMD_DN_FAILOVER != cmdtype)
+	{
+		appendStringInfo(strinfo, "the cmdtype is \"%d\", not for gtm promote or datanode promote", cmdtype);
+		return false;
+	}
+	/*check the path*/
+	if (!path || path[0] != '/')
+	{
+		appendStringInfoString(strinfo, "the path is not absolute path");
+		return false;
+	}
+
+	initStringInfo(&infosendmsg);
+	appendStringInfo(&infosendmsg, " promote -w -D %s", path);
+	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, hostOid, strinfo);
+	pfree(infosendmsg.data);
+
+	return res;
+}
+
+/*
+* wait the new master accept connect
+*
+*/
+bool mgr_check_node_connect(char nodetype, Oid hostOid, int nodeport)
+{
+	char *hostaddr;
+	char nodeport_buf[10];
+	char *username = NULL;
+
+	hostaddr = get_hostaddress_from_hostoid(hostOid);
+	/*check recovery finish*/
+	fputs(_("waiting for the new master can accept connections..."), stdout);
+	fflush(stdout);
+	while(1)
+	{
+		if (mgr_check_node_recovery_finish(nodetype, hostOid, nodeport, hostaddr))
+			break;
+		fputs(_("."), stdout);
+		fflush(stdout);
+		pg_usleep(1 * 1000000L);
+	}
+	sprintf(nodeport_buf, "%d", nodeport);
+	if (nodetype != GTM_TYPE_GTM_MASTER && nodetype != GTM_TYPE_GTM_SLAVE 
+			&& nodetype != GTM_TYPE_GTM_EXTRA)
+			username = get_hostname_from_hostoid(hostOid);
+
+	while(1)
+	{
+		if (pingNode_user(hostaddr, nodeport_buf, username == NULL ? AGTM_USER : username) != 0)
+		{
+			fputs(_("."), stdout);
+			fflush(stdout);
+			pg_usleep(1 * 1000000L);
+		}
+		else
+			break;
+	}
+	fputs(_(" done\n"), stdout);
+	fflush(stdout);
+
+	pfree(hostaddr);
+	if (username)
+		pfree(username);
+	
+	return true;
+}
+
+/*
+* rewind the node
+*
+*/
+
+bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
+{
+	char cmdtype = AGT_CMD_NODE_REWIND;
+	char mastertype;
+	char *nodetypestr;
+	bool res = false;
+	bool slave_is_exist = false;
+	bool slave_is_running = false;
+	bool master_is_exist = false;
+	bool master_is_running = false;
+	AppendNodeInfo slave_nodeinfo;
+	AppendNodeInfo master_nodeinfo;
+	StringInfoData infosendmsg;
+	GetAgentCmdRst getAgentCmdRst;
+	Relation rel_node;
+	HeapTuple tuple;
+
+	/*check node type*/
+	if (nodetype != GTM_TYPE_GTM_SLAVE && nodetype != GTM_TYPE_GTM_EXTRA
+		&& nodetype != CNDN_TYPE_DATANODE_SLAVE && nodetype != CNDN_TYPE_DATANODE_EXTRA)
+	{
+		appendStringInfo(strinfo, "the nodetype is \"%d\", not for gtm rewind or datanode rewind", nodetype);
+		return false;
+	}
+
+	Assert(nodename);
+
+	nodetypestr = mgr_nodetype_str(nodetype);
+	/* check exists */
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodename, nodetype);
+	if(!(HeapTupleIsValid(tuple)))
+	{
+		heap_close(rel_node, AccessShareLock);
+		appendStringInfo(strinfo, "%s \"%s\" does not exist", nodetypestr, nodename);
+		return false;
+	}
+	heap_freetuple(tuple);
+	heap_close(rel_node, AccessShareLock);
+
+	/*get the slave info*/
+	get_nodeinfo_byname(nodename, nodetype, &slave_is_exist, &slave_is_running, &slave_nodeinfo);
+	/*get its master info*/
+	mastertype = mgr_get_master_type(nodetype);
+	get_nodeinfo_byname(nodename, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
+	if (master_is_exist && (!master_is_running))
+	{
+			pfree_AppendNodeInfo(master_nodeinfo);
+			pfree_AppendNodeInfo(slave_nodeinfo);
+			nodetypestr = mgr_nodetype_str(mastertype);
+			appendStringInfo(strinfo, "%s \"%s\" does not running normal", nodetypestr, nodename);
+			return false;
+	}
+
+	if (slave_is_running)
+	{
+		pfree_AppendNodeInfo(slave_nodeinfo);
+		appendStringInfo(strinfo, "%s \"%s\" does running, should stopped before node rewind", nodetypestr, nodename);
+		return false;
+	}
+	pfree(nodetypestr);
+
+	/* update master's pg_hba.conf */
+	initStringInfo(&infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	mgr_add_parameters_hbaconf(master_nodeinfo.tupleoid, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", master_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+							master_nodeinfo.nodepath,
+							&infosendmsg,
+							master_nodeinfo.nodehost,
+							&getAgentCmdRst);
+	if (!getAgentCmdRst.ret)
+	{
+		pfree_AppendNodeInfo(master_nodeinfo);
+		pfree_AppendNodeInfo(slave_nodeinfo);
+		appendStringInfo(strinfo, "%s", getAgentCmdRst.description.data);
+		pfree(getAgentCmdRst.description.data);
+		return false;
+	}
+
+	pfree(getAgentCmdRst.description.data);
+
+	/*node rewind*/
+	resetStringInfo(&infosendmsg);
+	appendStringInfo(&infosendmsg, " --target-pgdata %s --source-server='host=%s port=%d user=%s dbname=postgres' -N %s", slave_nodeinfo.nodepath, master_nodeinfo.nodeaddr, master_nodeinfo.nodeport, slave_nodeinfo.nodeusername, nodename);
+
+	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, slave_nodeinfo.nodehost, strinfo);
+	pfree(infosendmsg.data);
+	pfree_AppendNodeInfo(master_nodeinfo);
+	pfree_AppendNodeInfo(slave_nodeinfo);
+	return res;
+}
+
+/*
+* send adbmgr command string to agent; if fail, the error information in strinfo
+*
+*/
+bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo)
+{
+	char *hostaddr;
+	char cmdheadstr[64];
+	ManagerAgent *ma;
+	GetAgentCmdRst getAgentCmdRst;
+	StringInfoData buf;
+	bool res = false;
+
+	hostaddr = get_hostaddress_from_hostoid(hostOid);
+	/* connection agent */
+	ma = ma_connect_hostoid(hostOid);
+	if(!ma_isconnected(ma))
+	{
+		/* report error message */
+		appendStringInfo(strinfo, "%s", ma_last_error_msg(ma));
+		ma_close(ma);
+		pfree(hostaddr);
+		return false;
+	}
+
+	mgr_get_cmd_head_word(cmdtype, cmdheadstr);
+	ereport(LOG, (errmsg("%s, %s %s", hostaddr, cmdheadstr, cmdstr)));
+	pfree(hostaddr);
+	
+	/*send cmd*/
+	ma_beginmessage(&buf, AGT_MSG_COMMAND);
+	ma_sendbyte(&buf, cmdtype);
+	ma_sendstring(&buf,cmdstr);
+	ma_endmessage(&buf, ma);
+	if (! ma_flush(ma, true))
+	{
+		appendStringInfoString(strinfo, ma_last_error_msg(ma));
+		ma_close(ma);
+		return false;
+	}
+	/*check the receive msg*/
+	initStringInfo(&(getAgentCmdRst.description));
+	res = mgr_recv_msg(ma, &getAgentCmdRst);
+	ma_close(ma);
+	appendStringInfoString(strinfo, getAgentCmdRst.description.data);
+	pfree(getAgentCmdRst.description.data);
+	
+	return res;
+}

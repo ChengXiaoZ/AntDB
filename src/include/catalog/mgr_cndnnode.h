@@ -89,5 +89,24 @@ typedef enum SYNC_STATE
 	SYNC_STATE_POTENTIAL,
 }sync_state;
 
+typedef enum{
+	PGXC_CONFIG,
+	PGXC_APPEND,
+	PGXC_FAILOVER,
+	PGXC_REMOVE
+}pgxc_node_operator;
+
+/*the values see agt_cmd.c, used for pg_hba.conf add content*/
+typedef enum ConnectType
+{
+	CONNECT_LOCAL=1,
+	CONNECT_HOST,
+	CONNECT_HOSTSSL,
+	CONNECT_HOSTNOSSL
+}ConnectType;
+
 extern bool with_data_checksums;
+
+#define DEFAULT_DB "postgres"
+
 #endif /* MGR_CNDNNODE_H */

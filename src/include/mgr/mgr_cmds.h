@@ -11,7 +11,8 @@
 #include "access/heapam.h"
 #include "mgr/mgr_agent.h"
 #include "utils/timestamp.h"
-
+#include "../../interfaces/libpq/libpq-fe.h"
+#include "catalog/mgr_cndnnode.h"
 #define run_success "success"
 #define PRIV_GRANT        'G'
 #define PRIV_REVOKE       'R'
@@ -208,6 +209,12 @@ extern List* mgr_get_nodetype_namelist(char nodetype);
 extern Datum mgr_remove_node_func(PG_FUNCTION_ARGS);
 extern void mgr_remove_node(MgrRemoveNode *node, ParamListInfo params, DestReceiver *dest);
 extern Datum mgr_monitor_ha(PG_FUNCTION_ARGS);
+extern void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
+extern void pfree_AppendNodeInfo(AppendNodeInfo nodeinfo);
+extern void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid);
+extern void mgr_unlock_cluster(PGconn **pg_conn);
+extern void mgr_get_master_sync_string(Oid mastertupleoid, bool bincluster, Oid excludeoid, StringInfo infostrparam);
+extern bool mgr_pqexec_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *dnname, GetAgentCmdRst *getAgentCmdRst, PGconn **pg_conn, Oid cnoid);
 /* mgr_common.c */
 extern TupleDesc get_common_command_tuple_desc(void);
 extern HeapTuple build_common_command_tuple(const Name name, bool success, const char *message);
@@ -236,6 +243,13 @@ extern List *monitor_get_dbname_list(char *user, char *address, int port);
 extern void monitor_get_one_node_user_address_port(Relation rel_node, int *agentport, char **user, char **address, int *coordport, char nodetype);
 extern HeapTuple build_ha_replication_tuple(const Name type, const Name nodename, const Name app, const Name client_addr, const Name state, const Name sent_location, const Name replay_location, const Name sync_state, const Name master_location, const Name sent_delay, const Name replay_delay);
 extern TupleDesc get_ha_replication_tuple_desc(void);
+extern bool mgr_promote_node(char cmdtype, Oid hostOid, char *path, StringInfo strinfo);
+extern bool mgr_check_node_connect(char nodetype, Oid hostOid, int nodeport);
+extern bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo);
+extern bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo);
+extern void mgr_get_cmd_head_word(char cmdtype, char *str);
+extern bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodeport, char *address);
+extern char mgr_get_master_type(char nodetype);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
@@ -314,4 +328,11 @@ extern Datum adbmonitor_job(PG_FUNCTION_ARGS);
 /*create/drop extension*/
 Datum mgr_extension_handle(PG_FUNCTION_ARGS);
 void mgr_extension(MgrExtensionAdd *node, ParamListInfo params, DestReceiver *dest);
+
+/*mgr_manual.c*/
+extern Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS);
+extern Datum mgr_failover_manual_promote_func(PG_FUNCTION_ARGS);
+extern Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS);
+extern Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS);
+
 #endif /* MGR_CMDS_H */
