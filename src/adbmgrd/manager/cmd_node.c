@@ -11079,6 +11079,7 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_masternode;
 	ScanKeyData key[3];
 	int iloop = 0;
+	int num = 0;
 	bool bsync_exist;
 	bool isNull;
 	Oid selftupleoid;
@@ -11098,6 +11099,34 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 
 	/*check the node in the cluster*/
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
+	
+	/*check the num of type node*/
+	if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+	{
+		ScanKeyInit(&key[0],
+			Anum_mgr_node_nodetype
+			,BTEqualStrategyNumber
+			,F_CHAREQ
+			,CharGetDatum(nodetype));
+		ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,CharGetDatum(true));
+		rel_scan = heap_beginscan(rel, SnapshotNow, 2, key);
+		while ((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+		{
+			num++;
+		}
+		if (1 == num)
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel, RowExclusiveLock);
+			ereport(ERROR, (errmsg("the cluster only has one coordinator, cannot be removed")));
+		}
+		heap_endscan(rel_scan);
+	}
+
 	foreach(cell, nodenamelist)
 	{
 		val = lfirst(cell);
@@ -11127,6 +11156,7 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				 ,errmsg("%s \"%s\" does not exist in cluster", mgr_nodetype_str(nodetype), namedata.data)));
 		}
+		num++;
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		sprintf(port_buf, "%d", mgr_node->nodeport);
