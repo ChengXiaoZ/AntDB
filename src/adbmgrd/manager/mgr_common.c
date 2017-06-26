@@ -1073,6 +1073,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	{
 		heap_close(rel_node, AccessShareLock);
 		appendStringInfo(strinfo, "%s \"%s\" does not exist", nodetypestr, nodename);
+		pfree(nodetypestr);
 		return false;
 	}
 	heap_freetuple(tuple);
@@ -1089,6 +1090,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 			pfree_AppendNodeInfo(slave_nodeinfo);
 			nodetypestr = mgr_nodetype_str(mastertype);
 			appendStringInfo(strinfo, "%s \"%s\" does not running normal", nodetypestr, nodename);
+			pfree(nodetypestr);
 			return false;
 	}
 
@@ -1096,6 +1098,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	{
 		pfree_AppendNodeInfo(slave_nodeinfo);
 		appendStringInfo(strinfo, "%s \"%s\" does running, should stopped before node rewind", nodetypestr, nodename);
+		pfree(nodetypestr);
 		return false;
 	}
 	pfree(nodetypestr);
