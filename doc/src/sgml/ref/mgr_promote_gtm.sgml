@@ -1,0 +1,67 @@
+<!--
+doc/src/sgml/ref/mgr_promote_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-PROMOTEGTM">
+  <refmeta>
+    <refentrytitle>PROMOTE GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>PROMOTE GTM</refname>
+    <refpurpose>promote gtm slave or extra to master</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-promotegtm">
+    <primary>PROMOTE GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+PROMOTE GTM { MASTER | SLAVE | EXTRA } { <replaceable class="parameter">node_name</replaceable> }
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>PROMOTE GTM</command> promote gtm slave or extra to master.
+</para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+Promote gtm slave datanode1 to master:
+      <programlisting>PROMOTE GTM SLAVE gtm1;</programlisting>
+    </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-adbmgrpromote"></member><member><xref linkend="mgr-promotedatanode"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

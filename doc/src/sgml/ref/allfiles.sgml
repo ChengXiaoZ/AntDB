@@ -192,6 +192,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY vacuumdb           SYSTEM "vacuumdb.sgml">
 
 <!-- ADB manage command -->
+<!ENTITY mgrAdbmgrPromote  SYSTEM "mgr_adbmgr_promote.sgml">
 <!ENTITY mgrAddCoordinator  SYSTEM "mgr_add_coordinator.sgml">
 <!ENTITY mgrAddDatanode     SYSTEM "mgr_add_datanode.sgml">
 <!ENTITY mgrAddGtm          SYSTEM "mgr_add_gtm.sgml">
@@ -233,6 +234,8 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrMonitorDatanode SYSTEM "mgr_monitor_datanode.sgml">
 <!ENTITY mgrMonitorGtm      SYSTEM "mgr_monitor_gtm.sgml">
 <!ENTITY mgrMonitorHa       SYSTEM "mgr_monitor_ha.sgml">
+<!ENTITY mgrPromoteDatanode SYSTEM "mgr_promote_datanode.sgml">
+<!ENTITY mgrPromoteGtm      SYSTEM "mgr_promote_gtm.sgml">
 <!ENTITY mgrRemoveCoordinator  SYSTEM "mgr_remove_coordinator.sgml">
 <!ENTITY mgrRemoveDatanode  SYSTEM "mgr_remove_datanode.sgml">
 <!ENTITY mgrRemoveGtm       SYSTEM "mgr_remove_gtm.sgml">
@@ -240,6 +243,8 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrResetDatanode   SYSTEM "mgr_reset_datanode.sgml">
 <!ENTITY mgrResetGtm        SYSTEM "mgr_reset_gtm.sgml">
 <!ENTITY mgrRevoke          SYSTEM "mgr_revoke_right.sgml">
+<!ENTITY mgrRewindDatanode  SYSTEM "mgr_rewind_datanode.sgml">
+<!ENTITY mgrRewindGtm       SYSTEM "mgr_rewind_gtm.sgml">
 <!ENTITY mgrSetCoordinator  SYSTEM "mgr_set_coordinator.sgml">
 <!ENTITY mgrSetDatanode     SYSTEM "mgr_set_datanode.sgml">
 <!ENTITY mgrSetGtm          SYSTEM "mgr_set_gtm.sgml">

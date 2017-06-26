@@ -1,0 +1,67 @@
+<!--
+doc/src/sgml/ref/mgr_start_coordinator.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-STARTCOORDINATOR">
+  <refmeta>
+    <refentrytitle>START COORDINATOR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>START COORDINATOR</refname>
+    <refpurpose>start the coordinator node type on the ADB cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-startcoordinator">
+    <primary>START COORDINATOR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>START COORDINATOR</command> start the coordinator node on the ADB cluster
+    </para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+Start all coordinator:
+      <programlisting>START COORDINATOR ALL;</programlisting>
+    </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-stopcoordinator"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>

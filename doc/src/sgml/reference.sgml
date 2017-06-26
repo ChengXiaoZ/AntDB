@@ -269,7 +269,7 @@
    </para>
   </partintro>
 
-
+   &mgrAdbmgrPromote;
    &mgrAddCoordinator;
    &mgrAddDatanode;
    &mgrAddGtm;
@@ -311,6 +311,8 @@
    &mgrMonitorDatanode;
    &mgrMonitorGtm;
    &mgrMonitorHa;
+   &mgrPromoteDatanode;
+   &mgrPromoteGtm;
    &mgrRemoveCoordinator;
    &mgrRemoveDatanode;
    &mgrRemoveGtm;
@@ -318,10 +320,12 @@
    &mgrResetDatanode;
    &mgrResetGtm;
    &mgrRevoke;
+   &mgrRewindDatanode;
+   &mgrRewindGtm;
    &mgrSetCoordinator;
    &mgrSetDatanode;
    &mgrSetGtm;
-	 &mgrSetClusterInit;
+   &mgrSetClusterInit;
    &mgrShow;
    &mgrStartAgent;
    &mgrStartAll;
@@ -349,7 +353,7 @@
    &monitorAddJobItem;
    &monitorAlterJobItem;
    &monitorAlterJob;
-	 &monitorCleanData;
+   &monitorCleanData;
    &monitorDropJobItem;
    &monitorDropJob;
    &monitorListJobItem;

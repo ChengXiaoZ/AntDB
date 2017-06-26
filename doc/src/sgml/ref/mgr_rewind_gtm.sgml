@@ -1,0 +1,67 @@
+<!--
+doc/src/sgml/ref/mgr_rewind_gtm.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-REWINDGTM">
+  <refmeta>
+    <refentrytitle>REWIND GTM</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>REWIND GTM</refname>
+    <refpurpose>rewind gtm slave or extra</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-rewindgtm">
+    <primary>REWIND GTM</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+REWIND GTM { SLAVE | EXTRA } { <replaceable class="parameter">node_name</replaceable> }
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>REWIND GTM</command> rewind gtm slave or extra.
+</para>
+  </refsect1>
+  <refsect1>
+    <title>Parameters</title>
+
+    <variablelist>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">node_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name, corresponds to the name column in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+    </variablelist>
+  </refsect1>
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+Rewind gtm slave gtm1:
+      <programlisting>REWIND GTM SLAVE gtm1;</programlisting>
+    </para>
+  </refsect1>
+      <refsect1>
+    <title>See Also</title>
+
+    <simplelist type="inline">
+      <member><xref linkend="mgr-appendgtm"></member>
+    </simplelist>
+  </refsect1>
+
+</refentry>
