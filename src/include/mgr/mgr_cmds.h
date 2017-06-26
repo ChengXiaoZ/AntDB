@@ -13,6 +13,9 @@
 #include "utils/timestamp.h"
 #include "../../interfaces/libpq/libpq-fe.h"
 #include "catalog/mgr_cndnnode.h"
+#include "utils/relcache.h"
+#include "access/heapam.h"
+
 #define run_success "success"
 #define PRIV_GRANT        'G'
 #define PRIV_REVOKE       'R'
@@ -64,6 +67,26 @@ typedef enum
 	EXTENSION_CREATE,
 	EXTENSION_DROP
 }extension_operator;
+
+typedef struct InitNodeInfo
+{
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitNodeInfo;
+
+typedef struct InitAclInfo
+{
+	Relation rel_authid;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitAclInfo;
+
+struct tuple_cndn
+{
+	List *coordiantor_list;
+	List *datanode_list;
+};
 
 /* host commands, in cmd_host.c */
 
