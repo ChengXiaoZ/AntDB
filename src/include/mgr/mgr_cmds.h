@@ -59,7 +59,7 @@ typedef struct Monitor_Threshold
 }Monitor_Threshold;
 
 /*cmd flag for create/drop extension*/
-typedef enum 
+typedef enum
 {
 	EXTENSION_CREATE,
 	EXTENSION_DROP
@@ -87,7 +87,7 @@ extern Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS);
 extern Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS);
 extern void mgr_stop_agent(MGRStopAgent *node,  ParamListInfo params, DestReceiver *dest);
 extern void mgr_monitor_agent(MGRMonitorAgent *node,  ParamListInfo params, DestReceiver *dest);
-extern int ssh2_start_agent(const char *hostname, 
+extern int ssh2_start_agent(const char *hostname,
 							unsigned short port,
 					 		const char *username,
 					 		const char *password,
@@ -334,5 +334,23 @@ extern Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_promote_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS);
+
+/*expansion calls*/
+extern void	mgr_make_sure_all_running(char node_type);
+extern Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange, bool bforce);
+extern bool is_node_running(char *hostaddr, int32 hostport, char *user);
+extern bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times);
+extern char mgr_get_master_type(char nodetype);
+extern void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
+extern void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
+extern void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
+extern void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir);
+extern void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
+extern void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
+extern HeapTuple build_common_command_tuple_for_monitor(const Name name
+                                                        ,char type
+                                                        ,bool status
+                                                        ,const char *description);
+extern void mgr_get_self_address(char *server_address, int server_port, Name self_address);
 
 #endif /* MGR_CMDS_H */

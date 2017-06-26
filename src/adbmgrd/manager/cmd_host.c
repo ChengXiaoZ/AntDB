@@ -46,14 +46,14 @@ typedef struct StopAgentInfo
 	HeapScanDesc	rel_scan;
     ListCell  **lcp;
 }StopAgentInfo;
-
+/*
 typedef struct InitNodeInfo
 {
-	Relation rel_host;
+	Relation rel_node;
 	HeapScanDesc rel_scan;
 	ListCell  **lcp;
 }InitNodeInfo;
-
+*/
 typedef struct InitHostInfo
 {
 	Relation rel_host;
@@ -1187,8 +1187,8 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
-		info->rel_host = heap_open(HostRelationId, AccessShareLock);
-		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		info->rel_node = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 0, NULL);
 
 		datum_hostname_list = PG_GETARG_DATUM(1);
 		listhost = DecodeTextArrayToValueList(datum_hostname_list);
@@ -1206,7 +1206,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 	if (*lcp == NULL)
 	{
 		heap_endscan(info->rel_scan);
-		heap_close(info->rel_host, AccessShareLock);
+		heap_close(info->rel_node, AccessShareLock);
 		SRF_RETURN_DONE(funcctx);
 	}
 	hostname = (Value *) lfirst(*lcp);
@@ -1229,7 +1229,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 		else
 		{
 			/* get exec path */
-			datumpath = heap_getattr(tup, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_host), &isNull);
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_node), &isNull);
 			if(isNull)
 			{
 				ReleaseSysCache(tup);
@@ -1249,7 +1249,7 @@ Datum mgr_start_agent_hostnamelist(PG_FUNCTION_ARGS)
 			appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
 
 			/* get host address */
-			datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_node), &isNull);
 			if(isNull)
 				host_addr = NameStr(mgr_host->hostname);
 			else
@@ -1319,8 +1319,8 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 		info = palloc(sizeof(*info));
 		info->lcp = (ListCell **) palloc(sizeof(ListCell *));
 		listhost = NIL;
-		info->rel_host = heap_open(HostRelationId, AccessShareLock);
-		info->rel_scan = heap_beginscan(info->rel_host, SnapshotNow, 0, NULL);
+		info->rel_node = heap_open(HostRelationId, AccessShareLock);
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 0, NULL);
 		/*get host list*/
 		while ((tup = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 		{
@@ -1340,7 +1340,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 	if (*lcp == NULL)
 	{
 		heap_endscan(info->rel_scan);
-		heap_close(info->rel_host, AccessShareLock);
+		heap_close(info->rel_node, AccessShareLock);
 		SRF_RETURN_DONE(funcctx);
 	}
 	hostname = (char *) lfirst(*lcp);
@@ -1363,7 +1363,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 		else
 		{
 			/* get exec path */
-			datumpath = heap_getattr(tup, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_host), &isNull);
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostadbhome, RelationGetDescr(info->rel_node), &isNull);
 			if(isNull)
 			{
 				ReleaseSysCache(tup);
@@ -1383,7 +1383,7 @@ Datum mgr_start_agent_all(PG_FUNCTION_ARGS)
 			appendStringInfo(&exec_path, " -b -P %u", mgr_host->hostagentport);
 
 			/* get host address */
-			datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_host), &isNull);
+			datumpath = heap_getattr(tup, Anum_mgr_host_hostaddr, RelationGetDescr(info->rel_node), &isNull);
 			if(isNull)
 				host_addr = NameStr(mgr_host->hostname);
 			else
@@ -1834,9 +1834,9 @@ static void check_host_name_isvaild(List *host_name_list)
 	TupleDesc host_desc;
 
 	info = palloc(sizeof(*info));
-	info->rel_host = heap_open(HostRelationId, AccessShareLock);
-	host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_host));
-	heap_close(info->rel_host, AccessShareLock);
+	info->rel_node = heap_open(HostRelationId, AccessShareLock);
+	host_desc = CreateTupleDescCopy(RelationGetDescr(info->rel_node));
+	heap_close(info->rel_node, AccessShareLock);
 
 	foreach(lc, host_name_list)
 	{

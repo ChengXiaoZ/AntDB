@@ -54,7 +54,7 @@
 #define SPACE           ' '
 
 bool with_data_checksums = false;
- 
+
 static struct enum_sync_state sync_state_tab[] =
 {
 	{SYNC_STATE_SYNC, "sync"},
@@ -65,22 +65,15 @@ static struct enum_sync_state sync_state_tab[] =
 
 #define DEFAULT_WAIT	60
 
-struct tuple_cndn
-{
-	List *coordiantor_list;
-	List *datanode_list;
-};
-
 void release_append_node_info(AppendNodeInfo *node_info, bool is_release);
 
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc get_common_command_tuple_desc_for_monitor(void);
-static HeapTuple build_common_command_tuple_for_monitor(const Name name
+HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,char type
                                                         ,bool status
                                                         ,const char *description);
 static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinfo);
-static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir);
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
 static void mgr_get_other_parm(char node_type, StringInfo infosendmsg);
@@ -90,22 +83,15 @@ static void mgr_stop_node_with_restoremode(const char *nodepath, Oid hostoid);
 static void mgr_pg_dumpall_input_node(const Oid dn_master_oid, const int32 dn_master_port, char *temp_file);
 static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file);
 static void mgr_start_node_with_restoremode(const char *nodepath, Oid hostoid);
-static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
 static void mgr_create_node_on_all_coord(PG_FUNCTION_ARGS, char nodetype, char *dnname, Oid dnhostoid, int32 dnport);
 static void mgr_drop_node_on_all_coord(char nodetype, char *nodename);
 static void mgr_set_inited_incluster(char *nodename, char nodetype, bool checkvalue, bool setvalue);
-static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);
 static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr, bool check_incluster);
 static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, PGconn **pg_conn, Oid cnoid);
 static bool mgr_start_one_gtm_master(void);
 static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnname, int cndnport, char *hostaddress, Relation noderel, GetAgentCmdRst *getAgentCmdRst, HeapTuple aimtuple, char *cndnPath, char aimtuplenodetype, PGconn **pg_conn, Oid cnoid);
 static void mgr_get_parent_appendnodeinfo(Oid nodemasternameoid, AppendNodeInfo *parentnodeinfo);
-static bool is_node_running(char *hostaddr, int32 hostport, char *user);
-static void mgr_make_sure_all_running(char node_type);
 static char *get_temp_file_name(void);
-static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
-static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo);
-static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange, bool bforce);
 static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, GetAgentCmdRst *getAgentCmdRst);
 static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS);
 static bool mgr_node_has_slave_extra(Relation rel, Oid mastertupleoid);
@@ -167,13 +153,11 @@ static Oid mgr_get_role_oid_or_public(const char *rolname);
 static void mgr_priv_all(char command_type, char *username_list_str);
 static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxnum);
 static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name);
-static void mgr_get_self_address(char *server_address, int server_port, Name self_address);
 static bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result);
 static bool mgr_check_syncstate_node_exist(Relation rel, Name mastername, char mastertype, int sync_state_type, Oid excludeoid);
 static bool mgr_check_syncstate_node_exist_incluster(Relation rel, Name mastername, char mastertype, int sync_state_type, Oid excludeoid);
 static bool mgr_check_node_path(Relation rel, Oid hostoid, char *path);
 static bool mgr_check_node_port(Relation rel, Oid hostoid, int port);
-static bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times);
 static void mgr_update_one_potential_to_sync(Relation rel, Oid mastertupleoid, bool bincluster);
 static void exec_remove_coordinator(char *nodename);
 static bool get_node_info(const char node_type, const char *node_name, bool *is_inited, bool *is_incluster, bool *is_running, AppendNodeInfo *node_info);
@@ -186,19 +170,6 @@ static bool get_local_ip(Name local_ip);
 #error "need change code"
 #endif
 
-typedef struct InitNodeInfo
-{
-	Relation rel_node;
-	HeapScanDesc rel_scan;
-	ListCell  **lcp;
-}InitNodeInfo;
-
-typedef struct InitAclInfo
-{
-	Relation rel_authid;
-	HeapScanDesc rel_scan;
-	ListCell  **lcp;
-}InitAclInfo;
 
 void mgr_add_node(MGRAddNode *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -2678,7 +2649,7 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
 }
 
-static HeapTuple build_common_command_tuple_for_monitor(const Name name
+HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,char type
                                                         ,bool status
                                                         ,const char *description)
@@ -4302,7 +4273,7 @@ void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *
 	pfree(info);
 }
 
-static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
+void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
 {
 	InitNodeInfo *info = NULL;
 	ScanKeyData key[3];
@@ -4383,7 +4354,7 @@ static void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, Appen
 	pfree(info);
 }
 
-static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo)
+void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeInfo *parentnodeinfo)
 {
 
 	ManagerAgent *ma;
@@ -4442,7 +4413,7 @@ static void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, Appe
 		ereport(ERROR, (errmsg("%s", getAgentCmdRst.description.data)));
 
 }
-static void mgr_make_sure_all_running(char node_type)
+void mgr_make_sure_all_running(char node_type)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[3];
@@ -4513,7 +4484,7 @@ static void mgr_make_sure_all_running(char node_type)
 	return;
 }
 
-static bool is_node_running(char *hostaddr, int32 hostport, char *user)
+bool is_node_running(char *hostaddr, int32 hostport, char *user)
 {
 	StringInfoData port;
 	int ret;
@@ -4653,7 +4624,7 @@ static void mgr_add_hbaconf_all(char *dnusername, char *dnaddr, bool check_inclu
 }
 
 
-static void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
+void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr)
 {
 
 	InitNodeInfo *info;
@@ -5124,7 +5095,7 @@ static void mgr_drop_node_on_all_coord(char nodetype, char *nodename)
 	pfree(getAgentCmdRst.description.data);
 }
 
-static void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
+void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid)
 {
 	StringInfoData start_cmd;
 	StringInfoData buf;
@@ -5659,7 +5630,7 @@ static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinf
 	pfree(info);
 }
 
-static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir)
+void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir)
 {
 	StringInfoData strinfo;
 	char cmdtype = AGT_CMD_CHECK_DIR_EXIST;
@@ -5667,7 +5638,7 @@ static void mgr_check_dir_exist_and_priv(Oid hostoid, char *dir)
 
 	initStringInfo(&strinfo);
 	res = mgr_ma_send_cmd(cmdtype, dir, hostoid, &strinfo);
-	
+
 	if (!res)
 		ereport(ERROR, (errmsg("%s", strinfo.data)));
 	pfree(strinfo.data);
@@ -5745,7 +5716,7 @@ Datum mgr_failover_one_dn(PG_FUNCTION_ARGS)
 /*
 * inner function, userd for node failover
 */
-static Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange, bool bforce)
+Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype, bool nodetypechange, bool bforce)
 {
 	Relation rel_node;
 	HeapTuple aimtuple;
@@ -6478,7 +6449,7 @@ void mgr_rename_recovery_to_conf(char cmdtype, Oid hostOid, char* cndnpath, GetA
 
 	initStringInfo(&infosendmsg);
 	appendStringInfoString(&infosendmsg, cndnpath);
-	
+
 	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, hostOid, &(getAgentCmdRst->description));
 	getAgentCmdRst->ret = res;
 	pfree(infosendmsg.data);
@@ -7276,7 +7247,7 @@ static void mgr_clean_node_folder(char cmdtype, Oid hostoid, char *nodepath, Get
 	initStringInfo(&infosendmsg);
 	initStringInfo(&(getAgentCmdRst->description));
 	appendStringInfo(&infosendmsg, "rm -rf %s; mkdir -p %s; chmod 0700 %s", nodepath, nodepath, nodepath);
-	
+
 	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, hostoid, &(getAgentCmdRst->description));
 	getAgentCmdRst->ret = res;
 	pfree(infosendmsg.data);
@@ -8182,7 +8153,7 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 	{
 		heap_freetuple((HeapTuple)lfirst(dn_lc));
 	}
-	
+
 	if(PointerIsValid(prefer_cndn->coordiantor_list))
 		list_free(prefer_cndn->coordiantor_list);
 	if(PointerIsValid(prefer_cndn->datanode_list))
@@ -10757,7 +10728,7 @@ static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name)
 	return true;
 }
 
-static void mgr_get_self_address(char *server_address, int server_port, Name self_address)
+void mgr_get_self_address(char *server_address, int server_port, Name self_address)
 {
 		int sock;
 		int nRet;
@@ -11099,7 +11070,7 @@ Datum mgr_remove_node_func(PG_FUNCTION_ARGS)
 
 	/*check the node in the cluster*/
 	rel = heap_open(NodeRelationId, RowExclusiveLock);
-	
+
 	/*check the num of type node*/
 	if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
 	{
@@ -11328,7 +11299,7 @@ static void exec_remove_coordinator(char *nodename)
 /*
 * check the node pingNode ok max_try times
 */
-static bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times)
+bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times)
 {
 	int ret = 0;
 

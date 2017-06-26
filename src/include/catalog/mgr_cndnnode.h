@@ -8,6 +8,8 @@
 #include "catalog/genbki.h"
 #endif /* BUILD_BKI */
 
+#include "utils/relcache.h"
+#include "access/heapam.h"
 
 #define NodeRelationId 4948
 
@@ -108,5 +110,25 @@ typedef enum ConnectType
 extern bool with_data_checksums;
 
 #define DEFAULT_DB "postgres"
+
+typedef struct InitNodeInfo
+{
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitNodeInfo;
+
+typedef struct InitAclInfo
+{
+	Relation rel_authid;
+	HeapScanDesc rel_scan;
+	ListCell  **lcp;
+}InitAclInfo;
+
+struct tuple_cndn
+{
+	List *coordiantor_list;
+	List *datanode_list;
+};
 
 #endif /* MGR_CNDNNODE_H */
