@@ -289,6 +289,7 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 	 * holding SyncRepLock, because any walsenders will ignore us anyway when
 	 * we're not on the queue.
 	 */
+	pg_read_barrier();
 	Assert(SHMQueueIsDetached(&(MyProc->syncRepLinks)));
 	MyProc->syncRepState = SYNC_REP_NOT_WAITING;
 	MyProc->waitLSN = 0;
@@ -599,15 +600,17 @@ SyncRepWakeQueue(bool all, int mode)
 									   offsetof(PGPROC, syncRepLinks));
 
 		/*
+		 * Remove thisproc from queue.
+		 */
+		SHMQueueDelete(&(thisproc->syncRepLinks));
+
+		pg_write_barrier();
+
+		/*
 		 * Set state to complete; see SyncRepWaitForLSN() for discussion of
 		 * the various states.
 		 */
 		thisproc->syncRepState = SYNC_REP_WAIT_COMPLETE;
-
-		/*
-		 * Remove thisproc from queue.
-		 */
-		SHMQueueDelete(&(thisproc->syncRepLinks));
 
 #ifdef DEBUG_ADB
 		adb_ereport(LOG,
