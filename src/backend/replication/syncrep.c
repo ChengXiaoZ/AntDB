@@ -50,6 +50,7 @@
 #include "replication/syncrep.h"
 #include "replication/walsender.h"
 #include "replication/walsender_private.h"
+#include "storage/barrier.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
@@ -67,7 +68,7 @@ static bool announce_next_takeover = true;
 static int	SyncRepWaitMode = SYNC_REP_NO_WAIT;
 
 #ifdef ADB
-bool	rep_max_avail_flag; 
+bool	rep_max_avail_flag;
 int	rep_max_avail_lsn_lag;
 char*	rep_read_archive_path;
 bool	rep_read_archive_path_flag;
@@ -145,13 +146,13 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 #ifdef ADB
 	if(rep_max_avail_flag)
 	{
-		if((XactCommitLSN - WalSndCtl->lsn[mode]) 
+		if((XactCommitLSN - WalSndCtl->lsn[mode])
 			> rep_max_avail_lsn_lag)
 		{
 			LWLockRelease(SyncRepLock);
 			return;
 		}
-	}	
+	}
 #endif
 	/*
 	 * Set our waitLSN so WALSender will know when to wake us, and add
@@ -276,7 +277,7 @@ SyncRepWaitForLSN(XLogRecPtr XactCommitLSN)
 
 #ifdef DEBUG_ADB
 	if (!SHMQueueIsDetached(&(MyProc->syncRepLinks)))
-		adb_ereport(LOG, 
+		adb_ereport(LOG,
 			(errmsg("[ADB] It is impossible. [lsn] %X/%X [prev] %p [next] %p",
 				(uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
 				MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next)));
@@ -338,7 +339,7 @@ SyncRepQueueInsert(int mode)
 		SHMQueueInsertAfter(&(WalSndCtl->SyncRepQueue[mode]), &(MyProc->syncRepLinks));
 
 #ifdef DEBUG_ADB
-	adb_ereport(LOG, 
+	adb_ereport(LOG,
 		(errmsg("[ADB] Insert [lsn] %X/%X [prev] %p [next] %p",
 			(uint32) (MyProc->waitLSN >> 32), (uint32) MyProc->waitLSN,
 			MyProc->syncRepLinks.prev, MyProc->syncRepLinks.next)));
@@ -797,9 +798,9 @@ LiveSyncWalSenderExists(void)
 			break;
 		}
 	}
-	
+
 	LWLockRelease(SyncRepLock);
-	
+
 	return isfind;
 }
 #endif
