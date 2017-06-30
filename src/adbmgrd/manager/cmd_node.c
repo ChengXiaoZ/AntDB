@@ -104,7 +104,7 @@ static bool mgr_refresh_pgxc_node(pgxc_node_operator cmd, char nodetype, char *d
 static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, char *nodename, char nodetype, int32 newport);
 static bool mgr_modify_node_parameter_after_initd(Relation rel_node, HeapTuple nodetuple, StringInfo infosendmsg, bool brestart);
 static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, int32 master_newport);
-static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata);
+static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata, char *nodename, int newport);
 static void mgr_check_all_agent(void);
 static bool mgr_add_extension_sqlcmd(char *sqlstr);
 static char *get_username_list_str(List *user_list);
@@ -7765,6 +7765,9 @@ void mgr_get_cmd_head_word(char cmdtype, char *str)
 		case AGT_CMD_NODE_REWIND:
 			strcpy(str, "pg_rewind");
 			break;
+		case AGT_CMD_CHECK_DIR_EXIST:
+			strcpy(str, "check directory");
+			break;
 		default:
 			strcpy(str, "unknown cmd");
 			break;
@@ -8238,23 +8241,25 @@ static void mgr_modify_port_after_initd(Relation rel_node, HeapTuple nodetuple, 
 								,nodename
 								,"port"
 								,newport);
-			mgr_modify_coord_pgxc_node(rel_node, &infosendmsg);
+			mgr_modify_coord_pgxc_node(rel_node, &infosendmsg, NULL, 0);
 		}
 	}
 	else if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
 	{
 		/*refresh all pgxc_node all coordinators*/
 		mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
+
+		/*modify port*/
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_int("port", newport, &infosendmsg);
+		mgr_modify_node_parameter_after_initd(rel_node, nodetuple, &infosendmsg, true);
+
 		resetStringInfo(&infosendmsg);
 		appendStringInfo(&infosendmsg, "ALTER NODE \\\"%s\\\" WITH (%s=%d);"
 							,nodename
 							,"port"
 							,newport);
-		mgr_modify_coord_pgxc_node(rel_node, &infosendmsg);
-		/*modify port*/
-		resetStringInfo(&infosendmsg);
-		mgr_append_pgconf_paras_str_int("port", newport, &infosendmsg);
-		mgr_modify_node_parameter_after_initd(rel_node, nodetuple, &infosendmsg, true);
+		mgr_modify_coord_pgxc_node(rel_node, &infosendmsg, nodename, newport);
 	}
 	else
 	{
@@ -8447,7 +8452,7 @@ static void mgr_modify_port_recoveryconf(Relation rel_node, HeapTuple aimtuple, 
 /*
 * modify coordinators port of pgxc_node
 */
-static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata)
+static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata, char *nodename, int newport)
 {
 	StringInfoData infosendmsg;
 	StringInfoData buf;
@@ -8485,7 +8490,7 @@ static bool mgr_modify_coord_pgxc_node(Relation rel_node, StringInfo infostrdata
 		resetStringInfo(&infosendmsg);
 		appendStringInfo(&infosendmsg, " -h %s -p %u -d %s -U %s -a -c \""
 			,host_address
-			,mgr_node->nodeport
+			,(nodename == NULL ? mgr_node->nodeport : (strcmp(nodename, NameStr(mgr_node->nodename)) == 0 ? newport : mgr_node->nodeport))
 			,DEFAULT_DB
 			,user);
 		appendStringInfo(&infosendmsg, "%s", infostrdata->data);
@@ -8672,7 +8677,7 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 	heap_endscan(rel_scan);
 
 	/*refresh all pgxc_node of all coordinators*/
-	if(!mgr_modify_coord_pgxc_node(rel_node, &infosqlsendmsg))
+	if(!mgr_modify_coord_pgxc_node(rel_node, &infosqlsendmsg, NULL, 0))
 		bgetwarning = true;
 
 	/*refresh recovery.conf of all slave and extra, then restart*/
