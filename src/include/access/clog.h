@@ -42,6 +42,9 @@ extern void ShutdownCLOG(void);
 extern void CheckPointCLOG(void);
 extern void ExtendCLOG(TransactionId newestXact);
 extern void TruncateCLOG(TransactionId oldestXact);
+#if defined(AGTM)
+extern void TryExtendCLOG(TransactionId newXid, TransactionId oldXid);
+#endif
 
 /* XLOG stuff */
 #define CLOG_ZEROPAGE		0x00

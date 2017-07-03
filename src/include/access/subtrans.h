@@ -26,5 +26,8 @@ extern void ShutdownSUBTRANS(void);
 extern void CheckPointSUBTRANS(void);
 extern void ExtendSUBTRANS(TransactionId newestXact);
 extern void TruncateSUBTRANS(TransactionId oldestXact);
+#if defined(AGTM)
+extern void TryExtendSUBTRANS(TransactionId newXid, TransactionId oldXid);
+#endif
 
 #endif   /* SUBTRANS_H */

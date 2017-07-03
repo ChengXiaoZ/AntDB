@@ -86,6 +86,12 @@ AdjustTransactionId(TransactionId least_xid)
 				 ShmemVariableCache->nextXid, least_xid)));
 #endif
 			prev_nextXid = ShmemVariableCache->nextXid;
+			/*
+			 * Try to extend "CLOG" and "SUBTRANS" for cross-page
+			 * changes.
+			 */
+			TryExtendCLOG(least_xid, prev_nextXid);
+			TryExtendSUBTRANS(least_xid, prev_nextXid);
 			ShmemVariableCache->nextXid = least_xid;
 		}
 
