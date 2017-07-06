@@ -427,6 +427,7 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 		ErrorContextCallback *save_context_stack = error_context_stack;		\
 		volatile uint32 save_InterruptHoldoffCount = InterruptHoldoffCount;	\
 		volatile uint32 save_QueryCancelHoldoffCount = QueryCancelHoldoffCount; \
+		volatile MemoryContext save_context = CurrentMemoryContext;			\
 		sigjmp_buf local_sigjmp_buf;										\
 		if (sigsetjmp(local_sigjmp_buf, 0) == 0) 							\
 		{ 																	\
@@ -442,6 +443,7 @@ extern PGDLLIMPORT ErrorContextCallback *error_context_stack;
 #define PG_END_TRY_HOLD()													\
 			InterruptHoldoffCount = save_InterruptHoldoffCount;				\
 			QueryCancelHoldoffCount = save_QueryCancelHoldoffCount;			\
+			MemoryContextSwitchTo(save_context);							\
 		}																	\
 		PG_exception_stack = save_exception_stack;							\
 		error_context_stack = save_context_stack;							\
