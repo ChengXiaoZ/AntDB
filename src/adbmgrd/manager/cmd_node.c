@@ -8631,55 +8631,6 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 	}
 	heap_endscan(rel_scan);
 
-	initStringInfo(&infosqlsendmsg);
-	/*refresh agtm_host of postgresql.conf in all coordinators and datanodes*/
-	ScanKeyInit(&key[0]
-				,Anum_mgr_node_nodeincluster
-				,BTEqualStrategyNumber
-				,F_BOOLEQ
-				,BoolGetDatum(true));
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
-	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
-	{
-		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		Assert(mgr_node);
-		nodetype = mgr_node->nodetype;
-		if (nodetype == GTM_TYPE_GTM_MASTER || nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTRA)
-			continue;
-		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		if (nodetype == CNDN_TYPE_COORDINATOR_MASTER || nodetype == CNDN_TYPE_DATANODE_MASTER)
-			appendStringInfo(&infosqlsendmsg, "ALTER NODE \\\"%s\\\" WITH (%s='%s');"
-							,NameStr(mgr_node->nodename)
-							,"HOST"
-							,address);
-		pfree(address);
-		/*get master path*/
-		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
-		if(isNull)
-		{
-			heap_endscan(rel_scan);
-			heap_close(rel_node, RowExclusiveLock);
-			pfree(infosendmsg.data);
-			pfree(getAgentCmdRst.description.data);
-			if (gtmmaster_address)
-				pfree(gtmmaster_address);
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
-				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
-				, errmsg("column nodepath is null")));
-		}
-		resetStringInfo(&infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("agtm_host", gtmmaster_address, &infosendmsg);
-		if (!mgr_modify_node_parameter_after_initd(rel_node, tuple, &infosendmsg, false))
-			bgetwarning = true;
-	}
-	if (gtmmaster_address)
-		pfree(gtmmaster_address);
-	heap_endscan(rel_scan);
-
-	/*refresh all pgxc_node of all coordinators*/
-	if(!mgr_modify_coord_pgxc_node(rel_node, &infosqlsendmsg, NULL, 0))
-		bgetwarning = true;
-
 	/*refresh recovery.conf of all slave and extra, then restart*/
 	ScanKeyInit(&key[0]
 				,Anum_mgr_node_nodeincluster
@@ -8743,6 +8694,56 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 			bgetwarning = true;
 	}
 	heap_endscan(rel_scan);
+
+	initStringInfo(&infosqlsendmsg);
+	/*refresh agtm_host of postgresql.conf in all coordinators and datanodes*/
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		nodetype = mgr_node->nodetype;
+		if (nodetype == GTM_TYPE_GTM_MASTER || nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTRA)
+			continue;
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		if (nodetype == CNDN_TYPE_COORDINATOR_MASTER || nodetype == CNDN_TYPE_DATANODE_MASTER)
+			appendStringInfo(&infosqlsendmsg, "ALTER NODE \\\"%s\\\" WITH (%s='%s');"
+							,NameStr(mgr_node->nodename)
+							,"HOST"
+							,address);
+		pfree(address);
+		/*get master path*/
+		datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
+		if(isNull)
+		{
+			heap_endscan(rel_scan);
+			heap_close(rel_node, RowExclusiveLock);
+			pfree(infosendmsg.data);
+			pfree(getAgentCmdRst.description.data);
+			if (gtmmaster_address)
+				pfree(gtmmaster_address);
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column nodepath is null")));
+		}
+		resetStringInfo(&infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("agtm_host", gtmmaster_address, &infosendmsg);
+		if (!mgr_modify_node_parameter_after_initd(rel_node, tuple, &infosendmsg, false))
+			bgetwarning = true;
+	}
+	if (gtmmaster_address)
+		pfree(gtmmaster_address);
+	heap_endscan(rel_scan);
+
+	/*refresh all pgxc_node of all coordinators*/
+	if(!mgr_modify_coord_pgxc_node(rel_node, &infosqlsendmsg, NULL, 0))
+		bgetwarning = true;
+
 	heap_close(rel_node, RowExclusiveLock);
 	pfree(infosendmsg.data);
 	pfree(getAgentCmdRst.description.data);
