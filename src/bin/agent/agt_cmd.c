@@ -940,8 +940,9 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bf
 {
 	bool getkey = false;
 	int diffvalue;
-	char *newname,
-		*newvalue;
+	char *newname;
+	char *newvalue;
+	ConfInfo *infotmp = NULL;
 	ConfInfo *infopre = info;
 
 	/*use (key, value) to refresh info list*/
@@ -975,16 +976,17 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bf
 				/*refresh the struct info*/
 				info->value_len = strlen(value);
 			}
-			break;
+			//break;
 		}
 		/*delete the parameter*/
 		else if (bforce && info->name != '\0' && strcmp(key, info->name) == 0)
 		{
 			getkey = true;
 			infopre->next = info->next;
-			pfree(info);
+			infotmp = info;
 			info = info->next;
-			break;
+			pfree(infotmp);
+			continue;
 		}
 
 		infopre = info;
