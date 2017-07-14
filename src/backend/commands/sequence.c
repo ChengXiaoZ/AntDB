@@ -1285,6 +1285,8 @@ setval_oid(PG_FUNCTION_ARGS)
 
 			seq_val = agtm_SetSeqVal(seqName, databaseName, schemaName, next);
 			relation_close(seqrel, NoLock);
+			/* do location */
+			do_setval(relid, next, true);
 			PG_RETURN_INT64(seq_val);
 		}
 		relation_close(seqrel, NoLock);
@@ -1335,6 +1337,8 @@ setval3_oid(PG_FUNCTION_ARGS)
 
 			seq_val = agtm_SetSeqValCalled(seqName, databaseName, schemaName, next, iscalled);
 			relation_close(seqrel, NoLock);
+			/* do location */
+			do_setval(relid, next, iscalled);
 			PG_RETURN_INT64(seq_val);
 		}
 		relation_close(seqrel, NoLock);
