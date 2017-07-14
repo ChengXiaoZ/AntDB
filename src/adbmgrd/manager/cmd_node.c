@@ -10707,6 +10707,12 @@ static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name)
 		nodestmt->is_force = false;
 		nodestmt->options = lappend(nodestmt->options, makeDefElem("shared_preload_libraries", (Node *)makeString(extension_name)));
 		mgr_add_updateparm(nodestmt, NULL, NULL);
+		/*for datanode*/
+		nodestmt->parmtype = PARM_TYPE_DATANODE;
+		nodestmt->nodetype = CNDN_TYPE_DATANODE;
+		nodestmt->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+		nodestmt->is_force = false;
+		mgr_add_updateparm(nodestmt, NULL, NULL);		
 	}
 	else if (cmdtype == EXTENSION_DROP)
 	{
