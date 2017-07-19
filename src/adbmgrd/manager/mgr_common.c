@@ -1078,26 +1078,26 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	}
 	/*restart the node then stop it with fast mode*/
 	initStringInfo(&(getAgentCmdRst.description));
-	ereport(NOTICE, (errmsg("pg_ctl restart datanode %s %s", nodename, nodetypestr)));
+	ereport(NOTICE, (errmsg("pg_ctl restart %s \"%s\"", nodetypestr, nodename)));
 	mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_F);
 	if(!getAgentCmdRst.ret)
 	{
 		heap_freetuple(tuple);
 		heap_close(rel_node, AccessShareLock);
-		ereport(WARNING, (errmsg("pg_ctl restart datanode %s %s fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data)));
-		appendStringInfo(strinfo, "pg_ctl restart datanode %s %s fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data);
+		ereport(WARNING, (errmsg("pg_ctl restart %s \"%s\" fail, %s", nodetypestr, nodename, getAgentCmdRst.description.data)));
+		appendStringInfo(strinfo, "pg_ctl restart %s \"%s\" fail, %s", nodetypestr, nodename, getAgentCmdRst.description.data);
 		pfree(nodetypestr);
 		return false;
 	}
-	ereport(NOTICE, (errmsg("pg_ctl stop datanode %s %s with fast mode", nodename, nodetypestr)));
+	ereport(NOTICE, (errmsg("pg_ctl stop %s \"%s\" with fast mode", nodetypestr, nodename)));
 	resetStringInfo(&(getAgentCmdRst.description));
 	mgr_runmode_cndn_get_result(AGT_CMD_DN_STOP, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_F);
 	if(!getAgentCmdRst.ret)
 	{
 		heap_freetuple(tuple);
 		heap_close(rel_node, AccessShareLock);
-		ereport(WARNING, (errmsg("pg_ctl stop datanode %s %s with fast mode fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data)));
-		appendStringInfo(strinfo, "pg_ctl stop datanode %s %s with fast mode fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data);
+		ereport(WARNING, (errmsg("pg_ctl stop %s \"%s\" with fast mode fail, %s", nodetypestr, nodename, getAgentCmdRst.description.data)));
+		appendStringInfo(strinfo, "pg_ctl stop %s \"%s\" with fast mode fail, %s", nodetypestr, nodename, getAgentCmdRst.description.data);
 		pfree(nodetypestr);
 		return false;
 	}
