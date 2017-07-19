@@ -364,6 +364,7 @@ extern Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char n
 extern bool is_node_running(char *hostaddr, int32 hostport, char *user);
 extern bool mgr_try_max_pingnode(char *host, char *port, char *user, const int max_times);
 extern char mgr_get_master_type(char nodetype);
+extern void mgr_get_nodeinfo_byname_type(char *node_name, char node_type, bool bincluster, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
 extern void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
 extern void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo);
 extern void mgr_add_hbaconf(char nodetype, char *dnusername, char *dnaddr);

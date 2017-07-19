@@ -1468,9 +1468,10 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		pfree(nodetypestr);
 		return;
 	}
-	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype &&
-		AGT_CMD_CLEAN_NODE != cmdtype && AGT_CMD_GTM_STOP_MASTER != cmdtype && AGT_CMD_GTM_STOP_SLAVE != cmdtype &&
-		AGT_CMD_CN_STOP != cmdtype && AGT_CMD_DN_STOP != cmdtype && !mgr_node->nodeinited)
+	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype 
+		&& AGT_CMD_CLEAN_NODE != cmdtype && AGT_CMD_GTM_STOP_MASTER != cmdtype && AGT_CMD_GTM_STOP_SLAVE != cmdtype 
+		&& AGT_CMD_CN_STOP != cmdtype && AGT_CMD_DN_STOP != cmdtype && !mgr_node->nodeinited
+		&& AGT_CMD_DN_RESTART != cmdtype)
 	{
 		appendStringInfo(&(getAgentCmdRst->description), "%s \"%s\" has not been initialized", nodetypestr, cndnname);
 		getAgentCmdRst->ret = false;
@@ -4181,45 +4182,71 @@ static char *get_temp_file_name()
 	return file_name_str.data;
 }
 
-void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
+/*
+* get the node info. if bincluster is true, we will get infomation of the node which is inited
+* and in the cluster; if bincluster is false, we will get information of the node no matter it
+* inited or not, in cluster or not. 
+*
+*/
+void mgr_get_nodeinfo_byname_type(char *node_name, char node_type, bool bincluster, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[4];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	Datum datumPath;
+	NameData nodename;
 	bool isNull = false;
 
 	*is_exist = true;
 	*is_running = true;
-
-	ScanKeyInit(&key[0]
-				,Anum_mgr_node_nodeinited
-				,BTEqualStrategyNumber
-				,F_BOOLEQ
-				,BoolGetDatum(true));
-
-	ScanKeyInit(&key[1]
-				,Anum_mgr_node_nodeincluster
-				,BTEqualStrategyNumber
-				,F_BOOLEQ
-				,BoolGetDatum(true));
-
-	ScanKeyInit(&key[2]
+	namestrcpy(&nodename, node_name);
+	if (bincluster)
+	{
+		ScanKeyInit(&key[0]
 				,Anum_mgr_node_nodetype
 				,BTEqualStrategyNumber
 				,F_CHAREQ
 				,CharGetDatum(node_type));
 
-	ScanKeyInit(&key[3]
+		ScanKeyInit(&key[1]
 				,Anum_mgr_node_nodename
 				,BTEqualStrategyNumber
 				,F_NAMEEQ
-				,CStringGetDatum(node_name));
+				,NameGetDatum(&nodename));
+		ScanKeyInit(&key[2]
+					,Anum_mgr_node_nodeinited
+					,BTEqualStrategyNumber
+					,F_BOOLEQ
+					,BoolGetDatum(true));
+
+		ScanKeyInit(&key[3]
+					,Anum_mgr_node_nodeincluster
+					,BTEqualStrategyNumber
+					,F_BOOLEQ
+					,BoolGetDatum(true));
+	}
+	else
+	{
+		ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(node_type));
+
+		ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodename
+				,BTEqualStrategyNumber
+				,F_NAMEEQ
+				,NameGetDatum(&nodename));
+	}
 
 	info = (InitNodeInfo *)palloc0(sizeof(InitNodeInfo));
 	info->rel_node = heap_open(NodeRelationId, AccessShareLock);
-	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
+	if (bincluster)
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 4, key);
+	else
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
 	info->lcp =NULL;
 
 	if ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) == NULL)
@@ -4271,6 +4298,13 @@ void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
+}
+
+void get_nodeinfo_byname(char *node_name, char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)
+{
+	bool bincluster = true;
+
+	mgr_get_nodeinfo_byname_type(node_name, node_type, bincluster, is_exist, is_running, nodeinfo);
 }
 
 void get_nodeinfo(char node_type, bool *is_exist, bool *is_running, AppendNodeInfo *nodeinfo)

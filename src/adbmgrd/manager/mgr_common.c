@@ -1076,11 +1076,37 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 		pfree(nodetypestr);
 		return false;
 	}
+	/*restart the node then stop it with fast mode*/
+	initStringInfo(&(getAgentCmdRst.description));
+	ereport(NOTICE, (errmsg("pg_ctl restart datanode %s %s", nodename, nodetypestr)));
+	mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_F);
+	if(!getAgentCmdRst.ret)
+	{
+		heap_freetuple(tuple);
+		heap_close(rel_node, AccessShareLock);
+		ereport(WARNING, (errmsg("pg_ctl restart datanode %s %s fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data)));
+		appendStringInfo(strinfo, "pg_ctl restart datanode %s %s fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data);
+		pfree(nodetypestr);
+		return false;
+	}
+	ereport(NOTICE, (errmsg("pg_ctl stop datanode %s %s with fast mode", nodename, nodetypestr)));
+	resetStringInfo(&(getAgentCmdRst.description));
+	mgr_runmode_cndn_get_result(AGT_CMD_DN_STOP, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_F);
+	if(!getAgentCmdRst.ret)
+	{
+		heap_freetuple(tuple);
+		heap_close(rel_node, AccessShareLock);
+		ereport(WARNING, (errmsg("pg_ctl stop datanode %s %s with fast mode fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data)));
+		appendStringInfo(strinfo, "pg_ctl stop datanode %s %s with fast mode fail, %s", nodename, nodetypestr, getAgentCmdRst.description.data);
+		pfree(nodetypestr);
+		return false;
+	}
 	heap_freetuple(tuple);
 	heap_close(rel_node, AccessShareLock);
+	pfree(nodetypestr);
 
-	/*get the slave info*/
-	get_nodeinfo_byname(nodename, nodetype, &slave_is_exist, &slave_is_running, &slave_nodeinfo);
+	/*get the slave info, no matter it is in cluster or not*/
+	mgr_get_nodeinfo_byname_type(nodename, nodetype, false, &slave_is_exist, &slave_is_running, &slave_nodeinfo);
 	/*get its master info*/
 	mastertype = mgr_get_master_type(nodetype);
 	get_nodeinfo_byname(nodename, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
@@ -1091,21 +1117,16 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 			nodetypestr = mgr_nodetype_str(mastertype);
 			appendStringInfo(strinfo, "%s \"%s\" does not running normal", nodetypestr, nodename);
 			pfree(nodetypestr);
+			pfree(getAgentCmdRst.description.data);
 			return false;
 	}
 
-	if (slave_is_running)
-	{
-		pfree_AppendNodeInfo(slave_nodeinfo);
-		appendStringInfo(strinfo, "%s \"%s\" does running, should stopped before node rewind", nodetypestr, nodename);
-		pfree(nodetypestr);
-		return false;
-	}
-	pfree(nodetypestr);
+	/*start the node then stop it with fast mode*/
 
 	/* update master's pg_hba.conf */
 	initStringInfo(&infosendmsg);
-	initStringInfo(&(getAgentCmdRst.description));
+	resetStringInfo(&(getAgentCmdRst.description));
+	ereport(NOTICE, (errmsg("update datanode master \"%s\" pg_hba.conf", nodename)));
 	mgr_add_parameters_hbaconf(master_nodeinfo.tupleoid, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", master_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
@@ -1127,6 +1148,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	/*node rewind*/
 	resetStringInfo(&infosendmsg);
 	appendStringInfo(&infosendmsg, " --target-pgdata %s --source-server='host=%s port=%d user=%s dbname=postgres' -N %s", slave_nodeinfo.nodepath, master_nodeinfo.nodeaddr, master_nodeinfo.nodeport, slave_nodeinfo.nodeusername, nodename);
+	ereport(NOTICE, (errmsg("pg_rewind %s", infosendmsg.data)));
 
 	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, slave_nodeinfo.nodehost, strinfo);
 	pfree(infosendmsg.data);

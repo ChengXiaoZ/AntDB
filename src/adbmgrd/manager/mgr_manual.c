@@ -383,10 +383,12 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	bool res = false;
 	bool get = false;
 	NameData nodenamedata;
+	NameData slave_sync;
 	AppendNodeInfo master_nodeinfo;
 	AppendNodeInfo slave_nodeinfo;
 	StringInfoData infosendmsg;
 	StringInfoData strinfo;
+	StringInfoData strinfo_sync;
 	StringInfoData primary_conninfo_value;
 	HeapTuple slavetuple;
 	Form_mgr_node mgr_node;
@@ -403,6 +405,8 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	}
 	nodetypestr = mgr_nodetype_str(nodetype);
 	initStringInfo(&strinfo);
+	initStringInfo(&strinfo_sync);
+
 	res = mgr_rewind_node(nodetype, nodenamedata.data, &strinfo);
 	if (!res)
 	{
@@ -412,37 +416,16 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	res = true;
 	mastertype = mgr_get_master_type(nodetype);
 	/*get the slave info*/
-	get_nodeinfo_byname(nodenamedata.data, nodetype, &slave_is_exist, &slave_is_running, &slave_nodeinfo);
+	mgr_get_nodeinfo_byname_type(nodenamedata.data, nodetype, false, &slave_is_exist, &slave_is_running, &slave_nodeinfo);
 
 	/*get the master info*/
 	get_nodeinfo_byname(nodenamedata.data, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
-	/*set master sync*/
-	resetStringInfo(&strinfo);
-	mgr_get_master_sync_string(master_nodeinfo.tupleoid, true, InvalidOid, &strinfo);
+	/*get master old sync*/
+	mgr_get_master_sync_string(master_nodeinfo.tupleoid, true, InvalidOid, &strinfo_sync);
 
-	initStringInfo(&infosendmsg);
-	if (strinfo.len == 0)
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
-	else
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo.data, &infosendmsg);
-	initStringInfo(&(getAgentCmdRst.description));
-	str = mgr_nodetype_str(master_nodeinfo.nodetype);
-	ereport(LOG, (errmsg("refresh %s \"%s\" synchronous_standby_names='%s'", str,
-		nodenamedata.data, strinfo.len == 0 ? "''" : strinfo.data)));
-	pfree(str);
-	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD,
-							master_nodeinfo.nodepath,
-							&infosendmsg,
-							master_nodeinfo.nodehost,
-							&getAgentCmdRst);
-	if (!getAgentCmdRst.ret)
-	{
-		ereport(WARNING, (errmsg("refresh synchronous_standby_names of datanode master \"%s\" fail, %s", nodenamedata.data, getAgentCmdRst.description.data)));
-		res = false;
-	}
 	/*update the slave's masteroid, sync_state in its tuple*/
 	slavetuple = SearchSysCache1(NODENODEOID, slave_nodeinfo.tupleoid);
-	ereport(LOG, (errmsg("refresh mastername of %s \"%s\" in the node table", nodetypestr, nodenamedata.data)));
+	ereport(NOTICE, (errmsg("refresh mastername of %s \"%s\" in the node table", nodetypestr, nodenamedata.data)));
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 	if(HeapTupleIsValid(slavetuple))
 	{
@@ -452,35 +435,37 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 		mgr_node->nodeinited = true;
 		mgr_node->nodeincluster = true;
 		if (strcmp(NameStr(mgr_node->nodesync), sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0
-		&& strcmp(strinfo.len !=0 ? strinfo.data:"",
-		(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra") == 0)
+			&& (strinfo_sync.len == 0 || strcmp(strinfo_sync.len !=0 ? strinfo_sync.data:"",
+				(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra") == 0))
 			namestrcpy(&(mgr_node->nodesync), sync_state_tab[SYNC_STATE_SYNC].name);
+		namestrcpy(&slave_sync, NameStr(mgr_node->nodesync));
 		heap_inplace_update(rel_node, slavetuple);
 		ReleaseSysCache(slavetuple);
 		get = true;
 	}
-	pfree(strinfo.data);
 	heap_close(rel_node, RowExclusiveLock);
 
 	if (!get)
 	{
-		pfree(infosendmsg.data);
+		pfree(strinfo.data);
+		pfree(strinfo_sync.data);
 		pfree_AppendNodeInfo(master_nodeinfo);
 		pfree_AppendNodeInfo(slave_nodeinfo);
-		pfree(getAgentCmdRst.description.data);
 		ereport(ERROR, (errmsg("the tuple of %s \"%s\" in the node table is not valid", nodetypestr, nodenamedata.data)));
 	}
 
 	/*refresh postgresql.conf of this node*/
-	resetStringInfo(&(getAgentCmdRst.description));
-	resetStringInfo(&infosendmsg);
-	ereport(LOG, (errmsg("set parameters in postgresql.conf of %s \"%s\"", nodetypestr, nodenamedata.data)));
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&infosendmsg);
+	ereport(NOTICE, (errmsg("set parameters in postgresql.conf of %s \"%s\"", nodetypestr, nodenamedata.data)));
 	mgr_add_parameters_pgsqlconf(slave_nodeinfo.tupleoid, nodetype, slave_nodeinfo.nodeport, &infosendmsg);
 	mgr_add_parm(nodenamedata.data, nodetype, &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, slave_nodeinfo.nodepath, &infosendmsg, slave_nodeinfo.nodehost, &getAgentCmdRst);
 	if (!getAgentCmdRst.ret)
 	{
 		pfree(infosendmsg.data);
+		pfree(strinfo.data);
+		pfree(strinfo_sync.data);
 		pfree_AppendNodeInfo(master_nodeinfo);
 		pfree_AppendNodeInfo(slave_nodeinfo);
 		ereport(WARNING, (errmsg("set parameters of %s \"%s\" fail, %s", nodetypestr, nodenamedata.data, getAgentCmdRst.description.data)));
@@ -490,7 +475,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	/*refresh recovery.conf of this node*/
 	resetStringInfo(&infosendmsg);
 	initStringInfo(&primary_conninfo_value);
-	ereport(LOG, (errmsg("refresh recovery.conf of %s \"%s\"", nodetypestr, nodenamedata.data)));
+	ereport(NOTICE, (errmsg("refresh recovery.conf of %s \"%s\"", nodetypestr, nodenamedata.data)));
 	appendStringInfo(&primary_conninfo_value, "host=%s port=%d user=%s application_name=%s",
 					master_nodeinfo.nodeaddr,
 					master_nodeinfo.nodeport,
@@ -500,6 +485,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("recovery_target_timeline", "latest", &infosendmsg);
+	pfree(primary_conninfo_value.data);
 	resetStringInfo(&(getAgentCmdRst.description));
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF,
 							slave_nodeinfo.nodepath,
@@ -507,18 +493,77 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 							slave_nodeinfo.nodehost,
 							&getAgentCmdRst);
 
-	pfree(infosendmsg.data);
-	pfree_AppendNodeInfo(master_nodeinfo);
-	pfree_AppendNodeInfo(slave_nodeinfo);
-
 	if (!getAgentCmdRst.ret)
 	{
 		ereport(WARNING, (errmsg("refresh recovery.conf fail, %s", getAgentCmdRst.description.data)));
 		res = false;
 	}
 
-	pfree(getAgentCmdRst.description.data);
 	pfree(nodetypestr);
+
+	/*start the node*/
+	if (res)
+	{
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&strinfo);
+		if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+			appendStringInfo(&infosendmsg, " start -D %s -o -i -w -c -l %s/logfile", slave_nodeinfo.nodepath, slave_nodeinfo.nodepath);
+		else
+		appendStringInfo(&infosendmsg, " start -Z datanode -D %s -o -i -w -c -l %s/logfile", slave_nodeinfo.nodepath, slave_nodeinfo.nodepath);
+	
+		ereport(NOTICE, (errmsg("pg_ctl %s", infosendmsg.data)));
+		res = mgr_ma_send_cmd(AGT_CMD_DN_START, infosendmsg.data, slave_nodeinfo.nodehost, &strinfo);
+		if (!res)
+			ereport(WARNING, (errmsg("pg_ctl %s fail, %s", infosendmsg.data, strinfo.data)));
+	}
+
+	/*set master synchronous_standby_names*/
+	if (res)
+	{
+		resetStringInfo(&infosendmsg);
+		if (strinfo_sync.len == 0)
+		{
+			if (strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_SYNC].name) == 0)
+			{
+				appendStringInfo(&strinfo_sync, "%s",(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra");
+				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo_sync.data, &infosendmsg);
+			}
+			else
+				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+		}
+		else
+		{
+			if (strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_SYNC].name) == 0 
+				|| strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0)
+			{
+				if (strstr(strinfo_sync.data, (nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra") == NULL)
+					appendStringInfo(&strinfo_sync, ",%s",(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra");
+			}
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo_sync.data, &infosendmsg);
+		}
+		resetStringInfo(&(getAgentCmdRst.description));
+		str = mgr_nodetype_str(master_nodeinfo.nodetype);
+		ereport(NOTICE, (errmsg("refresh %s \"%s\" synchronous_standby_names='%s'", str,
+			nodenamedata.data, strinfo_sync.len == 0 ? "''" : strinfo_sync.data)));
+		pfree(str);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD,
+								master_nodeinfo.nodepath,
+								&infosendmsg,
+								master_nodeinfo.nodehost,
+								&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			ereport(WARNING, (errmsg("refresh synchronous_standby_names of datanode master \"%s\" fail, %s", nodenamedata.data, getAgentCmdRst.description.data)));
+			res = false;
+		}
+	}
+
+	pfree_AppendNodeInfo(master_nodeinfo);
+	pfree(getAgentCmdRst.description.data);
+	pfree(strinfo.data);
+	pfree(strinfo_sync.data);
+	pfree(infosendmsg.data);
+	pfree_AppendNodeInfo(slave_nodeinfo);
 
 	PG_RETURN_BOOL(res);
 }
