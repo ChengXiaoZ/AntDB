@@ -29,6 +29,10 @@ ProcessAGtmCommand(StringInfo input_message, CommandDest dest)
 	AGTM_MessageType mtype;
 	static StringInfoData buf={NULL, 0, 0, 0};
 
+	/* check transaction status */
+	if (TransactionBlockStatusCode() == 'E')
+		elog(ERROR, "error transaction block state,current state may be abort");
+
 	mtype = pq_getmsgint(input_message, sizeof (AGTM_MessageType));
 	msg_name = gtm_util_message_name(mtype);
 	set_ps_display(msg_name, true);
