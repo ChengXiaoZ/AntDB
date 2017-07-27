@@ -6645,7 +6645,6 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 	strlabel = (nodetype == GTM_TYPE_GTM_EXTRA ? "extra":"slave");
 	/*get nodename*/
 	namestrcpy(&cndnname,NameStr(mgr_node->nodename));
-	address = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	sprintf(nodeport_buf, "%d", mgr_node->nodeport);
 
 	/*wait the new master accept connect*/
@@ -6885,6 +6884,7 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 
 	if (!bget)
 		ereport(WARNING, (errmsg("the new gtm master \"%s\" has no slave or extra, it is better to append a new gtm slave node", cndnname.data)));
+
 	/*update gtm extra nodemasternameoid, refresh gtm extra recovery.conf*/
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
@@ -6903,6 +6903,26 @@ static void mgr_after_gtm_failover_handle(char *hostaddress, int cndnport, Relat
 		/*check the node is initialized or not*/
 		if (!mgr_nodetmp->nodeincluster)
 			continue;
+
+		/* update gtm master's pg_hba.conf */
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst->description));
+		ereport(LOG, (errmsg("update new gtm master \"%s\" pg_hba.conf for gtm %s", NameStr(mgr_node->nodename), strlabel)));
+		address = get_hostaddress_from_hostoid(mgr_nodetmp->nodehost);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, address, 32, "trust", &infosendmsg);
+		pfree(address);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								cndnPath,
+								&infosendmsg,
+								mgr_node->nodehost,
+								getAgentCmdRst);
+		if (!getAgentCmdRst->ret)
+		{
+			ereport(WARNING, (errmsg("refresh pg_hba.conf of new gtm master for agtm %s fail", strlabel)));
+			appendStringInfo(&recorderr, "refresh pg_hba.conf of new gtm master for agtm %s fail\n", strlabel);
+		}
+		mgr_reload_conf(mgr_node->nodehost, cndnPath);
+
 		/*refresh gtm extra recovery.conf*/
 		resetStringInfo(&(getAgentCmdRst->description));
 		resetStringInfo(&infosendmsg);
@@ -6976,6 +6996,7 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 	char *cndnPathtmp;
 	char *strtmp;
 	char *address;
+	char *node_user;
 	char secondnodetype;
 	char coordport_buf[10];
 	int maxtry = 15;
@@ -7085,8 +7106,30 @@ static void mgr_after_datanode_failover_handle(Oid nodemasternameoid, Name cndnn
 		/*check the node is initialized or not*/
 		if (!mgr_nodetmp->nodeincluster)
 			continue;
-		/*refresh datanode extra/slave recovery.conf*/
 		strtmp = (aimtuplenodetype == CNDN_TYPE_DATANODE_SLAVE ? "extra":"slave");
+
+		/* update datanode master's pg_hba.conf */
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst->description));
+		ereport(LOG, (errmsg("update new datanode master \"%s\" pg_hba.conf for datanode %s", NameStr(mgr_node->nodename), strtmp)));
+		address = get_hostaddress_from_hostoid(mgr_nodetmp->nodehost);
+		node_user = get_hostuser_from_hostoid(mgr_nodetmp->nodehost);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", node_user, address, 32, "trust", &infosendmsg);
+		pfree(address);
+		pfree(node_user);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+								cndnPath,
+								&infosendmsg,
+								mgr_node->nodehost,
+								getAgentCmdRst);
+		if (!getAgentCmdRst->ret)
+		{
+			ereport(WARNING, (errmsg("refresh pg_hba.conf of new datanode master \"%s\" for datanode %s fail", NameStr(mgr_node->nodename), strtmp)));
+			appendStringInfo(&recorderr, "refresh pg_hba.conf of new datanode master \"%s\" for datanode %s fail\n", NameStr(mgr_node->nodename), strtmp);
+		}
+		mgr_reload_conf(mgr_node->nodehost, cndnPath);
+
+		/*refresh datanode extra/slave recovery.conf*/
 		resetStringInfo(&infosendmsg);
 		mgr_add_parameters_recoveryconf(secondnodetype, strtmp, HeapTupleGetOid(aimtuple), &infosendmsg);
 		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);

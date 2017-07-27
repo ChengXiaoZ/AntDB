@@ -1043,17 +1043,24 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	char cmdtype = AGT_CMD_NODE_REWIND;
 	char mastertype;
 	char *nodetypestr;
+	char *node_path;
 	bool res = false;
 	bool slave_is_exist = false;
 	bool slave_is_running = false;
 	bool master_is_exist = false;
 	bool master_is_running = false;
+	bool isNull = false;
 	AppendNodeInfo slave_nodeinfo;
 	AppendNodeInfo master_nodeinfo;
 	StringInfoData infosendmsg;
 	GetAgentCmdRst getAgentCmdRst;
 	Relation rel_node;
 	HeapTuple tuple;
+	HeapTuple node_tuple;
+	ScanKeyData key[1];
+	HeapScanDesc rel_scan;
+	Form_mgr_node mgr_node;
+	Datum datumPath;
 
 	/*check node type*/
 	if (nodetype != GTM_TYPE_GTM_SLAVE && nodetype != GTM_TYPE_GTM_EXTRA
@@ -1121,28 +1128,67 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 			return false;
 	}
 
-	/*start the node then stop it with fast mode*/
-
-	/* update master's pg_hba.conf */
 	initStringInfo(&infosendmsg);
-	resetStringInfo(&(getAgentCmdRst.description));
-	ereport(NOTICE, (errmsg("update datanode master \"%s\" pg_hba.conf", nodename)));
-	mgr_add_parameters_hbaconf(master_nodeinfo.tupleoid, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
-	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", master_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
-	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
-							master_nodeinfo.nodepath,
-							&infosendmsg,
-							master_nodeinfo.nodehost,
-							&getAgentCmdRst);
-	if (!getAgentCmdRst.ret)
+	/*update gtm master|slave|extra and the rewind node's master, the master's slave pg_hba.conf*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	while((node_tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
-		pfree_AppendNodeInfo(master_nodeinfo);
-		pfree_AppendNodeInfo(slave_nodeinfo);
-		appendStringInfo(strinfo, "%s", getAgentCmdRst.description.data);
-		pfree(getAgentCmdRst.description.data);
-		return false;
+		mgr_node = (Form_mgr_node)GETSTRUCT(node_tuple);
+		Assert(mgr_node);
+		if (!(GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype
+				|| GTM_TYPE_GTM_EXTRA == mgr_node->nodetype || strcmp(nodename, NameStr(mgr_node->nodename)) == 0))
+				continue;
+		nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
+		ereport(NOTICE, (errmsg("update %s \"%s\" pg_hba.conf for the rewind node %s", nodetypestr, NameStr(mgr_node->nodename), nodename)));
+		pfree(nodetypestr);
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype 
+			|| GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+		{
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, slave_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+			if (GTM_TYPE_GTM_EXTRA == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
+				mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, slave_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+		}
+		else
+		{
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", "all", slave_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+			mgr_add_parameters_hbaconf(master_nodeinfo.tupleoid, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+		}
+		datumPath = heap_getattr(node_tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_nodetmp")
+				, errmsg("column cndnpath is null")));
+		}
+		node_path = TextDatumGetCString(datumPath);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF,
+							node_path,
+							&infosendmsg,
+							mgr_node->nodehost,
+							&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			pfree_AppendNodeInfo(master_nodeinfo);
+			pfree_AppendNodeInfo(slave_nodeinfo);
+			appendStringInfo(strinfo, "%s", getAgentCmdRst.description.data);
+			pfree(getAgentCmdRst.description.data);
+			heap_endscan(rel_scan);
+			heap_close(rel_node, AccessShareLock);
+			return false;
+		}
+		mgr_reload_conf(mgr_node->nodehost, node_path);
 	}
 
+	heap_endscan(rel_scan);
+	heap_close(rel_node, AccessShareLock);
 	pfree(getAgentCmdRst.description.data);
 
 	/*node rewind*/
