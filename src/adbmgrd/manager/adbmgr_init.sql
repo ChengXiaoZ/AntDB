@@ -96,11 +96,20 @@ CREATE VIEW adbmgr.jobitem AS
   FROM pg_catalog.monitor_jobitem order by 1;
 
 CREATE VIEW adbmgr.ha as 
-	SELECT * FROM mgr_monitor_ha();
+	SELECT * FROM mgr_monitor_ha() order by 2 asc, 1 desc;
 
 --monitor all
 CREATE VIEW adbmgr.monitor_all AS
-        select * from mgr_monitor_all() order by 1,2;
+        select * from mgr_monitor_all() order by 1,
+			(case nodetype 
+				when 'gtm master' then 0 
+				when 'gtm slave' then 1 
+				when 'gtm extra' then 2 
+				when 'coordinator' then 3 
+				when 'datanode master' then 4 
+				when 'datanode slave' then 5 
+				when 'datanode extra' then 6 
+			End) ASC;
 
 --list hba
 CREATE VIEW adbmgr.hba AS

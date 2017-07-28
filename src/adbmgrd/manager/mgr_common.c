@@ -1184,7 +1184,8 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 			heap_close(rel_node, AccessShareLock);
 			return false;
 		}
-		mgr_reload_conf(mgr_node->nodehost, node_path);
+		if (!(mgr_node->nodetype == nodetype && strcmp(nodename, NameStr(mgr_node->nodename)) ==0))
+			mgr_reload_conf(mgr_node->nodehost, node_path);
 	}
 
 	heap_endscan(rel_scan);
