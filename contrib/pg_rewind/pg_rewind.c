@@ -37,10 +37,14 @@ static void updateControlFile(ControlFileData *ControlFile,
 							  char *datadir);
 static void syncTargetDirectory(const char *argv0);
 static void sanityChecks(void);
-static void findCommonAncestorTimeline(XLogRecPtr *recptr, TimeLineID *tli);
+static void findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex);
 
 static ControlFileData ControlFile_target;
 static ControlFileData ControlFile_source;
+static TimeLineHistoryEntry *
+getTimelineHistory(ControlFileData *controlFile, int *nentries);
+static XLogRecPtr
+MinXLogRecPtr(XLogRecPtr a, XLogRecPtr b);
 
 const char *progname;
 #ifdef ADB
@@ -53,6 +57,10 @@ char *connstr_source = NULL;
 
 int verbose;
 int dry_run;
+
+/* Target history */
+TimeLineHistoryEntry *targetHistory;
+int targetNentries;
 
 static void
 usage(const char *progname)
@@ -98,7 +106,7 @@ main(int argc, char **argv)
 	int			option_index;
 	int			c;
 	XLogRecPtr	divergerec;
-	TimeLineID	lastcommontli;
+	int	lastcommontliIndex;
 	XLogRecPtr	chkptrec;
 	TimeLineID	chkpttli;
 	XLogRecPtr	chkptredo;
@@ -260,9 +268,10 @@ main(int argc, char **argv)
 		exit(0);
 	}
 
-	findCommonAncestorTimeline(&divergerec, &lastcommontli);
+	findCommonAncestorTimeline(&divergerec, &lastcommontliIndex);
 	printf("The servers diverged at WAL position %X/%X on timeline %u.\n",
-		   (uint32) (divergerec >> 32), (uint32) divergerec, lastcommontli);
+          (uint32) (divergerec >> 32), (uint32) divergerec,
+          targetHistory[lastcommontliIndex].tli);
 
 	/*
 	 * Check for the possibility that the target is in fact a direct ancestor
@@ -299,7 +308,7 @@ main(int argc, char **argv)
 		printf("No rewind required.\n");
 		exit(0);
 	}
-	findLastCheckpoint(datadir_target, divergerec, lastcommontli,
+	findLastCheckpoint(datadir_target, divergerec, lastcommontliIndex,
 					   &chkptrec, &chkpttli, &chkptredo);
 	printf("Rewinding from Last common checkpoint at %X/%X on timeline %u\n",
 		   (uint32) (chkptrec >> 32), (uint32) chkptrec,
@@ -327,7 +336,7 @@ main(int argc, char **argv)
 	 * XXX: If we supported rewinding a server that was not shut down cleanly,
 	 * we would need to replay until the end of WAL here.
 	 */
-	extractPageMap(datadir_target, chkptrec, lastcommontli,
+	extractPageMap(datadir_target, chkptrec, lastcommontliIndex,
 				   ControlFile_target.checkPoint);
 	filemap_finalize();
 
@@ -447,61 +456,47 @@ sanityChecks(void)
  * before calling this.
  */
 static void
-findCommonAncestorTimeline(XLogRecPtr *recptr, TimeLineID *tli)
+findCommonAncestorTimeline(XLogRecPtr *recptr, int *tliIndex)
 {
-	TimeLineID	targettli;
-	TimeLineHistoryEntry *sourceHistory;
-	int			nentries;
-	int			i;
-	TimeLineID	sourcetli;
+		TimeLineHistoryEntry *sourceHistory;
+		int         sourceNentries;
+		int         i, n;
 
-	targettli = ControlFile_target.checkPointCopy.ThisTimeLineID;
-	sourcetli = ControlFile_source.checkPointCopy.ThisTimeLineID;
+		/* Retrieve timelines for both source and target */
+		sourceHistory = getTimelineHistory(&ControlFile_source, &sourceNentries);
+		targetHistory = getTimelineHistory(&ControlFile_target, &targetNentries);
 
-	/* Timeline 1 does not have a history file, so no need to check */
-	if (sourcetli == 1)
-	{
-		sourceHistory = (TimeLineHistoryEntry *) pg_malloc(sizeof(TimeLineHistoryEntry));
-		sourceHistory->tli = sourcetli;
-		sourceHistory->begin = sourceHistory->end = InvalidXLogRecPtr;
-		nentries = 1;
-	}
-	else
-	{
-		char		path[MAXPGPATH];
-		char	   *histfile;
-
-		TLHistoryFilePath(path, sourcetli);
-		histfile = fetchFile(path, NULL);
-
-		sourceHistory = rewind_parseTimeLineHistory(histfile,
-													ControlFile_source.checkPointCopy.ThisTimeLineID,
-													&nentries);
-		pg_free(histfile);
-	}
-
-	/*
-	 * Trace the history backwards, until we hit the target timeline.
-	 *
-	 * TODO: This assumes that there are no timeline switches on the target
-	 * cluster after the fork.
-	 */
-	for (i = nentries - 1; i >= 0; i--)
-	{
-		TimeLineHistoryEntry *entry = &sourceHistory[i];
-		if (entry->tli == targettli)
+		/*
+		* Trace the history forward, until we hit the timeline diverge. It may
+		* still be possible that the source and target nodes used the same
+		* timeline number in their history but with different start position
+		* depending on the history files that each node has fetched in previous
+		* recovery processes. Hence check the start position of the new timeline
+		* as well and move down by one extra timeline entry if they do not match.
+		*/
+		n = Min(sourceNentries, targetNentries);
+		for (i = 0; i < n; i++)
 		{
-			/* found it */
-			*recptr = entry->end;
-			*tli = entry->tli;
+			if (sourceHistory[i].tli != targetHistory[i].tli ||
+				sourceHistory[i].begin != targetHistory[i].begin)
+				break;
+		}
+ 
+		if (i > 0)
+		{
+			i--;
+			*recptr = MinXLogRecPtr(sourceHistory[i].end, targetHistory[i].end);
+			*tliIndex = i;
 
-			free(sourceHistory);
+			pg_free(sourceHistory);
 			return;
 		}
-	}
-
-	fprintf(stderr, "could not find common ancestor of the source and target cluster's timelines\n");
-	exit(1);
+		else
+		{
+			//pg_fatal("could not find common ancestor of the source and target cluster's timelines\n");
+			fprintf(stderr, "could not find common ancestor of the source and target cluster's timelines\n");
+			exit(1);
+		}
 }
 
 
@@ -709,3 +704,96 @@ syncTargetDirectory(const char *argv0)
 	if (verbose)
 		fprintf(stderr, "sync of target directory with initdb -S done\n");
 }
+
+ /*
+* Retrieve timeline history for given control file which should behold
+* either source or target.
+*/
+static TimeLineHistoryEntry *
+getTimelineHistory(ControlFileData *controlFile, int *nentries)
+{
+	TimeLineHistoryEntry   *history;
+	TimeLineID              tli;
+
+	tli = controlFile->checkPointCopy.ThisTimeLineID;
+ 
+	/*
+	* Timeline 1 does not have a history file, so there is no need to check and
+	* fake an entry with infinite start and end positions.
+	*/
+	if (tli == 1)
+	{
+		history = (TimeLineHistoryEntry *) pg_malloc(sizeof(TimeLineHistoryEntry));
+		history->tli = tli;
+		history->begin = history->end = InvalidXLogRecPtr;
+		*nentries = 1;
+	}
+	else
+	{
+		char        path[MAXPGPATH];
+		char       *histfile;
+
+		TLHistoryFilePath(path, tli);
+
+		/* Get history file from appropriate source */
+		if (controlFile == &ControlFile_source)
+			histfile = fetchFile(path, NULL);
+		else if (controlFile == &ControlFile_target)
+			histfile = slurpFile(datadir_target, path, NULL);
+		else
+		{
+			//pg_fatal("Invalid control file");
+			fprintf(stderr, "Invalid control file");
+			exit(1);
+		}
+		
+ 
+		history = rewind_parseTimeLineHistory(histfile, tli, nentries);
+		pg_free(histfile);
+	}
+
+	//if (debug)
+	if (0)
+	{
+		int     i;
+
+		if (controlFile == &ControlFile_source)
+			printf("Source timeline history:\n");
+		else if (controlFile == &ControlFile_target)
+			printf("Target timeline history:\n");
+		else
+			Assert(false);
+
+		/*
+		* Print the target timeline history.
+		*/
+		for (i = 0; i < targetNentries; i++)
+		{
+			TimeLineHistoryEntry *entry;
+
+			entry = &history[i];
+			printf("%d: %X/%X - %X/%X\n", entry->tli,
+			(uint32) (entry->begin >> 32), (uint32) (entry->begin),
+			(uint32) (entry->end >> 32), (uint32) (entry->end));
+		}
+	}
+
+	return history;
+}
+
+/*
+* Find minimum from two XLOG positions assuming InvalidXLogRecPtr means
+* infinity as src/include/access/timeline.h states. This routine should
+* be used only when comparing XLOG positions related to history files.
+*/
+static XLogRecPtr
+MinXLogRecPtr(XLogRecPtr a, XLogRecPtr b)
+{
+	if (XLogRecPtrIsInvalid(a))
+		return b;
+	else if (XLogRecPtrIsInvalid(b))
+		return a;
+	else
+		return Min(a, b);
+}
+ 

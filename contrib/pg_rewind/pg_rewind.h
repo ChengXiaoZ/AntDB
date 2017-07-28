@@ -33,15 +33,18 @@ extern int dry_run;
 
 /* in parsexlog.c */
 extern void extractPageMap(const char *datadir, XLogRecPtr startpoint,
-						   TimeLineID tli, XLogRecPtr endpoint);
-extern void findLastCheckpoint(const char *datadir, XLogRecPtr searchptr, TimeLineID tli,
+						   int tliIndex, XLogRecPtr endpoint);
+extern void findLastCheckpoint(const char *datadir, XLogRecPtr searchptr, int tliIndex,
 				   XLogRecPtr *lastchkptrec, TimeLineID *lastchkpttli,
 				   XLogRecPtr *lastchkptredo);
-extern XLogRecPtr readOneRecord(const char *datadir, XLogRecPtr ptr, TimeLineID tli);
+extern XLogRecPtr readOneRecord(const char *datadir, XLogRecPtr ptr, int tliIndex);
 
 
 /* in timeline.c */
 extern TimeLineHistoryEntry *rewind_parseTimeLineHistory(char *buffer,
 		    TimeLineID targetTLI, int *nentries);
+
+extern int     targetNentries;
+extern TimeLineHistoryEntry *targetHistory;
 
 #endif   /* PG_REWIND_H */
