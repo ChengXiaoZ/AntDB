@@ -1801,7 +1801,7 @@ static bool mgr_recv_showparam_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmd
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{

@@ -300,7 +300,7 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{
@@ -344,7 +344,7 @@ bool mgr_recv_msg_for_monitor(ManagerAgent *ma, bool *ret, StringInfo agentRstSt
 		}else if (msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(LOG, (errmsg("receive msg: %s", agentRstStr->data)));
+			ereport(LOG, (errmsg("receive msg: %s", ma_get_err_info(agentRstStr, AGT_MSG_RESULT))));
 		}
 		else if (msg_type == AGT_MSG_RESULT)
 		{
@@ -801,7 +801,7 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(NOTICE, (errmsg("%s", recvbuf.data)));
+			ereport(DEBUG1, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{

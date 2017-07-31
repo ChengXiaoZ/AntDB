@@ -1552,7 +1552,7 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 	if (!nrow || !ncolumn)
 	{
 		ereport(WARNING,
-		(errmsg("get null, check the sql string: %s" , sqlstring)));
+		(errmsg("adress=%s port=%d, the result is null, the sql string: %s" , address, port, sqlstring)));
 	}
 	for (iloop=0; iloop<nrow; iloop++)
 	{
