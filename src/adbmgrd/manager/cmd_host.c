@@ -33,6 +33,7 @@
 #include "utils/tqual.h"
 #include "utils/fmgroids.h"    /* For F_NAMEEQ	*/
 #include "executor/spi.h"
+#include "access/xlog.h"
 
 typedef struct StartAgentInfo
 {
@@ -414,6 +415,9 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 	bool if_not_exists = PG_GETARG_BOOL(0);
 	char *name_str = PG_GETARG_CSTRING(1);
 	Assert(name_str != NULL);
+
+	if (RecoveryInProgress())
+		ereport(ERROR, (errmsg("cannot assign TransactionIds during recovery")));
 
 	rel = heap_open(HostRelationId, RowExclusiveLock);
 	host_dsc = RelationGetDescr(rel);

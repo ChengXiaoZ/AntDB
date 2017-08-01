@@ -41,6 +41,7 @@
 #include "executor/spi.h"
 #include "../../interfaces/libpq/libpq-fe.h"
 #include "nodes/makefuncs.h"
+#include "access/xlog.h"
 
 static struct enum_sync_state sync_state_tab[] =
 {
@@ -78,6 +79,9 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	Relation rel_node;
 	GetAgentCmdRst getAgentCmdRst;
+
+	if (RecoveryInProgress())
+		ereport(ERROR, (errmsg("cannot assign TransactionIds during recovery")));
 
 	/*get the input variable*/
 	nodetype = PG_GETARG_INT32(0);
@@ -313,7 +317,8 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	namestrcpy(&nodenamedata, PG_GETARG_CSTRING(1));
 	/*get the new master info*/
 	get_nodeinfo_byname(nodenamedata.data, nodetype, &master_is_exist, &master_is_running, &master_nodeinfo);
-	pfree_AppendNodeInfo(master_nodeinfo);
+	if (master_is_exist)
+		pfree_AppendNodeInfo(master_nodeinfo);
 	if (CNDN_TYPE_DATANODE_MASTER != nodetype)
 	{
 		ereport(ERROR, (errmsg("the type of node \"%s\" is not datanode master",nodenamedata.data)));
@@ -335,13 +340,13 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		get_nodeinfo_byname(nodenamedata.data, CNDN_TYPE_COORDINATOR_MASTER, &cn_is_exist, &cn_is_running, &cn_nodeinfo);
-		if (!cn_is_running)
+		get_nodeinfo_byname(NameStr(mgr_node->nodename), CNDN_TYPE_COORDINATOR_MASTER, &cn_is_exist, &cn_is_running, &cn_nodeinfo);
+		if (!cn_is_exist || !cn_is_running)
 		{
 			heap_endscan(rel_scan);
 			heap_close(rel_node, AccessShareLock);
-
-			pfree_AppendNodeInfo(cn_nodeinfo);
+			if (cn_is_exist)
+				pfree_AppendNodeInfo(cn_nodeinfo);
 			ereport(ERROR, (errmsg("coordinator \"%s\" does not running normal", NameStr(mgr_node->nodename))));
 		}
 		pfree_AppendNodeInfo(cn_nodeinfo);
@@ -394,6 +399,9 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	Relation rel_node;
 	GetAgentCmdRst getAgentCmdRst;
+
+	if (RecoveryInProgress())
+		ereport(ERROR, (errmsg("cannot assign TransactionIds during recovery")));
 
 	/*get the input variable*/
 	nodetype = PG_GETARG_INT32(0);
