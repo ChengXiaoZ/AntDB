@@ -254,7 +254,7 @@ CREATE OR REPLACE FUNCTION oracle.last(str text)
     STRICT;
 
 /*
- * For date's operator +/- 
+ * For date's operator +/-
  */
 CREATE OR REPLACE FUNCTION oracle.date_pl_numeric(oracle.date,numeric)
     RETURNS oracle.date
@@ -690,6 +690,19 @@ CREATE OR REPLACE FUNCTION oracle.sys_extract_utc(timestamp with time zone)
 CREATE OR REPLACE FUNCTION oracle.mod(numeric, numeric)
     RETURNS numeric
     AS 'numeric_mod'
+    LANGUAGE INTERNAL
+    IMMUTABLE
+    RETURNS NULL ON NULL INPUT;
+
+/*
+ * Function: mode
+ * Parameter Type: (bigint, bigint)
+ * Add oracle.mod(bigint, bigint) to make sure find oracle.mod if
+ * current grammar is oracle;
+ */
+CREATE OR REPLACE FUNCTION oracle.mod(bigint, bigint)
+    RETURNS bigint
+    AS 'int8mod'
     LANGUAGE INTERNAL
     IMMUTABLE
     RETURNS NULL ON NULL INPUT;
