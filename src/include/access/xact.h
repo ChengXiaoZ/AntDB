@@ -242,6 +242,7 @@ extern bool IsCurrentXactInPhase2(void);
 extern void SetXactErrorAborted(bool flag);
 extern bool IsXactErrorAbort(void);
 extern void SetCurrentTransactionStartTimestamp(TimestampTz timestamp);
+extern TimestampTz GetCurrentGlobalTimestamp(void);
 #endif
 extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);

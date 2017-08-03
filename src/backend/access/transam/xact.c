@@ -781,6 +781,21 @@ GetCurrentCommandId(bool used)
 }
 
 #ifdef ADB
+TimestampTz
+GetCurrentGlobalTimestamp(void)
+{
+	/*
+	 * For ADB, Statement start timestamp is adjusted at each node
+	 * (Coordinator and Datanode) with a difference value that is calculated
+	 * based on the global timestamp value received from AGTM and the local
+	 * clock. This permits to follow the AGTM timeline in the cluster.
+	 */
+	if (IS_PGXC_DATANODE && IsConnFromCoord())
+		return GetCurrentTimestamp();
+	else
+		return GetCurrentTimestamp() + globalDeltaTimestmap;
+}
+
 CommandId
 GetCurrentCommandIdIfAny(void)
 {
@@ -967,7 +982,7 @@ SetCurrentTransactionStartTimestamp(TimestampTz timestamp)
 	}
 
 #ifdef DEBUG_ADB
-	adb_ereport(LOG, 
+	adb_ereport(LOG,
 		(errmsg("[ADB] node %s session flag %lx.%x",
 			PGXCNodeName, globalXactStartTimestamp, MyProcPid)));
 #endif
@@ -2954,7 +2969,7 @@ AbortTransaction(void)
 
 	if (IS_PGXC_DATANODE && GetForceXidFromAGTM())
 	{
-		agtm_AbortTransaction(NULL, false);	
+		agtm_AbortTransaction(NULL, false);
 		agtm_Close();
 	}
 #endif

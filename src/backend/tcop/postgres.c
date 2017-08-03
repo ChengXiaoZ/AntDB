@@ -724,7 +724,7 @@ List *parse_query_auto_gram(const char *query_string, ParseGrammar *gram)
 		{
 			// test "token(\s|\*/)"
 			if(strncmp(str, token_gram[i].token, token_gram[i].token_len) == 0
-				&& (isspace(str[token_gram[i].token_len]) || 
+				&& (isspace(str[token_gram[i].token_len]) ||
 					(str[token_gram[i].token_len] == '*' && str[token_gram[i].token_len+1] == '/')
 				))
 			{
@@ -1311,7 +1311,7 @@ exec_simple_query(const char *query_string)
 		if (IS_PGXC_DATANODE || IsConnFromCoord())
 			SetForceObtainXidFromAGTM(false);
 
-#endif 
+#endif
 
 		/*
 		 * Get the command name for use in status display (it also becomes the
@@ -2628,10 +2628,15 @@ check_log_duration(char *msec_str, bool was_logged)
 		int			usecs;
 		int			msecs;
 		bool		exceeded;
-
+#ifdef ADB
+		TimestampDifference(GetCurrentStatementStartTimestamp(),
+							GetCurrentGlobalTimestamp(),
+							&secs, &usecs);
+#else
 		TimestampDifference(GetCurrentStatementStartTimestamp(),
 							GetCurrentTimestamp(),
 							&secs, &usecs);
+#endif
 		msecs = usecs / 1000;
 
 #ifdef ADB
