@@ -47,7 +47,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg);
 static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bforce);
 static void writefile(char *path, ConfInfo *info);
 static void writehbafile(char *path, HbaInfo *info);
-static bool copyFile(const char *targetFileWithPath, const char *sourceFileWithPath);
+static int copyFile(const char *targetFileWithPath, const char *sourceFileWithPath);
 static void pg_ltoa(int32 value, char *a);
 static bool cmd_rename_recovery(StringInfo msg);
 static void cmd_monitor_gets_hostinfo(void);
@@ -559,6 +559,7 @@ static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg)
 	agt_flush();
 	pfree(output.data);
 	pfree(err_msg.data);
+	pfree(pgconffile.data);
 	MemoryContextSwitchTo(oldcontext);
 	MemoryContextDelete(pgconf_context);
 }
@@ -800,6 +801,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	StringInfoData output;
 	StringInfoData infoparastr;
 	StringInfoData pgconffile;
+	StringInfoData pgconffilebak;
 	char datapath[MAXPGPATH];
 	char my_exec_path[MAXPGPATH];
 	char pghome[MAXPGPATH];
@@ -812,6 +814,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	ConfInfo *info,
 			*infohead;
 	FILE *create_recovery_file;
+	int err;
 
 	MemoryContext pgconf_context;
 	MemoryContext oldcontext;
@@ -826,6 +829,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	rec_msg_string = agt_getmsgstring(msg);
 	initStringInfo(&infoparastr);
 	initStringInfo(&pgconffile);
+	initStringInfo(&pgconffilebak);
 
 	appendBinaryStringInfo(&infoparastr, &msg->data[msg->cursor], msg->len - msg->cursor);
 
@@ -837,9 +841,17 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 		if (AGT_CMD_CNDN_DELPARAM_PGSQLCONF_FORCE == cmdtype)
 			bforce = true;
 		appendStringInfo(&pgconffile, "%s/postgresql.conf", datapath);
+		appendStringInfo(&pgconffilebak, "%s/postgresql.conf.bak", datapath);
 		if(access(pgconffile.data, F_OK) !=0 )
 		{
 			ereport(ERROR, (errmsg("could not find: %s", pgconffile.data)));
+		}
+		/*copy postgresql.conf to postgresql.conf.bak*/
+		err = copyFile(pgconffilebak.data, pgconffile.data);
+		if (err)
+		{
+			unlink(pgconffilebak.data);
+			ereport(ERROR, (errmsg("could not copy %s to %s : %s", pgconffile.data, pgconffilebak.data, strerror(err))));
 		}
 	}
 	else if (AGT_CMD_CNDN_REFRESH_RECOVERCONF == cmdtype)
@@ -864,7 +876,7 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 				strcpy(pghome, my_exec_path);
 				strcat(pghome, "/share/recovery.conf.sample");
 			}
-			if(!copyFile(pgconffile.data, pghome))
+			if(copyFile(pgconffile.data, pghome))
 			{
 				/*if cannot find the sample file, so make recvery.conf*/
 				if ((create_recovery_file = fopen(pgconffile.data, "w")) == NULL)
@@ -885,10 +897,18 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 				}
 			}
 		}
+		appendStringInfo(&pgconffilebak, "%s/recovery.conf.bak", datapath);
+		/*copy recovery.conf to recovery.conf.bak*/
+		err = copyFile(pgconffilebak.data, pgconffile.data);
+		if (err)
+		{
+			unlink(pgconffilebak.data);
+			ereport(ERROR, (errmsg("could not copy %s to %s : %s", pgconffile.data, pgconffilebak.data, strerror(err))));
+		}
 
 	}
 	/*get the postgresql.conf content*/
-	info = parse_conf_file(pgconffile.data);
+	info = parse_conf_file(pgconffilebak.data);
 	infohead = info;
 
 	while((ptmp = &infoparastr.data[infoparastr.cursor]) != '\0' && (infoparastr.cursor < infoparastr.len))
@@ -904,7 +924,18 @@ static void cmd_node_refresh_pgsql_paras(char cmdtype, StringInfo msg)
 	}
 
 	/*use the new info list to refresh the postgresql.conf*/
-	writefile(pgconffile.data, infohead);
+	writefile(pgconffilebak.data, infohead);
+	/*rename xx.conf.bak to xx.conf*/
+	if (rename(pgconffilebak.data, pgconffile.data) == -1)
+	{
+		err = errno;
+		unlink(pgconffilebak.data);
+		ereport(ERROR, (errmsg("could not rename %s to %s : %s", pgconffilebak.data, pgconffile.data, strerror(err))));
+	}
+	pfree(pgconffile.data);
+	pfree(pgconffilebak.data);
+	pfree(infoparastr.data);
+
 	initStringInfo(&output);
 	if(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD == cmdtype)
 	{
@@ -1056,7 +1087,7 @@ writefile(char *path, ConfInfo *info)
 static bool check_hba_vaild(char * datapath, HbaInfo * info_head)
 {
 	FILE *fp;
-	char hba_temp_file[] = "temp.file";
+	char hba_temp_file[] = "hba_temp.file";
 	bool is_valid = true;
 	char file_path[MAXPGPATH];
 	sprintf(file_path, "%s/%s",datapath, hba_temp_file);
@@ -1114,19 +1145,21 @@ writehbafile(char *path, HbaInfo *info)
 	}
 }
 
-static bool copyFile(const char *targetFileWithPath, const char *sourceFileWithPath)
+static int copyFile(const char *targetFileWithPath, const char *sourceFileWithPath)
 {
 	FILE *fpR, *fpW;
 	char buffer[BUFFER_SIZE];
 	int lenR, lenW;
+	
+	errno = 0;
 	if ((fpR = fopen(sourceFileWithPath, "r")) == NULL)
 	{
-		return false;
+		return errno;
 	}
 	if ((fpW = fopen(targetFileWithPath, "w")) == NULL)
 	{
 		fclose(fpR);
-		return false;
+		return errno;
 	}
 
 	memset(buffer, 0, BUFFER_SIZE);
@@ -1136,14 +1169,14 @@ static bool copyFile(const char *targetFileWithPath, const char *sourceFileWithP
 		{
 			fclose(fpR);
 			fclose(fpW);
-			return false;
+			return errno;
 		}
 		memset(buffer, 0, BUFFER_SIZE);
 	}
 
 	fclose(fpR);
 	fclose(fpW);
-	return true;
+	return errno;
 }
 
 /*
