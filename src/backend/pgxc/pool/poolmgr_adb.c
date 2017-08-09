@@ -1750,7 +1750,13 @@ send_agtm_port_:
 						}else if(PQstatus(slot->conn) != CONNECTION_BAD)
 						{
 							slot->slot_state = SLOT_STATE_CONNECTING;
-							slot->poll_state = PGRES_POLLING_WRITING;						
+							slot->poll_state = PGRES_POLLING_WRITING;
+							if (slot->current_list != BUSY_SLOT)
+							{
+								dlist_delete(&slot->dnode);
+								dlist_push_head(&slot->parent->busy_slot, &slot->dnode);
+								slot->current_list = BUSY_SLOT;
+							}
 						}
 						slot->retry++;
 						ereport(DEBUG1, (errmsg("[pool] reconnect three thimes : %d, backend pid : %d",
