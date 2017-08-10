@@ -121,6 +121,7 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 	}
 	initStringInfo(&querystr);
 	pstr = resultstrdata.data;
+	strtmp[63] = '\0';
 	while(*pstr != '\0' && iloop < slowlognumoncetime)
 	{
 		callstoday = 0;
@@ -135,13 +136,13 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 		/*get run time*/
 		if (!pstr)
 			ereport(ERROR, (errmsg("get calls from slow log fail")));
-		strcpy(strtmp, pstr);
+		strncpy(strtmp, pstr, 63);
 		calls = atoi(strtmp);
 		pstr = pstr + strlen(strtmp) + 1;
 		/*get total used time*/
 		if (!pstr)
 			ereport(ERROR, (errmsg("get totaltime from slow log fail")));
-		strcpy(strtmp, pstr);
+		strncpy(strtmp, pstr, 63);
 		totaltime = atof(strtmp);
 		singletime = totaltime/calls;
 		pstr = pstr + strlen(strtmp) + 1;
