@@ -123,6 +123,10 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 	pstr = resultstrdata.data;
 	while(*pstr != '\0' && iloop < slowlognumoncetime)
 	{
+		callstoday = 0;
+		callsyestd = 0;
+		gettoday = false;
+		getyesdt = false;
 		iloop++;
 		/*get username*/
 		strncpy(dbuser, pstr, 63);
@@ -148,8 +152,11 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 		appendStringInfo(&querystr, "%s", pstr);
 		querystr.data[querystr.len] = 0;
 		pstr = pstr + querystr.len + 1;
-		/*get queryplan*/
+		/*
+		* just make all reoords which get from coordinato pg_stat_statements as today's data
+		*/
 		tupleret = check_record_yestoday_today(rel, &callstoday, &callsyestd, &gettoday, &getyesdt, querystr.data, dbuser, dbname, ptimenow);
+	
 		if (false  == gettoday && false == getyesdt)
 		{
 			/*insert record*/
@@ -171,7 +178,7 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 			}
 			else if (calls < callstoday)
 			{
-				monitor_slowlog->slowlogtotalnum = calls + callstoday;
+				monitor_slowlog->slowlogtotalnum = callstoday;
 				monitor_slowlog->slowlogsingletime = singletime;
 				heap_inplace_update(rel, tupleret);
 				pfree(tupleret);
@@ -197,7 +204,7 @@ void monitor_get_onedb_slowdata_insert(Relation rel, int agentport, char *user, 
 			Assert(monitor_slowlog);
 			if (calls < callstoday)
 			{
-				monitor_slowlog->slowlogtotalnum = calls + callstoday;
+				monitor_slowlog->slowlogtotalnum = callstoday;
 				monitor_slowlog->slowlogsingletime = singletime;
 				heap_inplace_update(rel, tupleret);
 				pfree(tupleret);
@@ -349,6 +356,9 @@ HeapTuple monitor_build_slowlog_tuple(Relation rel, TimestampTz time, char *dbna
 	return heap_form_tuple(desc, datums, nulls);
 }
 
+/*
+* just compare today's data in monitor_slowlog relation table
+*/
 HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsyestd, bool *gettoday, bool *getyesdt, char *query, char *user, char *dbname, pg_time_t ptimenow)
 {
 	HeapScanDesc rel_scan;
@@ -361,12 +371,13 @@ HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsy
 	char *querystr = NULL;
 	pg_time_t tupleptime;
 	pg_time_t pgtimetoday;
-	pg_time_t pgtimeyestoday;
 	pg_time_t pgtimetomarrow;
 	TimestampTz tupletime;
 
+	*getyesdt = false;
+	*callsyestd = 0;
+
 	pgtimetoday = GETTODAYSTARTTIME(ptimenow);
-	pgtimeyestoday = GETLASTDAYSTARTTIME(ptimenow);
 	pgtimetomarrow = GETTOMARROWSTARTTIME(ptimenow);	
 	rel_scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
@@ -382,7 +393,7 @@ HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsy
 		tupletime = DatumGetTimestampTz(datumtime);
 		tupleptime = timestamptz_to_time_t(tupletime);
 		/*for yestoday, today record*/
-		if(tupleptime >= pgtimeyestoday && tupleptime < pgtimetomarrow)
+		if(tupleptime >= pgtimetoday && tupleptime < pgtimetomarrow)
 		{
 			/*check query, user, dbname*/
 			monitor_slowlog = (Form_monitor_slowlog)GETSTRUCT(tuple);
@@ -400,17 +411,9 @@ HeapTuple check_record_yestoday_today(Relation rel, int *callstoday, int *callsy
 				querystr = TextDatumGetCString(datumquery);
 				if(strcmp(querystr, query)==0)
 				{
-					if(tupleptime < pgtimetoday)
-					{
-						*getyesdt = true;
-						*callsyestd = monitor_slowlog->slowlogtotalnum;
-					}
-					else
-					{
 						*gettoday = true;
 						*callstoday = monitor_slowlog->slowlogtotalnum;
 						tupleret = heap_copytuple(tuple);
-					}
 				}
 			}
 			

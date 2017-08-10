@@ -189,6 +189,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 %token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
+%token<keyword> STATUS
 %token<keyword> PROMOTE ADBMGR REWIND
 
 /* for ADB monitor*/
@@ -2747,6 +2748,7 @@ reserved_keyword:
 	| GRANT
 	| COORDINATOR
 	| DATANODE
+	| STATUS
 	;
 
 %%

@@ -277,6 +277,7 @@ static int agt_internal_putbytes(const char *s, size_t len)
 		if (amount > len)
 			amount = len;
 		memcpy(agt_out_msg_buf + agt_out_msg_end, s, amount);
+		s = s + amount;
 		agt_out_msg_end += amount;
 		len -= amount;
 	}

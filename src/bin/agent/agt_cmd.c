@@ -67,7 +67,7 @@ static void cmd_stop_agent(void);
 static void cmd_get_showparam_values(char cmdtype, StringInfo buf);
 static char *mgr_get_showparam(char *sqlstr, char *user, char *address, int port, char * dbname);
 static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf);
-static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output);
+static void mgr_execute_sqlstring(char cmdtype, char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output);
 
 static void cmd_node_refresh_pghba_parse(AgentCommand cmd_type, StringInfo msg);
 static HbaInfo *cmd_refresh_pghba_confinfo(AgentCommand cmd_type, HbaInfo *checkinfo, HbaInfo *infohead, StringInfo err_msg);
@@ -1527,7 +1527,7 @@ static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf)
 		}
 	}
 	/*get the sqlstring values*/
-	mgr_execute_sqlstring(user, atoi(port), address, dbname, sqlstr.data, &output);
+	mgr_execute_sqlstring(cmdtype, user, atoi(port), address, dbname, sqlstr.data, &output);
 	pfree(sqlstr.data);
 	if (output.len == 0)
 	{
@@ -1543,7 +1543,7 @@ static void cmd_get_sqlstring_stringvalues(char cmdtype, StringInfo buf)
 }
 
 /*given one sqlstr, return the result*/
-static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output)
+static void mgr_execute_sqlstring(char cmdtype, char *user, int port, char *address, char *dbname, char *sqlstring, StringInfo output)
 {
 	StringInfoData constr;
 	PGconn* conn;
@@ -1592,7 +1592,10 @@ static void mgr_execute_sqlstring(char *user, int port, char *address, char *dbn
 		for (jloop=0; jloop<ncolumn; jloop++)
 		{
 			appendStringInfo(output, "%s", PQgetvalue(res, iloop, jloop ));
-			appendStringInfoCharMacro(output, '\0');
+			if (AGT_CMD_GET_EXPLAIN_STRINGVALUES == cmdtype)
+				appendStringInfoCharMacro(output, '\n');
+			else
+				appendStringInfoCharMacro(output, '\0');
 		}
 	}
 	appendStringInfoCharMacro(output, '\0');

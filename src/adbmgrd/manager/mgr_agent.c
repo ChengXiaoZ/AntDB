@@ -309,7 +309,7 @@ char ma_get_message(ManagerAgent *ma, StringInfo buf)
 
 		while(in_buf->len - in_buf->cursor < n32 + 5)
 		{
-			enlargeStringInfo(in_buf, n32+5-in_buf->len-in_buf->cursor);
+			enlargeStringInfo(in_buf, n32+5-in_buf->len+in_buf->cursor+1);
 			if(ma_recv_data(ma) == false)
 				return '\0';
 		}
