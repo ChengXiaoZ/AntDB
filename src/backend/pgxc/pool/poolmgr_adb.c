@@ -1345,10 +1345,12 @@ abort_pids(int *len, int pid, const char *database, const char *user_name)
 			continue;
 
 		db_info = &(poolAgents[i]->db_pool->db_info);
-		if (database && strcmp(db_info->database, database) != 0)
+		if (database && db_info->database &&
+						strcmp(db_info->database, database) != 0)
 			continue;
 
-		if (user_name && strcmp(db_info->user_name, user_name) != 0)
+		if (user_name && db_info->user_name &&
+						strcmp(db_info->user_name, user_name) != 0)
 			continue;
 
 		if (kill(poolAgents[i]->pid, SIGTERM) < 0)
@@ -2044,9 +2046,11 @@ retry_clean_connection_:
 	hash_seq_init(&hash_db_status, htab_database);
 	while((db_pool = hash_seq_search(&hash_db_status)) != NULL)
 	{
-		if(strcmp(db_pool->db_info.database, database) != 0)
+		if(db_pool->db_info.database && database &&
+						strcmp(db_pool->db_info.database, database) != 0)
 			continue;
-		if(user_name && strcmp(db_pool->db_info.user_name, user_name) != 0)
+		if(db_pool->db_info.user_name && user_name &&
+						strcmp(db_pool->db_info.user_name, user_name) != 0)
 			continue;
 
 		foreach(lc, node_discard)
@@ -3021,9 +3025,13 @@ recheck_node_pool_:
 		{
 			connstr = build_node_conn_str(node_pool->nodeoid, db_pool);
 			/* Node has been removed or altered */
-			if((connstr == NULL || strcmp(connstr, node_pool->connstr) != 0)
-				/* and node pool not in using */
-				&& node_pool_in_using(node_pool) == false)
+			if((connstr == NULL ||
+						/* connstr not null but node_pool->connstr is null,
+						destory node_pool first,then create new when agent_acquire_conn_list */
+						node_pool->connstr == NULL ||
+						strcmp(connstr, node_pool->connstr) != 0) &&
+						/* and node pool not in using */
+						node_pool_in_using(node_pool) == false)
 			{
 				PFREE_SAFE(connstr);
 				destroy_node_pool(node_pool, true);
@@ -3202,6 +3210,11 @@ static int match_database_info(const void *key1, const void *key2, Size keysize)
 
 	l = key1;
 	r = key2;
+
+	if (NULL == l->database || NULL == r->database ||
+			NULL == l->user_name || NULL == r->user_name ||
+			NULL == l->pgoptions || NULL == r->pgoptions)
+		ereport(ERROR, (errmsg("match_database_info some parameters is null")));
 
 	rval = strcmp(l->database, r->database);
 	if(rval != 0)
