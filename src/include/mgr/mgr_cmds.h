@@ -154,7 +154,7 @@ extern void mgr_drop_node(MGRDropNode *node, ParamListInfo params, DestReceiver 
 extern Datum mgr_drop_node_func(PG_FUNCTION_ARGS);
 extern Datum mgr_init_all(PG_FUNCTION_ARGS);
 extern Datum mgr_init_cn_master(PG_FUNCTION_ARGS);
-extern void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *shutdown_mode);
+extern void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, const char *shutdown_mode);
 extern Datum mgr_init_dn_master(PG_FUNCTION_ARGS);
 extern Datum mgr_init_dn_slave_all(PG_FUNCTION_ARGS);
 extern void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *masterhostaddress, uint32 masterport, char *mastername);
@@ -273,6 +273,8 @@ extern bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo 
 extern void mgr_get_cmd_head_word(char cmdtype, char *str);
 extern bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodeport, char *address);
 extern char mgr_get_master_type(char nodetype);
+Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS);
+extern char mgr_change_cmdtype_unbackend(char cmdtype);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);

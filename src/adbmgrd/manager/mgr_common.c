@@ -28,6 +28,8 @@ static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
 static TupleDesc ha_replication_tuple_desc = NULL;
+static void mgr_cmd_run_backend(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS);
+
 
 TupleDesc get_common_command_tuple_desc(void)
 {
@@ -1230,6 +1232,7 @@ bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo
 	}
 
 	mgr_get_cmd_head_word(cmdtype, cmdheadstr);
+	ereport(NOTICE, (errmsg("%s, %s %s", hostaddr, cmdheadstr, cmdstr)));
 	ereport(LOG, (errmsg("%s, %s %s", hostaddr, cmdheadstr, cmdstr)));
 	pfree(hostaddr);
 	
@@ -1252,4 +1255,297 @@ bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo
 	pfree(getAgentCmdRst.description.data);
 	
 	return res;
+}
+
+/*
+* for the comand "start all" or "stop all" or "start nodename nodetype all", send the command to agent and 
+* run as backend.
+*/
+
+static void mgr_cmd_run_backend(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS)
+{
+	Relation rel_node;
+	ListCell *lc;
+	char *nodestrname;
+	HeapTuple aimtuple =NULL;
+	GetAgentCmdRst getAgentCmdRst;
+	
+	
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	initStringInfo(&(getAgentCmdRst.description));
+	foreach(lc, nodenamelist)
+	{
+		nodestrname = (char *) lfirst(lc);
+		aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodestrname, nodetype);
+		if (!HeapTupleIsValid(aimtuple))
+		{
+			heap_close(rel_node, AccessShareLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), nodestrname)));
+		}	
+		/*get execute cmd result from agent*/
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_runmode_cndn_get_result(cmdtype, &getAgentCmdRst, rel_node, aimtuple, shutdown_mode);
+		heap_freetuple(aimtuple);
+	}
+	
+	pfree(getAgentCmdRst.description.data);
+	heap_close(rel_node, AccessShareLock);
+	
+}
+
+/*
+* for the comand "start all" or "stop all" or "start nodename nodetype all", send the command to agent and 
+* run as backend, at last, check the node's status, if fail, send the command again, then get result
+*/
+Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	ListCell  **lcp;
+	ListCell  *lc;
+	HeapTuple tup_result;
+	NameData nodenamedata;
+	StringInfoData strdata;
+	StringInfoData strhint;
+	StringInfoData infosendmsg;
+	Relation rel_node;
+	HeapTuple aimtuple = NULL;
+	Form_mgr_node mgr_node;
+	AppendNodeInfo node_info;
+	bool bresult = false;
+	bool slave_is_exist = false;
+	bool slave_is_running = false;
+	int ret;
+	int iloop = 90;
+	char *host_addr;
+	char *user;
+	char *nodestrname;
+	char *typestr;
+	char *cmd_type;
+	char port_buf[10];
+
+	/* stuff done only on the first call of the function */
+	if (SRF_IS_FIRSTCALL())
+	{
+		MemoryContext oldcontext;
+
+		/* create a function context for cross-call persistence */
+		funcctx = SRF_FIRSTCALL_INIT();
+
+		/* switch to memory context appropriate for multiple function calls */
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+		/* allocate memory for user context */
+		lcp = (ListCell **) palloc(sizeof(ListCell *));
+		*lcp = list_head(nodenamelist);
+		funcctx->user_fctx = (void *) lcp;
+		/*send the command to agent, running as backend*/
+		mgr_cmd_run_backend(nodetype, cmdtype, nodenamelist, shutdown_mode, fcinfo);
+
+		/*wait the max time to check the node status*/
+		if (*lcp != NULL)
+		{
+			initStringInfo(&strhint);
+			typestr = mgr_nodetype_str(nodetype);
+			if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype
+					|| AGT_CMD_CN_START_BACKEND == cmdtype || AGT_CMD_DN_START_BACKEND == cmdtype)
+				cmd_type = "start";
+			else
+				cmd_type = "stop";
+			appendStringInfo(&strhint, "waiting max %d seconds for %s to %s ...", iloop, typestr, cmd_type);
+			ereport(LOG, (errmsg("%s", strhint.data)));
+			ereport(NOTICE, (errmsg("%s\n", strhint.data)));
+			fputs(_(strhint.data), stdout);
+			fflush(stdout);
+			pfree(strhint.data);
+			pfree(typestr);
+
+			rel_node = heap_open(NodeRelationId, AccessShareLock);
+			while(iloop-- > 0)
+			{
+				fputs(_("."), stdout);
+				fflush(stdout);
+				foreach(lc, nodenamelist)
+				{
+					nodestrname = (char *) lfirst(lc);
+					aimtuple = mgr_get_tuple_node_from_name_type(rel_node, nodestrname, nodetype);
+					if (!HeapTupleIsValid(aimtuple))
+					{
+						heap_close(rel_node, AccessShareLock);
+						ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+							errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), nodestrname)));
+					}
+					mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
+					Assert(mgr_node);
+					host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+					memset(port_buf, 0, sizeof(char)*10);
+					sprintf(port_buf, "%d", mgr_node->nodeport);
+					user = get_hostuser_from_hostoid(mgr_node->nodehost);
+					if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+						ret = pingNode_user(host_addr, port_buf, AGTM_USER);
+					else
+						ret = pingNode_user(host_addr, port_buf, user);			
+					heap_freetuple(aimtuple);
+					pfree(host_addr);
+					pfree(user);
+					if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype
+						|| AGT_CMD_CN_START_BACKEND == cmdtype || AGT_CMD_DN_START_BACKEND == cmdtype)
+					{
+						if (PQPING_OK != ret && AGENT_DOWN != ret)
+						{
+							pg_usleep(1 * 1000000L);
+							break;
+						}
+					}
+					else if (AGT_CMD_GTM_STOP_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_STOP_SLAVE_BACKEND == cmdtype
+						|| AGT_CMD_CN_STOP_BACKEND == cmdtype || AGT_CMD_DN_STOP_BACKEND == cmdtype)
+					{
+						if (PQPING_NO_RESPONSE != ret && AGENT_DOWN != ret)
+						{
+							pg_usleep(1 * 1000000L);
+							break;
+						}
+					}
+				}
+
+				if (NULL == lc)
+					iloop = -1;
+			}
+			fputs(_("\n\n"), stdout);
+			fflush(stdout);
+			heap_close(rel_node, AccessShareLock);
+		}
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/* stuff done on every call of the function */
+	funcctx = SRF_PERCALL_SETUP();
+	lcp = (ListCell **) funcctx->user_fctx;
+
+	while (*lcp != NULL)
+	{
+		bresult = false;
+		char	   *nodename = (char *) lfirst(*lcp);
+		namestrcpy(&nodenamedata, nodename);
+		*lcp = lnext(*lcp);
+		rel_node = heap_open(NodeRelationId, AccessShareLock);
+		aimtuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodenamedata), nodetype);
+		if (!HeapTupleIsValid(aimtuple))
+		{
+			heap_close(rel_node, AccessShareLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+				errmsg("%s \"%s\" does not exist", mgr_nodetype_str(nodetype), nodename)));
+		}
+		mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
+		Assert(mgr_node);
+		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		memset(port_buf, 0, sizeof(char)*10);
+		sprintf(port_buf, "%d", mgr_node->nodeport);
+		user = get_hostuser_from_hostoid(mgr_node->nodehost);
+		heap_freetuple(aimtuple);
+		/* check node running normal */
+		if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+			ret = pingNode_user(host_addr, port_buf, AGTM_USER);
+		else
+			ret = pingNode_user(host_addr, port_buf, user);
+
+		initStringInfo(&strdata);
+		pfree(host_addr);
+		pfree(user);
+		initStringInfo(&infosendmsg);
+		heap_close(rel_node, AccessShareLock);
+
+		if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype 
+				|| AGT_CMD_DN_START_BACKEND == cmdtype || AGT_CMD_CN_START_BACKEND == cmdtype)
+		{
+			if (PQPING_OK == ret)
+			{
+				bresult = true;
+				appendStringInfoString(&strdata, "success");
+			}
+			else
+			{
+				/* get the output description after cmd fail */
+				mgr_get_nodeinfo_byname_type(nodename, nodetype, false, &slave_is_exist, &slave_is_running, &node_info);
+				if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype)
+					appendStringInfo(&infosendmsg, " start -D %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, node_info.nodepath);
+				else if (AGT_CMD_CN_START_BACKEND == cmdtype)
+					appendStringInfo(&infosendmsg, " start -D %s -Z coordinator -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, node_info.nodepath);
+				else
+					appendStringInfo(&infosendmsg, " start -D %s -Z datanode -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, node_info.nodepath);
+				bresult = mgr_ma_send_cmd(mgr_change_cmdtype_unbackend(cmdtype), infosendmsg.data, node_info.nodehost, &strdata);
+				pfree_AppendNodeInfo(node_info);
+			}
+		}
+		else if (AGT_CMD_GTM_STOP_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_STOP_SLAVE_BACKEND == cmdtype 
+				|| AGT_CMD_CN_STOP_BACKEND == cmdtype || AGT_CMD_DN_STOP_BACKEND == cmdtype)
+		{
+			if (PQPING_NO_RESPONSE == ret)
+			{
+				bresult = true;
+				appendStringInfoString(&strdata, "success");
+			}
+			else
+			{
+				/* get the output description after cmd fail */
+				mgr_get_nodeinfo_byname_type(nodename, nodetype, false, &slave_is_exist, &slave_is_running, &node_info);
+				if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype)
+					appendStringInfo(&infosendmsg, " stop -D %s -m %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, shutdown_mode, node_info.nodepath);
+				else if (AGT_CMD_CN_START_BACKEND == cmdtype)
+					appendStringInfo(&infosendmsg, " stop -D %s -Z coordinator -m %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, shutdown_mode, node_info.nodepath);
+				else
+					appendStringInfo(&infosendmsg, " stop -D %s -Z datanode -m %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, shutdown_mode, node_info.nodepath);
+				bresult = mgr_ma_send_cmd(mgr_change_cmdtype_unbackend(cmdtype), infosendmsg.data, node_info.nodehost, &strdata);
+				pfree_AppendNodeInfo(node_info);
+			}
+		}
+		else
+		{
+			pfree(strdata.data);
+			pfree(infosendmsg.data);
+			ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("not support this command ID '%d'", cmdtype)));
+		}
+
+		tup_result = build_common_command_tuple(&nodenamedata, bresult, strdata.data);
+		pfree(strdata.data);
+		pfree(infosendmsg.data);
+		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(tup_result));
+	}
+
+	SRF_RETURN_DONE(funcctx);
+}
+
+char mgr_change_cmdtype_unbackend(char cmdtype)
+{
+	switch(cmdtype)
+	{
+		case	AGT_CMD_GTM_START_MASTER_BACKEND:
+			return	AGT_CMD_GTM_START_MASTER;
+
+		case	AGT_CMD_GTM_START_SLAVE_BACKEND:
+			return	AGT_CMD_GTM_START_SLAVE;
+
+		case	AGT_CMD_CN_START_BACKEND:
+			return	AGT_CMD_CN_START;
+
+		case	AGT_CMD_DN_START_BACKEND:
+			return	AGT_CMD_DN_START;
+
+		case	AGT_CMD_GTM_STOP_MASTER_BACKEND:
+			return	AGT_CMD_GTM_STOP_MASTER;
+
+		case	AGT_CMD_GTM_STOP_SLAVE_BACKEND:
+			return	AGT_CMD_GTM_STOP_SLAVE;
+
+		case	AGT_CMD_CN_STOP_BACKEND:
+			return AGT_CMD_CN_STOP;
+
+		case AGT_CMD_DN_STOP_BACKEND:
+			return AGT_CMD_DN_STOP;
+
+		default:
+			ereport(ERROR, (errcode(ERRCODE_CASE_NOT_FOUND),
+				errmsg("not support this command ID '%d'", cmdtype)));
+	}
 }
