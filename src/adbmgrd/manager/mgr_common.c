@@ -28,8 +28,9 @@ static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
 static TupleDesc ha_replication_tuple_desc = NULL;
+static TupleDesc common_command_tuple_desc_four_col = NULL;
 static void mgr_cmd_run_backend(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS);
-static TupleDesc get_common_command_tuple_desc_for_common(void);
+static TupleDesc get_common_command_tuple_desc_four_col(void);
 
 TupleDesc get_common_command_tuple_desc(void)
 {
@@ -1550,14 +1551,14 @@ char mgr_change_cmdtype_unbackend(char cmdtype)
 	}
 }
 
-HeapTuple build_common_command_tuple_secondtype(const Name name, char type, bool status, const char *description)
+HeapTuple build_common_command_tuple_four_col(const Name name, char type, bool status, const char *description)
 {
     Datum datums[4];
     bool nulls[4];
     TupleDesc desc;
     NameData typestr;
     AssertArg(name && description);
-    desc = get_common_command_tuple_desc_for_common();
+    desc = get_common_command_tuple_desc_four_col();
 
     AssertArg(desc && desc->natts == 4
         && desc->attrs[0]->atttypid == NAMEOID
@@ -1601,9 +1602,9 @@ HeapTuple build_common_command_tuple_secondtype(const Name name, char type, bool
     return heap_form_tuple(desc, datums, nulls);
 }
 
-static TupleDesc get_common_command_tuple_desc_for_common(void)
+static TupleDesc get_common_command_tuple_desc_four_col(void)
 {
-    if(common_command_tuple_desc == NULL)
+    if(common_command_tuple_desc_four_col == NULL)
     {
         MemoryContext volatile old_context = MemoryContextSwitchTo(TopMemoryContext);
         TupleDesc volatile desc = NULL;
@@ -1618,7 +1619,7 @@ static TupleDesc get_common_command_tuple_desc_for_common(void)
                                BOOLOID, -1, 0);
             TupleDescInitEntry(desc, (AttrNumber) 4, "description",
                                TEXTOID, -1, 0);
-            common_command_tuple_desc = BlessTupleDesc(desc);
+            common_command_tuple_desc_four_col = BlessTupleDesc(desc);
         }PG_CATCH();
         {
             if(desc)
@@ -1627,6 +1628,6 @@ static TupleDesc get_common_command_tuple_desc_for_common(void)
         }PG_END_TRY();
         (void)MemoryContextSwitchTo(old_context);
     }
-    Assert(common_command_tuple_desc);
-    return common_command_tuple_desc;
+    Assert(common_command_tuple_desc_four_col);
+    return common_command_tuple_desc_four_col;
 }

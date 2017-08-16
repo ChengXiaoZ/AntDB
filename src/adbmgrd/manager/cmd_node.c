@@ -7561,7 +7561,7 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 		mgr_node->nodeincluster = false;
 		heap_inplace_update(info->rel_node, tuple);
 	}
-	tup_result = build_common_command_tuple_secondtype(
+	tup_result = build_common_command_tuple_four_col(
 		&(mgr_node->nodename)
 		,mgr_node->nodetype
 		,getAgentCmdRst.ret
