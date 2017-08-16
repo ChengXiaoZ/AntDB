@@ -73,7 +73,9 @@ static TupleDesc get_common_command_tuple_desc_for_monitor(void);
 HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,char type
                                                         ,bool status
-                                                        ,const char *description);
+                                                        ,const char *description
+                                                        ,const Name hostaddr
+                                                        ,const int port);
 static void mgr_get_appendnodeinfo(char node_type, AppendNodeInfo *appendnodeinfo);
 static void mgr_append_init_cndnmaster(AppendNodeInfo *appendnodeinfo);
 static void mgr_get_agtm_host_and_port(StringInfo infosendmsg);
@@ -2174,6 +2176,7 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	StringInfoData strdata;
+	NameData host;
 	char *host_addr = NULL;
 	char *user = NULL;
 	const char *error_str = NULL;
@@ -2254,12 +2257,14 @@ Datum mgr_monitor_all(PG_FUNCTION_ARGS)
 	else
 		error_str = "could not establish host connection";
 
-
+	namestrcpy(&host, host_addr);
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == PQPING_OK ? true:false
-				,error_str);
+				,error_str
+				,&host
+				,mgr_node->nodeport);
 	if(AGENT_DOWN == ret)
 		pfree(strdata.data);
 	pfree(port.data);
@@ -2280,6 +2285,7 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	StringInfoData strdata;
+	NameData host;
 	char *host_addr = NULL;
 	bool is_valid = false;
 	const char *error_str = NULL;
@@ -2355,11 +2361,14 @@ Datum mgr_monitor_datanode_all(PG_FUNCTION_ARGS)
 			else
 				error_str = "could not establish host connection";
 
+			namestrcpy(&host, host_addr);
 			tup_result = build_common_command_tuple_for_monitor(
 						&(mgr_node->nodename)
 						,mgr_node->nodetype
 						,ret == 0 ? true:false
-						,error_str);
+						,error_str
+						,&host
+						,mgr_node->nodeport);
 
 			pfree(user);
 			pfree(port.data);
@@ -2390,6 +2399,7 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	StringInfoData strdata;
+	NameData host;
 	char *host_addr;
 	bool is_valid = false;
 	const char *error_str = NULL;
@@ -2463,11 +2473,14 @@ Datum mgr_monitor_gtm_all(PG_FUNCTION_ARGS)
 			else
 				error_str = "could not establish host connection";
 
+			namestrcpy(&host, host_addr);
 			tup_result = build_common_command_tuple_for_monitor(
 						&(mgr_node->nodename)
 						,mgr_node->nodetype
 						,ret == 0 ? true:false
-						,error_str);
+						,error_str
+						,&host
+						,mgr_node->nodeport);
 			pfree(port.data);
 			pfree(host_addr);
 			if(AGENT_DOWN == ret)
@@ -2497,6 +2510,7 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_node;
 	StringInfoData port;
 	StringInfoData strdata;
+	NameData host;
 	char *host_addr;
 	char *nodename;
 	bool is_valid = false;
@@ -2618,11 +2632,14 @@ Datum mgr_monitor_nodetype_namelist(PG_FUNCTION_ARGS)
 	else
 		error_str = "could not establish host connection";
 
+	namestrcpy(&host, host_addr);
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,error_str);
+				,error_str
+				,&host
+				,mgr_node->nodeport);
 
 	pfree(user);
 	pfree(port.data);
@@ -2646,6 +2663,7 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	ScanKeyData  key[1];
 	StringInfoData port;
 	StringInfoData strdata;
+	NameData host;
 	char *host_addr;
 	char *user;
 	int ret = 0;
@@ -2738,11 +2756,14 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 	else
 		error_str = "could not establish host connection";
 
+	namestrcpy(&host, host_addr);
 	tup_result = build_common_command_tuple_for_monitor(
 				&(mgr_node->nodename)
 				,mgr_node->nodetype
 				,ret == 0 ? true:false
-				,error_str);
+				,error_str
+				,&host
+				,mgr_node->nodeport);
 
 	pfree(user);
 	pfree(port.data);
@@ -2755,52 +2776,61 @@ Datum mgr_monitor_nodetype_all(PG_FUNCTION_ARGS)
 HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,char type
                                                         ,bool status
-                                                        ,const char *description)
+                                                        ,const char *description
+                                                        ,const Name hostaddr
+                                                        ,const int port)
 {
-    Datum datums[4];
-    bool nulls[4];
+    Datum datums[6];
+    bool nulls[6];
     TupleDesc desc;
+    NameData typestr;
     AssertArg(name && description);
     desc = get_common_command_tuple_desc_for_monitor();
 
-    AssertArg(desc && desc->natts == 4
+    AssertArg(desc && desc->natts == 6
         && desc->attrs[0]->atttypid == NAMEOID
         && desc->attrs[1]->atttypid == NAMEOID
         && desc->attrs[2]->atttypid == BOOLOID
-        && desc->attrs[3]->atttypid == TEXTOID);
+        && desc->attrs[3]->atttypid == TEXTOID
+        && desc->attrs[4]->atttypid == NAMEOID
+        && desc->attrs[5]->atttypid == INT4OID);
 
     switch(type)
     {
         case GTM_TYPE_GTM_MASTER:
-                datums[1] = NameGetDatum(pstrdup("gtm master"));
+                namestrcpy(&typestr, "gtm master");
                 break;
         case GTM_TYPE_GTM_SLAVE:
-                datums[1] = NameGetDatum(pstrdup("gtm slave"));
+                namestrcpy(&typestr, "gtm slave");
                 break;
         case GTM_TYPE_GTM_EXTRA:
-                datums[1] = NameGetDatum(pstrdup("gtm extra"));
+                namestrcpy(&typestr, "gtm extra");
                 break;
         case CNDN_TYPE_COORDINATOR_MASTER:
-                datums[1] = NameGetDatum(pstrdup("coordinator"));
+                namestrcpy(&typestr, "coordinator");
                 break;
         case CNDN_TYPE_DATANODE_MASTER:
-                datums[1] = NameGetDatum(pstrdup("datanode master"));
+                namestrcpy(&typestr, "datanode master");
                 break;
         case CNDN_TYPE_DATANODE_SLAVE:
-                datums[1] = NameGetDatum(pstrdup("datanode slave"));
+                namestrcpy(&typestr, "datanode slave");
                 break;
         case CNDN_TYPE_DATANODE_EXTRA:
-                datums[1] = NameGetDatum(pstrdup("datanode extra"));
+                namestrcpy(&typestr, "datanode extra");
                 break;
         default:
-                datums[1] = NameGetDatum(pstrdup("unknown type"));
+                namestrcpy(&typestr, "unknown type");
                 break;
     }
 
+   
     datums[0] = NameGetDatum(name);
+    datums[1] = NameGetDatum(&typestr);
     datums[2] = BoolGetDatum(status);
     datums[3] = CStringGetTextDatum(description);
-    nulls[0] = nulls[1] = nulls[2] = nulls[3] = false;
+    datums[4] = NameGetDatum(hostaddr);
+    datums[5] = Int32GetDatum(port);
+    nulls[0] = nulls[1] = nulls[2] = nulls[3] = nulls[4] = nulls[5] = false;
     return heap_form_tuple(desc, datums, nulls);
 }
 
@@ -2812,7 +2842,7 @@ static TupleDesc get_common_command_tuple_desc_for_monitor(void)
         TupleDesc volatile desc = NULL;
         PG_TRY();
         {
-            desc = CreateTemplateTupleDesc(4, false);
+            desc = CreateTemplateTupleDesc(6, false);
             TupleDescInitEntry(desc, (AttrNumber) 1, "nodename",
                                NAMEOID, -1, 0);
             TupleDescInitEntry(desc, (AttrNumber) 2, "nodetype",
@@ -2821,6 +2851,10 @@ static TupleDesc get_common_command_tuple_desc_for_monitor(void)
                                BOOLOID, -1, 0);
             TupleDescInitEntry(desc, (AttrNumber) 4, "description",
                                TEXTOID, -1, 0);
+            TupleDescInitEntry(desc, (AttrNumber) 5, "host",
+                               NAMEOID, -1, 0);
+            TupleDescInitEntry(desc, (AttrNumber) 6, "port",
+                               INT4OID, -1, 0);
             common_command_tuple_desc = BlessTupleDesc(desc);
         }PG_CATCH();
         {
@@ -7527,7 +7561,7 @@ static Datum mgr_prepare_clean_all(PG_FUNCTION_ARGS)
 		mgr_node->nodeincluster = false;
 		heap_inplace_update(info->rel_node, tuple);
 	}
-	tup_result = build_common_command_tuple_for_monitor(
+	tup_result = build_common_command_tuple_secondtype(
 		&(mgr_node->nodename)
 		,mgr_node->nodetype
 		,getAgentCmdRst.ret

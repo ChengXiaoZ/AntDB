@@ -29,7 +29,7 @@ static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
 static TupleDesc ha_replication_tuple_desc = NULL;
 static void mgr_cmd_run_backend(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS);
-
+static TupleDesc get_common_command_tuple_desc_for_common(void);
 
 TupleDesc get_common_command_tuple_desc(void)
 {
@@ -1548,4 +1548,85 @@ char mgr_change_cmdtype_unbackend(char cmdtype)
 			ereport(ERROR, (errcode(ERRCODE_CASE_NOT_FOUND),
 				errmsg("not support this command ID '%d'", cmdtype)));
 	}
+}
+
+HeapTuple build_common_command_tuple_secondtype(const Name name, char type, bool status, const char *description)
+{
+    Datum datums[4];
+    bool nulls[4];
+    TupleDesc desc;
+    NameData typestr;
+    AssertArg(name && description);
+    desc = get_common_command_tuple_desc_for_common();
+
+    AssertArg(desc && desc->natts == 4
+        && desc->attrs[0]->atttypid == NAMEOID
+        && desc->attrs[1]->atttypid == NAMEOID
+        && desc->attrs[2]->atttypid == BOOLOID
+        && desc->attrs[3]->atttypid == TEXTOID);
+
+    switch(type)
+    {
+        case GTM_TYPE_GTM_MASTER:
+                namestrcpy(&typestr, "gtm master");
+                break;
+        case GTM_TYPE_GTM_SLAVE:
+                namestrcpy(&typestr, "gtm slave");
+                break;
+        case GTM_TYPE_GTM_EXTRA:
+                namestrcpy(&typestr, "gtm extra");
+                break;
+        case CNDN_TYPE_COORDINATOR_MASTER:
+                namestrcpy(&typestr, "coordinator");
+                break;
+        case CNDN_TYPE_DATANODE_MASTER:
+                namestrcpy(&typestr, "datanode master");
+                break;
+        case CNDN_TYPE_DATANODE_SLAVE:
+                namestrcpy(&typestr, "datanode slave");
+                break;
+        case CNDN_TYPE_DATANODE_EXTRA:
+                namestrcpy(&typestr, "datanode extra");
+                break;
+        default:
+                namestrcpy(&typestr, "unknown type");
+                break;
+    }
+
+    datums[0] = NameGetDatum(name);
+    datums[1] = NameGetDatum(&typestr);
+    datums[2] = BoolGetDatum(status);
+    datums[3] = CStringGetTextDatum(description);
+    nulls[0] = nulls[1] = nulls[2] = nulls[3] = false;
+    return heap_form_tuple(desc, datums, nulls);
+}
+
+static TupleDesc get_common_command_tuple_desc_for_common(void)
+{
+    if(common_command_tuple_desc == NULL)
+    {
+        MemoryContext volatile old_context = MemoryContextSwitchTo(TopMemoryContext);
+        TupleDesc volatile desc = NULL;
+        PG_TRY();
+        {
+            desc = CreateTemplateTupleDesc(4, false);
+            TupleDescInitEntry(desc, (AttrNumber) 1, "nodename",
+                               NAMEOID, -1, 0);
+            TupleDescInitEntry(desc, (AttrNumber) 2, "nodetype",
+                               NAMEOID, -1, 0);
+            TupleDescInitEntry(desc, (AttrNumber) 3, "status",
+                               BOOLOID, -1, 0);
+            TupleDescInitEntry(desc, (AttrNumber) 4, "description",
+                               TEXTOID, -1, 0);
+            common_command_tuple_desc = BlessTupleDesc(desc);
+        }PG_CATCH();
+        {
+            if(desc)
+                FreeTupleDesc(desc);
+            PG_RE_THROW();
+        }PG_END_TRY();
+        (void)MemoryContextSwitchTo(old_context);
+    }
+    Assert(common_command_tuple_desc);
+    return common_command_tuple_desc;
 }

@@ -5142,19 +5142,19 @@ DESCR("start coordinator master");
 DATA(insert OID = 3190 ( mgr_stop_cn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_stop_cn_master _null_ _null_ _null_ ));
 DESCR("stop coordinator master namelist");
 
-DATA(insert OID = 3214 (  mgr_monitor_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_all _null_ _null_ _null_ ));
+DATA(insert OID = 3214 (  mgr_monitor_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25,19,23}" "{o,o,o,o,o,o}" "{nodename,nodetype,status,description,host,port}" _null_ mgr_monitor_all _null_ _null_ _null_ ));
 DESCR("monitor all");
 
-DATA(insert OID = 3935 (  mgr_monitor_datanode_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_datanode_all _null_ _null_ _null_ ));
+DATA(insert OID = 3935 (  mgr_monitor_datanode_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25,19,23}" "{o,o,o,o,o,o}" "{nodename,nodetype,status,description,host,port}" _null_ mgr_monitor_datanode_all _null_ _null_ _null_ ));
 DESCR("monitor datanode all");
 
-DATA(insert OID = 3457 (  mgr_monitor_gtm_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_gtm_all _null_ _null_ _null_ ));
+DATA(insert OID = 3457 (  mgr_monitor_gtm_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25,19,23}" "{o,o,o,o,o,o}" "{nodename,nodetype,status,description,host,port}" _null_ mgr_monitor_gtm_all _null_ _null_ _null_ ));
 DESCR("monitor gtm all");
 
-DATA(insert OID = 3196 (  mgr_monitor_nodetype_namelist           PGNSP PGUID 12 1 0 2276 0 f f f f f f s 2 0 2249 "20 2276" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_nodetype_namelist _null_ _null_ _null_ ));
+DATA(insert OID = 3196 (  mgr_monitor_nodetype_namelist           PGNSP PGUID 12 1 0 2276 0 f f f f f f s 2 0 2249 "20 2276" "{19,19,16,25,19,23}" "{o,o,o,o,o,o}" "{nodename,nodetype,status,description,host,port}" _null_ mgr_monitor_nodetype_namelist _null_ _null_ _null_ ));
 DESCR("monitor node type namelist");
 
-DATA(insert OID = 3197 (  mgr_monitor_nodetype_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "20" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_nodetype_all _null_ _null_ _null_ ));
+DATA(insert OID = 3197 (  mgr_monitor_nodetype_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "20" "{19,19,16,25,19,23}" "{o,o,o,o,o,o}" "{nodename,nodetype,status,description,host,port}" _null_ mgr_monitor_nodetype_all _null_ _null_ _null_ ));
 DESCR("monitor nodetype all");
 
 DATA(insert OID = 4913 (  mgr_monitor_agent_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_monitor_agent_all _null_ _null_ _null_ ));

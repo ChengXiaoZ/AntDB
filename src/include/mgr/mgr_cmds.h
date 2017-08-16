@@ -275,6 +275,7 @@ extern bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodep
 extern char mgr_get_master_type(char nodetype);
 Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS);
 extern char mgr_change_cmdtype_unbackend(char cmdtype);
+extern HeapTuple build_common_command_tuple_secondtype(const Name name, char type, bool status, const char *description);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
@@ -376,7 +377,9 @@ extern void mgr_start_node(char nodetype, const char *nodepath, Oid hostoid);
 extern HeapTuple build_common_command_tuple_for_monitor(const Name name
                                                         ,char type
                                                         ,bool status
-                                                        ,const char *description);
+                                                        ,const char *description
+                                                        ,const Name hostaddr
+                                                        ,const int port);
 extern void mgr_get_self_address(char *server_address, int server_port, Name self_address);
 
 #endif /* MGR_CMDS_H */
