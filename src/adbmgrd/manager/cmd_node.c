@@ -5961,6 +5961,7 @@ Datum mgr_failover_one_dn_inner_func(char *nodename, char cmdtype, char nodetype
 		&(getAgentCmdRst.nodename)
 		, getAgentCmdRst.ret
 		, getAgentCmdRst.description.data);
+	ereport(LOG, (errmsg("the command for failover:\nresult is: %s\ndescription is: %s\n", getAgentCmdRst.ret == true ? "true" : "false", getAgentCmdRst.description.data)));
 	pfree(getAgentCmdRst.description.data);
 	heap_close(rel_node, RowExclusiveLock);
 	return HeapTupleGetDatum(tup_result);

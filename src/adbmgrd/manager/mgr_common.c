@@ -1316,6 +1316,10 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 	bool bresult = false;
 	bool slave_is_exist = false;
 	bool slave_is_running = false;
+	bool binit = false;
+	bool bstartcmd = false;
+	bool bstopcmd = false;
+	bool bgtmtype = false;
 	int ret;
 	int iloop = 90;
 	char *host_addr;
@@ -1325,6 +1329,11 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 	char *cmd_type;
 	char port_buf[10];
 
+	bstartcmd = (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype
+								|| AGT_CMD_CN_START_BACKEND == cmdtype || AGT_CMD_DN_START_BACKEND == cmdtype);
+	bstopcmd = (AGT_CMD_GTM_STOP_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_STOP_SLAVE_BACKEND == cmdtype
+								|| AGT_CMD_CN_STOP_BACKEND == cmdtype || AGT_CMD_DN_STOP_BACKEND == cmdtype);
+	bgtmtype = (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype);
 	/* stuff done only on the first call of the function */
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -1348,8 +1357,7 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 		{
 			initStringInfo(&strhint);
 			typestr = mgr_nodetype_str(nodetype);
-			if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype
-					|| AGT_CMD_CN_START_BACKEND == cmdtype || AGT_CMD_DN_START_BACKEND == cmdtype)
+			if (bstartcmd)
 				cmd_type = "start";
 			else
 				cmd_type = "stop";
@@ -1378,28 +1386,27 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 					}
 					mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 					Assert(mgr_node);
+					binit = mgr_node->nodeinited;
 					host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 					memset(port_buf, 0, sizeof(char)*10);
 					sprintf(port_buf, "%d", mgr_node->nodeport);
 					user = get_hostuser_from_hostoid(mgr_node->nodehost);
-					if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+					if (bgtmtype)
 						ret = pingNode_user(host_addr, port_buf, AGTM_USER);
 					else
 						ret = pingNode_user(host_addr, port_buf, user);			
 					heap_freetuple(aimtuple);
 					pfree(host_addr);
 					pfree(user);
-					if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype
-						|| AGT_CMD_CN_START_BACKEND == cmdtype || AGT_CMD_DN_START_BACKEND == cmdtype)
+					if (bstartcmd)
 					{
-						if (PQPING_OK != ret && AGENT_DOWN != ret)
+						if (PQPING_OK != ret && PQPING_REJECT != ret && AGENT_DOWN != ret && binit)
 						{
 							pg_usleep(1 * 1000000L);
 							break;
 						}
 					}
-					else if (AGT_CMD_GTM_STOP_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_STOP_SLAVE_BACKEND == cmdtype
-						|| AGT_CMD_CN_STOP_BACKEND == cmdtype || AGT_CMD_DN_STOP_BACKEND == cmdtype)
+					else if (bstopcmd)
 					{
 						if (PQPING_NO_RESPONSE != ret && AGENT_DOWN != ret)
 						{
@@ -1439,27 +1446,34 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 		}
 		mgr_node = (Form_mgr_node)GETSTRUCT(aimtuple);
 		Assert(mgr_node);
+		binit = mgr_node->nodeinited;
 		host_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 		memset(port_buf, 0, sizeof(char)*10);
 		sprintf(port_buf, "%d", mgr_node->nodeport);
 		user = get_hostuser_from_hostoid(mgr_node->nodehost);
 		heap_freetuple(aimtuple);
 		/* check node running normal */
-		if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+		if (bgtmtype)
 			ret = pingNode_user(host_addr, port_buf, AGTM_USER);
 		else
 			ret = pingNode_user(host_addr, port_buf, user);
 
-		initStringInfo(&strdata);
 		pfree(host_addr);
 		pfree(user);
+		initStringInfo(&strdata);
 		initStringInfo(&infosendmsg);
 		heap_close(rel_node, AccessShareLock);
 
-		if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype 
-				|| AGT_CMD_DN_START_BACKEND == cmdtype || AGT_CMD_CN_START_BACKEND == cmdtype)
+		if (bstartcmd)
 		{
-			if (PQPING_OK == ret)
+			if (!binit)
+			{
+				bresult = false;
+				typestr = mgr_nodetype_str(nodetype);
+				appendStringInfo(&strdata, "%s \"%s\" has not been initialized", typestr, nodename);
+				pfree(typestr);
+			}
+			else if (PQPING_OK == ret ||  PQPING_REJECT ==  ret)
 			{
 				bresult = true;
 				appendStringInfoString(&strdata, "success");
@@ -1467,6 +1481,13 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 			else
 			{
 				/* get the output description after cmd fail */
+				if (AGENT_DOWN != ret)
+				{
+					typestr = mgr_nodetype_str(nodetype);
+					ereport(LOG, (errmsg("try start %s %s again", typestr, nodename)));
+					ereport(WARNING, (errmsg("try start %s %s again", typestr, nodename)));
+					pfree(typestr);
+				}
 				mgr_get_nodeinfo_byname_type(nodename, nodetype, false, &slave_is_exist, &slave_is_running, &node_info);
 				if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype)
 					appendStringInfo(&infosendmsg, " start -D %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, node_info.nodepath);
@@ -1478,10 +1499,9 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 				pfree_AppendNodeInfo(node_info);
 			}
 		}
-		else if (AGT_CMD_GTM_STOP_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_STOP_SLAVE_BACKEND == cmdtype 
-				|| AGT_CMD_CN_STOP_BACKEND == cmdtype || AGT_CMD_DN_STOP_BACKEND == cmdtype)
+		else if (bstopcmd)
 		{
-			if (PQPING_NO_RESPONSE == ret)
+			if (PQPING_NO_RESPONSE == ret && binit)
 			{
 				bresult = true;
 				appendStringInfoString(&strdata, "success");
@@ -1489,13 +1509,20 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 			else
 			{
 				/* get the output description after cmd fail */
+				if (AGENT_DOWN != ret)
+				{
+					typestr = mgr_nodetype_str(nodetype);
+					ereport(LOG, (errmsg("try stop %s %s again", typestr, nodename)));
+					ereport(WARNING, (errmsg("try stop %s %s again", typestr, nodename)));
+					pfree(typestr);
+				}
 				mgr_get_nodeinfo_byname_type(nodename, nodetype, false, &slave_is_exist, &slave_is_running, &node_info);
 				if (AGT_CMD_GTM_START_MASTER_BACKEND == cmdtype || AGT_CMD_GTM_START_SLAVE_BACKEND == cmdtype)
-					appendStringInfo(&infosendmsg, " stop -D %s -m %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, shutdown_mode, node_info.nodepath);
+					appendStringInfo(&infosendmsg, " stop -D %s -m %s -o -i -w -c -t 3", node_info.nodepath, shutdown_mode);
 				else if (AGT_CMD_CN_START_BACKEND == cmdtype)
-					appendStringInfo(&infosendmsg, " stop -D %s -Z coordinator -m %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, shutdown_mode, node_info.nodepath);
+					appendStringInfo(&infosendmsg, " stop -D %s -Z coordinator -m %s -o -i -w -c -t 3", node_info.nodepath, shutdown_mode);
 				else
-					appendStringInfo(&infosendmsg, " stop -D %s -Z datanode -m %s -o -i -w -c -t 3 -l %s/logfile", node_info.nodepath, shutdown_mode, node_info.nodepath);
+					appendStringInfo(&infosendmsg, " stop -D %s -Z datanode -m %s -o -i -w -c -t 3", node_info.nodepath, shutdown_mode);
 				bresult = mgr_ma_send_cmd(mgr_change_cmdtype_unbackend(cmdtype), infosendmsg.data, node_info.nodehost, &strdata);
 				pfree_AppendNodeInfo(node_info);
 			}
