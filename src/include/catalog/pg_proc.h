@@ -5373,6 +5373,12 @@ DESCR("manual refresh pgxcnode");
 DATA(insert OID = 4976 ( mgr_failover_manual_rewind_func  PGNSP PGUID 12 1 0 0 0 f f f f t f s 2 0 16 "23 2275" _null_ _null_ _null_ _null_ mgr_failover_manual_rewind_func _null_ _null_ _null_ ));
 DESCR("manual wind");
 
+DATA(insert OID = 4978 (  mgr_append_coord_to_coord        PGNSP PGUID 12 10 400 0 0 f f f f t t s 2 0 2249 "2275 2275" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_append_coord_to_coord _null_ _null_ _null_ ));
+DESCR("mgr append coordiantor to coordinator");
+
+DATA(insert OID = 4980 (  mgr_append_activate_coord       PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_append_activate_coord _null_ _null_ _null_ ));
+DESCR("mgr append activate coordinator");
+
 #endif
 
 #ifdef ADB

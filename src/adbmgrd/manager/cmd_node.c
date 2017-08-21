@@ -156,7 +156,6 @@ static Oid mgr_get_role_oid_or_public(const char *rolname);
 static void mgr_priv_all(char command_type, char *username_list_str);
 static int mgr_pqexec_boolsql_try_maxnum(PGconn **pg_conn, char *sqlstr, const int maxnum);
 static bool mgr_extension_pg_stat_statements(char cmdtype, char *extension_name);
-static bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result);
 static bool mgr_check_syncstate_node_exist(Relation rel, Name mastername, char mastertype, int sync_state_type, Oid excludeoid);
 static bool mgr_check_syncstate_node_exist_incluster(Relation rel, Name mastername, char mastertype, int sync_state_type, Oid excludeoid);
 static bool mgr_check_node_path(Relation rel, Oid hostoid, char *path);
@@ -1520,7 +1519,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	if(AGT_CMD_CNDN_CNDN_INIT != cmdtype && AGT_CMD_GTM_INIT != cmdtype && AGT_CMD_GTM_SLAVE_INIT != cmdtype 
 		&& AGT_CMD_CLEAN_NODE != cmdtype && AGT_CMD_GTM_STOP_MASTER != cmdtype && AGT_CMD_GTM_STOP_SLAVE != cmdtype 
 		&& AGT_CMD_CN_STOP != cmdtype && AGT_CMD_DN_STOP != cmdtype && !mgr_node->nodeinited
-		&& AGT_CMD_DN_RESTART != cmdtype 
+		&& AGT_CMD_DN_RESTART != cmdtype && AGT_CMD_CN_RESTART != cmdtype
 		&& AGT_CMD_GTM_STOP_MASTER_BACKEND != cmdtype && AGT_CMD_GTM_STOP_SLAVE_BACKEND != cmdtype 
 		&& AGT_CMD_CN_STOP_BACKEND != cmdtype && AGT_CMD_DN_STOP_BACKEND != cmdtype)
 	{
@@ -7970,7 +7969,6 @@ void mgr_get_cmd_head_word(char cmdtype, char *str)
 			strcpy(str, "pg_ctl");
 			break;
 		case AGT_CMD_GTM_CLEAN:
-		case AGT_CMD_RM:
 		case AGT_CMD_CLEAN_NODE:
 			strcpy(str, "");
 			break;
@@ -8009,6 +8007,9 @@ void mgr_get_cmd_head_word(char cmdtype, char *str)
 			break;
 		case AGT_CMD_CHECK_DIR_EXIST:
 			strcpy(str, "check directory");
+			break;
+		case AGT_CMD_RM:
+			strcpy(str, "rm ");
 			break;
 		default:
 			strcpy(str, "unknown cmd");
@@ -11063,7 +11064,7 @@ bool mgr_check_node_recovery_finish(char nodetype, Oid hostoid, int nodeport, ch
 /*
 * check the param reload in postgresql.conf
 */
-static bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result)
+bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result)
 {
 	StringInfoData resultstrdata;
 	StringInfoData sqlstrdata;

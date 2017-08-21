@@ -393,16 +393,16 @@ static void cmd_rm_temp_file(StringInfo msg)
 {
 	const char *rec_msg_string = NULL;
 	StringInfoData output;
-	int res;
 
 	initStringInfo(&output);
 	rec_msg_string = agt_getmsgstring(msg);
 
-	res = system(rec_msg_string);
-	if (res != 0)
+	/* check file exist*/
+	errno = 0;
+	unlink(rec_msg_string);
+	if (errno != 0)
 	{
-		appendStringInfo(&output, "do command fail: %s", rec_msg_string);
-		ereport(LOG, (errmsg("do command fail: %s", rec_msg_string)));
+		ereport(ERROR, (errmsg("do command \"unlink %s\" fail: %s",  rec_msg_string, strerror(errno))));
 	}
 	else
 		appendStringInfoString(&output, "success");

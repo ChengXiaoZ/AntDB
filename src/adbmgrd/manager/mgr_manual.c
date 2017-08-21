@@ -51,6 +51,8 @@ static struct enum_sync_state sync_state_tab[] =
 	{-1, NULL}
 };
 
+static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, int iloop, const int res_type, StringInfo strinfo);
+
 /*
 * promote the node to master; delete the old master tuple in node systable, delete 
 * the old master param in param table ; set type of the new master as master type in node
@@ -575,3 +577,643 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(res);
 }
+
+/*
+* use pg_basebackup to add a new coordinator as the given coordiantor's slave
+*/
+Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
+{
+	GetAgentCmdRst getAgentCmdRst;
+	AppendNodeInfo src_nodeinfo;
+	AppendNodeInfo dest_nodeinfo;
+	StringInfoData infosendmsg;
+	StringInfoData restmsg;
+	StringInfoData strerr;
+	HeapTuple tup_result;
+	HeapTuple tuple;
+	NameData nodename;
+	Relation rel_node;
+	Form_mgr_node mgr_node;
+	HeapScanDesc rel_scan;
+	ScanKeyData key[2];
+	Datum datumPath;
+	char port_buf[10];
+	char *m_coordname;
+	char *s_coordname;
+	char *nodepath;
+	char *nodetypestr;
+	bool b_exist_src = false;
+	bool b_running_src = false;
+	bool b_exist_dest = false;
+	bool b_running_dest = false;
+	bool res = false;
+	bool isNull = false;
+	int iloop = 0;
+
+	/* get the input variable */
+	m_coordname = PG_GETARG_CSTRING(0);
+	s_coordname = PG_GETARG_CSTRING(1);
+
+	namestrcpy(&nodename, s_coordname);
+	/* check the source coordinator status */
+	get_nodeinfo_byname(m_coordname, CNDN_TYPE_COORDINATOR_MASTER, &b_exist_src, &b_running_src, &src_nodeinfo);
+	if (!b_exist_src)
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("coordinator \"%s\" does not exist in cluster", m_coordname)));
+	}
+	if (!b_running_src)
+	{
+		pfree_AppendNodeInfo(src_nodeinfo);
+		ereport(ERROR, (errmsg("coordinator \"%s\" is not running normal", m_coordname)));
+	}
+	/* check the source coordinator the parameters in postgresql.conf */
+	if (!mgr_check_param_reload_postgresqlconf(CNDN_TYPE_COORDINATOR_MASTER, src_nodeinfo.nodehost, src_nodeinfo.nodeport, src_nodeinfo.nodeaddr, "wal_level", "hot_standby"))
+	{
+		pfree_AppendNodeInfo(src_nodeinfo);
+		ereport(ERROR, (errmsg("the parameter \"wal_level\" in coordinator \"%s\" postgresql.conf is not \"hot_standby\"", m_coordname)));
+	}
+
+	/* check dest coordinator */
+	mgr_get_nodeinfo_byname_type(s_coordname, CNDN_TYPE_COORDINATOR_MASTER, false, &b_exist_dest, &b_running_dest, &dest_nodeinfo);
+	if (!b_exist_dest)
+	{
+		pfree_AppendNodeInfo(src_nodeinfo);
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("coordinator \"%s\" does not exist", s_coordname)));
+	}
+	if (mgr_check_node_exist_incluster(&nodename, CNDN_TYPE_COORDINATOR_MASTER, true))
+	{
+		pfree_AppendNodeInfo(src_nodeinfo);
+		pfree_AppendNodeInfo(dest_nodeinfo);
+		ereport(ERROR, (errmsg("coordinator \"%s\" already exists in cluster", s_coordname)));
+	}
+	
+	memset(port_buf, 0, sizeof(char)*10);
+	snprintf(port_buf, sizeof(port_buf), "%d", dest_nodeinfo.nodeport);
+	res = pingNode_user(dest_nodeinfo.nodeaddr, port_buf, dest_nodeinfo.nodeusername);
+	if (PQPING_OK == res || PQPING_REJECT == res)
+		ereport(ERROR, (errmsg("%s on port %d, coordinator \"%s\" is running", dest_nodeinfo.nodeaddr, dest_nodeinfo.nodeport, s_coordname)));	
+	/* check the folder of dest coordinator */
+	mgr_check_dir_exist_and_priv(dest_nodeinfo.nodehost, dest_nodeinfo.nodepath);
+
+	/* make source coordinator to allow build stream replication */
+	initStringInfo(&infosendmsg);
+	ereport(LOG, (errmsg("update pg_hba.conf of coordinator \"%s\"", m_coordname)));
+	ereport(NOTICE, (errmsg("update pg_hba.conf of coordinator \"%s\"", m_coordname)));
+	mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", dest_nodeinfo.nodeusername, dest_nodeinfo.nodeaddr, 32, "trust", &infosendmsg);
+	initStringInfo(&(getAgentCmdRst.description));
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF
+								,src_nodeinfo.nodepath
+								,&infosendmsg
+								,src_nodeinfo.nodehost
+								,&getAgentCmdRst);
+	if (!getAgentCmdRst.ret)
+	{
+		pfree(infosendmsg.data);
+		pfree_AppendNodeInfo(src_nodeinfo);
+		pfree_AppendNodeInfo(dest_nodeinfo);
+		ereport(ERROR, (errmsg("update pg_hba.conf of coordinator \"%s\" fail, %s", m_coordname, getAgentCmdRst.description.data)));
+	}
+	mgr_reload_conf(src_nodeinfo.nodehost, src_nodeinfo.nodepath);
+
+	/*base backup*/
+	initStringInfo(&restmsg);
+	resetStringInfo(&infosendmsg);
+	appendStringInfo(&infosendmsg, " -h %s -p %d -U %s -D %s -Xs -Fp -c fast -R", src_nodeinfo.nodeaddr
+										, src_nodeinfo.nodeport, src_nodeinfo.nodeusername, dest_nodeinfo.nodepath);
+	if (!mgr_ma_send_cmd(AGT_CMD_CNDN_SLAVE_INIT, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg))
+	{
+		pfree_AppendNodeInfo(src_nodeinfo);
+		pfree_AppendNodeInfo(dest_nodeinfo);
+		ereport(ERROR, (errmsg("execute command \"pg_basebackup %s\" fail, %s", infosendmsg.data, restmsg.data)));
+	}
+
+	/* change the dest coordiantor port and hot_standby*/
+	initStringInfo(&strerr);
+	resetStringInfo(&infosendmsg);
+	resetStringInfo(&(getAgentCmdRst.description));
+	mgr_add_parm(s_coordname, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+	mgr_append_pgconf_paras_str_int("port", dest_nodeinfo.nodeport, &infosendmsg);
+	mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+	ereport(LOG, (errmsg("update port=%d, hot_standby=on in postgresql.conf of coordinator \"%s\"", dest_nodeinfo.nodeport, s_coordname)));
+	ereport(NOTICE, (errmsg("update port=%d, hot_standby=on in postgresql.conf of coordinator \"%s\"", dest_nodeinfo.nodeport, s_coordname)));
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, dest_nodeinfo.nodepath, &infosendmsg, dest_nodeinfo.nodehost, &getAgentCmdRst);
+	if (!getAgentCmdRst.ret)
+	{
+		appendStringInfo(&strerr, "update \"port=%d, hot_standby=on\" in postgresql.conf of coordinator \"%s\" fail, %s\n"
+		, dest_nodeinfo.nodeport, s_coordname, getAgentCmdRst.description.data);
+		ereport(WARNING, (errmsg("update port=%d, hot_standby=on in postgresql.conf of coordinator \"%s\" fail, %s"
+		, dest_nodeinfo.nodeport, s_coordname, getAgentCmdRst.description.data)));
+	}
+	/* update recovery.conf of coordinator*/
+	resetStringInfo(&restmsg);
+	resetStringInfo(&infosendmsg);
+	resetStringInfo(&(getAgentCmdRst.description));
+	ereport(LOG, (errmsg("update recovery.conf of coordinator \"%s\"", s_coordname)));
+	ereport(NOTICE, (errmsg("update recovery.conf of coordinator \"%s\"", s_coordname)));
+	appendStringInfo(&restmsg, "host=%s port=%d user=%s application_name=%s", src_nodeinfo.nodeaddr
+		, src_nodeinfo.nodeport, dest_nodeinfo.nodeusername, dest_nodeinfo.nodename);
+	mgr_append_pgconf_paras_str_str("recovery_target_timeline", "latest", &infosendmsg);
+	mgr_append_pgconf_paras_str_str("standby_mode", "on", &infosendmsg);
+	mgr_append_pgconf_paras_str_quotastr("primary_conninfo", restmsg.data, &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, dest_nodeinfo.nodepath, &infosendmsg, dest_nodeinfo.nodehost, &getAgentCmdRst);
+	pfree_AppendNodeInfo(src_nodeinfo);
+	if (!getAgentCmdRst.ret)
+	{
+		appendStringInfo(&strerr, "update \"standby_mode=on, recovery_target_timeline=latest\n,primary_conninfo='%s'\" \n in recovery.conf of coordinator \"%s\" fail, %s\n"
+			, restmsg.data, s_coordname, getAgentCmdRst.description.data);
+		ereport(WARNING, (errmsg("update recovery.conf of coordinator \"%s\" fail, %s", s_coordname
+			, getAgentCmdRst.description.data)));
+	}
+
+	/* rm .s.PGPOOL.lock, .s.PGRXACT.lock in s_coordname path*/
+	iloop = 0;
+	while(iloop++ < 2)
+	{
+		resetStringInfo(&restmsg);
+		resetStringInfo(&infosendmsg);
+		if (1 == iloop)
+			appendStringInfo(&infosendmsg, "%s/.s.PGPOOL.lock", dest_nodeinfo.nodepath);
+		else
+			appendStringInfo(&infosendmsg, "%s/.s.PGRXACT.lock", dest_nodeinfo.nodepath);
+		res = mgr_ma_send_cmd(AGT_CMD_RM, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg);
+		if (!res)
+		{
+			appendStringInfo(&strerr,"%s rm %s fail, %s\n", dest_nodeinfo.nodeaddr, infosendmsg.data, restmsg.data);
+			ereport(WARNING, (errmsg("%s rm %s fail, %s", dest_nodeinfo.nodeaddr, infosendmsg.data, restmsg.data)));
+		}
+	}
+	
+	/* start the coordinator */
+	resetStringInfo(&restmsg);
+	resetStringInfo(&infosendmsg);
+	appendStringInfo(&infosendmsg, " start -Z coordinator -D %s -o -i -w -c -l %s/logfile -t 10"
+		, dest_nodeinfo.nodepath, dest_nodeinfo.nodepath);
+	res = mgr_ma_send_cmd(AGT_CMD_CN_START, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg);
+	if (!res)
+	{
+		appendStringInfo(&strerr, "pg_ctl %s fail\n, %s", infosendmsg.data, restmsg.data);
+		ereport(WARNING, (errmsg("pg_ctl %s fail, %s", infosendmsg.data, restmsg.data)));
+	}
+	
+	/* set all node's pg_hba.conf to allow the new coordiantor to connect */
+	ereport(NOTICE, (errmsg("add address of coordinator \"%s\" on all nodes pg_hba.conf in cluster", s_coordname)));
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if (!(mgr_node->nodeincluster == true || ObjectIdGetDatum(tuple) == dest_nodeinfo.tupleoid))
+			continue;
+		nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
+		resetStringInfo(&(getAgentCmdRst.description));
+		resetStringInfo(&infosendmsg);
+		ereport(NOTICE, (errmsg("update pg_hba.conf of %s \"%s\"", nodetypestr, NameStr(mgr_node->nodename))));
+		pfree(nodetypestr);
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE 
+			|| mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, dest_nodeinfo.nodeaddr
+				, 32, "trust", &infosendmsg);
+		else
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", dest_nodeinfo.nodeusername, dest_nodeinfo.nodeaddr, 32, "trust"
+			, &infosendmsg);
+		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(rel_node), &isNull);
+		if(isNull)
+		{
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+				, errmsg("column cndnpath is null")));
+		}
+		nodepath = TextDatumGetCString(datumPath);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF
+								,nodepath
+								,&infosendmsg
+								,mgr_node->nodehost
+								,&getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			ereport(WARNING, (errmsg("add address coordinator \"%s\" on \"%s\" pg_hba.conf fail, %s", s_coordname
+				, NameStr(mgr_node->nodename), getAgentCmdRst.description.data)));
+			appendStringInfo(&strerr, "add address coordinator \"%s\" on \"%s\" pg_hba.conf fail\n, %s\n"
+				, s_coordname, NameStr(mgr_node->nodename), getAgentCmdRst.description.data);
+		}
+		mgr_reload_conf(mgr_node->nodehost, nodepath);
+	}
+
+	heap_endscan(rel_scan);
+	heap_close(rel_node, AccessShareLock);
+
+	pfree(restmsg.data);
+	pfree(infosendmsg.data);
+	pfree_AppendNodeInfo(dest_nodeinfo);
+	pfree(getAgentCmdRst.description.data);
+
+	if (strerr.len == 0)
+	{
+		res = true;
+		appendStringInfo(&strerr, "success");
+	}
+	ereport(LOG, (errmsg("the command of append coordinator %s to %s, result is %s, description is: %s"
+		, m_coordname, s_coordname, res == true ? "true":"false", strerr.data)));
+	tup_result = build_common_command_tuple(&nodename, res, strerr.data);
+	pfree(strerr.data);
+	
+	return HeapTupleGetDatum(tup_result);
+}
+
+/*
+* active coordinator slave change as coordinator master
+*/
+
+Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
+{
+	
+	GetAgentCmdRst getAgentCmdRst;
+	AppendNodeInfo dest_nodeinfo;
+	StringInfoData infosendmsg;
+	StringInfoData restmsg;
+	StringInfoData strerr;
+	StringInfoData sqlstrmsg;
+	StringInfoData sqlsrc;
+	HeapTuple tup_result;
+	NameData m_nodename;
+	NameData s_nodename;
+	HeapTuple tuple;
+	HeapTuple host_tuple;
+	Relation rel_node;
+	Form_mgr_node mgr_node;
+	Form_mgr_host mgr_host;
+	PGconn *pg_conn = NULL;
+	PGresult *res = NULL;
+	char port_buf[10];
+	char *s_coordname;
+	bool b_exist_dest = false;
+	bool b_running_dest = false;
+	bool rest = false;
+	bool noneed_dropnode = true;
+	int iloop = 0;
+	int s_agent_port;
+	Oid cnoid;
+
+	/*check all gtm, coordinator, datanode master running normal*/
+	mgr_make_sure_all_running(GTM_TYPE_GTM_MASTER);
+	mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
+	mgr_make_sure_all_running(CNDN_TYPE_DATANODE_MASTER);
+
+	/* get the input variable */
+	s_coordname = PG_GETARG_CSTRING(0);
+	namestrcpy(&s_nodename, s_coordname);
+
+	/*check node status*/
+	mgr_get_nodeinfo_byname_type(s_coordname, CNDN_TYPE_COORDINATOR_MASTER, false, &b_exist_dest
+		, &b_running_dest, &dest_nodeinfo);
+	if (!b_exist_dest)
+	{
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+			, errmsg("coordinator \"%s\" does not exist", s_coordname)));
+	}
+
+	if (mgr_check_node_exist_incluster(&s_nodename, CNDN_TYPE_COORDINATOR_MASTER, true))
+	{
+		pfree_AppendNodeInfo(dest_nodeinfo);
+		ereport(ERROR, (errmsg("coordinator \"%s\" already exists in cluster", s_coordname)));
+	}
+
+	memset(port_buf, 0, sizeof(char)*10);
+	snprintf(port_buf, sizeof(port_buf), "%d", dest_nodeinfo.nodeport);
+	rest = pingNode_user(dest_nodeinfo.nodeaddr, port_buf, dest_nodeinfo.nodeusername);
+
+	initStringInfo(&infosendmsg);
+	initStringInfo(&restmsg);
+	
+	PG_TRY();
+	{
+		if (PQPING_NO_RESPONSE == rest)
+		{
+			ereport(WARNING, (errmsg("coordinator \"%s\" is not running, start it now", s_coordname)));
+			appendStringInfo(&infosendmsg, " start -Z coordinator -D %s -o -i -w -c -l %s/logfile -t 10"
+				, dest_nodeinfo.nodepath, dest_nodeinfo.nodepath);
+			rest = mgr_ma_send_cmd(AGT_CMD_CN_START, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg);
+			if (!rest)
+			{
+				ereport(ERROR, (errmsg("pg_ctl %s fail, %s", infosendmsg.data, restmsg.data)));
+			}
+		}
+		
+		/*check again*/
+		rest = pingNode_user(dest_nodeinfo.nodeaddr, port_buf, dest_nodeinfo.nodeusername);
+		if (PQPING_OK != rest)
+		{
+			ereport(ERROR, (errmsg("coordinator \"%s\" is not running normal", s_coordname)));
+		}
+
+		host_tuple = SearchSysCache1(HOSTHOSTOID, dest_nodeinfo.nodehost);
+		if(!(HeapTupleIsValid(host_tuple)))
+		{
+			ereport(ERROR, (errmsg("host oid \"%u\" not exist", dest_nodeinfo.nodehost)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errcode(ERRCODE_UNDEFINED_OBJECT)));
+		}
+		mgr_host= (Form_mgr_host)GETSTRUCT(host_tuple);
+		Assert(mgr_host);
+		s_agent_port = mgr_host->hostagentport;
+		ReleaseSysCache(host_tuple);
+
+		/*get the value of pgxc_node_name of s_coordname*/
+		resetStringInfo(&restmsg);
+		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, s_agent_port, "show pgxc_node_name;"
+			, dest_nodeinfo.nodeusername, dest_nodeinfo.nodeaddr, dest_nodeinfo.nodeport, DEFAULT_DB, &restmsg);
+		if (restmsg.len == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("on coordinator \"%s\" get value of pgxc_node_name fail", s_coordname)));
+		}
+		namestrcpy(&m_nodename, restmsg.data);
+	}PG_CATCH();
+	{
+		ereport(NOTICE, (errmsg("manual invocation to check before execute this command again")));
+		pfree(restmsg.data);
+		pfree(infosendmsg.data);
+		pfree_AppendNodeInfo(dest_nodeinfo);
+		PG_RE_THROW();
+	}PG_END_TRY();
+
+	initStringInfo(&strerr);
+	initStringInfo(&(getAgentCmdRst.description));
+	initStringInfo(&sqlstrmsg);
+	initStringInfo(&sqlsrc);
+
+	PG_TRY();
+	{
+		/* lock the cluster */
+		ereport(LOG, (errmsg("lock the cluster")));
+		ereport(NOTICE, (errmsg("lock the cluster")));
+		mgr_lock_cluster(&pg_conn, &cnoid);
+		/*set xc_maintenance_mode=on  */
+		res = PQexec(pg_conn, "set xc_maintenance_mode = on;");
+		if (PQresultStatus(res) != PGRES_COMMAND_OK)
+		{
+			ereport(ERROR, (errmsg("execute \"xc_maintenance_mode=on\" on coordiantors oid=%d fail, %s"
+				, cnoid, PQerrorMessage(pg_conn))));
+		}
+		PQclear(res);
+
+		appendStringInfo(&sqlsrc, "CREATE NODE \"%s\" with (TYPE=COORDINATOR, HOST='%s', PORT=%d);"
+			, s_coordname, dest_nodeinfo.nodeaddr, dest_nodeinfo.nodeport);
+		/* check the diff xlog */
+		iloop = 60;
+		ereport(LOG, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
+			, iloop, m_nodename.data, s_coordname)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
+			, iloop, m_nodename.data, s_coordname)));
+		resetStringInfo(&restmsg);
+		appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") 'checkpoint;select now()'", m_nodename.data);
+		appendStringInfo(&sqlstrmsg, "EXECUTE DIRECT ON (\"%s\") 'select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) < 200  from pg_stat_replication where application_name=''%s'';'"
+			, m_nodename.data, s_coordname);
+		while (iloop-- > 0)
+		{
+			/*checkponit first*/
+			res = PQexec(pg_conn, restmsg.data);
+			PQclear(res);
+			res = NULL;
+			pg_usleep(500000L);
+			res = PQexec(pg_conn, sqlstrmsg.data);
+			if (PQresultStatus(res) == PGRES_TUPLES_OK)
+				break;
+			PQclear(res);
+			res = NULL;
+			pg_usleep(5000000L);
+		}
+		
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			ereport(ERROR, (errmsg("wait max seconds to check coordinator \"%s\", \"%s\" have the same xlog position fail"
+				, m_nodename.data, s_coordname)));
+		}
+		PQclear(res);
+		res = NULL;
+		
+		noneed_dropnode = false;
+		/* send create node sql to all coordiantor*/
+		ereport(LOG, (errmsg("create node \"%s\" on all coordiantors in cluster", s_coordname)));
+		ereport(NOTICE, (errmsg("create node \"%s\" on all coordiantors in cluster", s_coordname)));
+
+		resetStringInfo(&infosendmsg);
+		appendStringInfo(&infosendmsg, "CREATE NODE \"%s\" with (TYPE=COORDINATOR, HOST=''%s'', PORT=%d);"
+			,s_coordname, dest_nodeinfo.nodeaddr, dest_nodeinfo.nodeport);
+		rest = mgr_execute_direct_on_all_coord(&pg_conn, infosendmsg.data, 2, PGRES_COMMAND_OK, &strerr);
+		if (!rest)
+			ereport(ERROR, (errmsg("create node \"%s\" on all coordiantors in cluster fail", s_coordname)));
+		
+		resetStringInfo(&infosendmsg);
+		appendStringInfo(&infosendmsg, "SELECT PGXC_POOL_RELOAD();");		
+		rest = mgr_execute_direct_on_all_coord(&pg_conn, infosendmsg.data, 2, PGRES_TUPLES_OK, &strerr);
+		if (!rest)
+			ereport(ERROR, (errmsg("execute \"SELECT PGXC_POOL_RELOAD()\" on all coordiantors in cluster fail")));
+
+		/*check xlog position again*/
+		iloop = 60;
+		ereport(LOG, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
+			, iloop, m_nodename.data, s_coordname)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
+			, iloop, m_nodename.data, s_coordname)));
+		resetStringInfo(&restmsg);
+		appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") 'checkpoint;select now()'", m_nodename.data);
+		while (iloop-- > 0)
+		{
+			/*checkponit first*/
+			res = PQexec(pg_conn, restmsg.data);
+			PQclear(res);
+			res = NULL;
+			pg_usleep(500000L);
+			res = PQexec(pg_conn, sqlstrmsg.data);
+			if (PQresultStatus(res) == PGRES_TUPLES_OK)
+				break;
+			PQclear(res);
+			res = NULL;
+			pg_usleep(5000000L);
+		}
+		
+		if (PQresultStatus(res) != PGRES_TUPLES_OK)
+		{
+			ereport(ERROR, (errmsg("wait max seconds to check coordinator \"%s\", \"%s\" have the same xlog position fail"
+				, m_nodename.data, s_coordname)));
+		}
+		PQclear(res);
+		res = NULL;
+		
+		/*rm recovery.conf*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&restmsg);
+		appendStringInfo(&infosendmsg, "%s/recovery.conf", dest_nodeinfo.nodepath);
+		rest = mgr_ma_send_cmd(AGT_CMD_RM, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg);
+		if (!rest)
+		{
+			ereport(ERROR, (errmsg("on coordinator \"%s\", rm %s fail, %s", s_coordname, infosendmsg.data, restmsg.data)));
+		}
+
+		/*set the coordinator*/
+		ereport(LOG, (errmsg("on coordinator \"%s\", set hot_standby=off, pgxc_node_name='%s'", s_coordname, s_coordname)));
+		resetStringInfo(&infosendmsg);
+		ereport(NOTICE, (errmsg("on coordinator \"%s\", set hot_standby=off, pgxc_node_name='%s'", s_coordname, s_coordname)));
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_add_parm(s_coordname, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
+		mgr_append_pgconf_paras_str_str("pgxc_node_name", s_coordname, &infosendmsg);
+		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, dest_nodeinfo.nodepath, &infosendmsg
+			, dest_nodeinfo.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			ereport(ERROR, (errmsg("on coordinator \"%s\", set hot_standby=off, pgxc_node_name='%s' fail, %s"
+				, s_coordname, s_coordname, restmsg.data)));
+		}
+
+		/*restart the coordinator*/
+		resetStringInfo(&(getAgentCmdRst.description));
+		rel_node = heap_open(NodeRelationId, AccessShareLock);
+		tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, CNDN_TYPE_COORDINATOR_MASTER);
+		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_I);
+		heap_freetuple(tuple);
+		heap_close(rel_node, AccessShareLock);
+		if(!getAgentCmdRst.ret)
+		{
+			ereport(ERROR, (errmsg("restart coordinator \"%s\" fail, %s", s_coordname, getAgentCmdRst.description.data)));
+		}
+	}PG_CATCH();
+	{
+		/*drop node info on all coordinators in cluster if get error*/
+		if (!noneed_dropnode)
+		{
+			ereport(WARNING, (errmsg("rollback, drop the node \"%s\" information in pgxc_node on all coordinators.\n\tif the coordinator pgxc_node has not coordinator \"%s\" information, \n\tthe \"DROP NODE\" command may reports WARNING, ignore the warning.\n\tif you want to execute the command \"APPEND ACTIVATE COORDINATOR %s\" again, \n\tmake the coordinator \"%s\" as slave and build the streaming replication with the coordinator \"%s\"", s_coordname, s_coordname, s_coordname, s_coordname, m_nodename.data)));
+			resetStringInfo(&infosendmsg);
+			appendStringInfo(&infosendmsg, "DROP NODE \"%s\";", s_coordname);
+			rest = mgr_execute_direct_on_all_coord(&pg_conn, infosendmsg.data, 2, PGRES_COMMAND_OK, &strerr);
+			
+			resetStringInfo(&infosendmsg);
+			appendStringInfo(&infosendmsg, "SELECT PGXC_POOL_RELOAD();");		
+			rest = mgr_execute_direct_on_all_coord(&pg_conn, infosendmsg.data, 2, PGRES_TUPLES_OK, &strerr);
+		}
+		mgr_unlock_cluster(&pg_conn);
+		pfree(sqlsrc.data);
+		pfree(sqlstrmsg.data);
+		pfree(strerr.data);
+		pfree(restmsg.data);
+		pfree(infosendmsg.data);
+		pfree(getAgentCmdRst.description.data);
+		pfree_AppendNodeInfo(dest_nodeinfo);
+		PG_RE_THROW();
+	}PG_END_TRY();
+
+	/*set coordinator s_coordname in cluster*/
+	ereport(LOG, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
+	ereport(NOTICE, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, CNDN_TYPE_COORDINATOR_MASTER);
+	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+	Assert(mgr_node);
+	mgr_node->nodeinited = true;
+	mgr_node->nodeincluster = true;
+	heap_inplace_update(rel_node, tuple);
+	heap_freetuple(tuple);
+	heap_close(rel_node, RowExclusiveLock);
+
+	pfree(sqlsrc.data);
+	pfree(sqlstrmsg.data);
+	pfree(restmsg.data);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+	pfree_AppendNodeInfo(dest_nodeinfo);
+
+	/* unlock the cluster */
+	ereport(NOTICE, (errmsg("unlock the cluster")));
+	ereport(LOG, (errmsg("unlock the cluster")));
+	mgr_unlock_cluster(&pg_conn);
+	
+	if (strerr.len == 0)
+	{
+		rest = true;
+		appendStringInfo(&strerr, "success");
+	}
+	else
+		rest = false;
+	ereport(LOG, (errmsg("the command of append active coordinator \"%s\", result is: %s, description is %s"
+		, s_coordname, rest ? "true":"false", strerr.data)));
+	tup_result = build_common_command_tuple(&s_nodename, rest, strerr.data);
+	pfree(strerr.data);
+	
+	return HeapTupleGetDatum(tup_result);
+	
+}
+
+static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, int iloop, const int res_type, StringInfo strinfo)
+{
+	StringInfoData restmsg;
+	ScanKeyData key[3];
+	Relation rel_node;
+	HeapScanDesc rel_scan;
+	Form_mgr_node mgr_node;
+	HeapTuple tuple;
+	PGresult *res = NULL;
+	bool rest = true;
+
+	initStringInfo(&restmsg);
+
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[2],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	rel_node = heap_open(NodeRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		resetStringInfo(&restmsg);
+
+		ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", NameStr(mgr_node->nodename), sql)));
+		ereport(NOTICE, (errmsg("on coordinator \"%s\" execute \"%s\"", NameStr(mgr_node->nodename), sql)));
+
+		appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") '%s'", NameStr(mgr_node->nodename), sql);
+		while (iloop-- > 0)
+		{
+			res = PQexec(*pg_conn, restmsg.data);
+			if (PQresultStatus(res) == res_type)
+			{
+				break;
+			}
+			PQclear(res);
+			res = NULL;
+			pg_usleep(100000L);
+		}
+		
+		if (PQresultStatus(res) != res_type)
+		{
+			rest = false;
+			ereport(WARNING, (errmsg("on coordinator \"%s\" execute \"%s\" fail, %s", NameStr(mgr_node->nodename), sql, PQerrorMessage(*pg_conn))));
+			appendStringInfo(strinfo, "on coordinator \"%s\" execute \"%s\" fail, %s\n", NameStr(mgr_node->nodename), sql, PQerrorMessage(*pg_conn));
+		}
+		PQclear(res);
+		
+	}
+	
+	heap_endscan(rel_scan);
+	heap_close(rel_node, AccessShareLock);
+	pfree(restmsg.data);
+
+	return rest;
+}
+

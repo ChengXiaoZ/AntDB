@@ -1509,7 +1509,7 @@ Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtyp
 			else
 			{
 				/* get the output description after cmd fail */
-				if (AGENT_DOWN != ret)
+				if (AGENT_DOWN != ret && binit)
 				{
 					typestr = mgr_nodetype_str(nodetype);
 					ereport(LOG, (errmsg("try stop %s %s again", typestr, nodename)));

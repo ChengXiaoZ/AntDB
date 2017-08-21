@@ -276,6 +276,7 @@ extern char mgr_get_master_type(char nodetype);
 Datum mgr_typenode_cmd_run_backend_result(const char nodetype, const char cmdtype, const List* nodenamelist, const char *shutdown_mode, PG_FUNCTION_ARGS);
 extern char mgr_change_cmdtype_unbackend(char cmdtype);
 extern HeapTuple build_common_command_tuple_four_col(const Name name, char type, bool status, const char *description);
+extern bool mgr_check_param_reload_postgresqlconf(char nodetype, Oid hostoid, int nodeport, char *address, char *check_param, char *expect_result);
 
 /* monitor_hostpage.c */
 extern Datum monitor_get_hostinfo(PG_FUNCTION_ARGS);
@@ -360,6 +361,8 @@ extern Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_promote_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS);
+extern Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS);
+extern Datum mgr_append_activate_coord(PG_FUNCTION_ARGS);
 
 /*expansion calls*/
 extern void	mgr_make_sure_all_running(char node_type);

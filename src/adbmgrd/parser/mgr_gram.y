@@ -189,7 +189,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 %token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
-%token<keyword> STATUS
+%token<keyword> STATUS ACTIVATE
 %token<keyword> PROMOTE ADBMGR REWIND
 
 /* for ADB monitor*/
@@ -512,7 +512,25 @@ AppendNodeStmt:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_agtmextra", args));
 			$$ = (Node*)stmt;
-		};
+		}
+		|APPEND COORDINATOR Ident TO Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, -1));
+			args = lappend(args, makeStringConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coord_to_coord", args));
+			$$ = (Node*)stmt;
+		}
+		|APPEND ACTIVATE COORDINATOR Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_activate_coord", args));
+			$$ = (Node*)stmt;
+		}
+		;
 
 Get_alarm_info:
 		GET_ALARM_INFO_ASC '(' Ident ',' Ident ',' SConst ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ',' SignedIconst ')'
@@ -2656,6 +2674,7 @@ FailoverManualStmt:
 
 unreserved_keyword:
 	  ACL
+	| ACTIVATE
 	| ADBMGR
 	| ADD_P
 	| AGENT
