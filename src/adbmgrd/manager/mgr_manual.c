@@ -51,7 +51,7 @@ static struct enum_sync_state sync_state_tab[] =
 	{-1, NULL}
 };
 
-static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, int iloop, const int res_type, StringInfo strinfo);
+static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo);
 
 /*
 * promote the node to master; delete the old master tuple in node systable, delete 
@@ -982,8 +982,11 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
 				break;
-			PQclear(res);
-			res = NULL;
+			if (iloop)
+			{
+				PQclear(res);
+				res = NULL;
+			}
 			pg_usleep(5000000L);
 		}
 		
@@ -1031,8 +1034,11 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
 				break;
-			PQclear(res);
-			res = NULL;
+			if (iloop)
+			{
+				PQclear(res);
+				res = NULL;
+			}
 			pg_usleep(5000000L);
 		}
 		
@@ -1148,7 +1154,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	
 }
 
-static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, int iloop, const int res_type, StringInfo strinfo)
+static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo)
 {
 	StringInfoData restmsg;
 	ScanKeyData key[3];
@@ -1158,6 +1164,7 @@ static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, i
 	HeapTuple tuple;
 	PGresult *res = NULL;
 	bool rest = true;
+	int num = iloop;
 
 	initStringInfo(&restmsg);
 
@@ -1187,16 +1194,20 @@ static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, i
 		ereport(LOG, (errmsg("on coordinator \"%s\" execute \"%s\"", NameStr(mgr_node->nodename), sql)));
 		ereport(NOTICE, (errmsg("on coordinator \"%s\" execute \"%s\"", NameStr(mgr_node->nodename), sql)));
 
+		num = iloop;
 		appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") '%s'", NameStr(mgr_node->nodename), sql);
-		while (iloop-- > 0)
+		while (num-- > 0)
 		{
 			res = PQexec(*pg_conn, restmsg.data);
 			if (PQresultStatus(res) == res_type)
 			{
 				break;
 			}
-			PQclear(res);
-			res = NULL;
+			if (num)
+			{
+				PQclear(res);
+				res = NULL;
+			}
 			pg_usleep(100000L);
 		}
 		
