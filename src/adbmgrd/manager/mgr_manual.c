@@ -349,7 +349,7 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 			heap_close(rel_node, AccessShareLock);
 			if (cn_is_exist)
 				pfree_AppendNodeInfo(cn_nodeinfo);
-			ereport(ERROR, (errmsg("coordinator \"%s\" does not running normal", NameStr(mgr_node->nodename))));
+			ereport(ERROR, (errmsg("coordinator \"%s\" is not running normal", NameStr(mgr_node->nodename))));
 		}
 		pfree_AppendNodeInfo(cn_nodeinfo);
 	}
@@ -1088,6 +1088,19 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errmsg("restart coordinator \"%s\" fail, %s", s_coordname, getAgentCmdRst.description.data)));
 		}
+		/*check the node status*/
+		rest = pingNode_user(dest_nodeinfo.nodeaddr, port_buf, dest_nodeinfo.nodeusername);
+		if (PQPING_OK != rest)
+		{
+			ereport(WARNING, (errmsg("the coordinator \"%s\" is not running normal, sleep 10 seconds to check again",s_coordname)));
+			pg_usleep(10000000L);
+			rest = pingNode_user(dest_nodeinfo.nodeaddr, port_buf, dest_nodeinfo.nodeusername);
+			if (PQPING_OK != rest)
+				ereport(ERROR,
+				(errmsg("the coordinator \"%s\" is not running normal", s_coordname),
+					errhint("try \"monitor all\" to check the nodes status")));
+		}
+		
 	}PG_CATCH();
 	{
 		/*drop node info on all coordinators in cluster if get error*/
