@@ -279,8 +279,10 @@
    &mgrAlterDatanode;
    &mgrAlterGtm;
    &mgrAlterHost;
-   &mgrAlterUser; 
+   &mgrAlterUser;
+   &mgrAppendActivateCoordinator
    &mgrAppendCoordinator;
+   &mgrAppendCoordinatorTo
    &mgrAppendDatanode;
    &mgrAppendGtm;
    &mgrCleanAll;

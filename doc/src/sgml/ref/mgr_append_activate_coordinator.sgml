@@ -1,0 +1,73 @@
+<!--
+doc/src/sgml/ref/mgr_append_activate_coordinator.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-APPENDACTIVATECOORDINATOR">
+  <refmeta>
+    <refentrytitle>APPEND ACTIVATE COORDINATOR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>APPEND ACTIVATE COORDINATOR</refname>
+    <refpurpose>activate the slave coordinator to coordinator master, make it run, set it in the cluster</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-appendactivatecoordinator">
+    <primary>APPEND ACTIVATE COORDINATOR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+APPEND ACTIVATE COORDINATOR <replaceable class="parameter">node_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>APPEND ACTIVATE COORDINATOR</command> activate the slave coordinator to coordinator master, make it run, set it in the cluster.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+    
+   <varlistentry>
+    <term><replaceable class="parameter">node_name</replaceable></term>
+    <listitem>
+      <para>
+      The name of coordinator which is not in the cluster and as a coordinator slave, you want to activate it to coordinator master.
+      </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Append a new coordinator dest_coord to the cluster:
+<programlisting>
+append coordinator source_coord to dest_coord;
+append activate coordinator dest_coord;
+</programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-addcoordinator"></member>
+   <member><xref linkend="mgr-appendcoordinatorto"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>

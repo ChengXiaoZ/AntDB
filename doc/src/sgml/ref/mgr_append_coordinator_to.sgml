@@ -1,0 +1,81 @@
+<!--
+doc/src/sgml/ref/mgr_append_coordinator_to.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-APPENDCOORDINATORTO">
+  <refmeta>
+    <refentrytitle>APPEND COORDINATOR TO</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>APPEND COORDINATOR TO</refname>
+    <refpurpose>append a new coordinator as slave and make it run</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-appendcoordinatorto">
+    <primary>APPEND COORDINATOR TO</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+APPEND COORDINATOR <replaceable class="parameter">source_coordinator_name</replaceable> TO <replaceable class="parameter">dest_coordinator_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>APPEND COORDINATOR TO</command> append a new coordinator as the slave make it run.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+    
+   <varlistentry>
+    <term><replaceable class="parameter">source_coordinator_name</replaceable></term>
+    <listitem>
+      <para>
+      Source coordinator, which is the master.
+      </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">dest_coordinator_name</replaceable></term>
+    <listitem>
+      <para>
+      Dest coordinator, which is the slave we add.
+      </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Append a new coordinator slave des_coord1 for coordinator src_coord1:
+<programlisting>
+append coordinator src_coord1 to des_coord1;
+</programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-addcoordinator"></member>
+   <member><xref linkend="mgr-appendactivatecoordinator"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>
