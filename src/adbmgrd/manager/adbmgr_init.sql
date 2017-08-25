@@ -1217,6 +1217,11 @@ from public;
 --flush host
 revoke execute on function mgr_flush_host() from public;
 
+--add primary key for table:monitor_host_threshold,monitor_user and monitor_job
+alter table pg_catalog.monitor_host_threshold add primary key (mt_type);
+alter table pg_catalog.monitor_user add primary key (username);
+alter table pg_catalog.monitor_job add primary key (name);
+
 --get the content "INSERT INTO adbmgr.parm VALUES..."
 --create table parm(id1 char,name text,setting text,context text,vartype text,unit text, min_val text,max_val text,enumvals text[]) distribute by replication;
 --insert into parm select '*', name, setting, context, vartype, unit, min_val, max_val, enumvals from pg_settings order by 2;

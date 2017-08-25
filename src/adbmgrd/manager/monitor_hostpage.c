@@ -535,21 +535,28 @@ void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
 {
     Relation rel;
     HeapScanDesc scan;
-	HeapTuple tuple;
-	ScanKeyData key[1];
+    HeapTuple tuple;
+    ScanKeyData key[1];
     Form_monitor_host_threshold monitor_host_threshold;
 
-	ScanKeyInit(&key[0]
-		,Anum_monitor_host_threshold_mt_type
-		,BTEqualStrategyNumber, F_INT2EQ
-		,Int16GetDatum(type));
-    
-	rel = heap_open(MonitorHostThresholdRelationId, RowExclusiveLock);
-	scan = heap_beginscan(rel, SnapshotNow, 1, key);
-    
-    tuple = heap_getnext(scan, ForwardScanDirection);
-    monitor_host_threshold = (Form_monitor_host_threshold)GETSTRUCT(tuple);
+    ScanKeyInit(&key[0]
+        ,Anum_monitor_host_threshold_mt_type
+        ,BTEqualStrategyNumber, F_INT2EQ
+        ,Int16GetDatum(type));
 
+    rel = heap_open(MonitorHostThresholdRelationId, RowExclusiveLock);
+    scan = heap_beginscan(rel, SnapshotNow, 1, key);
+
+    if ((tuple = heap_getnext(scan, ForwardScanDirection)) == NULL)
+    {
+        heap_endscan(scan);
+        heap_close(rel, RowExclusiveLock);
+
+        ereport(ERROR, (errmsg("could not find tuple for relation: monitor_host_threshold")));
+        return ;
+    }
+
+    monitor_host_threshold = (Form_monitor_host_threshold)GETSTRUCT(tuple);
     monitor_threshold->threshold_warning = monitor_host_threshold->mt_warning_threshold;
     monitor_threshold->threshold_critical = monitor_host_threshold->mt_critical_threshold;
     monitor_threshold->threshold_emergency = monitor_host_threshold->mt_emergency_threshold;
@@ -557,6 +564,7 @@ void get_threshold(int16 type, Monitor_Threshold *monitor_threshold)
     heap_endscan(scan);
     heap_close(rel, RowExclusiveLock);
 
+    return ;
 }
 
 static void get_cpu_usage_alarm(float cpu_usage, Monitor_Alarm *monitor_alarm)
