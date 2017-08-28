@@ -571,7 +571,8 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in times
 	WHERE monitor_databasetps_dbname = $1 and monitor_databasetps_time >= $2 and monitor_databasetps_time <= $2 + case $3
 				when 0 then interval '1 hour'
 				when 1 then interval '24 hour'
-				end;
+				end
+	ORDER BY 1;
 	$$
 		LANGUAGE SQL
 	IMMUTABLE
@@ -592,7 +593,8 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func_by_time_period(db
 	FROM 
 				monitor_databasetps
 	WHERE monitor_databasetps_dbname = $1 and 
-		  monitor_databasetps_time between $2 and $3;
+		  monitor_databasetps_time between $2 and $3
+	ORDER BY 1;
 	$$
 		LANGUAGE SQL
 	IMMUTABLE
