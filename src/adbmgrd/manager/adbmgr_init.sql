@@ -546,6 +546,7 @@ AS
 			WHERE   tps.tc =1
 		) AS c 
 		GROUP BY  monitor_databasetps_time
+		ORDER BY monitor_databasetps_time DESC LIMIT 1
 	) AS d
 	join 
 	( SELECT (sum(md_total/1024.0/1024)/1024)::numeric(18,2) AS md_total FROM (SELECT  hostname,md_timestamptz, md_total, (ROW_NUMBER()OVER(PARTITION BY hostname  ORDER BY  md_timestamptz desc ))AS tc   from monitor_disk) AS d WHERE tc =1
