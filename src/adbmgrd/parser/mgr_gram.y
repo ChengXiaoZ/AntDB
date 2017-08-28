@@ -198,12 +198,13 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 				GET_HOST_HISTORY_USAGE_BY_TIME_PERIOD
 				GET_ALL_NODENAME_IN_SPEC_HOST
 				GET_AGTM_NODE_TOPOLOGY GET_COORDINATOR_NODE_TOPOLOGY GET_DATANODE_NODE_TOPOLOGY
-				GET_CLUSTER_FOURITEM GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
+				GET_CLUSTER_SUMMARY GET_DATABASE_TPS_QPS GET_CLUSTER_HEADPAGE_LINE
 				GET_DATABASE_TPS_QPS_INTERVAL_TIME MONITOR_DATABASETPS_FUNC_BY_TIME_PERIOD
 				GET_DATABASE_SUMMARY GET_SLOWLOG GET_USER_INFO UPDATE_USER GET_SLOWLOG_COUNT
 				UPDATE_THRESHOLD_VALUE UPDATE_PASSWORD CHECK_USER USER
 				GET_THRESHOLD_TYPE GET_THRESHOLD_ALL_TYPE CHECK_PASSWORD GET_DB_THRESHOLD_ALL_TYPE
 				GET_ALARM_INFO_ASC GET_ALARM_INFO_DESC RESOLVE_ALARM GET_ALARM_INFO_COUNT
+				GET_CLUSTER_TPS_QPS GET_CLUSTER_CONNECT_DBSIZE_INDEXSIZE
 %%
 /*
  *	The target production for the whole parse.
@@ -2321,11 +2322,18 @@ ListMonitor:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_cluster_firstline_v"), -1));
 			$$ = (Node*)stmt;
 	}
-	| GET_CLUSTER_FOURITEM  /*monitor first page, four item, the data in current 12hours*/
+	| GET_CLUSTER_TPS_QPS  /*monitor first page, tps,qps, the data in current 12hours*/
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_cluster_fouritem_v"), -1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_12hours_tpsqps_v"), -1));
+			$$ = (Node*)stmt;
+	}
+	| GET_CLUSTER_CONNECT_DBSIZE_INDEXSIZE  /*monitor first page, connect,dbsize,indexsize, the data in current 12hours*/
+	{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("monitor_12hours_connect_dbsize_indexsize_v"), -1));
 			$$ = (Node*)stmt;
 	}
 	| GET_CLUSTER_SUMMARY  /*monitor cluster summary, the data in current time*/
@@ -2701,7 +2709,8 @@ unreserved_keyword:
 	| GET_ALARM_INFO_COUNT
 	| GET_ALARM_INFO_DESC
 	| GET_ALL_NODENAME_IN_SPEC_HOST
-	| GET_CLUSTER_FOURITEM
+	| GET_CLUSTER_TPS_QPS
+	| GET_CLUSTER_CONNECT_DBSIZE_INDEXSIZE
 	| GET_CLUSTER_HEADPAGE_LINE
 	| GET_CLUSTER_SUMMARY
 	| GET_COORDINATOR_NODE_TOPOLOGY

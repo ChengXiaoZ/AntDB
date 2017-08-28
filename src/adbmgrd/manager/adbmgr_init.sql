@@ -506,44 +506,22 @@ CREATE OR REPLACE FUNCTION pg_catalog.get_all_nodename_in_spec_host(hostname tex
     RETURNS NULL ON NULL INPUT;
 
 --make view for 12 hours data for  tps, qps, connectnum, dbsize, indexsize
-CREATE VIEW adbmgr.monitor_cluster_fouritem_v AS 
-SELECT a.monitor_databasetps_time::timestamptz(0) AS time , a.tps, a.qps, b.connectnum, b.dbsize, b.indexsize
-FROM
-	(SELECT monitor_databasetps_time, sum(monitor_databasetps_tps) AS tps , 
-	sum(monitor_databasetps_qps) AS qps  , row_number() over (PARTITION BY 1) FROM (SELECT 
+CREATE VIEW adbmgr.monitor_12hours_tpsqps_v AS 
+select time, tps,qps from (SELECT monitor_databasetps_time::timestamptz(0) as time, sum(monitor_databasetps_tps) AS tps , 
+  sum(monitor_databasetps_qps) AS qps  , row_number() over (PARTITION BY 1) FROM (SELECT 
 	distinct(monitor_databasetps_dbname),  monitor_databasetps_time, monitor_databasetps_tps,
 	monitor_databasetps_qps, monitor_databasetps_runtime FROM monitor_databasetps WHERE 
-	monitor_databasetps_time > (SELECT max(monitor_databasetps_time) - interval '12 hour' FROM 
-	monitor_databasetps ) ORDER BY 2 ASC)AS a  GROUP BY monitor_databasetps_time) AS a
-JOIN 
-	(SELECT  monitor_databaseitem_time, sum(monitor_databaseitem_connectnum) AS connectnum, 
-	(sum(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize , (sum(monitor_databaseitem_indexsize)/1024.0)::numeric(18,2) AS indexsize, row_number() over (PARTITION BY 1) FROM (SELECT 
+	monitor_databasetps_time > (SELECT now() - interval '12 hour' ) ORDER BY 2 ASC)AS a  GROUP BY 
+	monitor_databasetps_time) AS a;
+
+CREATE VIEW adbmgr.monitor_12hours_connect_dbsize_indexsize_v AS 
+select time, connectnum, dbsize, indexsize from (SELECT  monitor_databaseitem_time::timestamptz(0) as time, sum(
+	monitor_databaseitem_connectnum) AS connectnum, 
+	(sum(monitor_databaseitem_dbsize)/1024.0)::numeric(18,2) AS dbsize , (sum(monitor_databaseitem_indexsize)/1024.0)::
+	numeric(18,2) AS indexsize, row_number() over (PARTITION BY 1) FROM (SELECT 
 	distinct(monitor_databaseitem_dbname),  monitor_databaseitem_time, monitor_databaseitem_connectnum, 
-	monitor_databaseitem_dbsize, monitor_databaseitem_indexsize FROM monitor_databaseitem WHERE monitor_databaseitem_time > (SELECT 
-	max(monitor_databaseitem_time) - interval '12 hour' FROM monitor_databaseitem ) ORDER BY 2 ASC) AS b 
-GROUP BY monitor_databaseitem_time ) AS b on a.row_number = b.row_number;
-
-
---make function for 12 hours data for tps qps connectnum dbsize indexsize
-CREATE OR REPLACE FUNCTION pg_catalog.monitor_cluster_fouritem_func()
-	RETURNS TABLE
-	(
-		recordtime timestamptz(0),
-		tps  bigint,
-		qps  bigint,
-		connectnum bigint,
-		dbsize numeric(18,2),
-		indexsize numeric(18,2)
-	)
-	AS 
-	$$
-	SELECT time as recordtime, tps, qps, connectnum, dbsize, indexsize
-	FROM 
-		adbmgr.monitor_cluster_fouritem_v
-	$$
-	LANGUAGE SQL
-	IMMUTABLE
-	RETURNS NULL ON NULL INPUT;	
+	monitor_databaseitem_dbsize, monitor_databaseitem_indexsize FROM monitor_databaseitem WHERE monitor_databaseitem_time
+	> (SELECT now() - interval '12 hour' ) ORDER BY 2 ASC) AS b  GROUP BY monitor_databaseitem_time ) AS b;
 		
 --get first page first line values
 CREATE VIEW adbmgr.monitor_cluster_firstline_v
