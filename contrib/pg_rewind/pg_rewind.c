@@ -51,6 +51,7 @@ const char *progname;
 const char *nodename;
 #endif
 
+bool debug = false;
 char *datadir_target = NULL;
 char *datadir_source = NULL;
 char *connstr_source = NULL;
@@ -289,7 +290,7 @@ main(int argc, char **argv)
 		/* Read the checkpoint record on the target to see where it ends. */
 		chkptendrec = readOneRecord(datadir_target,
 									ControlFile_target.checkPoint,
-									ControlFile_target.checkPointCopy.ThisTimeLineID);
+									targetNentries - 1);
 
 		/*
 		 * If the histories diverged exactly at the end of the shutdown
@@ -752,8 +753,7 @@ getTimelineHistory(ControlFileData *controlFile, int *nentries)
 		pg_free(histfile);
 	}
 
-	//if (debug)
-	if (0)
+	if (debug)
 	{
 		int     i;
 
