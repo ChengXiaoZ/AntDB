@@ -15889,7 +15889,7 @@ static char
 	}
 	if (!num)
 		num = 1;
-	retstr = (char *)pg_malloc(strlen(str) + 1 + strlen(strr)*(num-1));
+	retstr = (char *)pg_malloc0(strlen(str) + 1 + strlen(strr)*(num-1));
 	p = str;
 	i = 0;
 	while(*p)
