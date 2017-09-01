@@ -24,6 +24,8 @@
 #define RETRY 3
 #define SLEEP_MICRO 100*1000     /* 100 millisec */
 
+static bool brewindCmd = false;
+
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
@@ -309,7 +311,14 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
 		{
 			getAgentCmdRst->ret = true;
 			appendStringInfoString(&(getAgentCmdRst->description), run_success);
-			ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
+			if (brewindCmd)
+			{
+				ereport(NOTICE, (errmsg("receive msg: %s", recvbuf.data)));
+				ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
+				brewindCmd = false;
+			}
+			else
+				ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
 			initdone = true;
 			break;
 		}
@@ -804,7 +813,7 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
 			/* ignore notice message */
-			ereport(DEBUG1, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			ereport(NOTICE, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 		}
 		else if(msg_type == AGT_MSG_RESULT)
 		{
@@ -1198,9 +1207,10 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	/*node rewind*/
 	resetStringInfo(&infosendmsg);
 	appendStringInfo(&infosendmsg, " --target-pgdata %s --source-server='host=%s port=%d user=%s dbname=postgres' -N %s", slave_nodeinfo.nodepath, master_nodeinfo.nodeaddr, master_nodeinfo.nodeport, slave_nodeinfo.nodeusername, nodename);
-	ereport(NOTICE, (errmsg("pg_rewind %s", infosendmsg.data)));
 
+	brewindCmd = true;
 	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, slave_nodeinfo.nodehost, strinfo);
+	brewindCmd = false;
 	pfree(infosendmsg.data);
 	pfree_AppendNodeInfo(master_nodeinfo);
 	pfree_AppendNodeInfo(slave_nodeinfo);

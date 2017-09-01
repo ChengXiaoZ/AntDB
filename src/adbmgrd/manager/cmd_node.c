@@ -1692,6 +1692,7 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		if(!HeapTupleIsValid(mastertuple))
 		{
+			mgr_unlock_cluster(&pg_conn);
 			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 				,errmsg("gtm master \"%s\" does not exist", cndnname)));
 		}
@@ -1710,8 +1711,9 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 		 mastertuple = SearchSysCache1(NODENODEOID, ObjectIdGetDatum(nodemasternameoid));
 		 if(!HeapTupleIsValid(mastertuple))
 		 {
-						 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-										 ,errmsg("datanode master \"%s\" dosen't exist", cndnname)));
+			mgr_unlock_cluster(&pg_conn);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("datanode master \"%s\" dosen't exist", cndnname)));
 		 }
 		 DatumStopDnMaster = DirectFunctionCall1(mgr_stop_one_dn_master, CStringGetDatum(cndnname));
 		 if(DatumGetObjectId(DatumStopDnMaster) == InvalidOid)
@@ -1779,7 +1781,11 @@ void mgr_runmode_cndn_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmd
 	}
 	getAgentCmdRst->ret = execok;
 	if (!execok)
+	{
+		if (AGT_CMD_DN_FAILOVER == cmdtype || AGT_CMD_GTM_SLAVE_FAILOVER == cmdtype)
+			mgr_unlock_cluster(&pg_conn);
 		return;
+	}
 	/*when init, 1. update gtm system table's column to set initial is true 2. refresh postgresql.conf*/
 	if (execok && AGT_CMD_GTM_INIT == cmdtype)
 	{
@@ -10678,7 +10684,8 @@ void mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	}
 
 	/*lock cluster*/
-	ereport(LOG, (errmsg("%s", "SELECT PG_PAUSE_CLUSTER();")));
+	ereport(NOTICE, (errmsg("lock cluster: %s", "SELECT PG_PAUSE_CLUSTER();")));
+	ereport(LOG, (errmsg("lock cluster: %s", "SELECT PG_PAUSE_CLUSTER();")));
 	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, "SELECT PG_PAUSE_CLUSTER();", maxnum);
 	if (try < 0)
 	{
@@ -10711,7 +10718,8 @@ void mgr_unlock_cluster(PGconn **pg_conn)
 	const int maxnum = 15;
 	char *sqlstr = "SELECT PG_UNPAUSE_CLUSTER();";
 
-	ereport(LOG, (errmsg("%s", sqlstr)));
+	ereport(NOTICE, (errmsg("unlock cluster: %s", sqlstr)));
+	ereport(LOG, (errmsg("unlock cluster: %s", sqlstr)));
 	try = mgr_pqexec_boolsql_try_maxnum(pg_conn, sqlstr, maxnum);
 	if (try<0)
 	{
