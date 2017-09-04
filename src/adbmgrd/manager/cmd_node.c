@@ -663,7 +663,7 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 			heap_freetuple(oldtuple);
 			heap_close(rel, RowExclusiveLock);
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be changed", mgr_nodetype_str(mgr_node->nodetype), NameStr(name))));
+				 ,errmsg("%s \"%s\" has been initialized in the cluster, cannot be changed", mgr_nodetype_str(nodetype), NameStr(name))));
 		}
 		if(got[Anum_mgr_node_nodesync-1] == true)
 			mgr_alter_master_sync_incluster(mastertype, &name, selftupleoid, nodetype, new_sync);
