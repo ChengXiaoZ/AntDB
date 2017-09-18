@@ -981,7 +981,8 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			pg_usleep(500000L);
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
-				break;
+				if (strcasecmp("t", PQgetvalue(res, 0, 0) != NULL ? PQgetvalue(res, 0, 0):"") == 0)
+					break;
 			if (iloop)
 			{
 				PQclear(res);
@@ -1033,7 +1034,8 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			pg_usleep(500000L);
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
-				break;
+				if (strcasecmp("t", PQgetvalue(res, 0, 0) != NULL ?PQgetvalue(res, 0, 0):"") == 0)
+					break;
 			if (iloop)
 			{
 				PQclear(res);
