@@ -153,7 +153,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt ListJobStmt
-				AddExtensionStmt DropExtensionStmt RemoveNodeStmt FailoverManualStmt
+				AddExtensionStmt DropExtensionStmt RemoveNodeStmt FailoverManualStmt SwitchoverStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -190,7 +190,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 %token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
 %token<keyword> STATUS ACTIVATE
-%token<keyword> PROMOTE ADBMGR REWIND
+%token<keyword> PROMOTE ADBMGR REWIND SWITCHOVER
 
 /* for ADB monitor*/
 %token<keyword> GET_HOST_LIST_ALL GET_HOST_LIST_SPEC
@@ -280,6 +280,7 @@ stmt :
 	| DropExtensionStmt
 	| RemoveNodeStmt
 	| FailoverManualStmt
+	| SwitchoverStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2680,6 +2681,18 @@ FailoverManualStmt:
 		}
 	;
 
+SwitchoverStmt:
+	SWITCHOVER DATANODE opt_dn_inner_type Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_switchover_func", args));
+			$$ = (Node*)stmt;
+		}
+		;
+
 unreserved_keyword:
 	  ACL
 	| ACTIVATE
@@ -2758,6 +2771,7 @@ unreserved_keyword:
 	| SMART
 	| START
 	| STOP
+	| SWITCHOVER
 	| TO
 	| UPDATE_PASSWORD
 	| UPDATE_THRESHOLD_VALUE

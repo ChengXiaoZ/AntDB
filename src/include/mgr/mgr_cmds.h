@@ -363,6 +363,7 @@ extern Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS);
 extern Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS);
 extern Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS);
 extern Datum mgr_append_activate_coord(PG_FUNCTION_ARGS);
+extern Datum mgr_switchover_func(PG_FUNCTION_ARGS);
 
 /*expansion calls*/
 extern void	mgr_make_sure_all_running(char node_type);

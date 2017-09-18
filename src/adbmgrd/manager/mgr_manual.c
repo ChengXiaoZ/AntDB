@@ -52,7 +52,8 @@ static struct enum_sync_state sync_state_tab[] =
 };
 
 static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo);
-
+static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg);
+static bool mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond);
 /*
 * promote the node to master; delete the old master tuple in node systable, delete 
 * the old master param in param table ; set type of the new master as master type in node
@@ -1034,7 +1035,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			pg_usleep(500000L);
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
-				if (strcasecmp("t", PQgetvalue(res, 0, 0) != NULL ?PQgetvalue(res, 0, 0):"") == 0)
+				if (strcasecmp("t", PQgetvalue(res, 0, 0) != NULL ? PQgetvalue(res, 0, 0):"") == 0)
 					break;
 			if (iloop)
 			{
@@ -1243,3 +1244,629 @@ static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, c
 	return rest;
 }
 
+
+/*
+* datanode switchover, command format: switchover datanode slave|extra datanode_name
+* condition: the datanode slave|extra is sync with master
+*/
+
+Datum mgr_switchover_func(PG_FUNCTION_ARGS)
+{
+	char nodeType;
+	char *typestr;
+	char *cndnPath;
+	bool isExistS = false;
+	bool isExistM = false;
+	bool isRunningS = false;
+	bool isRunningM = false;
+	bool res = false;
+	bool binfosendmsg = false;
+	bool bgetAgentCmdRst = false;
+	bool bStopOldMaster = false;
+	bool brestmsg = false;
+	bool bRefreshParam = false;
+	bool rest = true;
+	bool isNull = false;
+	int iloop = 60;
+	int iMax = iloop;
+	HeapTuple tuple;
+	HeapTuple tupResult;
+	HeapTuple tupleS;
+	NameData nodeNameData;
+	NameData nodeTypeStrData;
+	NameData oldMSyncData;
+	NameData syncStateData;
+	AppendNodeInfo nodeInfoS;
+	AppendNodeInfo nodeInfoM;
+	Form_mgr_node mgr_node;
+	PGconn *pgConn;
+	StringInfoData restmsg;
+	StringInfoData infosendmsg;
+	StringInfoData strerr;
+	Oid cnOid;
+	Relation nodeRel;
+	HeapScanDesc relScan;
+	ScanKeyData key[3];
+	GetAgentCmdRst getAgentCmdRst;
+	Datum datumPath;
+	
+	mgr_make_sure_all_running(GTM_TYPE_GTM_MASTER);
+	mgr_make_sure_all_running(CNDN_TYPE_COORDINATOR_MASTER);
+
+	/* get the input variable */
+	nodeType = PG_GETARG_INT32(0);
+	namestrcpy(&nodeNameData, PG_GETARG_CSTRING(1));	
+	
+	/* check the type */
+	if (CNDN_TYPE_DATANODE_MASTER == nodeType)
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("it is the datanode master, no need switchover")));
+	}
+	
+	if (CNDN_TYPE_DATANODE_SLAVE != nodeType && CNDN_TYPE_DATANODE_EXTRA != nodeType)
+	{
+		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+			,errmsg("unknown the datanode type : %c", nodeType)));
+	}
+	
+	/* check the slave node exist */
+	namestrcpy(&nodeTypeStrData, nodeType == CNDN_TYPE_DATANODE_SLAVE ? "datanode slave":"datanode extra");
+	PG_TRY();
+	{
+		get_nodeinfo_byname(nodeNameData.data, nodeType, &isExistS, &isRunningS, &nodeInfoS);
+		if (false == isExistS)
+		{
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("%s \"%s\" does not exist", nodeTypeStrData.data, nodeNameData.data)));
+		}
+		if (false == isRunningS)
+		{
+			ereport(ERROR, (errmsg("%s \"%s\" does not running normal", nodeTypeStrData.data, nodeNameData.data)));
+		}
+	}
+	PG_CATCH();
+	{
+		pfree_AppendNodeInfo(nodeInfoS);
+		PG_RE_THROW();
+	}PG_END_TRY();
+
+	/* check the datanode master */
+	PG_TRY();
+	{
+		get_nodeinfo_byname(nodeNameData.data, CNDN_TYPE_DATANODE_MASTER, &isExistM, &isRunningM, &nodeInfoM);
+		if (false == isExistM)
+		{
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("datanode master \"%s\" does not exist", nodeNameData.data)));
+		}
+		if (false == isRunningM)
+		{
+			ereport(ERROR, (errmsg("datanode master \"%s\" does not running normal", nodeNameData.data)));
+		}
+	}
+	PG_CATCH();
+	{
+		pfree_AppendNodeInfo(nodeInfoS);
+		pfree_AppendNodeInfo(nodeInfoM);
+
+		PG_RE_THROW();
+	}PG_END_TRY();	
+	
+	initStringInfo(&restmsg);
+	mgr_get_master_sync_string(nodeInfoM.tupleoid, true, InvalidOid, &restmsg);
+	namestrcpy(&syncStateData, restmsg.len == 0 ? "''":restmsg.data);
+	
+	/* lock the cluster */
+	mgr_lock_cluster(&pgConn, &cnOid);
+	
+	/* check the xlog diff */
+	PG_TRY();
+	{
+		resetStringInfo(&restmsg);
+		initStringInfo(&infosendmsg);
+		initStringInfo(&(getAgentCmdRst.description));
+		ereport(LOG, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
+				, iloop, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
+				, iloop, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+
+		res = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iMax);
+		if (res <= 0)
+		{
+			ereport(ERROR, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position fail"
+					, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+		}
+		
+		/* stop datanode master mode i*/
+		bStopOldMaster = true;
+		appendStringInfo(&infosendmsg, " stop -D %s -m i -o -i -w -c", nodeInfoM.nodepath);
+		res = mgr_ma_send_cmd(AGT_CMD_DN_STOP, infosendmsg.data, nodeInfoM.nodehost, &restmsg);
+		if (!res)
+				ereport(ERROR, (errmsg("stop datanode master \"%s\" fail %s", nodeNameData.data, restmsg.data)));
+
+		bRefreshParam = true;
+		/* set parameters the given slave node in postgresql.conf */
+		resetStringInfo(&infosendmsg);
+		ereport(LOG, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
+		ereport(NOTICE, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
+		mgr_add_parm(nodeNameData.data, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoS.nodepath, &infosendmsg
+				, nodeInfoS.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			bgetAgentCmdRst = true;
+			ereport(ERROR, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names='' fail, %s"
+				, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+		}
+		
+		/* set the given slave node pg_hba.conf for streaming replication*/
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_get_hba_replication_info(nodeNameData.data, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, nodeInfoS.nodepath, &infosendmsg
+				, nodeInfoS.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			bgetAgentCmdRst = true;
+			ereport(ERROR, (errmsg("on %s \"%s\", refresh pg_bha.conf fail, %s"
+				, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+		}
+
+		/* promote the given slave node */
+		resetStringInfo(&restmsg);
+		resetStringInfo(&infosendmsg);
+		appendStringInfo(&infosendmsg, " promote -D %s -w", nodeInfoS.nodepath);
+		res = mgr_ma_send_cmd(AGT_CMD_DN_FAILOVER, infosendmsg.data, nodeInfoS.nodehost, &restmsg);
+		if (!res)
+		{
+			brestmsg = true;
+			ereport(ERROR, (errmsg("promote %s \"%s\" fail, %s", nodeTypeStrData.data, nodeNameData.data, restmsg.data)));
+		}
+		/*check recovery finish*/
+		ereport(LOG, (errmsg("waiting for the new datanode master \"%s\" can accept connections...", nodeNameData.data)));
+		ereport(NOTICE, (errmsg("waiting for the new datanode master \"%s\" can accept connections...", nodeNameData.data)));
+		mgr_check_node_connect(nodeType, nodeInfoS.nodehost, nodeInfoS.nodeport);
+
+	}
+	PG_CATCH();
+	{
+		ereport(LOG, (errmsg("rollback start:")));
+		ereport(NOTICE, (errmsg("rollback start:")));
+
+		if (bStopOldMaster)
+		{
+			ereport(WARNING, (errmsg("make %s \"%s\" as datanode master fail, use \"monitor all\", \"monitor ha\" to check nodes status, !!!you may need use \"rewind %s %s\" to make the original %s \"%s\" to run normal !!!",
+			nodeTypeStrData.data, nodeNameData.data, nodeTypeStrData.data
+			, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+			/* start the old master node */
+			resetStringInfo(&(getAgentCmdRst.description));
+			nodeRel = heap_open(NodeRelationId, AccessShareLock);
+			tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, CNDN_TYPE_DATANODE_MASTER);
+			mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
+			heap_freetuple(tuple);
+			heap_close(nodeRel, AccessShareLock);
+			if(!getAgentCmdRst.ret)
+			{
+				ereport(WARNING, (errmsg("start original %s \"%s\" fail %s", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+			}
+		}
+
+		if (bRefreshParam)
+		{
+			/* set parameters the given slave node in postgresql.conf */
+			resetStringInfo(&infosendmsg);
+			resetStringInfo(&(getAgentCmdRst.description));
+			ereport(LOG, (errmsg("on original %s \"%s\", set hot_standby=on", nodeTypeStrData.data, nodeNameData.data)));
+			ereport(NOTICE, (errmsg("on original %s \"%s\", set hot_standby=on", nodeTypeStrData.data, nodeNameData.data)));
+			mgr_add_parm(nodeNameData.data, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
+			mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+			mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoS.nodepath, &infosendmsg
+					, nodeInfoS.nodehost, &getAgentCmdRst);
+			if (!getAgentCmdRst.ret)
+			{
+				bgetAgentCmdRst = true;
+				ereport(WARNING, (errmsg("on original %s \"%s\", set hot_standby=on fail, %s"
+					, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+			}
+			/*restart the given slave node*/
+			resetStringInfo(&(getAgentCmdRst.description));
+			nodeRel = heap_open(NodeRelationId, AccessShareLock);
+			tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, nodeType);
+			mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, nodeRel, tuple, SHUTDOWN_F);
+			heap_freetuple(tuple);
+			heap_close(nodeRel, AccessShareLock);
+			if(!getAgentCmdRst.ret)
+			{
+				bgetAgentCmdRst = true;
+				ereport(WARNING, (errmsg("restart original %s \"%s\" fail, %s", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+			}
+		}
+
+		mgr_unlock_cluster(&pgConn);
+		pfree_AppendNodeInfo(nodeInfoS);
+		pfree_AppendNodeInfo(nodeInfoM);
+		if (!binfosendmsg)
+			pfree(infosendmsg.data);
+		if (!bgetAgentCmdRst)
+			pfree(getAgentCmdRst.description.data);
+		if (!brestmsg)
+			pfree(restmsg.data);
+		ereport(LOG, (errmsg("rollback end")));
+		ereport(NOTICE, (errmsg("rollback end")));
+		PG_RE_THROW();
+	}PG_END_TRY();
+	
+	pfree(restmsg.data);
+
+	initStringInfo(&strerr);
+	/* refresh pgxc_node on all coordinators */
+	ereport(LOG, (errmsg("refresh the new datanode master \"%s\" information in pgxc_node on all coordinators", nodeNameData.data)));
+	ereport(NOTICE, (errmsg("refresh the new datanode master \"%s\" information in pgxc_node on all coordinators", nodeNameData.data)));
+	res = mgr_pqexec_refresh_pgxc_node(PGXC_FAILOVER, nodeType, nodeNameData.data, &getAgentCmdRst, &pgConn, cnOid);
+	if (!res)
+	{
+		rest = false;
+		ereport(WARNING, (errmsg("%s", getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "update pgxc_node on coordinators fail: %s\n", getAgentCmdRst.description.data);
+	}
+	/*unlock cluster*/
+	mgr_unlock_cluster(&pgConn);
+
+	PG_TRY();
+	{
+		ereport(LOG, (errmsg("exchange the node type for datanode master \"%s\" and %s \"%s\" in node table", nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+		ereport(NOTICE, (errmsg("exchange the node type for datanode master \"%s\" and %s \"%s\" in node table", nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+		
+		/* refresh new master info in node table */
+		nodeRel = heap_open(NodeRelationId, RowExclusiveLock);
+
+		tuple = SearchSysCache1(NODENODEOID, nodeInfoS.tupleoid);
+		if(!(HeapTupleIsValid(tuple)))
+		{
+			heap_close(nodeRel, RowExclusiveLock);
+			ereport(ERROR, (errmsg("get original %s \"%s\" tuple information in node table error", nodeTypeStrData.data, nodeNameData.data)));
+		}
+		tupleS = SearchSysCache1(NODENODEOID, nodeInfoM.tupleoid);
+		if(!(HeapTupleIsValid(tupleS)))
+		{
+			ReleaseSysCache(tuple);
+			heap_close(nodeRel, RowExclusiveLock);
+			ereport(ERROR, (errmsg("get original datanode master \"%s\" tuple information in node table error",  nodeNameData.data)));
+		}
+
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		namestrcpy(&oldMSyncData, NameStr(mgr_node->nodesync));
+		mgr_node->nodetype = CNDN_TYPE_DATANODE_MASTER;
+		mgr_node->nodemasternameoid = 0;
+		namestrcpy(&(mgr_node->nodesync), "");
+		heap_inplace_update(nodeRel, tuple);	
+		ReleaseSysCache(tuple);
+
+		/* refresh new slave info in node table */
+		mgr_node = (Form_mgr_node)GETSTRUCT(tupleS);
+		Assert(mgr_node);
+		mgr_node->nodetype = nodeType;
+		mgr_node->nodemasternameoid = nodeInfoS.tupleoid;
+		namestrcpy(&(mgr_node->nodesync), oldMSyncData.data);
+		heap_inplace_update(nodeRel, tupleS);	
+		ReleaseSysCache(tupleS);
+
+		heap_close(nodeRel, RowExclusiveLock);
+	}PG_CATCH();
+	{
+		ereport(LOG, (errmsg("rollback start:")));
+		ereport(NOTICE, (errmsg("rollback start:")));
+
+		ereport(WARNING, (errmsg("exchange the node type for datanode master \"%s\" and %s \"%s\" in node table fail, use \"monitor all\", \"monitor ha\" to check nodes status, if you need restore the original %s \"%s\", 1. restore the original datanode master information in pgxc_node on all coordinators, 2.check the original datanode master is running normal, use the command \"rewind %s %s\" !!!",  nodeNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+
+		/* set parameters the given master node in postgresql.conf */
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&(getAgentCmdRst.description));
+		ereport(LOG, (errmsg("on original datanode master \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
+		ereport(NOTICE, (errmsg("on original datanode master \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
+		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", syncStateData.data, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoM.nodepath, &infosendmsg
+				, nodeInfoM.nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			bgetAgentCmdRst = true;
+			ereport(WARNING, (errmsg("on original datanode master \"%s\", set hot_standby=off fail, %s", nodeNameData.data, getAgentCmdRst.description.data)));
+		}
+
+		/* rm old master recovery.conf */
+		resetStringInfo(&infosendmsg);
+		resetStringInfo(&restmsg);
+		appendStringInfo(&infosendmsg, "%s/recovery.conf", nodeInfoM.nodepath);
+		res = mgr_ma_send_cmd(AGT_CMD_RM, infosendmsg.data, nodeInfoM.nodehost, &restmsg);
+
+		/*restart the old master node*/
+		resetStringInfo(&(getAgentCmdRst.description));
+		nodeRel = heap_open(NodeRelationId, AccessShareLock);
+		tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, CNDN_TYPE_DATANODE_MASTER);
+		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, nodeRel, tuple, SHUTDOWN_F);
+		heap_freetuple(tuple);
+		heap_close(nodeRel, AccessShareLock);
+		if(!getAgentCmdRst.ret)
+		{
+			ereport(WARNING, (errmsg("restart original datanode master \"%s\" fail, %s", nodeNameData.data, getAgentCmdRst.description.data)));
+		}
+		
+		pfree(strerr.data);
+		pfree(infosendmsg.data);
+		pfree(getAgentCmdRst.description.data);
+		pfree_AppendNodeInfo(nodeInfoS);
+		pfree_AppendNodeInfo(nodeInfoM);
+
+		ereport(LOG, (errmsg("rollback end")));
+		ereport(NOTICE, (errmsg("rollback end")));
+		PG_RE_THROW();
+	}PG_END_TRY();
+
+	/* update new slave postgresql.conf */
+	resetStringInfo(&infosendmsg);
+	resetStringInfo(&(getAgentCmdRst.description));
+	ereport(LOG, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
+	ereport(NOTICE, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
+	mgr_add_parm(nodeNameData.data, nodeType, &infosendmsg);
+	mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
+	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoM.nodepath, &infosendmsg
+			, nodeInfoM.nodehost, &getAgentCmdRst);
+	if (!getAgentCmdRst.ret)
+	{
+		rest = false;
+		ereport(WARNING, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names='' fail, %s"
+			, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "on new %s \"%s\", set hot_standby=on, synchronous_standby_names='' fail, %s\n", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data);
+	}	
+	
+	/* update new slave recovery.conf */
+	ereport(LOG, (errmsg("on new %s \"%s\" refresh recovery.conf", nodeTypeStrData.data, nodeNameData.data)));
+	ereport(NOTICE, (errmsg("on new %s \"%s\" refresh recovery.conf", nodeTypeStrData.data, nodeNameData.data)));
+	resetStringInfo(&(getAgentCmdRst.description));
+	resetStringInfo(&infosendmsg);
+	mgr_add_parameters_recoveryconf(nodeType, nodeType == CNDN_TYPE_DATANODE_SLAVE ? "slave":"extra", nodeInfoS.tupleoid, &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, nodeInfoM.nodepath, &infosendmsg, nodeInfoM.nodehost, &getAgentCmdRst);
+	if (!getAgentCmdRst.ret)
+	{
+		rest = false;
+		ereport(WARNING, (errmsg("on new %s \"%s\", refresh recovery.conf fail, %s"
+			, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "on new %s \"%s\", refresh recovery.conf fail, %s\n", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data);
+	}
+	
+	/* start the new slave node */
+	resetStringInfo(&(getAgentCmdRst.description));
+	nodeRel = heap_open(NodeRelationId, AccessShareLock);
+	tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, nodeType);
+	mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
+	heap_freetuple(tuple);
+	heap_close(nodeRel, AccessShareLock);
+
+	if(!getAgentCmdRst.ret)
+	{
+		rest = false;
+		ereport(WARNING, (errmsg("start new %s \"%s\" fail, %s", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "start new %s \"%s\" fail, %s\n", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data);
+	}
+
+	/* for other slave or extra */
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[2],
+		Anum_mgr_node_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&nodeNameData));
+	nodeRel = heap_open(NodeRelationId, RowExclusiveLock);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if (mgr_node->nodemasternameoid != nodeInfoM.tupleoid)
+			continue;
+		typestr = mgr_nodetype_str(mgr_node->nodetype);
+
+		ereport(LOG, (errmsg("refresh mastername of %s \"%s\" in node table", typestr, NameStr(mgr_node->nodename))));
+		ereport(NOTICE, (errmsg("refresh mastername of %s \"%s\" in node table", typestr, NameStr(mgr_node->nodename))));
+		mgr_node->nodemasternameoid = nodeInfoS.tupleoid;
+		heap_inplace_update(nodeRel, tuple);
+
+		/* update recovery.conf */
+		ereport(LOG, (errmsg("refresh %s \"%s\" recovery.conf", typestr, NameStr(mgr_node->nodename))));
+		ereport(NOTICE, (errmsg("refresh %s \"%s\" recovery.conf", typestr, NameStr(mgr_node->nodename))));
+		resetStringInfo(&(getAgentCmdRst.description));
+		resetStringInfo(&infosendmsg);
+		mgr_add_parameters_recoveryconf(mgr_node->nodetype, mgr_node->nodetype == CNDN_TYPE_DATANODE_SLAVE ? "slave":"extra", nodeInfoS.tupleoid, &infosendmsg);
+		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(nodeRel), &isNull);
+		if (isNull)
+		{
+			heap_endscan(relScan);
+			heap_close(nodeRel, RowExclusiveLock);
+			pfree(infosendmsg.data);
+			pfree(strerr.data);
+			pfree(getAgentCmdRst.description.data);
+			pfree_AppendNodeInfo(nodeInfoS);
+			pfree_AppendNodeInfo(nodeInfoM);
+			ereport(WARNING, (errmsg("you should use \"monitor all\", \"monitor ha\" to check the node \"%s\" status, modify the mastername of datanode slave or datanode extra \"%s\" in node table"
+				, nodeNameData.data, nodeNameData.data)));
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node"), errmsg("column cndnpath is null")));
+		}
+		cndnPath = TextDatumGetCString(datumPath);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, cndnPath, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
+		if (!getAgentCmdRst.ret)
+		{
+			rest = false;
+			ereport(WARNING, (errmsg("on %s \"%s\", refresh recovery.conf fail, %s"
+				, typestr, NameStr(mgr_node->nodename), getAgentCmdRst.description.data)));
+			appendStringInfo(&strerr, "on %s \"%s\", refresh recovery.conf fail, %s\n", typestr, NameStr(mgr_node->nodename), getAgentCmdRst.description.data);
+		}
+		
+		/* restart the node */
+		resetStringInfo(&(getAgentCmdRst.description));
+		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, nodeRel, tuple, SHUTDOWN_F);
+		if(!getAgentCmdRst.ret)
+		{
+			rest = false;
+			ereport(WARNING, (errmsg("restart %s \"%s\" fail, %s", typestr, NameStr(mgr_node->nodename), getAgentCmdRst.description.data)));
+			appendStringInfo(&strerr, "restart %s \"%s\" fail, %s\n", typestr, NameStr(mgr_node->nodename), getAgentCmdRst.description.data);
+		}
+		pfree(typestr);
+	}
+	heap_endscan(relScan);
+	heap_close(nodeRel, RowExclusiveLock);
+	
+	/* set new datanode master synchronous_standby_names */
+	resetStringInfo(&infosendmsg);
+	resetStringInfo(&(getAgentCmdRst.description));
+
+	ereport(LOG, (errmsg("on new datanode master \"%s\", set synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
+	ereport(NOTICE, (errmsg("on new datanode master \"%s\", set synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
+
+	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", syncStateData.data, &infosendmsg);
+	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodeInfoS.nodepath, &infosendmsg
+			, nodeInfoS.nodehost, &getAgentCmdRst);
+	if (!getAgentCmdRst.ret)
+	{
+		rest = false;
+		ereport(WARNING, (errmsg("on new datanode master \"%s\", set synchronous_standby_names=%s fail %s", nodeNameData.data, syncStateData.data, getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "on new datanode master \"%s\", set synchronous_standby_names=%s fail %s", nodeNameData.data, syncStateData.data, getAgentCmdRst.description.data);
+	}
+
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+	pfree_AppendNodeInfo(nodeInfoS);
+	pfree_AppendNodeInfo(nodeInfoM);
+
+	if (strerr.len == 0)
+		appendStringInfoString(&strerr, "success");
+	ereport(LOG, (errmsg("the command of switchover result : status = %s , description is : %s", rest == true ? "true":"false", strerr.data)));
+	tupResult = build_common_command_tuple(&nodeNameData, rest, strerr.data);
+	pfree(strerr.data);
+	return HeapTupleGetDatum(tupResult);
+}
+
+
+static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg)
+{
+	ScanKeyData key[3];
+	Relation nodeRel;
+	HeapScanDesc relScan;
+	HeapTuple tuple;
+	NameData nodeNameData;
+	Form_mgr_node mgr_node;
+	char *hostAddr;
+	char *userName;
+	
+	Assert(nodename);
+
+	namestrcpy(&nodeNameData, nodename);
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[2],
+		Anum_mgr_node_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&nodeNameData));
+	nodeRel = heap_open(NodeRelationId, AccessShareLock);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		hostAddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		userName = get_hostuser_from_hostoid(mgr_node->nodehost);
+		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", userName, hostAddr, 32, "trust", infosendmsg);
+		pfree(hostAddr);
+		pfree(userName);
+	}
+	
+	heap_endscan(relScan);
+	heap_close(nodeRel, AccessShareLock);
+}
+
+
+static bool mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond)
+{
+	char *appName;
+	int iloop = 0;
+	int agentPortM;
+	StringInfoData infosendmsg;
+	StringInfoData restmsg;
+	Form_mgr_host mgr_host;
+	HeapTuple hostTupleM;
+	
+	Assert(CNDN_TYPE_DATANODE_SLAVE == nodeType || CNDN_TYPE_DATANODE_EXTRA == nodeType || GTM_TYPE_GTM_SLAVE == nodeType || GTM_TYPE_GTM_EXTRA == nodeType);
+	Assert(nodeName);
+	Assert(nodeInfoM);
+
+	if (CNDN_TYPE_DATANODE_SLAVE == nodeType || GTM_TYPE_GTM_SLAVE == nodeType)
+		appName = "slave";
+	else
+		appName = "extra";
+	initStringInfo(&infosendmsg);
+	initStringInfo(&restmsg);
+	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) < 200  from pg_stat_replication where application_name='%s';", appName);
+	
+	hostTupleM = SearchSysCache1(HOSTHOSTOID, nodeInfoM->nodehost);
+	if(!(HeapTupleIsValid(hostTupleM)))
+	{
+		ereport(ERROR, (errmsg("get the datanode master \"%s\" information in node table fail", nodeName)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+			, errcode(ERRCODE_UNDEFINED_OBJECT)));
+	}
+	mgr_host= (Form_mgr_host)GETSTRUCT(hostTupleM);
+	Assert(mgr_host);
+	agentPortM = mgr_host->hostagentport;
+	ReleaseSysCache(hostTupleM);	
+	
+	iloop = maxSecond;
+	while (iloop-- > 0)
+	{
+		/*checkponit first*/
+		resetStringInfo(&restmsg);
+		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentPortM, "checkpoint;select now();"
+			, nodeInfoM->nodeusername, nodeInfoM->nodeaddr, nodeInfoM->nodeport, DEFAULT_DB, &restmsg);
+		pg_usleep(500000L);
+		resetStringInfo(&restmsg);
+		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentPortM, infosendmsg.data
+			, nodeInfoM->nodeusername, nodeInfoM->nodeaddr, nodeInfoM->nodeport, DEFAULT_DB, &restmsg);
+		if (restmsg.len != 0)
+		{
+			if (strcmp(restmsg.data, "t") == 0)
+				break;
+		}
+		pg_usleep(500000L);
+	}
+	
+	pfree(infosendmsg.data);
+	pfree(restmsg.data);
+	
+	if (iloop <= 0)
+		return false;
+	else
+		return true;
+}
