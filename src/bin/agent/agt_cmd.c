@@ -988,12 +988,6 @@ static void cmd_refresh_confinfo(char *key, char *value, ConfInfo *info, bool bf
 			{
 				strncpy(info->line + info->value_loc,value,strlen(value));
 			}
-			else if(diffvalue < 0)
-			{
-				strncpy(info->line + info->value_loc, value,strlen(value));
-				/*use empty space to take up the diffvalue*/
-				memset(info->line + info->value_loc + strlen(value), ' ', info->value_len - strlen(value));
-			}
 			else
 			{
 				char *pline = palloc(strlen(info->line) + diffvalue + 1);

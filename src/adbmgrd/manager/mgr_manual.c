@@ -987,7 +987,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 				PQclear(res);
 				res = NULL;
 			}
-			pg_usleep(5000000L);
+			pg_usleep(500000L);
 		}
 		
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1039,7 +1039,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 				PQclear(res);
 				res = NULL;
 			}
-			pg_usleep(5000000L);
+			pg_usleep(500000L);
 		}
 		
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
@@ -1074,7 +1074,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 		if (!getAgentCmdRst.ret)
 		{
 			ereport(ERROR, (errmsg("on coordinator \"%s\", set hot_standby=off, pgxc_node_name='%s' fail, %s"
-				, s_coordname, s_coordname, restmsg.data)));
+				, s_coordname, s_coordname, getAgentCmdRst.description.data)));
 		}
 
 		/*restart the coordinator*/
@@ -1154,7 +1154,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	if (strerr.len == 0)
 	{
 		rest = true;
-		appendStringInfo(&strerr, "success");
+		appendStringInfoString(&strerr, "success");
 	}
 	else
 		rest = false;
