@@ -53,7 +53,7 @@ static struct enum_sync_state sync_state_tab[] =
 
 static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo);
 static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg);
-static bool mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond);
+static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond);
 /*
 * promote the node to master; delete the old master tuple in node systable, delete 
 * the old master param in param table ; set type of the new master as master type in node
@@ -1268,7 +1268,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	bool rest = true;
 	bool isNull = false;
 	int iloop = 60;
-	int iMax = iloop;
+	const int iMax = 60;
 	HeapTuple tuple;
 	HeapTuple tupResult;
 	HeapTuple tupleS;
@@ -1367,11 +1367,15 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		initStringInfo(&infosendmsg);
 		initStringInfo(&(getAgentCmdRst.description));
 		ereport(LOG, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
-				, iloop, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
 		ereport(NOTICE, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
-				, iloop, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
 
-		res = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iMax);
+		iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iMax);
+		if (iloop)
+			iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iloop);
+		if (iloop)
+			res = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iloop);
 		if (res <= 0)
 		{
 			ereport(ERROR, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position fail"
@@ -1388,21 +1392,23 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		bRefreshParam = true;
 		/* set parameters the given slave node in postgresql.conf */
 		resetStringInfo(&infosendmsg);
-		ereport(LOG, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
-		ereport(NOTICE, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
+		ereport(LOG, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeTypeStrData.data, nodeNameData.data, syncStateData.data)));
+		ereport(NOTICE, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeTypeStrData.data, nodeNameData.data, syncStateData.data)));
 		mgr_add_parm(nodeNameData.data, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoS.nodepath, &infosendmsg
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", syncStateData.data, &infosendmsg);
+		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodeInfoS.nodepath, &infosendmsg
 				, nodeInfoS.nodehost, &getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
 		{
 			bgetAgentCmdRst = true;
-			ereport(ERROR, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names='' fail, %s"
-				, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
+			ereport(ERROR, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=%s fail, %s"
+				, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data, syncStateData.data)));
 		}
 		
 		/* set the given slave node pg_hba.conf for streaming replication*/
+		ereport(LOG, (errmsg("set %s \"%s\" pg_hba.conf", nodeTypeStrData.data, nodeNameData.data)));
+		ereport(NOTICE, (errmsg("set %s \"%s\" pg_hba.conf", nodeTypeStrData.data, nodeNameData.data)));
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&(getAgentCmdRst.description));
 		mgr_get_hba_replication_info(nodeNameData.data, &infosendmsg);
@@ -1414,6 +1420,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			ereport(ERROR, (errmsg("on %s \"%s\", refresh pg_bha.conf fail, %s"
 				, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
 		}
+		mgr_reload_conf(nodeInfoS.nodehost, nodeInfoS.nodepath);
 
 		/* promote the given slave node */
 		resetStringInfo(&restmsg);
@@ -1561,40 +1568,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		ereport(LOG, (errmsg("rollback start:")));
 		ereport(NOTICE, (errmsg("rollback start:")));
 
-		ereport(WARNING, (errmsg("exchange the node type for datanode master \"%s\" and %s \"%s\" in node table fail, use \"monitor all\", \"monitor ha\" to check nodes status, if you need restore the original %s \"%s\", 1. restore the original datanode master information in pgxc_node on all coordinators, 2.check the original datanode master is running normal, use the command \"rewind %s %s\" !!!",  nodeNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
-
-		/* set parameters the given master node in postgresql.conf */
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&(getAgentCmdRst.description));
-		ereport(LOG, (errmsg("on original datanode master \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
-		ereport(NOTICE, (errmsg("on original datanode master \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
-		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", syncStateData.data, &infosendmsg);
-		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoM.nodepath, &infosendmsg
-				, nodeInfoM.nodehost, &getAgentCmdRst);
-		if (!getAgentCmdRst.ret)
-		{
-			bgetAgentCmdRst = true;
-			ereport(WARNING, (errmsg("on original datanode master \"%s\", set hot_standby=off fail, %s", nodeNameData.data, getAgentCmdRst.description.data)));
-		}
-
-		/* rm old master recovery.conf */
-		resetStringInfo(&infosendmsg);
-		resetStringInfo(&restmsg);
-		appendStringInfo(&infosendmsg, "%s/recovery.conf", nodeInfoM.nodepath);
-		res = mgr_ma_send_cmd(AGT_CMD_RM, infosendmsg.data, nodeInfoM.nodehost, &restmsg);
-
-		/*restart the old master node*/
-		resetStringInfo(&(getAgentCmdRst.description));
-		nodeRel = heap_open(NodeRelationId, AccessShareLock);
-		tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, CNDN_TYPE_DATANODE_MASTER);
-		mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, nodeRel, tuple, SHUTDOWN_F);
-		heap_freetuple(tuple);
-		heap_close(nodeRel, AccessShareLock);
-		if(!getAgentCmdRst.ret)
-		{
-			ereport(WARNING, (errmsg("restart original datanode master \"%s\" fail, %s", nodeNameData.data, getAgentCmdRst.description.data)));
-		}
+		ereport(WARNING, (errmsg("exchange the node type for datanode master \"%s\" and %s \"%s\" in node table fail, exchange them manual, include: nodetype, sync_state, mastername !!! use \"monitor all\", \"monitor ha\" to check nodes status; make the other datanode slave or datanode extra \"%s\" as new slave or extra for new datanode master: refresh its recovery.conf and its mastername in node table !!!",  nodeNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeNameData.data)));
 		
 		pfree(strerr.data);
 		pfree(infosendmsg.data);
@@ -1730,23 +1704,6 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	}
 	heap_endscan(relScan);
 	heap_close(nodeRel, RowExclusiveLock);
-	
-	/* set new datanode master synchronous_standby_names */
-	resetStringInfo(&infosendmsg);
-	resetStringInfo(&(getAgentCmdRst.description));
-
-	ereport(LOG, (errmsg("on new datanode master \"%s\", set synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
-	ereport(NOTICE, (errmsg("on new datanode master \"%s\", set synchronous_standby_names=%s", nodeNameData.data, syncStateData.data)));
-
-	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", syncStateData.data, &infosendmsg);
-	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodeInfoS.nodepath, &infosendmsg
-			, nodeInfoS.nodehost, &getAgentCmdRst);
-	if (!getAgentCmdRst.ret)
-	{
-		rest = false;
-		ereport(WARNING, (errmsg("on new datanode master \"%s\", set synchronous_standby_names=%s fail %s", nodeNameData.data, syncStateData.data, getAgentCmdRst.description.data)));
-		appendStringInfo(&strerr, "on new datanode master \"%s\", set synchronous_standby_names=%s fail %s", nodeNameData.data, syncStateData.data, getAgentCmdRst.description.data);
-	}
 
 	pfree(infosendmsg.data);
 	pfree(getAgentCmdRst.description.data);
@@ -1809,7 +1766,7 @@ static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg)
 }
 
 
-static bool mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond)
+static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond)
 {
 	char *appName;
 	int iloop = 0;
@@ -1829,7 +1786,7 @@ static bool mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeNam
 		appName = "extra";
 	initStringInfo(&infosendmsg);
 	initStringInfo(&restmsg);
-	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) < 200  from pg_stat_replication where application_name='%s';", appName);
+	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) <256  from pg_stat_replication where application_name='%s';", appName);
 	
 	hostTupleM = SearchSysCache1(HOSTHOSTOID, nodeInfoM->nodehost);
 	if(!(HeapTupleIsValid(hostTupleM)))
@@ -1865,8 +1822,5 @@ static bool mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeNam
 	pfree(infosendmsg.data);
 	pfree(restmsg.data);
 	
-	if (iloop <= 0)
-		return false;
-	else
-		return true;
+	return iloop;
 }
