@@ -307,7 +307,7 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	NameData nodenamedata;
 	AppendNodeInfo master_nodeinfo;
 	AppendNodeInfo cn_nodeinfo;
-	ScanKeyData key[0];
+	ScanKeyData key[1];
 	Relation rel_node;
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
