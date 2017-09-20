@@ -1375,8 +1375,8 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		if (iloop)
 			iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iloop);
 		if (iloop)
-			res = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iloop);
-		if (res <= 0)
+			iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iloop);
+		if (iloop <= 0)
 		{
 			ereport(ERROR, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position fail"
 					, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
