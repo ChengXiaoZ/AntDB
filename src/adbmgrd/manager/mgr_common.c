@@ -24,8 +24,6 @@
 #define RETRY 3
 #define SLEEP_MICRO 100*1000     /* 100 millisec */
 
-static bool brewindCmd = false;
-
 static TupleDesc common_command_tuple_desc = NULL;
 static TupleDesc common_list_acl_tuple_desc = NULL;
 static TupleDesc showparam_command_tuple_desc = NULL;
@@ -277,7 +275,7 @@ char *get_hostuser_from_hostoid(Oid hostOid)
 /*
 * get msg from agent
 */
-bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
+bool mgr_recv_msg_original_result(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst, bool bOriginalResult)
 {
 	char			msg_type;
 	StringInfoData recvbuf;
@@ -310,21 +308,28 @@ bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
 		else if(msg_type == AGT_MSG_RESULT)
 		{
 			getAgentCmdRst->ret = true;
-			appendStringInfoString(&(getAgentCmdRst->description), run_success);
-			if (brewindCmd)
+			if (bOriginalResult)
 			{
+				appendStringInfoString(&(getAgentCmdRst->description), recvbuf.data);
 				ereport(NOTICE, (errmsg("receive msg: %s", recvbuf.data)));
 				ereport(LOG, (errmsg("receive msg: %s", recvbuf.data)));
-				brewindCmd = false;
 			}
 			else
+			{
+				appendStringInfoString(&(getAgentCmdRst->description), run_success);
 				ereport(DEBUG1, (errmsg("receive msg: %s", recvbuf.data)));
+			}
 			initdone = true;
 			break;
 		}
 	}
 	pfree(recvbuf.data);
 	return initdone;
+}
+
+bool mgr_recv_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst)
+{
+	return mgr_recv_msg_original_result(ma, getAgentCmdRst, false);
 }
 
 /*
@@ -1055,6 +1060,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	char cmdtype = AGT_CMD_NODE_REWIND;
 	char mastertype;
 	char portBuf[10];
+	char adbhome[MAXPGPATH];
 	char *hostAddr;
 	char *user;
 	char *nodetypestr;
@@ -1068,6 +1074,8 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	int rest;
 	int iloop;
 	int agentPortM;
+	bool resA = true;
+	bool resB = true;
 	const int iMax = 60;
 	AppendNodeInfo slave_nodeinfo;
 	AppendNodeInfo master_nodeinfo;
@@ -1075,6 +1083,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	StringInfoData restmsg;
 	GetAgentCmdRst getAgentCmdRst;
 	Relation rel_node;
+	Relation rel_host;
 	HeapTuple tuple;
 	HeapTuple node_tuple;
 	HeapTuple hostTupleM;
@@ -1083,7 +1092,6 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	Form_mgr_node mgr_node;
 	Form_mgr_host mgr_host;
 	Datum datumPath;
-
 	/*check node type*/
 	if (nodetype != GTM_TYPE_GTM_SLAVE && nodetype != GTM_TYPE_GTM_EXTRA
 		&& nodetype != CNDN_TYPE_DATANODE_SLAVE && nodetype != CNDN_TYPE_DATANODE_EXTRA)
@@ -1142,11 +1150,11 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	{
 		heap_freetuple(tuple);
 		heap_close(rel_node, AccessShareLock);
+		ereport(WARNING, (errmsg("wait max %d seconds to check %s \"%s\" running normal fail", iMax, nodetypestr, nodename)));
 		pfree(getAgentCmdRst.description.data);
 		pfree(nodetypestr);
 		pfree(user);
 		pfree(hostAddr);
-		ereport(WARNING, (errmsg("wait max %d seconds to check %s \"%s\" running normal fail", iMax, nodetypestr, nodename)));
 		return false;
 	}
 	
@@ -1186,6 +1194,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 		pfree(hostAddr);
 		pfree(nodetypestr);
 		pfree(getAgentCmdRst.description.data);
+		appendStringInfo(strinfo, "wait max %d seconds to check %s \"%s\" stop complete fail", iMax, nodetypestr, nodename);
 		return false;
 	}
 
@@ -1246,6 +1255,9 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 		{
 			heap_endscan(rel_scan);
 			heap_close(rel_node, AccessShareLock);
+			pfree_AppendNodeInfo(master_nodeinfo);
+			pfree_AppendNodeInfo(slave_nodeinfo);
+			pfree(getAgentCmdRst.description.data);
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_nodetmp")
 				, errmsg("column cndnpath is null")));
@@ -1262,6 +1274,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 			pfree_AppendNodeInfo(slave_nodeinfo);
 			appendStringInfo(strinfo, "%s", getAgentCmdRst.description.data);
 			pfree(getAgentCmdRst.description.data);
+			pfree(infosendmsg.data);
 			heap_endscan(rel_scan);
 			heap_close(rel_node, AccessShareLock);
 			return false;
@@ -1275,12 +1288,15 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	pfree(getAgentCmdRst.description.data);
 
 	/* send checkpoint sql command to master */
+	rel_host = heap_open(HostRelationId, AccessShareLock);
 	hostTupleM = SearchSysCache1(HOSTHOSTOID, master_nodeinfo.nodehost);
 	if(!(HeapTupleIsValid(hostTupleM)))
 	{
+		appendStringInfo(strinfo, "get the datanode master \"%s\" information in node table fail", nodename);
 		ereport(WARNING, (errmsg("get the datanode master \"%s\" information in node table fail", nodename)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 			, errcode(ERRCODE_UNDEFINED_OBJECT)));
+		heap_close(rel_host, AccessShareLock);
 		pfree(infosendmsg.data);
 		pfree_AppendNodeInfo(master_nodeinfo);
 		pfree_AppendNodeInfo(slave_nodeinfo);
@@ -1288,6 +1304,21 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	}
 	mgr_host= (Form_mgr_host)GETSTRUCT(hostTupleM);
 	Assert(mgr_host);
+	datumPath = heap_getattr(hostTupleM, Anum_mgr_host_hostadbhome, RelationGetDescr(rel_host), &isNull);
+	if (isNull)
+	{
+		ReleaseSysCache(hostTupleM);
+		heap_close(rel_host, AccessShareLock);
+		pfree(infosendmsg.data);
+		pfree_AppendNodeInfo(master_nodeinfo);
+		pfree_AppendNodeInfo(slave_nodeinfo);
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node")
+			, errmsg("column adbhome is null")));
+	}
+	heap_close(rel_host, AccessShareLock);
+	memset(adbhome, 0, MAXPGPATH);
+	strncpy(adbhome, TextDatumGetCString(datumPath), MAXPGPATH-1);
 	agentPortM = mgr_host->hostagentport;
 	ReleaseSysCache(hostTupleM);
 
@@ -1304,12 +1335,43 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 			break;
 		pg_usleep(1000000L);
 	}
-	pfree(restmsg.data);
-	if (iloop <= 0)
+	/* check datanode master pg_controldata */
+	resA = true;
+	resB = true;
+	resetStringInfo(&restmsg);
+	resetStringInfo(&infosendmsg);
+	/*get adbhome*/
+	
+	appendStringInfo(&infosendmsg, "%s/bin/pg_controldata '%s' | grep 'Minimum recovery ending location:' |awk '{print $5}'", adbhome, master_nodeinfo.nodepath);
+	resA = mgr_ma_send_cmd_get_original_result(AGT_CMD_GET_BATCH_JOB, infosendmsg.data, master_nodeinfo.nodehost, &restmsg, true);
+	if (resA)
 	{
+		if (restmsg.len == 0)
+			resA = false;
+		else if (strcasecmp(restmsg.data, "{\"result\":\"0/0\"}") != 0)
+			resA = false;
+	}
+
+	resetStringInfo(&restmsg);
+	resetStringInfo(&infosendmsg);
+	appendStringInfo(&infosendmsg, "%s/bin/pg_controldata '%s' |grep 'Min recovery ending loc' |awk '{print $6}'", adbhome, master_nodeinfo.nodepath);
+	resB = mgr_ma_send_cmd_get_original_result(AGT_CMD_GET_BATCH_JOB, infosendmsg.data, master_nodeinfo.nodehost, &restmsg, true);
+	if (resB)
+	{
+		if (restmsg.len == 0)
+			resB = false;
+		else if (strcasecmp(restmsg.data, "{\"result\":\"0\"}") != 0)
+			resB = false;
+	}
+
+	if (!resA || !resB)
+	{
+		appendStringInfo(strinfo, "on datanode master \"%s\" pg_controldata get expect value fail", nodename);
 		ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
-				,errmsg("on the datanode master \"%s\" execute \"checkpoint\" fail", nodename)
-				,errhint("execute \"checkpoint\" on datanode master \"%s\", then execute \"export PGDATA='%s'\", \"pg_controldata\" to check \"Minimum recovery ending location\" is \"0/0\" and \"Min recovery ending loc's timeline\" is \"0\" before execute the rewind command again", nodename, slave_nodeinfo.nodepath)));
+				,errmsg("on the datanode master \"%s\" execute \"pg_controldata %s\" to get the expect value fail"
+				, nodename, master_nodeinfo.nodepath)
+				,errhint("execute \"checkpoint\" on datanode master \"%s\", then execute  \"pg_controldata %s\" to check \"Minimum recovery ending location\" is \"0/0\" and \"Min recovery ending loc's timeline\" is \"0\" before execute the rewind command again", nodename, master_nodeinfo.nodepath)));
+		pfree(restmsg.data);
 		pfree(infosendmsg.data);
 		pfree_AppendNodeInfo(master_nodeinfo);
 		pfree_AppendNodeInfo(slave_nodeinfo);
@@ -1320,9 +1382,8 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	resetStringInfo(&infosendmsg);
 	appendStringInfo(&infosendmsg, " --target-pgdata %s --source-server='host=%s port=%d user=%s dbname=postgres' -N %s", slave_nodeinfo.nodepath, master_nodeinfo.nodeaddr, master_nodeinfo.nodeport, slave_nodeinfo.nodeusername, nodename);
 
-	brewindCmd = true;
-	res = mgr_ma_send_cmd(cmdtype, infosendmsg.data, slave_nodeinfo.nodehost, strinfo);
-	brewindCmd = false;
+	res = mgr_ma_send_cmd_get_original_result(cmdtype, infosendmsg.data, slave_nodeinfo.nodehost, strinfo, true);
+	pfree(restmsg.data);
 	pfree(infosendmsg.data);
 	pfree_AppendNodeInfo(master_nodeinfo);
 	pfree_AppendNodeInfo(slave_nodeinfo);
@@ -1333,7 +1394,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 * send adbmgr command string to agent; if fail, the error information in strinfo
 *
 */
-bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo)
+bool mgr_ma_send_cmd_get_original_result(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo, bool bOriginalResult)
 {
 	char *hostaddr;
 	char cmdheadstr[64];
@@ -1372,12 +1433,17 @@ bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo
 	}
 	/*check the receive msg*/
 	initStringInfo(&(getAgentCmdRst.description));
-	res = mgr_recv_msg(ma, &getAgentCmdRst);
+	res = mgr_recv_msg_original_result(ma, &getAgentCmdRst, bOriginalResult);
 	ma_close(ma);
 	appendStringInfoString(strinfo, getAgentCmdRst.description.data);
 	pfree(getAgentCmdRst.description.data);
 	
 	return res;
+}
+
+bool mgr_ma_send_cmd(char cmdtype, char *cmdstr, Oid hostOid, StringInfo strinfo)
+{
+	return mgr_ma_send_cmd_get_original_result(cmdtype, cmdstr, hostOid, strinfo, false);
 }
 
 /*

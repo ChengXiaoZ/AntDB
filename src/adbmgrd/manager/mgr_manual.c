@@ -160,7 +160,7 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	}
 	heap_close(rel_node, RowExclusiveLock);
 	if (!slave_is_running)
-		ereport(WARNING, (errmsg("%s \"%s\" does not running", nodetypestr, nodenamedata.data)));
+		ereport(WARNING, (errmsg("%s \"%s\" is not running normal", nodetypestr, nodenamedata.data)));
 
 	/*update the extra node: masteroid, and sync_stat*/
 	switch(nodetype)
@@ -258,7 +258,7 @@ Datum mgr_failover_manual_promote_func(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errmsg("%s \"%s\" does not exist", nodetypestr, nodenamedata.data)));
 	}
 	if (!slave_is_running)
-		ereport(ERROR, (errmsg("%s \"%s\" does not running", nodetypestr, nodenamedata.data)));
+		ereport(ERROR, (errmsg("%s \"%s\" is not running normal", nodetypestr, nodenamedata.data)));
 	if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype 
 			|| GTM_TYPE_GTM_MASTER == nodetype)
 		cmdtype = AGT_CMD_GTM_SLAVE_FAILOVER;
@@ -1322,7 +1322,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		}
 		if (false == isRunningS)
 		{
-			ereport(ERROR, (errmsg("%s \"%s\" does not running normal", nodeTypeStrData.data, nodeNameData.data)));
+			ereport(ERROR, (errmsg("%s \"%s\" is not running normal", nodeTypeStrData.data, nodeNameData.data)));
 		}
 	}
 	PG_CATCH();
@@ -1342,7 +1342,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		}
 		if (false == isRunningM)
 		{
-			ereport(ERROR, (errmsg("datanode master \"%s\" does not running normal", nodeNameData.data)));
+			ereport(ERROR, (errmsg("datanode master \"%s\" is not running normal", nodeNameData.data)));
 		}
 	}
 	PG_CATCH();

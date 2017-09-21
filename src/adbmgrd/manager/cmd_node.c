@@ -8017,6 +8017,9 @@ void mgr_get_cmd_head_word(char cmdtype, char *str)
 		case AGT_CMD_RM:
 			strcpy(str, "rm ");
 			break;
+		case AGT_CMD_GET_BATCH_JOB:
+			strcpy(str, "");
+			break;
 		default:
 			strcpy(str, "unknown cmd");
 			break;
