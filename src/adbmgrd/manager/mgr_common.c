@@ -1076,7 +1076,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	int agentPortM;
 	bool resA = true;
 	bool resB = true;
-	const int iMax = 60;
+	const int iMax = 90;
 	AppendNodeInfo slave_nodeinfo;
 	AppendNodeInfo master_nodeinfo;
 	StringInfoData infosendmsg;

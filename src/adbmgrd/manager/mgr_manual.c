@@ -54,6 +54,9 @@ static struct enum_sync_state sync_state_tab[] =
 static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo);
 static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg);
 static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond);
+static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid);
+static bool mgr_check_active_connect_in_coordinator(PGconn *pgConn, const Oid cnOid);
+
 /*
 * promote the node to master; delete the old master tuple in node systable, delete 
 * the old master param in param table ; set type of the new master as master type in node
@@ -1267,8 +1270,9 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	bool bRefreshParam = false;
 	bool rest = true;
 	bool isNull = false;
-	int iloop = 60;
-	const int iMax = 60;
+	int bforce = 0;
+	int iloop = 0;
+	const int iMax = 90;
 	HeapTuple tuple;
 	HeapTuple tupResult;
 	HeapTuple tupleS;
@@ -1295,7 +1299,8 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 
 	/* get the input variable */
 	nodeType = PG_GETARG_INT32(0);
-	namestrcpy(&nodeNameData, PG_GETARG_CSTRING(1));	
+	namestrcpy(&nodeNameData, PG_GETARG_CSTRING(1));
+	bforce = PG_GETARG_INT32(2);
 	
 	/* check the type */
 	if (CNDN_TYPE_DATANODE_MASTER == nodeType)
@@ -1351,21 +1356,64 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		pfree_AppendNodeInfo(nodeInfoM);
 
 		PG_RE_THROW();
-	}PG_END_TRY();	
+	}PG_END_TRY();
 	
 	initStringInfo(&restmsg);
 	mgr_get_master_sync_string(nodeInfoM.tupleoid, true, InvalidOid, &restmsg);
 	namestrcpy(&syncStateData, restmsg.len == 0 ? "''":restmsg.data);
 	
 	/* lock the cluster */
-	mgr_lock_cluster(&pgConn, &cnOid);
-	
+	if (bforce == 0)
+	{
+		iloop = iMax;
+		ereport(LOG, (errmsg("try max %d times to wait there is not active connections on coordinators", iloop)));
+		ereport(NOTICE, (errmsg("try max %d times to wait there is not active connections on coordinators", iloop)));
+		HOLD_CANCEL_INTERRUPTS();
+		while (iloop-- > 0)
+		{
+			mgr_lock_cluster(&pgConn, &cnOid);
+			res = mgr_check_active_connect_in_coordinator(pgConn, cnOid);
+			if (!res)
+			{
+				mgr_unlock_cluster(&pgConn);
+			}
+			else
+				break;
+		}
+		RESUME_CANCEL_INTERRUPTS();
+
+		if (!res)
+		{
+			pfree_AppendNodeInfo(nodeInfoS);
+			pfree_AppendNodeInfo(nodeInfoM);		
+			ereport(ERROR, (errmsg("there are active connect on coordinators")));
+		}
+
+	}
+	else
+		mgr_lock_cluster(&pgConn, &cnOid);
+
 	/* check the xlog diff */
 	PG_TRY();
 	{
 		resetStringInfo(&restmsg);
 		initStringInfo(&infosendmsg);
 		initStringInfo(&(getAgentCmdRst.description));
+		ereport(LOG, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table", iMax)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table", iMax)));
+		iloop = iMax;
+		while (iloop-- > 0)
+		{
+			/*chck three time*/
+			res = mgr_check_active_locks_in_cluster(pgConn, cnOid);
+			if(res)
+				break;
+			pg_usleep(1000000L);
+		}
+		
+		if (iloop <= 0)
+			ereport(ERROR, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table fail", iMax)));
+
 		ereport(LOG, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
 				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
 		ereport(NOTICE, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
@@ -1392,10 +1440,9 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		bRefreshParam = true;
 		/* set parameters the given slave node in postgresql.conf */
 		resetStringInfo(&infosendmsg);
-		ereport(LOG, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeTypeStrData.data, nodeNameData.data, syncStateData.data)));
-		ereport(NOTICE, (errmsg("on %s \"%s\", set hot_standby=off, synchronous_standby_names=%s", nodeTypeStrData.data, nodeNameData.data, syncStateData.data)));
+		ereport(LOG, (errmsg("on %s \"%s\" synchronous_standby_names=%s", nodeTypeStrData.data, nodeNameData.data, syncStateData.data)));
+		ereport(NOTICE, (errmsg("on %s \"%s\" synchronous_standby_names=%s", nodeTypeStrData.data, nodeNameData.data, syncStateData.data)));
 		mgr_add_parm(nodeNameData.data, CNDN_TYPE_DATANODE_MASTER, &infosendmsg);
-		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", syncStateData.data, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD, nodeInfoS.nodepath, &infosendmsg
 				, nodeInfoS.nodehost, &getAgentCmdRst);
@@ -1786,7 +1833,7 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 		appName = "extra";
 	initStringInfo(&infosendmsg);
 	initStringInfo(&restmsg);
-	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) <256  from pg_stat_replication where application_name='%s';", appName);
+	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) < 256 from pg_stat_replication where application_name='%s';", appName);
 	
 	hostTupleM = SearchSysCache1(HOSTHOSTOID, nodeInfoM->nodehost);
 	if(!(HeapTupleIsValid(hostTupleM)))
@@ -1816,6 +1863,7 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 			if (strcmp(restmsg.data, "t") == 0)
 				break;
 		}
+
 		pg_usleep(500000L);
 	}
 	
@@ -1823,4 +1871,154 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 	pfree(restmsg.data);
 	
 	return iloop;
+}
+
+static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid)
+{
+	ScanKeyData key[2];
+	Relation nodeRel;
+	HeapScanDesc relScan;
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	StringInfoData cmdstring;
+	PGresult *res;
+	char *p = NULL;
+	char *nodeTypeStr;
+	bool rest = false;
+	
+	Assert(pgConn);
+	Assert(cnOid);
+	initStringInfo(&cmdstring);
+
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	nodeRel = heap_open(NodeRelationId, AccessShareLock);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 2, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		if (mgr_node->nodetype != CNDN_TYPE_COORDINATOR_MASTER && mgr_node->nodetype !=
+			CNDN_TYPE_DATANODE_MASTER)
+			continue;
+		nodeTypeStr = mgr_nodetype_str(mgr_node->nodetype);
+		ereport(LOG, (errmsg("check active locks on %s %s", nodeTypeStr, NameStr(mgr_node->nodename))));
+		ereport(NOTICE, (errmsg("check active locks on %s %s", nodeTypeStr, NameStr(mgr_node->nodename))));
+		resetStringInfo(&cmdstring);
+		pfree(nodeTypeStr);
+		if (cnOid == HeapTupleGetOid(tuple))
+			appendStringInfoString(&cmdstring, "select count(*)  from pg_locks where pid !=  pg_backend_pid();");
+		else
+			appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select count(*)  from pg_locks where pid !=  pg_backend_pid();'"
+							,NameStr(mgr_node->nodename));
+
+		res = PQexec(pgConn, cmdstring.data);						
+		if (PQresultStatus(res) == PGRES_TUPLES_OK)
+		{
+			p = PQgetvalue(res, 0, 0);
+			if (p == NULL)
+				rest = false;
+			else if (strcmp(p, "0") != 0)
+				rest = false;
+			else
+				rest = true;
+			PQclear(res);
+			res = NULL;
+		}		
+
+		if (rest == false)
+			break;
+	}
+	
+	pfree(cmdstring.data);
+	heap_endscan(relScan);
+	heap_close(nodeRel, AccessShareLock);
+	
+	return rest;
+}
+
+static bool mgr_check_active_connect_in_coordinator(PGconn *pgConn, const Oid cnOid)
+{
+	ScanKeyData key[3];
+	Relation nodeRel;
+	HeapScanDesc relScan;
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	StringInfoData cmdstring;
+	PGresult *res;
+	char *p = NULL;
+	char *nodeTypeStr;
+	bool rest = false;
+	
+	Assert(pgConn);
+	Assert(cnOid);
+	initStringInfo(&cmdstring);
+
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[2],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	nodeRel = heap_open(NodeRelationId, AccessShareLock);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		nodeTypeStr = mgr_nodetype_str(mgr_node->nodetype);
+		ereport(LOG, (errmsg("check active connections on %s %s", nodeTypeStr, NameStr(mgr_node->nodename))));
+		ereport(NOTICE, (errmsg("check active connections on %s %s", nodeTypeStr, NameStr(mgr_node->nodename))));
+		resetStringInfo(&cmdstring);
+		pfree(nodeTypeStr);	
+		/*for coordiantor connect*/
+		if (mgr_node->nodetype == CNDN_TYPE_COORDINATOR_MASTER)
+		{
+			resetStringInfo(&cmdstring);
+			if (cnOid == HeapTupleGetOid(tuple))
+				appendStringInfoString(&cmdstring, "select  sum(numbackends)-1  from pg_stat_database where datname != \'template1\' and datname != \'template0\';");
+			else
+				appendStringInfo(&cmdstring, "EXECUTE DIRECT ON (\"%s\") 'select  sum(numbackends)-1  from pg_stat_database where datname != \'template1\' and datname != \'template0\';'"
+								,NameStr(mgr_node->nodename));
+		}
+		res = PQexec(pgConn, cmdstring.data);						
+		if (PQresultStatus(res) == PGRES_TUPLES_OK)
+		{
+			p = PQgetvalue(res, 0, 0);
+			if (p == NULL)
+				rest = false;
+			else if (strcmp(p, "0") != 0)
+				rest = false;
+			else
+				rest = true;
+			PQclear(res);
+			res = NULL;
+		}
+		
+		if (rest == false)
+			break;
+	}
+	
+	pfree(cmdstring.data);
+	heap_endscan(relScan);
+	heap_close(nodeRel, AccessShareLock);
+	
+	return rest;
 }
