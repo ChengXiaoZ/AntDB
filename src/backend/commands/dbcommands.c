@@ -468,7 +468,7 @@ createdb(const CreatedbStmt *stmt)
 	 * throw one.
 	 */
 	if (CountOtherDBBackends(src_dboid, &notherbackends, &npreparedxacts))
-		ereport(WARNING,
+		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
 			errmsg("source database \"%s\" is being accessed by other users",
 				   dbtemplate),

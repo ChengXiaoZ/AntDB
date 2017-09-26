@@ -2682,7 +2682,27 @@ FailoverManualStmt:
 	;
 
 SwitchoverStmt:
-	SWITCHOVER DATANODE opt_dn_inner_type Ident
+	SWITCHOVER GTM opt_gtm_inner_type Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			args = lappend(args, makeIntConst(0, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_switchover_func", args));
+			$$ = (Node*)stmt;
+		}
+	| SWITCHOVER GTM opt_gtm_inner_type Ident FORCE
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, @3));
+			args = lappend(args, makeStringConst($4, @4));
+			args = lappend(args, makeIntConst(1, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_switchover_func", args));
+			$$ = (Node*)stmt;
+		}
+	| SWITCHOVER DATANODE opt_dn_inner_type Ident
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeIntConst($3, @3));
