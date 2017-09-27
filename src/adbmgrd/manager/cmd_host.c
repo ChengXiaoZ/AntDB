@@ -79,7 +79,7 @@ static bool host_is_localhost(const char *name);
 static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo msg, const char *password);
 static void get_adbhome(char *adbhome);
 static void check_host_name_isvaild(List *host_name_list);
-
+static bool mgr_check_address_repeate(char *address);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -104,6 +104,7 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 	ListCell *lc;
 	DefElem *def;
 	char *str;
+	char *address;
 	NameData name;
 	NameData user;
 	Datum datum[Natts_mgr_host];
@@ -111,6 +112,7 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 	struct addrinfo *addrs;
 	bool isnull[Natts_mgr_host];
 	bool got[Natts_mgr_host];
+	bool res = false;
 	char adbhome[MAXPGPATH]={0};
 	char abuf[INET_ADDRSTRLEN];
 	const char *ipstr;
@@ -200,6 +202,7 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 					,errmsg("invalid value for parameter \"%s\", is not a valid IPv4 or IPv6 address", "address")));
 				}
 			}
+			address = str;
 			datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(str));
 			got[Anum_mgr_host_hostaddr-1] = true;
 		}else if(strcmp(def->defname, "adbhome") == 0)
@@ -267,6 +270,7 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 		}
 		sinp = (struct sockaddr_in *)addrs->ai_addr;
 		ipstr = inet_ntop(AF_INET, &sinp->sin_addr, abuf,INET_ADDRSTRLEN);
+		address = (char *)ipstr;
 		datum[Anum_mgr_host_hostaddr-1] = PointerGetDatum(cstring_to_text(ipstr));
 		pg_freeaddrinfo_all(AF_UNSPEC, addrs);
 	}
@@ -278,6 +282,14 @@ Datum mgr_add_host_func(PG_FUNCTION_ARGS)
 	if(got[Anum_mgr_host_hostagentport-1] == false)
 	{
 		datum[Anum_mgr_host_hostagentport-1] = Int32GetDatum(AGENTDEFAULTPORT);
+	}
+	/*check address not repeated*/
+	res = mgr_check_address_repeate(address);
+	if (res)
+	{
+		heap_close(rel, RowExclusiveLock);
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			,errmsg("address \"%s\" is already in host table", address)));		
 	}
 	/* now, we can insert record */
 	tuple = heap_form_tuple(RelationGetDescr(rel), datum, isnull);
@@ -1954,6 +1966,49 @@ bool port_occupancy_test(const char *ip_address, const int port)
 		return false;
 	}
 	return true;
+}
+
+/*
+* check the address in host table not repeate
+*/
+static bool mgr_check_address_repeate(char *address)
+{
+	HeapTuple tuple;
+	Form_mgr_host mgr_host;
+	Datum addressDatum;
+	Relation relHost;
+	HeapScanDesc relScan;
+	bool isNull = false;
+	bool rest = false;
+	char *addr;
+	
+	Assert(address);
+	
+	relHost = heap_open(HostRelationId, AccessShareLock);
+	relScan = heap_beginscan(relHost, SnapshotNow, 0, NULL);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_host = (Form_mgr_host)GETSTRUCT(tuple);
+		Assert(mgr_host);
+		addressDatum = heap_getattr(tuple, Anum_mgr_host_hostaddr, RelationGetDescr(relHost), &isNull);
+		if(isNull)
+		{
+			rest = true;
+			break;
+		}
+		addr = TextDatumGetCString(addressDatum);
+		Assert(addr);
+		if (strcmp(addr, address) == 0)
+		{
+			rest = true;
+			break;
+		}
+
+	}
+	heap_endscan(relScan);
+	heap_close(relHost, AccessShareLock);
+
+	return rest;
 }
 
 
