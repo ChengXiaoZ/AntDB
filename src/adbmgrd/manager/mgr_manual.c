@@ -1901,10 +1901,18 @@ static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg)
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
 		hostAddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		userName = get_hostuser_from_hostoid(mgr_node->nodehost);
-		mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", userName, hostAddr, 32, "trust", infosendmsg);
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype
+				|| GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+		{
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, hostAddr, 32, "trust", infosendmsg);
+		}
+		else
+		{
+			userName = get_hostuser_from_hostoid(mgr_node->nodehost);
+			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", userName, hostAddr, 32, "trust", infosendmsg);
+			pfree(userName);
+		}
 		pfree(hostAddr);
-		pfree(userName);
 	}
 	
 	heap_endscan(relScan);
