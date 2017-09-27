@@ -634,9 +634,9 @@ standard_ProcessUtility(Node *parsetree,
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
 #endif
-	
+
 			/* prevent agtm check IsTransactionBlock(), user PGXC restrict, by lvcx */
-#ifdef PGXC 
+#ifdef PGXC
 			/* no event triggers for global objects */
 			PreventTransactionChain(isTopLevel, "CREATE TABLESPACE");
 #endif
@@ -877,7 +877,7 @@ standard_ProcessUtility(Node *parsetree,
 					sprintf(query, "CLEAN CONNECTION TO ALL FOR DATABASE %s;", stmt->dbname);
 
 					ExecUtilityStmtOnNodes(query, NULL, sentToRemote, true, EXEC_ON_COORDS, false);
-					
+
 				}
 #endif
 
@@ -889,7 +889,7 @@ standard_ProcessUtility(Node *parsetree,
 
 #ifdef PGXC
 			if (IS_PGXC_COORDINATOR)
-				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);				
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
 #endif
 			break;
 
@@ -1152,11 +1152,9 @@ standard_ProcessUtility(Node *parsetree,
 			break;
 
 #ifdef PGXC
-#if 0
 		case T_BarrierStmt:
 			RequestBarrier(((BarrierStmt *) parsetree)->id, completionTag);
 			break;
-#endif
 
 		/*
 		 * Node DDL is an operation local to Coordinator.
@@ -1291,7 +1289,7 @@ standard_ProcessUtility(Node *parsetree,
 										   sentToRemote,
 										   false,
 										   exec_type,
-										   is_temp);					
+										   is_temp);
 				}
 #endif
 				if (EventTriggerSupportsObjectType(stmt->renameType))
@@ -1309,7 +1307,7 @@ standard_ProcessUtility(Node *parsetree,
 
 		case T_AlterObjectSchemaStmt:
 			{
-				AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *) parsetree;				
+				AlterObjectSchemaStmt *stmt = (AlterObjectSchemaStmt *) parsetree;
 #ifdef PGXC
 				Oid oid;
 				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
@@ -1351,7 +1349,7 @@ standard_ProcessUtility(Node *parsetree,
 										   false,
 										   exec_type,
 										   is_temp);
-					
+
 					/* execute alter sequecne (set schema)  on agtm */
 					if (stmt->objectType == OBJECT_SEQUENCE)
 					{
@@ -1694,7 +1692,7 @@ ProcessUtilitySlow(Node *parsetree,
 								 * pgxc_node, the RemoteQuery added for the AlterTableStmt
 								 * should only be done on coordinators.
 								 */
-								if (atstmt->relkind == OBJECT_TABLE && 
+								if (atstmt->relkind == OBJECT_TABLE &&
 									IsAlterTableStmtRedistribution(atstmt))
 									exec_type = EXEC_ON_COORDS;
 
@@ -2186,13 +2184,13 @@ ProcessUtilitySlow(Node *parsetree,
 #endif
 					break;
 				}
-			
+
 			case T_AlterSeqStmt:
 				{
 					/*
 					 * K.Suzuki, Sep.2nd, 2013
 					 * Moved from sgtandard_ProcessUtility().
-					 */					
+					 */
 					AlterSequence((AlterSeqStmt *) parsetree);
 #ifdef PGXC
 					if (IS_PGXC_COORDINATOR)
@@ -2215,12 +2213,12 @@ ProcessUtilitySlow(Node *parsetree,
 
 							ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, exec_type, is_temp);
 						}
-						
+
 					}
 #endif
 					break;
 				}
-			
+
 			case T_CreateTableAsStmt:
 				ExecCreateTableAs((CreateTableAsStmt *) parsetree,
 								  queryString, params, completionTag);

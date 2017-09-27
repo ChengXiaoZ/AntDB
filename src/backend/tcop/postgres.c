@@ -5196,7 +5196,7 @@ PostgresMain(int argc, char *argv[],
 				}
 				break;
 
-#if 0
+
 			case 'b':			/* barrier */
 				{
 					int command;
@@ -5227,7 +5227,6 @@ PostgresMain(int argc, char *argv[],
 					}
 				}
 				break;
-#endif
 #endif /* PGXC */
 
 			default:

@@ -15,7 +15,6 @@
  */
 
 #include "postgres.h"
-#include "access/gtm.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "pgxc/barrier.h"
