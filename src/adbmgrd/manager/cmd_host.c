@@ -80,6 +80,7 @@ static bool deploy_to_host(FILE *tar, TupleDesc desc, HeapTuple tup, StringInfo 
 static void get_adbhome(char *adbhome);
 static void check_host_name_isvaild(List *host_name_list);
 static bool mgr_check_address_repeate(char *address);
+static bool mgr_check_can_deploy(char *hostname);
 
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
@@ -717,57 +718,26 @@ Datum mgr_deploy_hostnamelist(PG_FUNCTION_ARGS)
 	List *hostname_list = NIL;
 	List *host_list = NIL;
 	NameData name;
-	NameData resnamedata;
-	NameData restypedata;
 	Datum datum;
 	StringInfoData buf;
-	StringInfoData sqlstr;
-	StringInfoData namestr;
-	int ret;
+	bool res = true;
 	MemoryContext oldcontext;
 
 	initStringInfo(&buf);
 
 	if (SRF_IS_FIRSTCALL())
 	{
-		/*check all node stop*/
-		if (!mgr_check_cluster_stop(&resnamedata, &restypedata))
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				,errmsg("%s \"%s\" still running, please stop it before deploy", restypedata.data, resnamedata.data)
-				,errhint("try \"monitor all\" for more information")));
-
-		/*check the agent all stop*/
-		if ((ret = SPI_connect()) < 0)
-			ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
-		initStringInfo(&sqlstr);
-		initStringInfo(&namestr);
 		host_list = DecodeTextArrayToValueList(PG_GETARG_DATUM(1));
 		check_host_name_isvaild(host_list);
 		foreach(lc, host_list)
 		{
 			hostname = (Value *)lfirst(lc);
-			if (namestr.len == 0)
-				appendStringInfo(&namestr, "%s", strVal(hostname));
-			else
-				appendStringInfo(&namestr, ",%s", strVal(hostname));
+			res = mgr_check_can_deploy(strVal(hostname));
+			if(!res)
+				ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+					,errmsg("stop agent and all of nodes on \"%s\" before deploy", strVal(hostname))
+					,errhint("try \"monitor all\" for more information")));
 		}
-		appendStringInfo(&sqlstr, "select nodename from mgr_monitor_agent_hostlist('{%s}') where  status = true limit 1;", namestr.data);
-		pfree(namestr.data);
-		ret = SPI_execute(sqlstr.data, false, 0);
-		pfree(sqlstr.data);
-		if (ret != SPI_OK_SELECT)
-			ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
-		if (SPI_processed > 0 && SPI_tuptable != NULL)
-		{
-			namestrcpy(&resnamedata, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
-			SPI_freetuptable(SPI_tuptable);
-			SPI_finish();
-			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
-				,errmsg("on host \"%s\" the agent still running, please stop it before deploy", resnamedata.data)
-				,errhint("try \"monitor agent all\" for more information")));
-		}
-		SPI_freetuptable(SPI_tuptable);
-		SPI_finish();
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
@@ -2011,4 +1981,97 @@ static bool mgr_check_address_repeate(char *address)
 	return rest;
 }
 
+static bool mgr_check_can_deploy(char *hostname)
+{
+	Relation rel;
+	HeapScanDesc scan;
+	Datum host_addr;
+	HeapTuple tuple;
+	Form_mgr_host mgr_host;
+	Form_mgr_node mgr_node;
+	ScanKeyData key[1];
+	char *address = NULL;
+	char *nodetypestr;
+	int agentPort = 0;
+	bool isNull;
+	bool rest = true;
+	bool bget = false;
+	bool res = true;
+	Oid hostOid;
+	
+	Assert(hostname);
+	rel = heap_open(HostRelationId, AccessShareLock);
+	scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_host= (Form_mgr_host)GETSTRUCT(tuple);
+		Assert(mgr_host);
+
+		host_addr = heap_getattr(tuple, Anum_mgr_host_hostaddr, RelationGetDescr(rel), &isNull);
+		
+		if(isNull)
+		{
+			heap_endscan(scan);
+			heap_close(rel, AccessShareLock);
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
+				, errmsg("column hostaddr is null")));
+		}
+		if (strcasecmp(NameStr(mgr_host->hostname), hostname) == 0)
+		{
+			bget = true;
+			hostOid = HeapTupleGetOid(tuple);
+			agentPort = mgr_host->hostagentport;
+			address = pstrdup(TextDatumGetCString(host_addr));
+			Assert(address);
+			break;
+		}
+	}
+	heap_endscan(scan);
+	heap_close(rel, AccessShareLock);
+
+	/*check agent*/
+	if (!bget)
+		return true;
+
+	res = port_occupancy_test(address, agentPort);
+	if(res)
+	{
+		pfree(address);
+		ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
+			,errmsg("on address \"%s\" the agent is running", address)));
+		return false;
+	}
+	
+	/*check the node*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodehost
+		,BTEqualStrategyNumber
+		,F_OIDEQ
+		,ObjectIdGetDatum(hostOid));
+	rel = heap_open(NodeRelationId, AccessShareLock);
+	scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node= (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		res = true;
+		res = port_occupancy_test(address, mgr_node->nodeport);
+		if(res)
+		{
+			rest = false;
+			nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
+			ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("the %s \"%s\" is running", nodetypestr, NameStr(mgr_node->nodename))));
+			pfree(nodetypestr);
+			break;
+		}
+	}
+
+	pfree(address);
+	heap_endscan(scan);
+	heap_close(rel, AccessShareLock);
+	
+	return rest;
+}
 
