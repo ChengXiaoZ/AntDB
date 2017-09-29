@@ -170,6 +170,7 @@ void do_agent_command(StringInfo buf)
 		break;
 	case AGT_CMD_GET_SQL_STRINGVALUES:
 	case AGT_CMD_GET_EXPLAIN_STRINGVALUES:
+	case AGT_CMD_GET_SQL_STRINGVALUES_COMMAND:
 		cmd_get_sqlstring_stringvalues(cmd_type, buf);
 		break;
 	case AGT_CMD_GET_BATCH_JOB:
@@ -1562,34 +1563,46 @@ static void mgr_execute_sqlstring(char cmdtype, char *user, int port, char *addr
 		/*PQfinish(conn);*/
 	}
 	res = PQexec(conn, sqlstring);
-	if(PQresultStatus(res) != PGRES_TUPLES_OK)
+
+	if(PQresultStatus(res) != PGRES_COMMAND_OK && PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
 		PQfinish(conn);
 		pfree(constr.data);
+		if (NULL == PQresultErrorMessage(res))
+			ereport(ERROR,
+		(errmsg("%s" , "execute the sql fail")));
+		else
 		ereport(ERROR,
 		(errmsg("%s" , PQresultErrorMessage(res))));
 		/*PQclear(res);*/
 		/*return NULL;*/
 	}
-
-	/*get row num*/
-	nrow = PQntuples(res);
-	ncolumn = PQnfields(res);
-	/*get null*/
-	if (!nrow || !ncolumn)
+	
+	if (AGT_CMD_GET_SQL_STRINGVALUES_COMMAND == cmdtype)
 	{
-		ereport(WARNING,
-		(errmsg("adress=%s port=%d, the result is null, the sql string: %s" , address, port, sqlstring)));
+		appendStringInfo(output, "%s", PQcmdStatus(res));
 	}
-	for (iloop=0; iloop<nrow; iloop++)
+	else
 	{
-		for (jloop=0; jloop<ncolumn; jloop++)
+		/*get row num*/
+		nrow = PQntuples(res);
+		ncolumn = PQnfields(res);
+		/*get null*/
+		if (!nrow || !ncolumn)
 		{
-			appendStringInfo(output, "%s", PQgetvalue(res, iloop, jloop ));
-			if (AGT_CMD_GET_EXPLAIN_STRINGVALUES == cmdtype)
-				appendStringInfoCharMacro(output, '\n');
-			else
-				appendStringInfoCharMacro(output, '\0');
+			ereport(WARNING,
+			(errmsg("adress=%s port=%d, the result is null, the sql string: %s" , address, port, sqlstring)));
+		}
+		for (iloop=0; iloop<nrow; iloop++)
+		{
+			for (jloop=0; jloop<ncolumn; jloop++)
+			{
+				appendStringInfo(output, "%s", PQgetvalue(res, iloop, jloop ));
+				if (AGT_CMD_GET_EXPLAIN_STRINGVALUES == cmdtype)
+					appendStringInfoCharMacro(output, '\n');
+				else
+					appendStringInfoCharMacro(output, '\0');
+			}
 		}
 	}
 	appendStringInfoCharMacro(output, '\0');

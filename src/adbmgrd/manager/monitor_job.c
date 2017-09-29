@@ -62,6 +62,10 @@
 #include "commands/defrem.h"
 #include "utils/formatting.h"
 #include "postmaster/adbmonitor.h"
+#include "mgr/mgr_msg_type.h"
+#include "executor/spi.h"
+#include "funcapi.h"
+
 
 /*
 * GUC parameters
@@ -69,6 +73,8 @@
 int	adbmonitor_naptime;
 
 static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname);
+static bool mgr_element_in_array(Oid tupleOid, int array[], int count);
+static int64 mgr_database_run_time(char *database);
 
 /*
 * ADD ITEM jobname(jobname, filepath, desc)
@@ -483,4 +489,340 @@ static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname)
 	heap_endscan(rel_scan);
 
 	return tupleret;
+}
+
+
+/*
+* drop the coordinator which is not running normal
+*
+*/
+Datum monitor_handle_coordinator(PG_FUNCTION_ARGS)
+{
+	GetAgentCmdRst getAgentCmdRst;
+	HeapTuple tuple = NULL;
+	ScanKeyData key[3];
+	Relation relNode;
+	HeapScanDesc relScan;
+	Form_mgr_node mgr_node;
+	StringInfoData infosendmsg;
+	StringInfoData restmsg;
+	StringInfoData strerr;
+	NameData s_nodename;
+	HeapTuple tup_result;
+	PGconn* conn;
+	PGresult *res;
+	StringInfoData constr;
+	int nodePort;
+	int agentPort;
+	int iloop = 0;
+	int count = 0;
+	int coordNum = 0;
+	int64 runTime;
+	int checkTime = 300;
+	int dropCoordOidArray[1000];
+	char *address;
+	char *userName;
+	char portBuf[10];
+	Oid tupleOid;
+	bool result = true;
+	bool rest;
+	
+
+	/*check ADBMGR run time*/
+	runTime = mgr_database_run_time("postgres");
+	namestrcpy(&s_nodename, "coordinator");
+	initStringInfo(&infosendmsg);
+	if (runTime < checkTime)
+	{
+		appendStringInfo(&infosendmsg, "the ADBMGR running time less then %d seconds, not check coordinators's status now", checkTime);
+		ereport(LOG, (errmsg("%s", infosendmsg.data)));
+		ereport(NOTICE, (errmsg("%s", infosendmsg.data)));
+		tup_result = build_common_command_tuple(&s_nodename, false, infosendmsg.data);
+		pfree(infosendmsg.data);
+		return HeapTupleGetDatum(tup_result);
+	}
+	/* check the status of all coordinator in cluster */
+	memset(dropCoordOidArray, 0, 1000);
+	memset(portBuf, 0, sizeof(portBuf));
+	ScanKeyInit(&key[0]
+		,Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	ScanKeyInit(&key[1],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	relNode = heap_open(NodeRelationId, RowExclusiveLock);
+	relScan = heap_beginscan(relNode, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		coordNum++;
+		nodePort = mgr_node->nodeport;
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		rest = port_occupancy_test(address, nodePort);
+		if (!rest)
+		{
+			/*check it two times again*/
+			pg_usleep(1000000L);
+			rest = port_occupancy_test(address, nodePort);
+			if (!rest)
+			{
+				pg_usleep(1000000L);
+				rest = port_occupancy_test(address, nodePort);
+			}
+		}
+		/*record drop coordinator*/
+		if (!rest)
+		{
+			dropCoordOidArray[iloop] = HeapTupleGetOid(tuple);
+			iloop++;
+			appendStringInfo(&infosendmsg, "drop node \"%s\"; ", NameStr(mgr_node->nodename));
+		}
+		
+		pfree(address);
+	}
+	count = iloop;
+
+	if (coordNum == count)
+	{
+		heap_endscan(relScan);
+		heap_close(relNode, RowExclusiveLock);
+		pfree(infosendmsg.data);
+		ereport(ERROR, (errmsg("all coordinators in cluster are not running normal!!!")));
+	}
+
+	if (0 == count)
+	{
+		heap_endscan(relScan);
+		heap_close(relNode, RowExclusiveLock);
+		pfree(infosendmsg.data);
+		tup_result = build_common_command_tuple(&s_nodename, true, "all coordinators in cluster are running normal");
+		return HeapTupleGetDatum(tup_result);
+	}
+
+	/*remove coordinator out of cluster*/
+	initStringInfo(&constr);
+	initStringInfo(&restmsg);
+	initStringInfo(&strerr);
+	initStringInfo(&(getAgentCmdRst.description));
+	appendStringInfo(&strerr, "%s\n", infosendmsg.data);
+
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		address = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		userName = get_hostuser_from_hostoid(mgr_node->nodehost);
+		tupleOid = HeapTupleGetOid(tuple);
+		rest = mgr_element_in_array(tupleOid, dropCoordOidArray, count);
+		memset(portBuf, 0, sizeof(portBuf));
+		snprintf(portBuf, sizeof(portBuf), "%d", mgr_node->nodeport);
+		if (!rest)
+		{
+			resetStringInfo(&constr);
+			appendStringInfo(&constr, "host='%s' port=%d user=%s connect_timeout=5"
+				, address, mgr_node->nodeport, userName);
+			rest = PQping(constr.data);
+			if (rest == PQPING_OK)
+			{
+				PG_TRY();
+				{
+					/*drop the coordinator*/
+					resetStringInfo(&constr);
+					appendStringInfo(&constr, "postgresql://%s@%s:%d/%s", userName, address, mgr_node->nodeport, AGTM_DBNAME);
+					appendStringInfoCharMacro(&constr, '\0');
+					conn = PQconnectdb(constr.data);
+					if (PQstatus(conn) != CONNECTION_OK)
+					{
+						result = false;
+						ereport(WARNING, (errmsg("on ADBMGR cannot connect coordinator \"%s\"", NameStr(mgr_node->nodename))));
+						appendStringInfo(&strerr, "on ADBMGR cannot connect coordinator \"%s\", you need do \"%s\" and \"select pgxc_pool_reload()\" on coordinator \"%s\" by yourself!!!\n"
+								, NameStr(mgr_node->nodename), infosendmsg.data, NameStr(mgr_node->nodename));
+					}
+					else
+					{
+						res = PQexec(conn, infosendmsg.data);
+						if(PQresultStatus(res) == PGRES_COMMAND_OK)
+						{
+							ereport(LOG, (errmsg("from ADBMGR, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+								,infosendmsg.data, PQcmdStatus(res))));
+							ereport(NOTICE, (errmsg("from ADBMGR, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+								,infosendmsg.data, PQcmdStatus(res))));
+						}
+						else
+						{
+							result = false;
+							ereport(WARNING, (errmsg("from ADBMGR, on coordinator \"%s\", execute \"%s\" fail: %s" 
+								, NameStr(mgr_node->nodename), infosendmsg.data, PQresultErrorMessage(res))));
+							appendStringInfo(&strerr, "from ADBMGR, on coordinator \"%s\" execute \"%s\" fail: %s\n"
+							, NameStr(mgr_node->nodename), infosendmsg.data, PQresultErrorMessage(res));
+						}
+						PQclear(res);
+
+						res = PQexec(conn, "select pgxc_pool_reload()");
+						if(PQresultStatus(res) == PGRES_TUPLES_OK)
+						{
+							ereport(LOG, (errmsg("from ADBMGR, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+								,"select pgxc_pool_reload()", "t")));
+							ereport(NOTICE, (errmsg("from ADBMGR, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+								,"select pgxc_pool_reload()", "t")));
+						}
+						else
+						{
+							result = false;
+							ereport(WARNING, (errmsg("from ADBMGR, on coordinator \"%s\", execute \"%s\" fail: %s" 
+								, NameStr(mgr_node->nodename), "select pgxc_pool_reload()", PQresultErrorMessage(res))));
+							appendStringInfo(&strerr, "from ADBMGR, on coordinator \"%s\" execute \"%s\" fail: %s\n"
+								, NameStr(mgr_node->nodename), "select pgxc_pool_reload()", PQresultErrorMessage(res));
+						}
+						PQclear(res);
+					}
+					PQfinish(conn);
+					
+				}PG_CATCH();
+				{
+					ereport(WARNING, (errmsg("the command result : %s", strerr.data)));
+					pfree(address);
+					pfree(userName);
+					heap_endscan(relScan);
+					heap_close(relNode, RowExclusiveLock);
+
+					pfree(constr.data);
+					pfree(restmsg.data);
+					pfree(strerr.data);
+					pfree(infosendmsg.data);
+					pfree(getAgentCmdRst.description.data);
+					PG_RE_THROW();
+				}PG_END_TRY();
+			}
+			else
+			{
+				agentPort = get_agentPort_from_hostoid(mgr_node->nodehost);
+				rest = port_occupancy_test(address, agentPort);
+				/* agent running normal */
+				if (rest)
+				{
+					resetStringInfo(&restmsg);
+					monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES_COMMAND, agentPort, infosendmsg.data
+					,userName, address, mgr_node->nodeport, DEFAULT_DB, &restmsg);
+					ereport(LOG, (errmsg("from agent, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+						, infosendmsg.data, restmsg.len == 0 ? "f":restmsg.data)));
+					ereport(NOTICE, (errmsg("from agent, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+						, infosendmsg.data, restmsg.len == 0 ? "f":restmsg.data)));
+					if (restmsg.len == 0)
+					{
+						result = false;
+						appendStringInfo(&strerr, "from agent, on coordinator \"%s\" execute \"%s\" fail\n"
+							, NameStr(mgr_node->nodename), infosendmsg.data);
+					}
+
+					resetStringInfo(&restmsg);
+					monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentPort, "select pgxc_pool_reload()"
+					,userName, address, mgr_node->nodeport, DEFAULT_DB, &restmsg);
+					ereport(LOG, (errmsg("from agent, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+						, "select pgxc_pool_reload()", restmsg.data)));
+					ereport(NOTICE, (errmsg("from agent, on coordinator \"%s\" : %s, result: %s", NameStr(mgr_node->nodename)
+						, "select pgxc_pool_reload()", restmsg.data)));
+					if (restmsg.len != 0)
+					{
+						if (strcasecmp(restmsg.data, "t") != 0)
+						{
+							result = false;
+							appendStringInfo(&strerr, "from agent, on coordinator \"%s\" execute \"%s\" fail: %s\n"
+								, NameStr(mgr_node->nodename), "select pgxc_pool_reload()", restmsg.data);
+						}
+					}
+				}
+				else
+				{
+					result = false;
+					ereport(WARNING, (errmsg("on address \"%s\" the agent is not running normal; you need execute \"%s\" and \"select pgxc_pool_reload()\" on coordinator \"%s\" by yourself !!!", address, infosendmsg.data, NameStr(mgr_node->nodename))));
+					appendStringInfo(&strerr,"on address \"%s\" the agent is not running normal; you need execute \"%s\" and \"select pgxc_pool_reload()\" on coordinator \"%s\" by yourself !!!", address, infosendmsg.data, NameStr(mgr_node->nodename));
+				}
+			}
+		}
+		else
+		{
+			mgr_node->nodeinited = false;
+			mgr_node->nodeincluster = false;
+			heap_inplace_update(relNode, tuple);
+		}
+		
+		pfree(address);
+		pfree(userName);
+	}
+	heap_endscan(relScan);
+	heap_close(relNode, RowExclusiveLock);
+	
+	pfree(restmsg.data);
+	pfree(constr.data);
+	pfree(infosendmsg.data);
+	pfree(getAgentCmdRst.description.data);
+	if (strerr.len > 2)
+	{
+		if (strerr.data[strerr.len-2] == '\n')
+			strerr.data[strerr.len-2] = '\0';
+		if (strerr.data[strerr.len-1] == '\n')
+			strerr.data[strerr.len-1] = '\0';
+	}
+	ereport(LOG, (errmsg("monitor handle coordinator result : %s, description : %s"
+		,result==true?"true":"false", strerr.data)));
+	tup_result = build_common_command_tuple(&s_nodename, result, strerr.data);
+	pfree(strerr.data);
+	return HeapTupleGetDatum(tup_result);
+}
+
+
+static bool mgr_element_in_array(Oid tupleOid, int array[], int count)
+{
+	int iloop = 0;
+
+	while(iloop < count)
+	{
+		if(array[iloop] == tupleOid)
+			return true;
+		iloop++;
+	}
+	return false;
+}
+
+
+static int64 mgr_database_run_time(char *database)
+{
+	int64 totalTime = 0;
+	StringInfoData stringinfomsg;
+	NameData restdata;
+	int ret;
+	
+	Assert(database);
+	if ((ret = SPI_connect()) < 0)
+		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+
+	initStringInfo(&stringinfomsg);
+	appendStringInfo(&stringinfomsg, "select case when  stats_reset IS NULL then  0 else  round(abs(extract(epoch from now())- extract(epoch from  stats_reset))) end from pg_stat_database where datname = '%s';", database);
+
+	ret = SPI_execute(stringinfomsg.data, false, 0);
+	pfree(stringinfomsg.data);
+	if (ret != SPI_OK_SELECT)
+		ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
+	if (SPI_processed > 0 && SPI_tuptable != NULL)
+	{
+		namestrcpy(&restdata, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
+		totalTime = atoi(restdata.data);
+		pg_lltoa(totalTime, restdata.data);
+	}
+
+	SPI_freetuptable(SPI_tuptable);
+	SPI_finish();
+
+	return totalTime;
 }

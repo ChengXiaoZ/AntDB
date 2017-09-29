@@ -202,14 +202,19 @@ char *get_hostaddress_from_hostoid(Oid hostOid)
 	/*check the host exists*/
 	if (!HeapTupleIsValid(tuple))
 	{
+		 heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 		,errmsg("cache lookup failed for relation %u", hostOid)));
 	}
 	host_addr = heap_getattr(tuple, Anum_mgr_host_hostaddr, RelationGetDescr(rel), &isNull);
 	if(isNull)
+	{
+		ReleaseSysCache(tuple);
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 			, errmsg("column hostaddr is null")));
+	}
 	hostaddress = pstrdup(TextDatumGetCString(host_addr));
 	ReleaseSysCache(tuple);
 	heap_close(rel, AccessShareLock);
@@ -230,14 +235,19 @@ char *get_hostname_from_hostoid(Oid hostOid)
 	/*check the host exists*/
 	if (!HeapTupleIsValid(tuple))
 	{
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 		,errmsg("cache lookup failed for relation %u", hostOid)));
 	}
 	host_name = heap_getattr(tuple, Anum_mgr_host_hostname, RelationGetDescr(rel), &isNull);
 	if(isNull)
+	{
+		ReleaseSysCache(tuple);
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 			, errmsg("column hostname is null")));
+	}
 	hostname = pstrdup(NameStr(*DatumGetName(host_name)));
 	ReleaseSysCache(tuple);
 	heap_close(rel, AccessShareLock);
@@ -258,14 +268,19 @@ char *get_hostuser_from_hostoid(Oid hostOid)
 	/*check the host exists*/
 	if (!HeapTupleIsValid(tuple))
 	{
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
 		,errmsg("cache lookup failed for relation %u", hostOid)));
 	}
 	host_user = heap_getattr(tuple, Anum_mgr_host_hostuser, RelationGetDescr(rel), &isNull);
 	if(isNull)
+	{
+		ReleaseSysCache(tuple);
+		heap_close(rel, AccessShareLock);
 		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 			, errmsg("column hostuser is null")));
+	}
 	hostuser = pstrdup(NameStr(*DatumGetName(host_user)));
 	ReleaseSysCache(tuple);
 	heap_close(rel, AccessShareLock);
@@ -813,7 +828,8 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 		}else if(msg_type == AGT_MSG_ERROR)
 		{
 			/* error message */
-			ereport(WARNING, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
+			if (NULL != ma_get_err_info(&recvbuf, AGT_MSG_RESULT))
+				ereport(WARNING, (errmsg("%s", ma_get_err_info(&recvbuf, AGT_MSG_RESULT))));
 			break;
 		}else if(msg_type == AGT_MSG_NOTICE)
 		{
@@ -1845,4 +1861,29 @@ static TupleDesc get_common_command_tuple_desc_four_col(void)
     }
     Assert(common_command_tuple_desc_four_col);
     return common_command_tuple_desc_four_col;
+}
+
+/*
+* get agent port according to given host oid
+*
+*/
+int get_agentPort_from_hostoid(Oid hostOid)
+{
+	HeapTuple tuple;
+	Form_mgr_host mgr_host;
+	int agentPort;
+
+	tuple = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(hostOid));
+	/*check the host exists*/
+	if (!HeapTupleIsValid(tuple))
+	{    
+		ereport(ERROR, (errcode(ERRCODE_DATA_EXCEPTION)
+			,errmsg("cache lookup failed for relation %u", hostOid)));
+	}    
+	mgr_host = (Form_mgr_host)GETSTRUCT(tuple);
+	Assert(mgr_host);
+	agentPort = mgr_host->hostagentport;
+	ReleaseSysCache(tuple);
+
+	return agentPort;
 }

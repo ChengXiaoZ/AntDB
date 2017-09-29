@@ -5014,7 +5014,7 @@ static void mgr_rm_dumpall_temp_file(Oid dnhostoid,char *temp_file)
 	initStringInfo(&buf);
 	initStringInfo(&(getAgentCmdRst.description));
 
-	appendStringInfo(&cmd_str, "rm -f %s", temp_file);
+	appendStringInfo(&cmd_str, " %s", temp_file);
 
 	addr = get_hostname_from_hostoid(dnhostoid);
 	namestrcpy(&hostaddr, addr);
