@@ -57,6 +57,7 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid);
 static bool mgr_check_active_connect_in_coordinator(PGconn *pgConn, const Oid cnOid);
 static bool mgr_check_track_activities_on_coordinator(void);
+static Oid mgr_get_tupleoid_from_nodename_type(char *nodename, char nodetype);
 
 /*
 * promote the node to master; delete the old master tuple in node systable, delete 
@@ -841,7 +842,6 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	StringInfoData restmsg;
 	StringInfoData strerr;
 	StringInfoData sqlstrmsg;
-	StringInfoData sqlsrc;
 	HeapTuple tup_result;
 	NameData m_nodename;
 	NameData s_nodename;
@@ -860,7 +860,9 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	bool noneed_dropnode = true;
 	int iloop = 0;
 	int s_agent_port;
+	int iMax = 90;
 	Oid cnoid;
+	Oid checkOid;
 
 	/*check all gtm, coordinator, datanode master running normal*/
 	mgr_make_sure_all_running(GTM_TYPE_GTM_MASTER);
@@ -948,13 +950,10 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	initStringInfo(&strerr);
 	initStringInfo(&(getAgentCmdRst.description));
 	initStringInfo(&sqlstrmsg);
-	initStringInfo(&sqlsrc);
 
 	PG_TRY();
 	{
 		/* lock the cluster */
-		ereport(LOG, (errmsg("lock the cluster")));
-		ereport(NOTICE, (errmsg("lock the cluster")));
 		mgr_lock_cluster(&pg_conn, &cnoid);
 		/*set xc_maintenance_mode=on  */
 		res = PQexec(pg_conn, "set xc_maintenance_mode = on;");
@@ -965,25 +964,41 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 		}
 		PQclear(res);
 
-		appendStringInfo(&sqlsrc, "CREATE NODE \"%s\" with (TYPE=COORDINATOR, HOST='%s', PORT=%d);"
-			, s_coordname, dest_nodeinfo.nodeaddr, dest_nodeinfo.nodeport);
 		/* check the diff xlog */
-		iloop = 60;
 		ereport(LOG, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
-			, iloop, m_nodename.data, s_coordname)));
+			, iMax, m_nodename.data, s_coordname)));
 		ereport(NOTICE, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
-			, iloop, m_nodename.data, s_coordname)));
+			, iMax, m_nodename.data, s_coordname)));
 		resetStringInfo(&restmsg);
-		appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") 'checkpoint;select now()'", m_nodename.data);
-		appendStringInfo(&sqlstrmsg, "EXECUTE DIRECT ON (\"%s\") 'select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) < 200  from pg_stat_replication where application_name=''%s'';'"
+		checkOid = mgr_get_tupleoid_from_nodename_type(m_nodename.data, CNDN_TYPE_COORDINATOR_MASTER);
+		if (checkOid == cnoid)
+			appendStringInfo(&restmsg, "checkpoint;");
+		else
+			appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") 'checkpoint;'", m_nodename.data);
+
+		if (checkOid == cnoid)
+			appendStringInfo(&sqlstrmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) = 0  from pg_stat_replication where application_name='%s';"
+				,s_coordname);
+		else
+			appendStringInfo(&sqlstrmsg, "EXECUTE DIRECT ON (\"%s\") 'select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) = 0  from pg_stat_replication where application_name=''%s'';'"
 			, m_nodename.data, s_coordname);
+		iloop = 10;
 		while (iloop-- > 0)
 		{
 			/*checkponit first*/
 			res = PQexec(pg_conn, restmsg.data);
+			if (PQresultStatus(res) == PGRES_COMMAND_OK)
+			{
+				PQclear(res);
+				break;
+			}
 			PQclear(res);
-			res = NULL;
-			pg_usleep(500000L);
+			
+		}
+
+		iloop = iMax;
+		while (iloop-- > 0)
+		{
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
 				if (strcasecmp("t", PQgetvalue(res, 0, 0) != NULL ? PQgetvalue(res, 0, 0):"") == 0)
@@ -993,11 +1008,12 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 				PQclear(res);
 				res = NULL;
 			}
-			pg_usleep(500000L);
+			pg_usleep(1000000L);
 		}
 		
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
+			PQclear(res);
 			ereport(ERROR, (errmsg("wait max seconds to check coordinator \"%s\", \"%s\" have the same xlog position fail"
 				, m_nodename.data, s_coordname)));
 		}
@@ -1023,20 +1039,26 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			ereport(ERROR, (errmsg("execute \"SELECT PGXC_POOL_RELOAD()\" on all coordiantors in cluster fail")));
 
 		/*check xlog position again*/
-		iloop = 60;
 		ereport(LOG, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
-			, iloop, m_nodename.data, s_coordname)));
+			, iMax, m_nodename.data, s_coordname)));
 		ereport(NOTICE, (errmsg("wait max %d seconds to check coordinator \"%s\", \"%s\" have the same xlog position"
-			, iloop, m_nodename.data, s_coordname)));
-		resetStringInfo(&restmsg);
-		appendStringInfo(&restmsg, "EXECUTE DIRECT ON (\"%s\") 'checkpoint;select now()'", m_nodename.data);
+			, iMax, m_nodename.data, s_coordname)));
+		iloop = 10;
 		while (iloop-- > 0)
 		{
 			/*checkponit first*/
 			res = PQexec(pg_conn, restmsg.data);
+			if (PQresultStatus(res) == PGRES_COMMAND_OK)
+			{
+				PQclear(res);
+				break;
+			}
 			PQclear(res);
-			res = NULL;
-			pg_usleep(500000L);
+		}
+
+		iloop = iMax;
+		while (iloop-- > 0)
+		{
 			res = PQexec(pg_conn, sqlstrmsg.data);
 			if (PQresultStatus(res) == PGRES_TUPLES_OK)
 				if (strcasecmp("t", PQgetvalue(res, 0, 0) != NULL ? PQgetvalue(res, 0, 0):"") == 0)
@@ -1046,11 +1068,12 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 				PQclear(res);
 				res = NULL;
 			}
-			pg_usleep(500000L);
+			pg_usleep(1000000L);
 		}
-		
+
 		if (PQresultStatus(res) != PGRES_TUPLES_OK)
 		{
+			PQclear(res);
 			ereport(ERROR, (errmsg("wait max seconds to check coordinator \"%s\", \"%s\" have the same xlog position fail"
 				, m_nodename.data, s_coordname)));
 		}
@@ -1123,7 +1146,6 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			rest = mgr_execute_direct_on_all_coord(&pg_conn, infosendmsg.data, 2, PGRES_TUPLES_OK, &strerr);
 		}
 		mgr_unlock_cluster(&pg_conn);
-		pfree(sqlsrc.data);
 		pfree(sqlstrmsg.data);
 		pfree(strerr.data);
 		pfree(restmsg.data);
@@ -1146,7 +1168,6 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	heap_freetuple(tuple);
 	heap_close(rel_node, RowExclusiveLock);
 
-	pfree(sqlsrc.data);
 	pfree(sqlstrmsg.data);
 	pfree(restmsg.data);
 	pfree(infosendmsg.data);
@@ -1154,8 +1175,6 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	pfree_AppendNodeInfo(dest_nodeinfo);
 
 	/* unlock the cluster */
-	ereport(NOTICE, (errmsg("unlock the cluster")));
-	ereport(LOG, (errmsg("unlock the cluster")));
 	mgr_unlock_cluster(&pg_conn);
 	
 	if (strerr.len == 0)
@@ -1399,8 +1418,8 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	if (bforce == 0)
 	{
 		iloop = iMax;
-		ereport(LOG, (errmsg("try max %d times to wait there is not active connections on coordinators and datanode masters", iloop)));
-		ereport(NOTICE, (errmsg("try max %d times to wait there is not active connections on coordinators and datanode masters", iloop)));
+		ereport(LOG, (errmsg("wait max %d seconds to wait there is not active connections on coordinators and datanode masters", iloop)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to wait there is not active connections on coordinators and datanode masters", iloop)));
 		HOLD_CANCEL_INTERRUPTS();
 		while (iloop-- > 0)
 		{
@@ -1432,8 +1451,8 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		resetStringInfo(&restmsg);
 		initStringInfo(&infosendmsg);
 		initStringInfo(&(getAgentCmdRst.description));
-		ereport(LOG, (errmsg("wait max %d times to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table", iMax)));
-		ereport(NOTICE, (errmsg("wait max %d times to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table", iMax)));
+		ereport(LOG, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table", iMax)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table", iMax)));
 		iloop = iMax;
 		while (iloop-- > 0)
 		{
@@ -1445,11 +1464,11 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		}
 		
 		if (iloop <= 0)
-			ereport(ERROR, (errmsg("wait max %d times to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table fail", iMax)));
+			ereport(ERROR, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table fail", iMax)));
 
-		ereport(LOG, (errmsg("wait max %d times to check datanode master \"%s\", %s \"%s\" have the same xlog position"
+		ereport(LOG, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
 				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
-		ereport(NOTICE, (errmsg("wait max %d times to check datanode master \"%s\", %s \"%s\" have the same xlog position"
+		ereport(NOTICE, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
 				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
 
 		iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iMax);
@@ -1940,7 +1959,7 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 		appName = "extra";
 	initStringInfo(&infosendmsg);
 	initStringInfo(&restmsg);
-	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) < 256 from pg_stat_replication where application_name='%s';", appName);
+	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) = 0 from pg_stat_replication where application_name='%s';", appName);
 	
 	hostTupleM = SearchSysCache1(HOSTHOSTOID, nodeInfoM->nodehost);
 	if(!(HeapTupleIsValid(hostTupleM)))
@@ -1953,15 +1972,25 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 	Assert(mgr_host);
 	agentPortM = mgr_host->hostagentport;
 	ReleaseSysCache(hostTupleM);	
-	
+	/*checkponit first*/
+	iloop = 10;
+	while (iloop-- > 0)
+	{
+		resetStringInfo(&restmsg);
+		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES_COMMAND, agentPortM, "checkpoint;"
+				, nodeInfoM->nodeusername, nodeInfoM->nodeaddr, nodeInfoM->nodeport, DEFAULT_DB, &restmsg);
+		if (restmsg.len != 0)
+		{
+			if (strcasecmp(restmsg.data, "checkpoint") ==0)
+			{
+				break;
+			}
+		}
+	}
+
 	iloop = maxSecond;
 	while (iloop-- > 0)
 	{
-		/*checkponit first*/
-		resetStringInfo(&restmsg);
-		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentPortM, "checkpoint;select now();"
-			, nodeInfoM->nodeusername, nodeInfoM->nodeaddr, nodeInfoM->nodeport, DEFAULT_DB, &restmsg);
-		pg_usleep(500000L);
 		resetStringInfo(&restmsg);
 		monitor_get_stringvalues(AGT_CMD_GET_SQL_STRINGVALUES, agentPortM, infosendmsg.data
 			, nodeInfoM->nodeusername, nodeInfoM->nodeaddr, nodeInfoM->nodeport, DEFAULT_DB, &restmsg);
@@ -1971,7 +2000,7 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 				break;
 		}
 
-		pg_usleep(500000L);
+		pg_usleep(1000000L);
 	}
 	
 	pfree(infosendmsg.data);
@@ -2439,4 +2468,51 @@ static bool mgr_check_track_activities_on_coordinator(void)
 	pfree(getAgentCmdRst.description.data);
 	
 	return rest;
+}
+
+
+static Oid mgr_get_tupleoid_from_nodename_type(char *nodename, char nodetype)
+{
+	Relation nodeRel;
+	HeapScanDesc relScan;
+	NameData nodenamedata;
+	ScanKeyData key[4];
+	HeapTuple tuple;
+	Form_mgr_node mgr_node;
+	Oid tupleOid = 0;
+	
+	namestrcpy(&nodenamedata, nodename);
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeinited
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	ScanKeyInit(&key[2],
+		Anum_mgr_node_nodename
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,NameGetDatum(&nodenamedata));
+	ScanKeyInit(&key[3],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(nodetype));
+	nodeRel = heap_open(NodeRelationId, AccessShareLock);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 4, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		tupleOid = HeapTupleGetOid(tuple);
+		break;
+	}
+	heap_endscan(relScan);
+	heap_close(nodeRel, AccessShareLock);
+
+	return tupleOid;
 }
