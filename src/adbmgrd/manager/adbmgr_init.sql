@@ -42,7 +42,7 @@ SELECT
 	END AS nodetype,
 	updateparmkey			AS	key,
 	updateparmvalue			AS	value
-FROM pg_catalog.mgr_updateparm order by 1,2;
+FROM pg_catalog.mgr_updateparm order by 1,2,3;
 
 CREATE VIEW adbmgr.node AS
 	SELECT * FROM(

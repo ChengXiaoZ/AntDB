@@ -39,10 +39,21 @@
 #error "need change code"
 #endif
 
+#define NAMEDATALEN_LOCAL 512
+
+typedef struct nameDataLocal
+{
+	char		data[NAMEDATALEN_LOCAL];
+} NameDataLocal;
+typedef NameDataLocal *NameLocal;
+
+
 static void mgr_send_show_parameters(char cmdtype, StringInfo infosendmsg, Oid hostoid, GetAgentCmdRst *getAgentCmdRst);
 static bool mgr_recv_showparam_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmdRst);
 static void mgr_add_givenname_updateparm(MGRUpdateparm *node, Name nodename, char nodetype, Relation rel_node, Relation rel_updateparm, Relation rel_parm, bool bneednotice);
 static int mgr_get_character_num(char *str, char character);
+static int namestrcpylocal(NameLocal name, const char *str);
+static char *mgr_get_value_in_updateparm(Relation rel_node, HeapTuple tuple);
 
 /*if the parmeter in gtm or coordinator or datanode pg_settins, the nodetype in mgr_parm is '*'
  , if the parmeter in coordinator or datanode pg_settings, the nodetype in mgr_parm is '#'
@@ -81,7 +92,7 @@ const char *const GucContext_Parmnames[] =
 	 /* PGC_USERSET */ "user"
 };
 
-static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue, bool bneednotice);
+static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, NameLocal value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue, bool bneednotice);
 static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nodename, Name key, char *value);
 static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, StringInfo paramstrdata, int effectparmstatus, bool bforce);
 static void mgr_updateparm_send_parm(GetAgentCmdRst *getAgentCmdRst, Oid hostoid, char *nodepath, StringInfo paramstrdata, int effectparmstatus, bool bforce);
@@ -89,7 +100,7 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key);
 static int mgr_check_parm_value(char *name, char *value, int vartype, char *parmunit, char *parmmin, char *parmmax, StringInfo enumvalue);
 static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
 static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist);
-static void mgr_string_add_single_quota(Name value);
+static void mgr_string_add_single_quota(NameLocal value);
 /*
 * for command: set {datanode|coordinaotr}  {master|slave|extra} {nodename|ALL} {key1=value1,key2=value2...} ,
 * set datanode all {key1=value1,key2=value2...},set gtm all {key1=value1,key2=value2...}, set gtm master|slave|extra
@@ -188,8 +199,8 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 	ListCell *lc;
 	DefElem *def;
 	NameData key;
-	NameData value;
-	NameData defaultvalue;
+	NameDataLocal value;
+	NameDataLocal defaultvalue;
 	NameData parmunit;
 	NameData parmmin;
 	NameData parmmax;
@@ -204,7 +215,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 	int effectparmstatus;
 	int vartype;  /*the parm value type: bool, string, enum, int*/
 	int ipoint = 0;
-	const int namemaxlen = 64;
+	const int namemaxlen = NAMEDATALEN_LOCAL;
 	struct keyvalue
 	{
 		char key[namemaxlen];
@@ -223,7 +234,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 		def = lfirst(lc);
 		Assert(def && IsA(def, DefElem));
 		namestrcpy(&key, def->defname);
-		namestrcpy(&value, defGetString(def));
+		namestrcpylocal(&value, defGetString(def));
 		if (strcmp(key.data, "port") == 0 || strcmp(key.data, "synchronous_standby_names") == 0)
 		{
 			pfree(enumvalue.data);
@@ -285,7 +296,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 						if ('\0' == *pvalue)
 						{
 							valuetmp.data[ipoint]='\0';
-							namestrcpy(&value, valuetmp.data);
+							namestrcpylocal(&value, valuetmp.data);
 						}
 					}
 				}
@@ -328,7 +339,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 	{
 		key_value = (struct keyvalue *)(lfirst(cell));
 		namestrcpy(&key, key_value->key);
-		namestrcpy(&value, key_value->value);
+		namestrcpylocal(&value, key_value->value);
 		/*add key, value to send string*/
 		mgr_append_pgconf_paras_str_str(key.data, value.data, &paramstrdata);
 		/*check the parm exists already in mgr_updateparm systbl*/
@@ -342,7 +353,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 		datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(nodename);
 		datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
 		datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
-		datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&value);
+		datum[Anum_mgr_updateparm_value-1] = CStringGetTextDatum(value.data);
 		/* now, we can insert record */
 		newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
 		simple_heap_insert(rel_updateparm, newtuple);
@@ -360,7 +371,7 @@ static void mgr_add_givenname_updateparm(MGRUpdateparm *parm_node, Name nodename
 /*
 *check the given parameter nodetype, key,value in mgr_parm, if not in, shows the parameter is not right in postgresql.conf
 */
-static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, Name value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue, bool bneednotice)
+static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, NameLocal value, int *vartype, Name parmunit, Name parmmin, Name parmmax, int *effectparmstatus, StringInfo enumvalue, bool bneednotice)
 {
 	HeapTuple tuple;
 	char *gucconntent;
@@ -445,7 +456,7 @@ static void mgr_check_parm_in_pgconf(Relation noderel, char parmtype, Name key, 
 	}
 
 	/*get the default value*/
-	namestrcpy(value, NameStr(mgr_parm->parmvalue));
+	namestrcpylocal(value, NameStr(mgr_parm->parmvalue));
 	if (PGC_STRING == *vartype || (PGC_ENUM == *vartype && strstr(value->data, " ") != NULL))
 	{
 		/*if the value of key is string or the type is enum and value includes space, it need use signle quota*/
@@ -557,7 +568,7 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 	Form_mgr_updateparm mgr_updateparm;
 	Form_mgr_updateparm mgr_updateparm_alltype;
 	NameData name_standall;
-	NameData valuedata;
+	NameDataLocal valuedata;
 	HeapScanDesc rel_scan;
 	HeapScanDesc rel_scanall;
 	ScanKeyData scankey[3];
@@ -566,6 +577,7 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 	bool isnull[Natts_mgr_updateparm];
 	bool got[Natts_mgr_updateparm];
 	char allnodetype;
+	char *kValue;
 	int delnum = 0;
 	int ret;
 
@@ -607,8 +619,10 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 			/*2,3. check need update*/
 			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 			Assert(mgr_updateparm);
-			if (strcmp(value, NameStr(mgr_updateparm->updateparmvalue)) == 0)
+			kValue = mgr_get_value_in_updateparm(noderel, tuple);
+			if (strcmp(value, kValue) == 0)
 			{
+				pfree(kValue);
 				delnum += mgr_delete_tuple_not_all(noderel, nodetype, key);
 				heap_endscan(rel_scan);
 				if (delnum > 0)
@@ -618,13 +632,14 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 			}
 			else
 			{
+				pfree(kValue);
 				mgr_delete_tuple_not_all(noderel, nodetype, key);
 				/*update parm's value*/
 				memset(datum, 0, sizeof(datum));
 				memset(isnull, 0, sizeof(isnull));
 				memset(got, 0, sizeof(got));
-				namestrcpy(&valuedata, value);
-				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&valuedata);
+				namestrcpylocal(&valuedata, value);
+				datum[Anum_mgr_updateparm_value-1] = CStringGetTextDatum(valuedata.data);
 				got[Anum_mgr_updateparm_value-1] = true;
 				tupledsc = RelationGetDescr(noderel);
 				newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
@@ -677,16 +692,20 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 			mgr_updateparm_alltype = (Form_mgr_updateparm)GETSTRUCT(alltype_tuple);
 			Assert(mgr_updateparm_alltype);
 			/*4. MACRO_STAND_FOR_ALL_NODENAME has the same type-key-value */
-			if (strcmp(NameStr(mgr_updateparm_alltype->updateparmvalue), value) == 0)
+			kValue = mgr_get_value_in_updateparm(noderel, alltype_tuple);
+			if (strcmp(kValue, value) == 0)
 			{
+				pfree(kValue);
 				if (HeapTupleIsValid(tuple))
 				{
 					mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 					Assert(mgr_updateparm_alltype);
-					if (strcmp(NameStr(mgr_updateparm->updateparmvalue), value) != 0)
+					kValue = mgr_get_value_in_updateparm(noderel, tuple);
+					if (strcmp(kValue, value) != 0)
 						ret = PARM_NEED_UPDATE;
 					else
 						ret = PARM_NEED_NONE;
+					pfree(kValue);
 					simple_heap_delete(noderel, &tuple->t_self);
 					CatalogUpdateIndexes(noderel, tuple);
 					heap_endscan(rel_scan);
@@ -700,26 +719,33 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 					return PARM_NEED_NONE;
 				}
 			}
+			else
+			{
+				pfree(kValue);
+			}
 		}
 		/*5,6*/
 		if (HeapTupleIsValid(tuple))
 		{
 			mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 			Assert(mgr_updateparm);
-			if (strcmp(NameStr(mgr_updateparm->updateparmvalue), value) == 0)
+			kValue = mgr_get_value_in_updateparm(noderel, tuple);
+			if (strcmp(kValue, value) == 0)
 			{
+				pfree(kValue);
 				heap_endscan(rel_scan);
 				heap_endscan(rel_scanall);
 				return PARM_NEED_NONE;
 			}
 			else
 			{
+				pfree(kValue);
 				/*update parm's value*/
 				memset(datum, 0, sizeof(datum));
 				memset(isnull, 0, sizeof(isnull));
 				memset(got, 0, sizeof(got));
-				namestrcpy(&valuedata, value);
-				datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&valuedata);
+				namestrcpylocal(&valuedata, value);
+				datum[Anum_mgr_updateparm_value-1] = CStringGetTextDatum(valuedata.data);
 				got[Anum_mgr_updateparm_value-1] = true;
 				tupledsc = RelationGetDescr(noderel);
 				newtuple = heap_modify_tuple(tuple, tupledsc, datum,isnull, got);
@@ -752,8 +778,9 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
 	HeapTuple checktuple;
+	NameDataLocal parmvalue;
 	char *parmkey;
-	char *parmvalue;
+	char *kValue;
 	char allnodetype;
 	NameData nodenamedata;
 	NameData nodenamedatacheck;
@@ -789,16 +816,21 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 		{
 			mgr_updateparm_check = (Form_mgr_updateparm)GETSTRUCT(checktuple);
 			Assert(mgr_updateparm_check);
-			if (strcmp(NameStr(mgr_updateparm_check->updateparmvalue), DEFAULT_VALUE) == 0)
+			kValue = mgr_get_value_in_updateparm(rel_updateparm, checktuple);
+			if (strcmp(kValue, DEFAULT_VALUE) == 0)
 			{
+				pfree(kValue);
 				ReleaseSysCache(checktuple);
 				continue;
 			}
+			pfree(kValue);
 			ReleaseSysCache(checktuple);
 		}
 		parmkey = NameStr(mgr_updateparm->updateparmkey);
-		parmvalue = NameStr(mgr_updateparm->updateparmvalue);
-		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
+		kValue = mgr_get_value_in_updateparm(rel_updateparm, tuple);
+		namestrcpylocal(&parmvalue, kValue);
+		pfree(kValue);
+		mgr_append_pgconf_paras_str_str(parmkey, parmvalue.data, infosendparamsg);
 	}
 	heap_endscan(rel_scan);
 	/*second: add the parameter for given name with given nodetype*/
@@ -818,14 +850,20 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	{
 		mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(tuple);
 		Assert(mgr_updateparm);
-		if (strcmp(NameStr(mgr_updateparm->updateparmvalue), DEFAULT_VALUE) == 0)
+		kValue = mgr_get_value_in_updateparm(rel_updateparm, tuple);
+		if (strcmp(kValue, DEFAULT_VALUE) == 0)
 		{
+			pfree(kValue);
 			continue;
 		}
+		pfree(kValue);
+
 		/*get key, value*/
 		parmkey = NameStr(mgr_updateparm->updateparmkey);
-		parmvalue = NameStr(mgr_updateparm->updateparmvalue);
-		mgr_append_pgconf_paras_str_str(parmkey, parmvalue, infosendparamsg);
+		kValue = mgr_get_value_in_updateparm(rel_updateparm, tuple);
+		namestrcpylocal(&parmvalue, kValue);
+		pfree(kValue);
+		mgr_append_pgconf_paras_str_str(parmkey, parmvalue.data, infosendparamsg);
 	}
 	heap_endscan(rel_scan);
 	heap_close(rel_updateparm, RowExclusiveLock);
@@ -1040,7 +1078,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	ListCell *lc;
 	DefElem *def;
 	NameData key;
-	NameData defaultvalue;
+	NameDataLocal defaultvalue;
 	NameData allnodevalue;
 	NameData parmunit;
 	ScanKeyData scankey[3];
@@ -1057,6 +1095,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	char nodetype;			/*master/slave/extra*/
 	char nodetypetmp;
 	char allnodetype;
+	char *kValue;
 	int effectparmstatus;
 	int vartype; /*the parm value type: bool, string, enum, int*/
 	Form_mgr_updateparm mgr_updateparm;
@@ -1120,7 +1159,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 		if (parm_node->is_force)
 		{
 			/*use "none" to label the row is no use, just to show the node does not set this parameter in its postgresql.conf*/
-			namestrcpy(&defaultvalue, DEFAULT_VALUE);
+			namestrcpylocal(&defaultvalue, DEFAULT_VALUE);
 		}
 		/*if nodename is '*', delete the tuple in mgr_updateparm which nodetype is given and reload the parm if the cluster inited
 		* reset gtm all (key=value,...)
@@ -1196,7 +1235,9 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 			{
 				mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
 				Assert(mgr_updateparm);
-				strcpy(allnodevalue.data, NameStr(mgr_updateparm->updateparmvalue));
+				kValue = mgr_get_value_in_updateparm(rel_updateparm, looptuple);
+				strcpy(allnodevalue.data, kValue);
+				pfree(kValue);
 				if (strcmp(allnodevalue.data, defaultvalue.data) == 0)
 					bneedinsert = false;
 				else
@@ -1259,7 +1300,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 					datum[Anum_mgr_updateparm_nodename-1] = NameGetDatum(&(mgr_node->nodename));
 					datum[Anum_mgr_updateparm_nodetype-1] = CharGetDatum(nodetype);
 					datum[Anum_mgr_updateparm_key-1] = NameGetDatum(&key);
-					datum[Anum_mgr_updateparm_value-1] = NameGetDatum(&defaultvalue);
+					datum[Anum_mgr_updateparm_value-1] = CStringGetTextDatum(defaultvalue.data);
 					/* now, we can insert record */
 					newtuple = heap_form_tuple(RelationGetDescr(rel_updateparm), datum, isnull);
 					simple_heap_insert(rel_updateparm, newtuple);
@@ -1485,8 +1526,8 @@ static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 	char *pvaluespecial=",debug2,";	/*debug equals debug2*/
 	bool ret = false;
 	int ipos = 0;
-	NameData valueinputdata;
-	NameData valuecheckdata;
+	NameDataLocal	valueinputdata;
+	NameDataLocal valuecheckdata;
 
 	Assert(value != NULL);
 	Assert(valuelist->data != NULL);
@@ -1500,7 +1541,7 @@ static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 			ipos++;
 		}
 	}
-	namestrcpy(&valueinputdata, value);
+	namestrcpylocal(&valueinputdata, value);
 	mgr_string_add_single_quota(&valueinputdata);
 	/*special handling, because "debug" equals "debug2"*/
 	if (strcmp("'debug'", valueinputdata.data) == 0)
@@ -1520,7 +1561,7 @@ static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist)
 	ptr = strtok_r(pvaluearray, ",", &pvaluetmp);
 	while(ptr != NULL)
 	{
-		namestrcpy(&valuecheckdata, ptr);
+		namestrcpylocal(&valuecheckdata, ptr);
 		mgr_string_add_single_quota(&valuecheckdata);
 		if (strcmp(valuecheckdata.data, valueinputdata.data) == 0)
 		{
@@ -1819,16 +1860,16 @@ static bool mgr_recv_showparam_msg(ManagerAgent	*ma, GetAgentCmdRst *getAgentCmd
 /*
 * if the value is string and not using single quota, add single quota for it
 */
-static void mgr_string_add_single_quota(Name value)
+static void mgr_string_add_single_quota(NameLocal value)
 {
 	int len;
-	NameData valuetmp;
+	NameDataLocal valuetmp;
 
 	/*if the value of key is string, it need use single quota*/
 	len = strlen(value->data);
 	if (0 == len)
 	{
-		namestrcpy(value, "''");
+		namestrcpylocal(value, "''");
 	}
 	else if (value->data[0] != '\'' || value->data[len-1] != '\'')
 	{
@@ -1841,7 +1882,7 @@ static void mgr_string_add_single_quota(Name value)
 			valuetmp.data[sizeof(value->data)-2]='\'';
 			valuetmp.data[sizeof(value->data)-1]='\0';
 		}
-		namestrcpy(value, valuetmp.data);
+		namestrcpylocal(value, valuetmp.data);
 	}
 	else
 	{
@@ -1942,4 +1983,31 @@ static int mgr_get_character_num(char *str, char character)
 	}
 
 	return result;
+}
+
+static char *mgr_get_value_in_updateparm(Relation rel_node, HeapTuple tuple)
+{
+	bool isNull = false;
+	char *kValue = NULL;
+	Datum datumValue;
+
+	datumValue = heap_getattr(tuple, Anum_mgr_updateparm_value, RelationGetDescr(rel_node), &isNull);
+	if(isNull)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_updateparm")
+			, errmsg("column value is null")));
+	}
+	kValue = pstrdup(TextDatumGetCString(datumValue));
+	
+	return kValue;
+}
+
+
+static int namestrcpylocal(NameLocal name, const char *str)
+{
+	if (!name || !str)
+		return -1;
+	StrNCpy(name->data, str, NAMEDATALEN_LOCAL);
+	return 0;
 }
