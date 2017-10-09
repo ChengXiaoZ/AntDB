@@ -2037,9 +2037,9 @@ static bool mgr_check_can_deploy(char *hostname)
 	res = port_occupancy_test(address, agentPort);
 	if(res)
 	{
-		pfree(address);
 		ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
 			,errmsg("on address \"%s\" the agent is running", address)));
+		pfree(address);
 		return false;
 	}
 	

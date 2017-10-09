@@ -16,6 +16,7 @@
 #include "catalog/pg_authid.h"
 #include "catalog/mgr_cndnnode.h"
 #include "catalog/mgr_updateparm.h"
+#include "catalog/monitor_job.h"
 #include "catalog/mgr_parm.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -1438,7 +1439,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		{
 			pfree_AppendNodeInfo(nodeInfoS);
 			pfree_AppendNodeInfo(nodeInfoM);		
-			ereport(ERROR, (errmsg("there are active connect on coordinators")));
+			ereport(ERROR, (errmsg("there are active connect on coordinators or datanode masters")));
 		}
 
 	}

@@ -851,27 +851,62 @@ void mgr_recv_sql_stringvalues_msg(ManagerAgent	*ma, StringInfo resultstrdata)
 */
 bool mgr_get_active_node(Name nodename, char nodetype)
 {
-	int ret;
-	bool bresult = false;
-	StringInfoData sqlstr;
-
-	/*check all node stop*/
-	if ((ret = SPI_connect()) < 0)
-		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
-	initStringInfo(&sqlstr);
-	appendStringInfo(&sqlstr, "select nodename from mgr_monitor_nodetype_all(%d) where status = true;", nodetype);
-	ret = SPI_execute(sqlstr.data, false, 0);
-	pfree(sqlstr.data);
-	if (ret != SPI_OK_SELECT)
-		ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
-	if (SPI_processed > 0 && SPI_tuptable != NULL)
-	{
-		namestrcpy(nodename, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
-		bresult = true;
-	}
-	SPI_freetuptable(SPI_tuptable);
-	SPI_finish();
 	
+	ScanKeyData key[3];
+	Form_mgr_node mgr_node;
+	Relation relNode;
+	HeapScanDesc relScan;
+	HeapTuple tuple;
+	int res = -1;
+	char *hostAddr;
+	char *userName;
+	char portBuf[10];
+	bool bresult = false;
+	
+	ScanKeyInit(&key[0]
+				,Anum_mgr_node_nodetype
+				,BTEqualStrategyNumber
+				,F_CHAREQ
+				,CharGetDatum(nodetype));
+	ScanKeyInit(&key[1]
+				,Anum_mgr_node_nodeinited
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+	ScanKeyInit(&key[2]
+				,Anum_mgr_node_nodeincluster
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));	
+	relNode = heap_open(NodeRelationId, AccessShareLock);
+	relScan = heap_beginscan(relNode, SnapshotNow, 3, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		/* check node status */
+		hostAddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		userName = get_hostuser_from_hostoid(mgr_node->nodehost);
+		memset(portBuf, 0, 10);
+		sprintf(portBuf, "%d", mgr_node->nodeport);
+		if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype 
+			|| GTM_TYPE_GTM_EXTRA == nodetype)
+			res = pingNode_user(hostAddr, portBuf, AGTM_USER);
+		else
+			res = pingNode_user(hostAddr, portBuf, userName);
+		pfree(hostAddr);
+		pfree(userName);
+		if (res == 0)
+		{
+			bresult = true;
+			namestrcpy(nodename, NameStr(mgr_node->nodename));
+			break;
+		}
+	}
+	
+	heap_endscan(relScan);
+	heap_close(relNode, AccessShareLock);
+
 	return bresult;
 }
 
@@ -1040,10 +1075,11 @@ bool mgr_check_node_connect(char nodetype, Oid hostOid, int nodeport)
 		fflush(stdout);
 		pg_usleep(1 * 1000000L);
 	}
+	memset(nodeport_buf, 0, 10);
 	sprintf(nodeport_buf, "%d", nodeport);
 	if (nodetype != GTM_TYPE_GTM_MASTER && nodetype != GTM_TYPE_GTM_SLAVE 
 			&& nodetype != GTM_TYPE_GTM_EXTRA)
-			username = get_hostname_from_hostoid(hostOid);
+			username = get_hostuser_from_hostoid(hostOid);
 
 	while(1)
 	{
@@ -1133,6 +1169,7 @@ bool mgr_rewind_node(char nodetype, char *nodename, StringInfo strinfo)
 	Assert(mgr_node);
 	hostAddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
 	user = get_hostuser_from_hostoid(mgr_node->nodehost);
+	memset(portBuf, 0, 10);
 	snprintf(portBuf, sizeof(portBuf), "%d", mgr_node->nodeport);
 	/*restart the node then stop it with fast mode*/
 	initStringInfo(&(getAgentCmdRst.description));

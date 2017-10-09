@@ -391,4 +391,6 @@ extern void mgr_get_self_address(char *server_address, int server_port, Name sel
 
 extern Datum monitor_handle_coordinator(PG_FUNCTION_ARGS);
 extern int get_agentPort_from_hostoid(Oid hostOid);
+extern bool mgr_check_job_in_updateparam(const char *subjobstr);
+
 #endif /* MGR_CMDS_H */

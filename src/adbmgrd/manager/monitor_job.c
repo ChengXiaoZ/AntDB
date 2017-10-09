@@ -74,7 +74,6 @@ int	adbmonitor_naptime;
 
 static HeapTuple montiot_job_get_item_tuple(Relation rel_job, Name jobname);
 static bool mgr_element_in_array(Oid tupleOid, int array[], int count);
-static int64 mgr_database_run_time(char *database);
 
 /*
 * ADD ITEM jobname(jobname, filepath, desc)
@@ -517,8 +516,6 @@ Datum monitor_handle_coordinator(PG_FUNCTION_ARGS)
 	int iloop = 0;
 	int count = 0;
 	int coordNum = 0;
-	int64 runTime;
-	int checkTime = 300;
 	int dropCoordOidArray[1000];
 	char *address;
 	char *userName;
@@ -526,21 +523,9 @@ Datum monitor_handle_coordinator(PG_FUNCTION_ARGS)
 	Oid tupleOid;
 	bool result = true;
 	bool rest;
-	
 
-	/*check ADBMGR run time*/
-	runTime = mgr_database_run_time("postgres");
 	namestrcpy(&s_nodename, "coordinator");
 	initStringInfo(&infosendmsg);
-	if (runTime < checkTime)
-	{
-		appendStringInfo(&infosendmsg, "the ADBMGR running time less then %d seconds, not check coordinators's status now", checkTime);
-		ereport(LOG, (errmsg("%s", infosendmsg.data)));
-		ereport(NOTICE, (errmsg("%s", infosendmsg.data)));
-		tup_result = build_common_command_tuple(&s_nodename, false, infosendmsg.data);
-		pfree(infosendmsg.data);
-		return HeapTupleGetDatum(tup_result);
-	}
 	/* check the status of all coordinator in cluster */
 	memset(dropCoordOidArray, 0, 1000);
 	memset(portBuf, 0, sizeof(portBuf));
@@ -795,34 +780,63 @@ static bool mgr_element_in_array(Oid tupleOid, int array[], int count)
 	return false;
 }
 
-
-static int64 mgr_database_run_time(char *database)
+bool mgr_check_job_in_updateparam(const char *subjobstr)
 {
-	int64 totalTime = 0;
-	StringInfoData stringinfomsg;
-	NameData restdata;
-	int ret;
-	
-	Assert(database);
-	if ((ret = SPI_connect()) < 0)
-		ereport(ERROR, (errmsg("ADB Manager SPI_connect failed: error code %d", ret)));
+	HeapTuple tuple = NULL;
+	Relation relJob;
+	HeapScanDesc relScan;
+	Datum datumCommand;
+	ScanKeyData key[1];
+	NameData jobname;
+	Form_monitor_job monitor_job;
+	bool isNull;
+	bool res = false;
+	char *command;
+	char *pstr = NULL;
 
-	initStringInfo(&stringinfomsg);
-	appendStringInfo(&stringinfomsg, "select case when  stats_reset IS NULL then  0 else  round(abs(extract(epoch from now())- extract(epoch from  stats_reset))) end from pg_stat_database where datname = '%s';", database);
+	Assert(subjobstr);
 
-	ret = SPI_execute(stringinfomsg.data, false, 0);
-	pfree(stringinfomsg.data);
-	if (ret != SPI_OK_SELECT)
-		ereport(ERROR, (errmsg("ADB Manager SPI_execute failed: error code %d", ret)));
-	if (SPI_processed > 0 && SPI_tuptable != NULL)
+	ScanKeyInit(&key[0]
+				,Anum_monitor_job_status
+				,BTEqualStrategyNumber
+				,F_BOOLEQ
+				,BoolGetDatum(true));
+	relJob = heap_open(MjobRelationId, AccessShareLock);
+	relScan = heap_beginscan(relJob, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
-		namestrcpy(&restdata, SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
-		totalTime = atoi(restdata.data);
-		pg_lltoa(totalTime, restdata.data);
+		/*get the command string*/
+		datumCommand = heap_getattr(tuple, Anum_monitor_job_command, RelationGetDescr(relJob), &isNull);
+		if(isNull)
+		{
+			heap_endscan(relScan);
+			heap_close(relJob, AccessShareLock);
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+				, err_generic_string(PG_DIAG_TABLE_NAME, "monitor_job")
+				, errmsg("column command is null")));
+		}
+		command = TextDatumGetCString(datumCommand);
+		Assert(command);
+		pstr = NULL;
+		pstr = strcasestr(command, subjobstr);
+		if (pstr != NULL)
+		{
+			res = true;
+			monitor_job = (Form_monitor_job)GETSTRUCT(tuple);
+			namestrcpy(&jobname, NameStr(monitor_job->name));
+			break;
+		}
+
+	}
+	heap_endscan(relScan);
+	heap_close(relJob, AccessShareLock);
+	
+	if (res)
+	{
+		ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
+				,errmsg("on job table, the content of job \"%s\" includes \"monitor_handle_coordiantor\" string and its status is \"on\"; you need do \"ALTER JOB \"%s\" (STATUS=false);\" to alter its status to \"off\"", jobname.data, jobname.data)
+				,errhint("try \"list job\" for more information")));
 	}
 
-	SPI_freetuptable(SPI_tuptable);
-	SPI_finish();
-
-	return totalTime;
+	return res;
 }

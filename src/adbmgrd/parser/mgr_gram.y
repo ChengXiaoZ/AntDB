@@ -2037,6 +2037,8 @@ StartNodeMasterStmt:
 		}
 	|	START ALL
 		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
+
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("startall"), -1));
@@ -2170,6 +2172,8 @@ StopNodeMasterStmt:
 		}
 	|	STOP ALL opt_stop_mode
 		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
+
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			if (strcmp($3, SHUTDOWN_S) == 0)
