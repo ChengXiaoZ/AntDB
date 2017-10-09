@@ -339,6 +339,8 @@
    &mgrStopCoordinator;
    &mgrStopDatanode;
    &mgrStopGtm;
+   &mgrSwitchoverDatanode
+   &mgrSwitchoverGtm
 </reference>
 
 <reference id="reference-monitor">

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ALTER JOB</refname>
-    <refpurpose>alter one row job information in the job table.  The input string of "command" column should be in single quote. If using user-defined monitor item, the input of sql string format likes 'insert into tb_name select adbmonitor_job(''host_name'', ''item_name'')', the item_name in job item table</refpurpose>
+    <refpurpose>alter one row job information in the job table. The column of "interval" requires an integer value, unit is "second"; The input string of "command" column should be in single quote. If using user-defined monitor item, the input of sql string format likes 'insert into tb_name select adbmonitor_job(''host_name'', ''item_name'')', the item_name in job item table</refpurpose>
   </refnamediv>
 
   <indexterm zone="monitor-addjob">

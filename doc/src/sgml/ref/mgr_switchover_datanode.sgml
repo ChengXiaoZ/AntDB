@@ -1,0 +1,72 @@
+<!--
+doc/src/sgml/ref/mgr_switchover_datanode.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-SWITCHOVERDATANODE">
+  <refmeta>
+    <refentrytitle>SWITCHOVER DATANODE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>SWITCHOVER DATANODE</refname>
+    <refpurpose>datanode master, datanode slave switchover, the original master changes to slave and the original slave changes to master</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-switchoverdatanode">
+    <primary>SWITCHOVER DATANODE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+SWITCHOVER DATANODE { SLAVE | EXTRA } <replaceable class="parameter">datanode_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>SWITCHOVER DATANODE</command> datanode master, datanode slave switchover, the original master changes to slave and the original slave changes to master. These conditions must be satisfied before it is allowed to execute \"SWITCHOVER\" command: the master and slave have the same xlog position; there are not active connections on all coordinators and not conditions on all datanode masters.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+    
+   <varlistentry>
+    <term><replaceable class="parameter">datanode_name</replaceable></term>
+    <listitem>
+      <para>
+      Datanode name.
+      </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Switchover datanode slave, datanode master:
+<programlisting>
+switchover datanode slave datanode_name;
+</programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-adddatanode"></member>
+   <member><xref linkend="mgr-appenddatanode"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>
