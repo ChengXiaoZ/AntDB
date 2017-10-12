@@ -67,15 +67,15 @@ CREATE VIEW adbmgr.node AS
     mgrnode.nodeincluster AS incluster
   FROM pg_catalog.mgr_node AS mgrnode LEFT JOIN pg_catalog.mgr_host ON mgrnode.nodehost = pg_catalog.mgr_host.oid 
 		LEFT JOIN pg_catalog.mgr_node AS node_alise ON node_alise.oid = mgrnode.nodemasternameoid) AS node_tb 
-		order by 1,(case type 
+		order by 1, (case type 
 			when 'gtm master' then 0 
 			when 'gtm slave' then 1 
-			when 'gtm extra' then 2 
+			when 'gtm extra' then 1 
 			when 'coordinator' then 3 
 			when 'datanode master' then 4 
 			when 'datanode slave' then 5 
-			when 'datanode extra' then 6 
-			End) ASC;
+			when 'datanode extra' then 5 
+			End) ASC, sync_state DESC;
 
 CREATE VIEW adbmgr.job AS
   SELECT
