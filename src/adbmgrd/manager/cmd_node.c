@@ -668,7 +668,19 @@ Datum mgr_alter_node_func(PG_FUNCTION_ARGS)
 		if(got[Anum_mgr_node_nodesync-1] == true)
 			mgr_alter_master_sync_incluster(mastertype, &name, selftupleoid, nodetype, new_sync);
 		if (got[Anum_mgr_node_nodeport-1] == true && oldport != newport)
+		{
+			PG_TRY();
+			{
+				if (CNDN_TYPE_COORDINATOR_MASTER == nodetype)
+					mgr_check_job_in_updateparam("monitor_handle_coordinator");
+			}PG_CATCH();
+			{
+				heap_freetuple(oldtuple);
+				heap_close(rel, RowExclusiveLock);
+				PG_RE_THROW();
+			}PG_END_TRY();
 			mgr_modify_port_after_initd(rel, oldtuple, name.data, nodetype, newport);
+		}
 	}
 	else
 	{
@@ -8830,6 +8842,8 @@ Datum mgr_flush_host(PG_FUNCTION_ARGS)
 	bool isNull = false;
 	bool bgetwarning = false;
 	Oid hostoid;
+
+	mgr_check_job_in_updateparam("monitor_handle_coordinator");
 
 	initStringInfo(&infosendmsg);
 	initStringInfo(&(getAgentCmdRst.description));
