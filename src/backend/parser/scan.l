@@ -39,7 +39,6 @@
 #include "parser/scansup.h"
 #include "mb/pg_wchar.h"
 
-
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
 #undef fprintf
 #define fprintf(file, fmt, msg)  fprintf_to_ereport(fmt, msg)

@@ -40,6 +40,10 @@
 #include "access/xact.h"
 #include "miscadmin.h"
 #include "postmaster/autovacuum.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "pgxc/poolmgr.h"
+#endif
 #include "replication/syncrep.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
@@ -367,6 +371,9 @@ InitProcess(void)
 	MyProc->roleId = InvalidOid;
 	MyPgXact->delayChkpt = false;
 	MyPgXact->vacuumFlags = 0;
+#ifdef PGXC
+	MyProc->isPooler = false;
+#endif
 	/* NB -- autovac launcher intentionally does not set IS_AUTOVACUUM */
 	if (IsAutoVacuumWorkerProcess())
 		MyPgXact->vacuumFlags |= PROC_IS_AUTOVACUUM;
@@ -531,6 +538,17 @@ InitAuxiliaryProcess(void)
 	MyProc->backendId = InvalidBackendId;
 	MyProc->databaseId = InvalidOid;
 	MyProc->roleId = InvalidOid;
+#ifdef PGXC
+	MyProc->isPooler = false;
+	if (IsPGXCPoolerProcess())
+		MyProc->isPooler = true;
+#endif
+	/* 
+	 * K.Suzuki memo, Sep.2ne, 2013.
+	 *
+	 * Setting up MyPgXact->delayChkpt setting is new.
+	 * We don't have inCommit member in PGXACT struct.
+	 */
 	MyPgXact->delayChkpt = false;
 	MyPgXact->vacuumFlags = 0;
 	MyProc->lwWaiting = false;

@@ -78,6 +78,11 @@ typedef Node *(*CoerceParamHook) (ParseState *pstate, Param *param,
 									   Oid targetTypeId, int32 targetTypeMod,
 											  int location);
 
+#ifdef ADB
+#define IsOracleParseGram(pstate) \
+	(pstate && ((ParseState *)pstate)->p_grammar == PARSE_GRAM_ORACLE)
+#endif
+
 
 /*
  * State information used during parse analysis
@@ -136,6 +141,7 @@ struct ParseState
 								 * node's fromlist) */
 	List	   *p_namespace;	/* currently-referenceable RTEs (List of
 								 * ParseNamespaceItem) */
+	List	   *p_save_namespace;	/* saved namespace in transformFromAndWhere */
 	bool		p_lateral_active;		/* p_lateral_only items visible? */
 	List	   *p_ctenamespace; /* current namespace for common table exprs */
 	List	   *p_future_ctes;	/* common table exprs not yet in namespace */
@@ -164,6 +170,9 @@ struct ParseState
 	ParseParamRefHook p_paramref_hook;
 	CoerceParamHook p_coerce_param_hook;
 	void	   *p_ref_hook_state;		/* common passthrough link for above */
+#ifdef ADB
+	enum ParseGrammar p_grammar;
+#endif
 };
 
 /*

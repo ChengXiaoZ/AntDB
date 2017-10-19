@@ -14,19 +14,18 @@
 #ifndef TOASTING_H
 #define TOASTING_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
+#include "catalog/genbki.h"
+#endif /* BUILD_BKI */
+
 /*
  * toasting.c prototypes
  */
 extern void AlterTableCreateToastTable(Oid relOid, Datum reloptions);
 extern void BootstrapToastTable(char *relName,
 					Oid toastOid, Oid toastIndexOid);
-
-
-/*
- * This macro is just to keep the C compiler from spitting up on the
- * upcoming commands for genbki.pl.
- */
-#define DECLARE_TOAST(name,toastoid,indexoid) extern int no_such_variable
 
 
 /*

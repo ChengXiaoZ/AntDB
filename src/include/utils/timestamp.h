@@ -17,7 +17,6 @@
 #include "fmgr.h"
 #include "pgtime.h"
 
-
 /*
  * Macros for fmgr-callable functions.
  *
@@ -80,6 +79,10 @@
 #define TimestampTzPlusMilliseconds(tz,ms) ((tz) + ((ms) / 1000.0))
 #endif
 
+#ifdef PGXC
+#define InvalidGlobalTimestamp ((TimestampTz) 0)
+#define GlobalTimestampIsValid(timestamp) ((TimestampTz) (timestamp)) != InvalidGlobalTimestamp
+#endif
 
 /* Set at postmaster start */
 extern TimestampTz PgStartTime;
@@ -94,6 +97,9 @@ extern TimestampTz PgReloadTime;
 
 extern Datum timestamp_in(PG_FUNCTION_ARGS);
 extern Datum timestamp_out(PG_FUNCTION_ARGS);
+#ifdef ADB
+extern Datum ora_date_out(PG_FUNCTION_ARGS);
+#endif
 extern Datum timestamp_recv(PG_FUNCTION_ARGS);
 extern Datum timestamp_send(PG_FUNCTION_ARGS);
 extern Datum timestamptypmodin(PG_FUNCTION_ARGS);
@@ -179,6 +185,9 @@ extern Datum interval_mul(PG_FUNCTION_ARGS);
 extern Datum mul_d_interval(PG_FUNCTION_ARGS);
 extern Datum interval_div(PG_FUNCTION_ARGS);
 extern Datum interval_accum(PG_FUNCTION_ARGS);
+#ifdef PGXC
+extern Datum interval_collect(PG_FUNCTION_ARGS);
+#endif
 extern Datum interval_avg(PG_FUNCTION_ARGS);
 
 extern Datum timestamp_mi(PG_FUNCTION_ARGS);

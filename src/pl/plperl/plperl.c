@@ -45,7 +45,14 @@
 #define TEXTDOMAIN PG_TEXTDOMAIN("plperl")
 
 /* perl stuff */
+#ifdef ADB
+#pragma push_macro("_")
+#undef _
 #include "plperl.h"
+#pragma pop_macro("_")
+#else /* ADB */
+#include "plperl.h"
+#endif /* ADB */
 #include "plperl_helpers.h"
 
 /* string literal macros defining chunks of perl code */
@@ -1787,7 +1794,11 @@ plperl_inline_handler(PG_FUNCTION_ARGS)
 	/* Set up a callback for error reporting */
 	pl_error_context.callback = plperl_inline_callback;
 	pl_error_context.previous = error_context_stack;
+#ifdef ADB
+	pl_error_context.arg = NULL;
+#else /* ADB */
 	pl_error_context.arg = (Datum) 0;
+#endif /* ADB */
 	error_context_stack = &pl_error_context;
 
 	/*

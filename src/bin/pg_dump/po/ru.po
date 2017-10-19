@@ -2138,11 +2138,13 @@ msgstr ""
 "запрос на получение данных последовательности \"%s\" вернул имя \"%s\"\n"
 
 #: pg_dump.c:14305
+>>>>>>> REL9_3_13
 #, c-format
 msgid "unexpected tgtype value: %d\n"
 msgstr "неожиданное значение tgtype: %d\n"
 
 #: pg_dump.c:14387
+>>>>>>> REL9_3_13
 #, c-format
 msgid "invalid argument string (%s) for trigger \"%s\" on table \"%s\"\n"
 msgstr "неверная строка аргументов (%s) для триггера \"%s\" таблицы \"%s\"\n"

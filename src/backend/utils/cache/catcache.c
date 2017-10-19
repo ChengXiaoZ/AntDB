@@ -576,7 +576,6 @@ AtEOXact_CatCache(bool isCommit)
 			for (i = 0; i < ccp->cc_nbuckets; i++)
 			{
 				dlist_head *bucket = &ccp->cc_bucket[i];
-
 				dlist_foreach(iter, bucket)
 				{
 					CatCTup    *ct = dlist_container(CatCTup, cache_elem, iter.cur);

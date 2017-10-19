@@ -21,7 +21,11 @@
 #ifndef PG_CAST_H
 #define PG_CAST_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_cast definition.  cpp turns this into

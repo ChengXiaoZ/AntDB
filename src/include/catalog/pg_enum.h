@@ -21,8 +21,12 @@
 #ifndef PG_ENUM_H
 #define PG_ENUM_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
 #include "nodes/pg_list.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_enum definition.  cpp turns this into

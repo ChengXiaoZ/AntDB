@@ -137,4 +137,21 @@ extern void extract_query_dependencies(Node *query,
 						   List **relationOids,
 						   List **invalItems);
 
+#ifdef PGXC
+/*
+ * prototypes for plan/pgxcplan.c
+ */
+extern Plan *create_remotedml_plan(PlannerInfo *root, Plan *topplan,
+									CmdType cmdtyp);
+extern Plan *create_remotegrouping_plan(PlannerInfo *root, Plan *local_plan);
+extern Plan *create_remotequery_plan(PlannerInfo *root, RemoteQueryPath *best_path);
+extern Plan *create_remotesort_plan(PlannerInfo *root, Plan *local_plan);
+extern Plan *create_remotelimit_plan(PlannerInfo *root, Plan *local_plan);
+extern List *pgxc_order_qual_clauses(PlannerInfo *root, List *clauses);
+extern List *pgxc_build_path_tlist(PlannerInfo *root, Path *path);
+extern void pgxc_copy_path_costsize(Plan *dest, Path *src);
+extern Plan *pgxc_create_gating_plan(PlannerInfo *root, Plan *plan, List *quals);
+extern Node *pgxc_replace_nestloop_params(PlannerInfo *root, Node *expr);
+#endif
+
 #endif   /* PLANMAIN_H */

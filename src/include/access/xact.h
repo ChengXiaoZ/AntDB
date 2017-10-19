@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/access/xact.h
  *
@@ -93,7 +94,6 @@ typedef enum
 
 typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
 									SubTransactionId parentSubid, void *arg);
-
 
 /* ----------------
  *		transaction-related XLOG entries
@@ -212,20 +212,36 @@ extern TransactionId GetTopTransactionId(void);
 extern TransactionId GetTopTransactionIdIfAny(void);
 extern TransactionId GetCurrentTransactionId(void);
 extern TransactionId GetCurrentTransactionIdIfAny(void);
+#ifdef PGXC  /* PGXC_COORD */
+extern bool GetCurrentLocalParamStatus(void);
+extern void SetCurrentLocalParamStatus(bool status);
+#endif
 extern TransactionId GetStableLatestTransactionId(void);
 extern SubTransactionId GetCurrentSubTransactionId(void);
 extern bool SubTransactionIsActive(SubTransactionId subxid);
 extern CommandId GetCurrentCommandId(bool used);
+#ifdef ADB
+extern CommandId GetCurrentCommandIdIfAny(void);
+extern void SetTopXactBeginAGTM(bool status);
+extern bool TopXactBeginAGTM(void);
+#endif
 extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern TimestampTz GetCurrentStatementStartTimestamp(void);
 extern TimestampTz GetCurrentTransactionStopTimestamp(void);
 extern void SetCurrentStatementStartTimestamp(void);
+#ifdef PGXC
+extern TimestampTz GetCurrentAGTMStartTimestamp(void);
+extern void SetCurrentAGTMDeltaTimestamp(TimestampTz timestamp);
+#endif
 extern int	GetCurrentTransactionNestLevel(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void ForceSyncCommit(void);
 extern void StartTransactionCommand(void);
 extern void CommitTransactionCommand(void);
+#ifdef PGXC
+extern void AbortCurrentTransactionOnce(void);
+#endif
 extern void AbortCurrentTransaction(void);
 extern void BeginTransactionBlock(void);
 extern bool EndTransactionBlock(void);
@@ -250,9 +266,25 @@ extern void UnregisterXactCallback(XactCallback callback, void *arg);
 extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
+#ifdef PGXC
+extern void RegisterTransactionNodes(int count, void **connections, bool write);
+extern void ForgetTransactionNodes(void);
+extern void RegisterTransactionLocalNode(bool write);
+extern bool IsTransactionLocalNode(bool write);
+extern void ForgetTransactionLocalNode(void);
+extern bool IsXidImplicit(const char *xid);
+extern void SaveReceivedCommandId(CommandId cid);
+extern void SetReceivedCommandId(CommandId cid);
+extern CommandId GetReceivedCommandId(void);
+extern void ReportCommandIdChange(CommandId cid);
+extern bool IsSendCommandId(void);
+extern void SetSendCommandId(bool status);
+extern bool IsPGXCNodeXactReadOnly(void);
+extern bool IsPGXCNodeXactDatanodeDirect(void);
+#endif
+
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
 extern void xact_redo(XLogRecPtr lsn, XLogRecord *record);
 extern void xact_desc(StringInfo buf, uint8 xl_info, char *rec);
-
 #endif   /* XACT_H */

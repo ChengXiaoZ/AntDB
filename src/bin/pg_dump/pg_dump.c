@@ -140,7 +140,9 @@ static int	no_security_labels = 0;
 static int	no_synchronized_snapshots = 0;
 static int	no_unlogged_table_data = 0;
 static int	serializable_deferrable = 0;
-
+#ifdef PGXC
+static int	include_nodes = 0;
+#endif
 
 static void help(const char *progname);
 static void setup_connection(Archive *AH, const char *dumpencoding,
@@ -363,6 +365,9 @@ main(int argc, char **argv)
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-synchronized-snapshots", no_argument, &no_synchronized_snapshots, 1},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
+#ifdef PGXC
+		{"include-nodes", no_argument, &include_nodes, 1},
+#endif
 
 		{NULL, 0, NULL, 0}
 	};
@@ -909,6 +914,9 @@ help(const char *progname)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+#ifdef PGXC
+	printf(_("  --include-nodes              include TO NODE clause in the dumped CREATE TABLE commands\n"));
+#endif
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=DBNAME      database to dump\n"));
@@ -1024,11 +1032,11 @@ setup_connection(Archive *AH, const char *dumpencoding, char *use_role)
 		if (serializable_deferrable && AH->sync_snapshot_id == NULL)
 			ExecuteSqlStatement(AH,
 								"SET TRANSACTION ISOLATION LEVEL "
-								"SERIALIZABLE, READ ONLY, DEFERRABLE");
+								"SERIALIZABLE, DEFERRABLE");
 		else
 			ExecuteSqlStatement(AH,
 								"SET TRANSACTION ISOLATION LEVEL "
-								"REPEATABLE READ, READ ONLY");
+								"REPEATABLE READ");
 	}
 	else if (AH->remoteVersion >= 70400)
 	{
@@ -3078,7 +3086,8 @@ getNamespaces(Archive *fout, int *numNamespaces)
 	 */
 	appendPQExpBuffer(query, "SELECT tableoid, oid, nspname, "
 					  "(%s nspowner) AS rolname, "
-					  "nspacl FROM pg_namespace",
+					  "nspacl FROM pg_namespace "
+					  "WHERE nspname != 'dbms_random' AND nspname != 'oracle'",
 					  username_subquery);
 
 	res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
@@ -3303,7 +3312,8 @@ getTypes(Archive *fout, int *numTypes)
 						  "typtype, typisdefined, "
 						  "typname[0] = '_' AND typelem != 0 AND "
 						  "(SELECT typarray FROM pg_type te WHERE oid = pg_type.typelem) = oid AS isarray "
-						  "FROM pg_type",
+						  "FROM pg_type "
+						  "WHERE typnamespace != (SELECT oid FROM pg_namespace WHERE nspname = 'oracle')",
 						  username_subquery);
 	}
 	else if (fout->remoteVersion >= 80300)
@@ -3551,7 +3561,8 @@ getOperators(Archive *fout, int *numOprs)
 						  "(%s oprowner) AS rolname, "
 						  "oprkind, "
 						  "oprcode::oid AS oprcode "
-						  "FROM pg_operator",
+						  "FROM pg_operator "
+						  "WHERE oprnamespace != (SELECT oid FROM pg_namespace WHERE nspname = 'oracle')",
 						  username_subquery);
 	}
 	else if (fout->remoteVersion >= 70100)
@@ -4181,7 +4192,7 @@ getFuncs(Archive *fout, int *numFuncs)
 						  "WHERE NOT proisagg AND ("
 						  "pronamespace != "
 						  "(SELECT oid FROM pg_namespace "
-						  "WHERE nspname = 'pg_catalog')",
+						  "WHERE nspname = 'pg_catalog' AND nspname = 'oracle')",
 						  username_subquery);
 		if (fout->remoteVersion >= 90200)
 			appendPQExpBuffer(query,
@@ -4323,6 +4334,11 @@ getTables(Archive *fout, int *numTables)
 	int			i_relispopulated;
 	int			i_owning_tab;
 	int			i_owning_col;
+#ifdef PGXC
+	int			i_pgxclocatortype;
+	int			i_pgxcattnum;
+	int			i_pgxc_node_names;
+#endif
 	int			i_reltablespace;
 	int			i_reloptions;
 	int			i_toastreloptions;
@@ -4373,6 +4389,11 @@ getTables(Archive *fout, int *numTables)
 						  "d.refobjid AS owning_tab, "
 						  "d.refobjsubid AS owning_col, "
 						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = c.reltablespace) AS reltablespace, "
+#ifdef PGXC
+						  "(SELECT pclocatortype from pgxc_class v where v.pcrelid = c.oid) AS pgxclocatortype,"
+						  "(SELECT pcattnum from pgxc_class v where v.pcrelid = c.oid) AS pgxcattnum,"
+						  "(SELECT string_agg(node_name,',') AS pgxc_node_names from pgxc_node n where n.oid in (select unnest(nodeoids) from pgxc_class v where v.pcrelid=c.oid) ) , "
+#endif
 						  "c.reloptions AS reloptions, "
 						  "tc.reloptions AS toast_reloptions "
 						  "FROM pg_class c "
@@ -4433,6 +4454,8 @@ getTables(Archive *fout, int *numTables)
 		/*
 		 * Left join to pick up dependency info linking sequences to their
 		 * owning column, if any (note this dependency is AUTO as of 8.2)
+		 * PGXC is based on PostgreSQL version 8.4, it is not necessary to
+		 * to modify the other SQL queries.
 		 */
 		appendPQExpBuffer(query,
 						  "SELECT c.tableoid, c.oid, c.relname, "
@@ -4741,6 +4764,11 @@ getTables(Archive *fout, int *numTables)
 	i_relpages = PQfnumber(res, "relpages");
 	i_owning_tab = PQfnumber(res, "owning_tab");
 	i_owning_col = PQfnumber(res, "owning_col");
+#ifdef PGXC
+	i_pgxclocatortype = PQfnumber(res, "pgxclocatortype");
+	i_pgxcattnum = PQfnumber(res, "pgxcattnum");
+	i_pgxc_node_names = PQfnumber(res, "pgxc_node_names");
+#endif
 	i_reltablespace = PQfnumber(res, "reltablespace");
 	i_reloptions = PQfnumber(res, "reloptions");
 	i_toastreloptions = PQfnumber(res, "toast_reloptions");
@@ -4802,6 +4830,20 @@ getTables(Archive *fout, int *numTables)
 			tblinfo[i].owning_tab = atooid(PQgetvalue(res, i, i_owning_tab));
 			tblinfo[i].owning_col = atoi(PQgetvalue(res, i, i_owning_col));
 		}
+#ifdef PGXC
+		/* Not all the tables have pgxc locator Data */
+		if (PQgetisnull(res, i, i_pgxclocatortype))
+		{
+			tblinfo[i].pgxclocatortype = 'E';
+			tblinfo[i].pgxcattnum = 0;
+		}
+		else
+		{
+			tblinfo[i].pgxclocatortype = *(PQgetvalue(res, i, i_pgxclocatortype));
+			tblinfo[i].pgxcattnum = atoi(PQgetvalue(res, i, i_pgxcattnum));
+		}
+		tblinfo[i].pgxc_node_names = pg_strdup(PQgetvalue(res, i, i_pgxc_node_names));
+#endif
 		tblinfo[i].reltablespace = pg_strdup(PQgetvalue(res, i, i_reltablespace));
 		tblinfo[i].reloptions = pg_strdup(PQgetvalue(res, i, i_reloptions));
 		tblinfo[i].toast_reloptions = pg_strdup(PQgetvalue(res, i, i_toastreloptions));
@@ -13160,6 +13202,41 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBufferChar(q, ')');
 		}
 
+#ifdef PGXC
+		/* Add the grammar extension linked to PGXC depending on data got from pgxc_class */
+		if (tbinfo->pgxclocatortype != 'E')
+		{
+			/* N: DISTRIBUTE BY ROUNDROBIN */
+			if (tbinfo->pgxclocatortype == 'N')
+			{
+				appendPQExpBuffer(q, "\nDISTRIBUTE BY ROUNDROBIN");
+			}
+			/* R: DISTRIBUTE BY REPLICATED */
+			else if (tbinfo->pgxclocatortype == 'R')
+			{
+				appendPQExpBuffer(q, "\nDISTRIBUTE BY REPLICATION");
+			}
+			/* H: DISTRIBUTE BY HASH  */
+			else if (tbinfo->pgxclocatortype == 'H')
+			{
+				int hashkey = tbinfo->pgxcattnum;
+				appendPQExpBuffer(q, "\nDISTRIBUTE BY HASH (%s)",
+								  fmtId(tbinfo->attnames[hashkey - 1]));
+			}
+			else if (tbinfo->pgxclocatortype == 'M')
+			{
+				int hashkey = tbinfo->pgxcattnum;
+				appendPQExpBuffer(q, "\nDISTRIBUTE BY MODULO (%s)",
+								  fmtId(tbinfo->attnames[hashkey - 1]));
+			}
+		}
+		if (include_nodes &&
+			tbinfo->pgxc_node_names != NULL &&
+			tbinfo->pgxc_node_names[0] != '\0')
+		{
+			appendPQExpBuffer(q, "\nTO NODE (%s)", tbinfo->pgxc_node_names);
+		}
+#endif
 		/* Dump generic options if any */
 		if (ftoptions && ftoptions[0])
 			appendPQExpBuffer(q, "\nOPTIONS (\n    %s\n)", ftoptions);
@@ -13545,6 +13622,10 @@ getAttrName(int attrnum, TableInfo *tblInfo)
 			return "cmax";
 		case TableOidAttributeNumber:
 			return "tableoid";
+#ifdef PGXC
+		case XC_NodeIdAttributeNumber:
+			return "xc_node_id";
+#endif
 	}
 	exit_horribly(NULL, "invalid column number %d for table \"%s\"\n",
 				  attrnum, tblInfo->dobj.name);
@@ -14174,6 +14255,34 @@ dumpSequenceData(Archive *fout, TableDataInfo *tdinfo)
 
 	last = PQgetvalue(res, 0, 0);
 	called = (strcmp(PQgetvalue(res, 0, 1), "t") == 0);
+#ifdef PGXC
+    /*                                                                                                                        
+     * In Postgres-XC it is possible that the current value of a                                                              
+     * sequence cached on each node is different as several sessions                                                          
+     * might use the sequence on different nodes. So what we do here                                                          
+     * to get a consistent dump is to get the next value of sequence.                                                         
+     * This insures that sequence value is unique as nextval is directly                                                      
+     * obtained from GTM.                                                                                                     
+     */
+    resetPQExpBuffer(query);
+    appendPQExpBuffer(query, "SELECT pg_catalog.nextval(");
+    appendStringLiteralAH(query, fmtId(tbinfo->dobj.name), fout);
+    appendPQExpBuffer(query, ");\n");
+    res = ExecuteSqlQuery(fout, query->data, PGRES_TUPLES_OK);
+
+    if (PQntuples(res) != 1)
+    {
+        write_msg(NULL, ngettext("query to get nextval of sequence \"%s\" "
+								 "returned %d rows (expected 1)\n",
+                                    "query to get nextval of sequence \"%s\" "
+								 "returned %d rows (expected 1)\n",
+								 PQntuples(res)),
+				  tbinfo->dobj.name, PQntuples(res));
+        exit_nicely(1);
+    }
+
+    last = PQgetvalue(res, 0, 0);
+#endif
 
 	resetPQExpBuffer(query);
 	appendPQExpBuffer(query, "SELECT pg_catalog.setval(");

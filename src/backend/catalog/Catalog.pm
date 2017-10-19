@@ -33,6 +33,9 @@ sub Catalogs
 	my %RENAME_ATTTYPE = (
 		'int16'         => 'int2',
 		'int32'         => 'int4',
+#ifdef ADB
+		'int64'         => 'int8',
+#endif
 		'Oid'           => 'oid',
 		'NameData'      => 'name',
 		'TransactionId' => 'xid');
@@ -51,6 +54,7 @@ sub Catalogs
 
 			# Strip C-style comments.
 			s;/\*(.|\n)*\*/;;g;
+			s;/#.*/;;g;
 			if (m;/\*;)
 			{
 

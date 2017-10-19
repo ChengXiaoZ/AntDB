@@ -225,9 +225,17 @@ exprType(const Node *expr)
 		case T_CurrentOfExpr:
 			type = BOOLOID;
 			break;
+		case T_RownumExpr:
+			type = INT8OID;
+			break;
 		case T_PlaceHolderVar:
 			type = exprType((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			type = exprType((Node*)(((ColumnRefJoin*)expr)->var));
+			break;
+#endif /* ADB */
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			type = InvalidOid;	/* keep compiler quiet */
@@ -464,6 +472,10 @@ exprTypmod(const Node *expr)
 			return ((const SetToDefault *) expr)->typeMod;
 		case T_PlaceHolderVar:
 			return exprTypmod((Node *) ((const PlaceHolderVar *) expr)->phexpr);
+#ifdef ADB
+		case T_ColumnRefJoin:
+			return exprTypmod((Node*)(((ColumnRefJoin*)expr)->var));
+#endif /* ADB */
 		default:
 			break;
 	}
@@ -828,9 +840,17 @@ exprCollation(const Node *expr)
 		case T_CurrentOfExpr:
 			coll = InvalidOid;	/* result is always boolean */
 			break;
+		case T_RownumExpr:
+			coll = InvalidOid;
+			break;
 		case T_PlaceHolderVar:
 			coll = exprCollation((Node *) ((const PlaceHolderVar *) expr)->phexpr);
 			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			coll = exprCollation((Node*)(((ColumnRefJoin*)expr)->var));
+			break;
+#endif /* ADB */
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			coll = InvalidOid;	/* keep compiler quiet */
@@ -1023,6 +1043,14 @@ exprSetCollation(Node *expr, Oid collation)
 		case T_CurrentOfExpr:
 			Assert(!OidIsValid(collation));		/* result is always boolean */
 			break;
+		case T_RownumExpr:
+			Assert(!OidIsValid(collation));
+			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			exprSetCollation((Node*)(((ColumnRefJoin*)expr)->var), collation);
+			break;
+#endif /* ADB */
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(expr));
 			break;
@@ -1337,6 +1365,11 @@ exprLocation(const Node *expr)
 		case T_ColumnRef:
 			loc = ((const ColumnRef *) expr)->location;
 			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			loc = ((const ColumnRefJoin*) expr)->location;
+			break;
+#endif /* ADB */
 		case T_ParamRef:
 			loc = ((const ParamRef *) expr)->location;
 			break;
@@ -1404,6 +1437,9 @@ exprLocation(const Node *expr)
 		case T_PlaceHolderVar:
 			/* just use argument's location */
 			loc = exprLocation((Node *) ((const PlaceHolderVar *) expr)->phexpr);
+			break;
+		case T_RownumExpr:
+			loc = ((const RownumExpr*) expr)->location;
 			break;
 		default:
 			/* for any other node type it's just unknown... */
@@ -1552,6 +1588,7 @@ expression_tree_walker(Node *node,
 		case T_CaseTestExpr:
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
+		case T_RownumExpr:
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 			/* primitive node types with no expression subnodes */
@@ -1836,6 +1873,10 @@ expression_tree_walker(Node *node,
 			break;
 		case T_PlaceHolderInfo:
 			return walker(((PlaceHolderInfo *) node)->ph_var, context);
+#ifdef ADB
+		case T_ColumnRefJoin:
+			return walker(((ColumnRefJoin*)node)->column, context);
+#endif /* ADB */
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -1940,6 +1981,11 @@ range_table_walker(List *rtable,
 				if (walker(rte->values_lists, context))
 					return true;
 				break;
+#ifdef PGXC
+			case RTE_REMOTE_DUMMY:
+				elog(ERROR, "Invalid RTE found.");
+				break;
+#endif /* PGXC */
 		}
 	}
 	return false;
@@ -2067,6 +2113,7 @@ expression_tree_mutator(Node *node,
 		case T_CaseTestExpr:
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
+		case T_RownumExpr:
 		case T_RangeTblRef:
 		case T_SortGroupClause:
 			return (Node *) copyObject(node);
@@ -2300,6 +2347,9 @@ expression_tree_mutator(Node *node,
 				MUTATE(newnode->arg, caseexpr->arg, Expr *);
 				MUTATE(newnode->args, caseexpr->args, List *);
 				MUTATE(newnode->defresult, caseexpr->defresult, Expr *);
+#ifdef ADB
+				newnode->isdecode = caseexpr->isdecode;
+#endif
 				return (Node *) newnode;
 			}
 			break;
@@ -2537,6 +2587,18 @@ expression_tree_mutator(Node *node,
 				return (Node *) newnode;
 			}
 			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			{
+				ColumnRefJoin *crj = (ColumnRefJoin*)node;
+				ColumnRefJoin *newnode;
+
+				FLATCOPY(newnode, crj, ColumnRefJoin);
+				MUTATE(newnode->column, crj->column, ColumnRef *);
+				return (Node*)newnode;
+			}
+			break;
+#endif /* ADB */
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
@@ -2622,6 +2684,9 @@ range_table_mutator(List *rtable,
 		{
 			case RTE_RELATION:
 			case RTE_CTE:
+#ifdef PGXC
+			case RTE_REMOTE_DUMMY:
+#endif /* PGXC */
 				/* we don't bother to copy eref, aliases, etc; OK? */
 				break;
 			case RTE_SUBQUERY:
@@ -2738,6 +2803,7 @@ raw_expression_tree_walker(Node *node,
 	{
 		case T_SetToDefault:
 		case T_CurrentOfExpr:
+		case T_RownumExpr:
 		case T_Integer:
 		case T_Float:
 		case T_String:
@@ -2943,6 +3009,12 @@ raw_expression_tree_walker(Node *node,
 		case T_ColumnRef:
 			/* we assume the fields contain nothing interesting */
 			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			if(walker(((ColumnRefJoin*)node)->column, context))
+				return true;
+			break;
+#endif /* ADB */
 		case T_FuncCall:
 			{
 				FuncCall   *fcall = (FuncCall *) node;
@@ -3085,3 +3157,42 @@ raw_expression_tree_walker(Node *node,
 	}
 	return false;
 }
+
+#ifdef ADB
+bool get_parse_node_grammar(const Node *node, ParseGrammar *grammar)
+{
+	ParseGrammar gram;
+	if(node == NULL)
+		return false;
+	switch(nodeTag(node))
+	{
+	case T_List:
+		{
+			ListCell *lc;
+			foreach(lc, (List*)node)
+			{
+				if(get_parse_node_grammar(lfirst(lc), grammar))
+					return true;
+			}
+		}
+		return false;
+	case T_IndexStmt:
+		gram = ((IndexStmt*)node)->grammar;
+		break;
+	case T_CreateStmt:
+		gram = ((CreateStmt*)node)->grammar;
+		break;
+	case T_CreateTableAsStmt:
+		gram = ((CreateTableAsStmt*)node)->grammar;
+		break;
+	case T_AlterTableStmt:
+		gram = ((AlterTableStmt*)node)->grammar;
+		break;
+	default:
+		return false;
+	}
+	if(grammar)
+		*grammar = gram;
+	return true;
+}
+#endif /* ADB */

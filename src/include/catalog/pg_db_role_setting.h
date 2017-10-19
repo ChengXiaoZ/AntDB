@@ -21,8 +21,13 @@
 #ifndef PG_DB_ROLE_SETTING_H
 #define PG_DB_ROLE_SETTING_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
+#include "catalog/genbki.h"
 #include "utils/guc.h"
 #include "utils/relcache.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_db_role_setting definition.  cpp turns this into

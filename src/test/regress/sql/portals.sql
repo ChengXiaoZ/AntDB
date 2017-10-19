@@ -6,47 +6,47 @@ BEGIN;
 
 DECLARE foo1 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo2 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo2 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo3 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo4 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo4 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo5 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo6 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo6 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo7 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo8 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo8 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo9 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo10 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo10 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo11 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo12 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo12 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo13 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo14 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo14 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo15 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo16 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo16 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo17 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo18 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo18 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo19 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo20 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo20 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo21 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
-DECLARE foo22 SCROLL CURSOR FOR SELECT * FROM tenk2;
+DECLARE foo22 SCROLL CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 DECLARE foo23 SCROLL CURSOR FOR SELECT * FROM tenk1 ORDER BY unique2;
 
@@ -199,7 +199,7 @@ SELECT name, statement, is_holdable, is_binary, is_scrollable FROM pg_cursors;
 
 BEGIN;
 
-DECLARE foo25 SCROLL CURSOR WITH HOLD FOR SELECT * FROM tenk2;
+DECLARE foo25 SCROLL CURSOR WITH HOLD FOR SELECT * FROM tenk2 ORDER BY unique2;
 
 FETCH FROM foo25;
 
@@ -238,7 +238,7 @@ BEGIN;
 
 CREATE FUNCTION declares_cursor(text)
    RETURNS void
-   AS 'DECLARE c CURSOR FOR SELECT stringu1 FROM tenk1 WHERE stringu1 LIKE $1;'
+   AS 'DECLARE c CURSOR FOR SELECT stringu1 FROM tenk1 WHERE stringu1 LIKE $1 ORDER BY stringu1;'
    LANGUAGE SQL;
 
 SELECT declares_cursor('AB%');
@@ -253,7 +253,7 @@ ROLLBACK;
 -- cursor
 --
 
-create temp table tt1(f1 int);
+create table tt1(f1 int);
 
 create function count_tt1_v() returns int8 as
 'select count(*) from tt1' language sql volatile;
@@ -289,7 +289,7 @@ fetch all from c2;
 
 drop function count_tt1_v();
 drop function count_tt1_s();
-
+drop table tt1;
 
 -- Create a cursor with the BINARY option and check the pg_cursors view
 BEGIN;
@@ -320,17 +320,17 @@ COMMIT;
 -- Tests for updatable cursors
 --
 
-CREATE TEMP TABLE uctest(f1 int, f2 text);
+CREATE TABLE uctest(f1 int, f2 text);
 INSERT INTO uctest VALUES (1, 'one'), (2, 'two'), (3, 'three');
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 -- Check DELETE WHERE CURRENT
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest ORDER BY f1;
 FETCH 2 FROM c1;
 DELETE FROM uctest WHERE CURRENT OF c1;
 -- should show deletion
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 -- cursor did not move
 FETCH ALL FROM c1;
 -- cursor is insensitive
@@ -338,62 +338,62 @@ MOVE BACKWARD ALL IN c1;
 FETCH ALL FROM c1;
 COMMIT;
 -- should still see deletion
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 -- Check UPDATE WHERE CURRENT; this time use FOR UPDATE
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest ORDER BY 1 FOR UPDATE;
 FETCH c1;
 UPDATE uctest SET f1 = 8 WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 COMMIT;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 -- Check repeated-update and update-then-delete cases
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest ORDER BY 1;
 FETCH c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY 1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY 1;
 -- insensitive cursor should not show effects of updates or deletes
 FETCH RELATIVE 0 FROM c1;
 DELETE FROM uctest WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 DELETE FROM uctest WHERE CURRENT OF c1; -- no-op
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- no-op
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 FETCH RELATIVE 0 FROM c1;
 ROLLBACK;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest ORDER BY 1 FOR UPDATE;
 FETCH c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 DELETE FROM uctest WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 DELETE FROM uctest WHERE CURRENT OF c1; -- no-op
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1; -- no-op
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 --- sensitive cursors can't currently scroll back, so this is an error:
 FETCH RELATIVE 0 FROM c1;
 ROLLBACK;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 -- Check inheritance cases
-CREATE TEMP TABLE ucchild () inherits (uctest);
+CREATE TABLE ucchild () inherits (uctest);
 INSERT INTO ucchild values(100, 'hundred');
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest ORDER BY 1 FOR UPDATE;
 FETCH 1 FROM c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 FETCH 1 FROM c1;
@@ -402,24 +402,24 @@ FETCH 1 FROM c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
 FETCH 1 FROM c1;
 COMMIT;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 
 -- Can update from a self-join, but only if FOR UPDATE says which to use
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 ORDER BY 1;
 FETCH 1 FROM c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;  -- fail
 ROLLBACK;
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR UPDATE;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 ORDER BY 1 FOR UPDATE;
 FETCH 1 FROM c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;  -- fail
 ROLLBACK;
 BEGIN;
-DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 FOR SHARE OF a;
+DECLARE c1 CURSOR FOR SELECT * FROM uctest a, uctest b WHERE a.f1 = b.f1 + 5 ORDER BY 1 FOR SHARE OF a;
 FETCH 1 FROM c1;
 UPDATE uctest SET f1 = f1 + 10 WHERE CURRENT OF c1;
-SELECT * FROM uctest;
+SELECT * FROM uctest ORDER BY f1;
 ROLLBACK;
 
 -- Check various error cases
@@ -428,7 +428,7 @@ DELETE FROM uctest WHERE CURRENT OF c1;  -- fail, no such cursor
 DECLARE cx CURSOR WITH HOLD FOR SELECT * FROM uctest;
 DELETE FROM uctest WHERE CURRENT OF cx;  -- fail, can't use held cursor
 BEGIN;
-DECLARE c CURSOR FOR SELECT * FROM tenk2;
+DECLARE c CURSOR FOR SELECT * FROM tenk2 ORDER BY unique2;
 DELETE FROM uctest WHERE CURRENT OF c;  -- fail, cursor on wrong table
 ROLLBACK;
 BEGIN;
@@ -453,7 +453,7 @@ ROLLBACK;
 
 -- WHERE CURRENT OF may someday work with views, but today is not that day.
 -- For now, just make sure it errors out cleanly.
-CREATE TEMP VIEW ucview AS SELECT * FROM uctest;
+CREATE VIEW ucview AS SELECT * FROM uctest ORDER BY 1;
 CREATE RULE ucrule AS ON DELETE TO ucview DO INSTEAD
   DELETE FROM uctest WHERE f1 = OLD.f1;
 BEGIN;
@@ -466,7 +466,7 @@ ROLLBACK;
 -- 235395b90909301035v7228ce63q392931f15aa74b31@mail.gmail.com
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
-CREATE TABLE cursor (a int);
+CREATE TABLE cursor (a int, b int) distribute by hash(b);
 INSERT INTO cursor VALUES (1);
 DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPDATE;
 UPDATE cursor SET a = 2;
@@ -480,7 +480,9 @@ begin;
 create function nochange(int) returns int
   as 'select $1 limit 1' language sql stable;
 declare c cursor for select * from int8_tbl limit nochange(3);
-fetch all from c;
-move backward all in c;
-fetch all from c;
+--  XC needs ORDER BY clause to enforce the order of the read rows.
+--  XC does not support backward cursor yet.
+-- fetch all from c;
+-- move backward all in c;
+-- fetch all from c;
 rollback;

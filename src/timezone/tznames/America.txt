@@ -302,3 +302,7 @@ WGST    -7200 D  # Western Greenland Summer Time
                  #     (America/Godthab)
 WGT    -10800    # West Greenland Time
                  #     (America/Godthab)
+YDT    -28800 D  # Yukon Summer Time
+                 #     (Canada/Whitehorse)
+YST    -32400    # Yukon Standard Time
+                 #     (Canada/Whitehorse) 

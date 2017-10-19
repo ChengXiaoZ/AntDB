@@ -21,6 +21,10 @@
 
 #include "access/htup_details.h"
 #include "access/xact.h"
+#ifdef PGXC
+#include "access/transam.h"
+#include "pgxc/pgxc.h"
+#endif
 #include "catalog/dependency.h"
 #include "catalog/objectaccess.h"
 #include "catalog/pg_authid.h"
@@ -43,9 +47,11 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_func.h"
+#include "parser/parser.h"
 #include "storage/ipc.h"
 #include "storage/lmgr.h"
 #include "storage/sinval.h"
+#include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/catcache.h"
@@ -1070,6 +1076,9 @@ FuncnameGetCandidates(List *names, int nargs, List *argnames,
 			palloc(sizeof(struct _FuncCandidateList) - sizeof(Oid)
 				   + effective_nargs * sizeof(Oid));
 		newResult->pathpos = pathpos;
+#ifdef ADB
+		newResult->nspoid = procform->pronamespace;
+#endif
 		newResult->oid = HeapTupleGetOid(proctup);
 		newResult->nargs = effective_nargs;
 		newResult->argnumbers = argnumbers;
@@ -1677,6 +1686,9 @@ OpernameGetCandidates(List *names, char oprkind)
 		nextResult += SPACE_PER_OP;
 
 		newResult->pathpos = pathpos;
+#ifdef ADB
+		newResult->nspoid = operform->oprnamespace;
+#endif
 		newResult->oid = HeapTupleGetOid(opertup);
 		newResult->nargs = 2;
 		newResult->nvargs = 0;
@@ -3093,7 +3105,13 @@ GetOverrideSearchPath(MemoryContext context)
 			result->addTemp = true;
 		else
 		{
+#if defined(ADB) && defined(USE_ASSERT_CHECKING)
+			Oid ns = linitial_oid(schemas);
+			Assert(ns == PG_CATALOG_NAMESPACE
+				|| ns == PG_ORACLE_NAMESPACE);
+#else
 			Assert(linitial_oid(schemas) == PG_CATALOG_NAMESPACE);
+#endif
 			result->addCatalog = true;
 		}
 		schemas = list_delete_first(schemas);
@@ -3214,6 +3232,62 @@ PushOverrideSearchPath(OverrideSearchPath *newpath)
 
 	MemoryContextSwitchTo(oldcxt);
 }
+
+#ifdef ADB
+/*
+ * PushOverrideSearchPathForGrammar - using grammar's search path
+ * myTempNamespace > grammar-namespace > catalog-namespace > other
+ */
+void PushOverrideSearchPathForGrammar(int grammar)
+{
+	OverrideSearchPath *sp;
+	Oid ns_gram = InvalidOid;
+	switch((ParseGrammar)grammar)
+	{
+	case PARSE_GRAM_POSTGRES:
+		ns_gram = PG_CATALOG_NAMESPACE;
+		break;
+	case PARSE_GRAM_ORACLE:
+		ns_gram = PG_ORACLE_NAMESPACE;
+		break;
+	/* no default, we need a compiler a warning */
+	}
+	/* and report an error when not case all grammar */
+	Assert(OidIsValid(ns_gram));
+
+	sp = GetOverrideSearchPath(CurrentMemoryContext);
+	Assert(sp);
+
+	if(sp->addCatalog)
+	{
+		sp->schemas = lcons_oid(PG_CATALOG_NAMESPACE, sp->schemas);
+		sp->addCatalog = false;
+	}
+
+	if(sp->schemas == NIL)
+	{
+		sp->schemas = list_make1_oid(ns_gram);
+	}else if(!list_member_oid(sp->schemas, ns_gram))
+	{
+		sp->schemas = lcons_oid(ns_gram, sp->schemas);
+	}else if(linitial_oid(sp->schemas) != ns_gram)
+	{
+		sp->schemas = list_delete_oid(sp->schemas, ns_gram);
+		sp->schemas = lcons_oid(ns_gram, sp->schemas);
+	}
+
+	if(sp->addTemp)
+	{
+		if(OidIsValid(myTempNamespace))
+			sp->schemas = lcons_oid(myTempNamespace, sp->schemas);
+		sp->addTemp = false;
+	}
+
+	PushOverrideSearchPath(sp);
+	list_free(sp->schemas);
+	pfree(sp);
+}
+#endif
 
 /*
  * PopOverrideSearchPath - undo a previous PushOverrideSearchPath
@@ -3810,6 +3884,7 @@ RemoveTempRelationsCallback(int code, Datum arg)
 	{
 		/* Need to ensure we have a usable transaction. */
 		AbortOutOfAnyTransaction();
+
 		StartTransactionCommand();
 
 		RemoveTempRelations(myTempNamespace);
@@ -4164,3 +4239,4 @@ pg_is_other_temp_schema(PG_FUNCTION_ARGS)
 
 	PG_RETURN_BOOL(isOtherTempNamespace(oid));
 }
+

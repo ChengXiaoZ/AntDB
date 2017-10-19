@@ -170,6 +170,12 @@ extern void vacuum_set_xid_limits(int freeze_min_age, int freeze_table_age,
 extern void vac_update_datfrozenxid(void);
 extern void vacuum_delay_point(void);
 
+#ifdef ADB
+extern void vacuum_rel_coordinator(Relation onerel);
+extern TargetEntry *make_relation_tle(Oid reloid, const char *relname,
+						const char *column, AttrNumber attnum);
+#endif
+
 /* in commands/vacuumlazy.c */
 extern void lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt,
 				BufferAccessStrategy bstrategy);

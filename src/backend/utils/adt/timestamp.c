@@ -33,6 +33,10 @@
 #include "utils/builtins.h"
 #include "utils/datetime.h"
 
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
+
 /*
  * gcc's -ffast-math switch breaks routines that expect exact results from
  * expressions like timeval / SECS_PER_HOUR, where timeval is double.
@@ -69,9 +73,14 @@ static TimeOffset time2t(const int hour, const int min, const int sec, const fse
 static void EncodeSpecialTimestamp(Timestamp dt, char *str);
 static Timestamp dt2local(Timestamp dt, int timezone);
 static void AdjustTimestampForTypmod(Timestamp *time, int32 typmod);
+#ifdef ADB
+static void AdjustIntervalForTypmod(Interval *interval, int32 typmod, int32 ora_extra);
+#else
 static void AdjustIntervalForTypmod(Interval *interval, int32 typmod);
-static TimestampTz timestamp2timestamptz(Timestamp timestamp);
+#endif
 
+static TimestampTz timestamp2timestamptz(Timestamp timestamp);
+static int try_decode_time_internal(char *str, struct pg_tm *tm, fsec_t *fsec, int *tzp);
 
 /* common code for timestamptypmodin and timestamptztypmodin */
 static int32
@@ -156,12 +165,19 @@ timestamp_in(PG_FUNCTION_ARGS)
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
 
-	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
-						  field, ftype, MAXDATEFIELDS, &nf);
-	if (dterr == 0)
-		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
-	if (dterr != 0)
-		DateTimeParseError(dterr, str, "timestamp");
+	if((nf=try_decode_date_time(str, tm, &fsec, &tz)) == 0
+		|| str[nf] != '\0')
+	{
+		dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+							  field, ftype, MAXDATEFIELDS, &nf);
+		if (dterr == 0)
+			dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
+		if (dterr != 0)
+			DateTimeParseError(dterr, str, "timestamp");
+	}else
+	{
+		dtype = DTK_DATE;
+	}
 
 	switch (dtype)
 	{
@@ -219,7 +235,11 @@ timestamp_out(PG_FUNCTION_ARGS)
 	if (TIMESTAMP_NOT_FINITE(timestamp))
 		EncodeSpecialTimestamp(timestamp, buf);
 	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) == 0)
+#ifdef ADB
+		EncodeDateTime(tm, fsec, false, 0, NULL, DateStyle, buf, false);
+#else
 		EncodeDateTime(tm, fsec, false, 0, NULL, DateStyle, buf);
+#endif
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -228,6 +248,31 @@ timestamp_out(PG_FUNCTION_ARGS)
 	result = pstrdup(buf);
 	PG_RETURN_CSTRING(result);
 }
+
+#ifdef ADB
+Datum
+ora_date_out(PG_FUNCTION_ARGS)
+{
+	Timestamp	timestamp = PG_GETARG_TIMESTAMP(0);
+	char	   *result;
+	struct pg_tm tt,
+			   *tm = &tt;
+	fsec_t		fsec;
+	char		buf[MAXDATELEN + 1];
+
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		EncodeSpecialTimestamp(timestamp, buf);
+	else if (timestamp2tm(timestamp, NULL, tm, &fsec, NULL, NULL) == 0)
+		EncodeDateTime(tm, fsec, false, 0, NULL, DateStyle, buf, true);
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	result = pstrdup(buf);
+	PG_RETURN_CSTRING(result);
+}
+#endif
 
 /*
  *		timestamp_recv			- converts external binary format to timestamp
@@ -430,12 +475,19 @@ timestamptz_in(PG_FUNCTION_ARGS)
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
 
-	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
-						  field, ftype, MAXDATEFIELDS, &nf);
-	if (dterr == 0)
-		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
-	if (dterr != 0)
-		DateTimeParseError(dterr, str, "timestamp with time zone");
+	if((nf=try_decode_date_time(str, tm, &fsec, &tz)) == 0
+		|| str[nf] != '\0')
+	{
+		dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+							  field, ftype, MAXDATEFIELDS, &nf);
+		if (dterr == 0)
+			dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
+		if (dterr != 0)
+			DateTimeParseError(dterr, str, "timestamp with time zone");
+	}else
+	{
+		dtype = DTK_DATE;
+	}
 
 	switch (dtype)
 	{
@@ -495,7 +547,11 @@ timestamptz_out(PG_FUNCTION_ARGS)
 	if (TIMESTAMP_NOT_FINITE(dt))
 		EncodeSpecialTimestamp(dt, buf);
 	else if (timestamp2tm(dt, &tz, tm, &fsec, &tzn, NULL) == 0)
+#ifdef ADB
+		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf, false);
+#else
 		EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf);
+#endif
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -598,7 +654,6 @@ timestamptz_scale(PG_FUNCTION_ARGS)
 	PG_RETURN_TIMESTAMPTZ(result);
 }
 
-
 /* interval_in()
  * Convert a string to internal form.
  *
@@ -614,6 +669,10 @@ interval_in(PG_FUNCTION_ARGS)
 	Oid			typelem = PG_GETARG_OID(1);
 #endif
 	int32		typmod = PG_GETARG_INT32(2);
+#ifdef ADB
+	/* Just for oracle grammar */
+	int32		ora_extra = PG_GETARG_INT32_0_IF_NULL(3);
+#endif
 	Interval   *result;
 	fsec_t		fsec;
 	struct pg_tm tt,
@@ -679,7 +738,11 @@ interval_in(PG_FUNCTION_ARGS)
 				 dtype, str);
 	}
 
+#ifdef ADB
+	AdjustIntervalForTypmod(result, typmod, ora_extra);
+#else
 	AdjustIntervalForTypmod(result, typmod);
+#endif
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -730,7 +793,11 @@ interval_recv(PG_FUNCTION_ARGS)
 	interval->day = pq_getmsgint(buf, sizeof(interval->day));
 	interval->month = pq_getmsgint(buf, sizeof(interval->month));
 
+#ifdef ADB
+	AdjustIntervalForTypmod(interval, typmod, 0);
+#else
 	AdjustIntervalForTypmod(interval, typmod);
+#endif
 
 	PG_RETURN_INTERVAL_P(interval);
 }
@@ -996,7 +1063,11 @@ interval_scale(PG_FUNCTION_ARGS)
 	result = palloc(sizeof(Interval));
 	*result = *interval;
 
+#ifdef ADB
+	AdjustIntervalForTypmod(result, typmod, 0);
+#else
 	AdjustIntervalForTypmod(result, typmod);
+#endif
 
 	PG_RETURN_INTERVAL_P(result);
 }
@@ -1004,9 +1075,18 @@ interval_scale(PG_FUNCTION_ARGS)
 /*
  *	Adjust interval for specified precision, in both YEAR to SECOND
  *	range and sub-second precision.
+ *
+ *  ora_extra: indicate which level will be rounded.
+ *			ORA_ROUND_NONE means never ever round interval.
+ *			ORA_ROUND_DAY means we will round interval's time.
+ *			ORA_ROUND_MONTH means we will round interval's day cascade.
  */
 static void
+#ifdef ADB
+AdjustIntervalForTypmod(Interval *interval, int32 typmod, int ora_extra)
+#else
 AdjustIntervalForTypmod(Interval *interval, int32 typmod)
+#endif
 {
 #ifdef HAVE_INT64_TIMESTAMP
 	static const int64 IntervalScales[MAX_INTERVAL_PRECISION + 1] = {
@@ -1040,15 +1120,13 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 	};
 #endif
 
+#ifdef ADB
 	/*
-	 * Unspecified range and precision? Then not necessary to adjust. Setting
-	 * typmod to -1 is the convention for all data types.
+	 * ora_extra: 0 means PG grammar, otherwise means oracle grammar.
 	 */
-	if (typmod >= 0)
+	if (ora_extra == 0)
 	{
-		int			range = INTERVAL_RANGE(typmod);
-		int			precision = INTERVAL_PRECISION(typmod);
-
+#endif
 		/*
 		 * Our interpretation of intervals with a limited set of fields is
 		 * that fields to the right of the last one specified are zeroed out,
@@ -1069,149 +1147,200 @@ AdjustIntervalForTypmod(Interval *interval, int32 typmod)
 		 * undesirable on data consistency grounds anyway.  Now we only
 		 * perform truncation or rounding of low-order fields.
 		 */
-		if (range == INTERVAL_FULL_RANGE)
+		if (typmod >= 0)
 		{
-			/* Do nothing... */
-		}
-		else if (range == INTERVAL_MASK(YEAR))
-		{
-			interval->month = (interval->month / MONTHS_PER_YEAR) * MONTHS_PER_YEAR;
-			interval->day = 0;
-			interval->time = 0;
-		}
-		else if (range == INTERVAL_MASK(MONTH))
-		{
-			interval->day = 0;
-			interval->time = 0;
-		}
-		/* YEAR TO MONTH */
-		else if (range == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
-		{
-			interval->day = 0;
-			interval->time = 0;
-		}
-		else if (range == INTERVAL_MASK(DAY))
-		{
-			interval->time = 0;
-		}
-		else if (range == INTERVAL_MASK(HOUR))
-		{
-#ifdef HAVE_INT64_TIMESTAMP
-			interval->time = (interval->time / USECS_PER_HOUR) *
-				USECS_PER_HOUR;
-#else
-			interval->time = ((int) (interval->time / SECS_PER_HOUR)) * (double) SECS_PER_HOUR;
-#endif
-		}
-		else if (range == INTERVAL_MASK(MINUTE))
-		{
-#ifdef HAVE_INT64_TIMESTAMP
-			interval->time = (interval->time / USECS_PER_MINUTE) *
-				USECS_PER_MINUTE;
-#else
-			interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
-#endif
-		}
-		else if (range == INTERVAL_MASK(SECOND))
-		{
-			/* fractional-second rounding will be dealt with below */
-		}
-		/* DAY TO HOUR */
-		else if (range == (INTERVAL_MASK(DAY) |
-						   INTERVAL_MASK(HOUR)))
-		{
-#ifdef HAVE_INT64_TIMESTAMP
-			interval->time = (interval->time / USECS_PER_HOUR) *
-				USECS_PER_HOUR;
-#else
-			interval->time = ((int) (interval->time / SECS_PER_HOUR)) * (double) SECS_PER_HOUR;
-#endif
-		}
-		/* DAY TO MINUTE */
-		else if (range == (INTERVAL_MASK(DAY) |
-						   INTERVAL_MASK(HOUR) |
-						   INTERVAL_MASK(MINUTE)))
-		{
-#ifdef HAVE_INT64_TIMESTAMP
-			interval->time = (interval->time / USECS_PER_MINUTE) *
-				USECS_PER_MINUTE;
-#else
-			interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
-#endif
-		}
-		/* DAY TO SECOND */
-		else if (range == (INTERVAL_MASK(DAY) |
-						   INTERVAL_MASK(HOUR) |
-						   INTERVAL_MASK(MINUTE) |
-						   INTERVAL_MASK(SECOND)))
-		{
-			/* fractional-second rounding will be dealt with below */
-		}
-		/* HOUR TO MINUTE */
-		else if (range == (INTERVAL_MASK(HOUR) |
-						   INTERVAL_MASK(MINUTE)))
-		{
-#ifdef HAVE_INT64_TIMESTAMP
-			interval->time = (interval->time / USECS_PER_MINUTE) *
-				USECS_PER_MINUTE;
-#else
-			interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
-#endif
-		}
-		/* HOUR TO SECOND */
-		else if (range == (INTERVAL_MASK(HOUR) |
-						   INTERVAL_MASK(MINUTE) |
-						   INTERVAL_MASK(SECOND)))
-		{
-			/* fractional-second rounding will be dealt with below */
-		}
-		/* MINUTE TO SECOND */
-		else if (range == (INTERVAL_MASK(MINUTE) |
-						   INTERVAL_MASK(SECOND)))
-		{
-			/* fractional-second rounding will be dealt with below */
-		}
-		else
-			elog(ERROR, "unrecognized interval typmod: %d", typmod);
-
-		/* Need to adjust subsecond precision? */
-		if (precision != INTERVAL_FULL_PRECISION)
-		{
-			if (precision < 0 || precision > MAX_INTERVAL_PRECISION)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				   errmsg("interval(%d) precision must be between %d and %d",
-						  precision, 0, MAX_INTERVAL_PRECISION)));
+			int			range = INTERVAL_RANGE(typmod);
+			int			precision = INTERVAL_PRECISION(typmod);
 
 			/*
-			 * Note: this round-to-nearest code is not completely consistent
-			 * about rounding values that are exactly halfway between integral
-			 * values.  On most platforms, rint() will implement
-			 * round-to-nearest-even, but the integer code always rounds up
-			 * (away from zero).  Is it worth trying to be consistent?
+			 * Our interpretation of intervals with a limited set of fields is
+			 * that fields to the right of the last one specified are zeroed out,
+			 * but those to the left of it remain valid.  Thus for example there
+			 * is no operational difference between INTERVAL YEAR TO MONTH and
+			 * INTERVAL MONTH.  In some cases we could meaningfully enforce that
+			 * higher-order fields are zero; for example INTERVAL DAY could reject
+			 * nonzero "month" field.  However that seems a bit pointless when we
+			 * can't do it consistently.  (We cannot enforce a range limit on the
+			 * highest expected field, since we do not have any equivalent of
+			 * SQL's <interval leading field precision>.)  If we ever decide to
+			 * revisit this, interval_transform will likely require adjusting.
+			 *
+			 * Note: before PG 8.4 we interpreted a limited set of fields as
+			 * actually causing a "modulo" operation on a given value, potentially
+			 * losing high-order as well as low-order information.  But there is
+			 * no support for such behavior in the standard, and it seems fairly
+			 * undesirable on data consistency grounds anyway.  Now we only
+			 * perform truncation or rounding of low-order fields.
 			 */
-#ifdef HAVE_INT64_TIMESTAMP
-			if (interval->time >= INT64CONST(0))
+			if (range == INTERVAL_FULL_RANGE)
 			{
-				interval->time = ((interval->time +
-								   IntervalOffsets[precision]) /
-								  IntervalScales[precision]) *
-					IntervalScales[precision];
+				/* Do nothing... */
+			}
+			else if (range == INTERVAL_MASK(YEAR))
+			{
+				interval->month = (interval->month / MONTHS_PER_YEAR) * MONTHS_PER_YEAR;
+				interval->day = 0;
+				interval->time = 0;
+			}
+			else if (range == INTERVAL_MASK(MONTH))
+			{
+				interval->day = 0;
+				interval->time = 0;
+			}
+			/* YEAR TO MONTH */
+			else if (range == (INTERVAL_MASK(YEAR) | INTERVAL_MASK(MONTH)))
+			{
+				interval->day = 0;
+				interval->time = 0;
+			}
+			else if (range == INTERVAL_MASK(DAY))
+			{
+				interval->time = 0;
+			}
+			else if (range == INTERVAL_MASK(HOUR))
+			{
+#ifdef HAVE_INT64_TIMESTAMP
+				interval->time = (interval->time / USECS_PER_HOUR) *
+					USECS_PER_HOUR;
+#else
+				interval->time = ((int) (interval->time / SECS_PER_HOUR)) * (double) SECS_PER_HOUR;
+#endif
+			}
+			else if (range == INTERVAL_MASK(MINUTE))
+			{
+#ifdef HAVE_INT64_TIMESTAMP
+				interval->time = (interval->time / USECS_PER_MINUTE) *
+					USECS_PER_MINUTE;
+#else
+				interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
+#endif
+			}
+			else if (range == INTERVAL_MASK(SECOND))
+			{
+				/* fractional-second rounding will be dealt with below */
+			}
+			/* DAY TO HOUR */
+			else if (range == (INTERVAL_MASK(DAY) |
+							   INTERVAL_MASK(HOUR)))
+			{
+#ifdef HAVE_INT64_TIMESTAMP
+				interval->time = (interval->time / USECS_PER_HOUR) *
+					USECS_PER_HOUR;
+#else
+				interval->time = ((int) (interval->time / SECS_PER_HOUR)) * (double) SECS_PER_HOUR;
+#endif
+			}
+			/* DAY TO MINUTE */
+			else if (range == (INTERVAL_MASK(DAY) |
+							   INTERVAL_MASK(HOUR) |
+							   INTERVAL_MASK(MINUTE)))
+			{
+#ifdef HAVE_INT64_TIMESTAMP
+				interval->time = (interval->time / USECS_PER_MINUTE) *
+					USECS_PER_MINUTE;
+#else
+				interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
+#endif
+			}
+			/* DAY TO SECOND */
+			else if (range == (INTERVAL_MASK(DAY) |
+							   INTERVAL_MASK(HOUR) |
+							   INTERVAL_MASK(MINUTE) |
+							   INTERVAL_MASK(SECOND)))
+			{
+				/* fractional-second rounding will be dealt with below */
+			}
+			/* HOUR TO MINUTE */
+			else if (range == (INTERVAL_MASK(HOUR) |
+							   INTERVAL_MASK(MINUTE)))
+			{
+#ifdef HAVE_INT64_TIMESTAMP
+				interval->time = (interval->time / USECS_PER_MINUTE) *
+					USECS_PER_MINUTE;
+#else
+				interval->time = ((int) (interval->time / SECS_PER_MINUTE)) * (double) SECS_PER_MINUTE;
+#endif
+			}
+			/* HOUR TO SECOND */
+			else if (range == (INTERVAL_MASK(HOUR) |
+							   INTERVAL_MASK(MINUTE) |
+							   INTERVAL_MASK(SECOND)))
+			{
+				/* fractional-second rounding will be dealt with below */
+			}
+			/* MINUTE TO SECOND */
+			else if (range == (INTERVAL_MASK(MINUTE) |
+							   INTERVAL_MASK(SECOND)))
+			{
+				/* fractional-second rounding will be dealt with below */
 			}
 			else
+				elog(ERROR, "unrecognized interval typmod: %d", typmod);
+
+			/* Need to adjust subsecond precision? */
+			if (precision != INTERVAL_FULL_PRECISION)
 			{
-				interval->time = -(((-interval->time +
-									 IntervalOffsets[precision]) /
-									IntervalScales[precision]) *
-								   IntervalScales[precision]);
-			}
+				if (precision < 0 || precision > MAX_INTERVAL_PRECISION)
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					   errmsg("interval(%d) precision must be between %d and %d",
+							  precision, 0, MAX_INTERVAL_PRECISION)));
+
+				/*
+				 * Note: this round-to-nearest code is not completely consistent
+				 * about rounding values that are exactly halfway between integral
+				 * values.  On most platforms, rint() will implement
+				 * round-to-nearest-even, but the integer code always rounds up
+				 * (away from zero).  Is it worth trying to be consistent?
+				 */
+#ifdef HAVE_INT64_TIMESTAMP
+				if (interval->time >= INT64CONST(0))
+				{
+					interval->time = ((interval->time +
+									   IntervalOffsets[precision]) /
+									  IntervalScales[precision]) *
+						IntervalScales[precision];
+				}
+				else
+				{
+					interval->time = -(((-interval->time +
+										 IntervalOffsets[precision]) /
+										IntervalScales[precision]) *
+									   IntervalScales[precision]);
+				}
 #else
-			interval->time = rint(((double) interval->time) *
-								  IntervalScales[precision]) /
-				IntervalScales[precision];
+				interval->time = rint(((double) interval->time) *
+									  IntervalScales[precision]) /
+					IntervalScales[precision];
 #endif
+			}
+		}
+#ifdef ADB
+	} else
+	{
+		switch (ora_extra)
+		{
+			case ORA_ROUND_NONE:
+				break;
+			case ORA_ROUND_MONTH:
+				{
+					interval->day += (interval->time + USECS_PER_DAY/2)/USECS_PER_DAY;
+					interval->month += (interval->day + DAYS_PER_MONTH/2)/DAYS_PER_MONTH;
+					interval->day = 0;
+					interval->time = 0;
+				}
+				break;
+			case ORA_ROUND_DAY:
+				{
+					interval->day += (interval->time + USECS_PER_DAY/2)/USECS_PER_DAY;
+					interval->time = 0;
+				}
+				break;
+			default:
+				break;
 		}
 	}
+#endif
 }
 
 
@@ -1456,7 +1585,11 @@ timestamptz_to_str(TimestampTz t)
 	if (TIMESTAMP_NOT_FINITE(t))
 		EncodeSpecialTimestamp(t, buf);
 	else if (timestamp2tm(t, &tz, tm, &fsec, &tzn, NULL) == 0)
+#ifdef ADB
+		EncodeDateTime(tm, fsec, true, tz, tzn, USE_ISO_DATES, buf, false);
+#else
 		EncodeDateTime(tm, fsec, true, tz, tzn, USE_ISO_DATES, buf);
+#endif
 	else
 		strlcpy(buf, "(timestamp out of range)", sizeof(buf));
 
@@ -3050,7 +3183,10 @@ interval_div(PG_FUNCTION_ARGS)
 }
 
 /*
- * interval_accum and interval_avg implement the AVG(interval) aggregate.
+ * interval_accum and interval_avg implement the AVG(interval)
+#ifdef PGXC
+ * as well as interval_collect 
+#endif
  *
  * The transition datatype for this aggregate is a 2-element array of
  * intervals, where the first is the running sum and the second contains
@@ -4129,6 +4265,10 @@ timestamp_part(PG_FUNCTION_ARGS)
 			case DTK_TZ:
 			case DTK_TZ_MINUTE:
 			case DTK_TZ_HOUR:
+#ifdef ADB
+			case DTK_TZ_ABBR:
+			case DTK_TZ_REGION:
+#endif
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -4340,6 +4480,10 @@ timestamptz_part(PG_FUNCTION_ARGS)
 						  - date2j(tm->tm_year, 1, 1) + 1);
 				break;
 
+#ifdef ADB
+			case DTK_TZ_ABBR:
+			case DTK_TZ_REGION:
+#endif
 			default:
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -4982,3 +5126,175 @@ generate_series_timestamptz(PG_FUNCTION_ARGS)
 		SRF_RETURN_DONE(funcctx);
 	}
 }
+
+
+#define isdigit2(a,b) (isdigit(a) && isdigit(b))
+#define isdigit3(a,b,c) (isdigit2(a,b) && isdigit(c))
+#define isdigit4(a,b,c,d) (isdigit3(a,b,c) && isdigit(d))
+#define digit_val2(a, b) ((a-'0')*10+(b-'0'))
+#define digit_val4(a,b,c,d) ( ((a-'0')*1000) + ((b-'0')*100) + ((c-'0')*10) + (d-'0') )
+
+/* YYYY-MM-DD */
+int try_decode_date(const char *str, struct pg_tm *tm)
+{
+	if(isdigit4(str[0], str[1], str[2], str[3])
+		&& str[4] == '-' && isdigit2(str[5], str[6])
+		&& str[7] == '-' && isdigit2(str[8], str[9]))
+	{
+		tm->tm_year = digit_val4(str[0], str[1], str[2], str[3]);
+		tm->tm_mon = digit_val2(str[5], str[6]);
+		tm->tm_mday = digit_val2(str[8], str[9]);
+		return 10;
+	}
+	return 0;
+}
+
+/* HH:mm:ss[.nn][+n] */
+int try_decode_time(const char *str, struct pg_tm *tm, fsec_t *fsec, int *tzp)
+{
+	char *new_str = pstrdup(str);
+	int rval = try_decode_time_internal(new_str, tm, fsec, tzp);
+	pfree(new_str);
+	return rval;
+}
+
+static int try_decode_time_internal(char *str, struct pg_tm *tm, fsec_t *fsec, int *tzp)
+{
+	int rval;
+	/* HH:mm:ss */
+	if(isdigit2(str[0], str[1])
+		&& str[2]==':' && isdigit2(str[3], str[4])
+		&& str[5]==':' && isdigit2(str[6], str[7]))
+	{
+		tm->tm_hour = digit_val2(str[0], str[1]);
+		tm->tm_min = digit_val2(str[3], str[4]);
+		tm->tm_sec = digit_val2(str[6], str[7]);
+		rval = 8;
+		str += 8;
+	}else
+	{
+		return 0;
+	}
+
+	*fsec = 0;
+	/* .n */
+	if(str[0] == '.')
+	{
+		double frac;
+		char *end;
+		errno = 0;
+		frac = strtod(str, &end);
+		if(errno != 0)
+			return 0;
+#ifdef HAVE_INT64_TIMESTAMP
+		*fsec = rint(frac * 1000000);
+#else
+		*fsec = frac;
+#endif
+		rval += (end-str);
+		str = end;
+	}
+
+	/* at end parse timezone */
+	if(str[0] == '\0')
+	{
+		if(tzp)
+			*tzp = DetermineTimeZoneOffset(tm, session_timezone);
+	}else if(str[0] == '+' || str[1] == '-')
+	{
+		if(tzp == NULL || DecodeTimezone(str, tzp) != 0)
+			return 0;
+		rval += strlen(str);
+	}else
+	{
+		return 0;
+	}
+	return rval;
+}
+
+/* YYYY-MM-DD HH:mm:ss[.n][+n] */
+int try_decode_date_time(const char *str, struct pg_tm *tm, fsec_t *fsec, int *tzp)
+{
+	int rval,tmp;
+	rval = try_decode_date(str, tm);
+	if(rval == 0)
+		return 0;
+
+	if(str[rval] == '\0')
+	{
+		/* date only */
+		tm->tm_hour = tm->tm_min = tm->tm_sec = 0;
+		*fsec = 0;
+		*tzp = DetermineTimeZoneOffset(tm, session_timezone);
+		return rval;
+	}else if(str[rval] != ' ')
+	{
+		return 0;
+	}
+	++rval;
+
+	tmp = try_decode_time(str+rval, tm, fsec, tzp);
+	if(tmp == 0)
+		return 0;
+
+	rval+=tmp;
+
+	return rval;
+}
+
+#ifdef PGXC
+Datum
+interval_collect(PG_FUNCTION_ARGS)
+{
+	ArrayType  *collectarray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *transarray = PG_GETARG_ARRAYTYPE_P(1);
+	Datum	   *collectdatums;
+	Datum	   *transdatums;
+	int			ndatums;
+	Interval	sumX1,
+				N1,
+				sumX2,
+				N2;
+	Interval   *newsum;
+	ArrayType  *result;
+
+	deconstruct_array(collectarray,
+					  INTERVALOID, sizeof(Interval), false, 'd',
+					  &collectdatums, NULL, &ndatums);
+	if (ndatums != 2)
+		elog(ERROR, "expected 2-element interval array");
+
+	deconstruct_array(transarray,
+					  INTERVALOID, sizeof(Interval), false, 'd',
+					  &transdatums, NULL, &ndatums);
+	if (ndatums != 2)
+		elog(ERROR, "expected 2-element interval array");
+
+	/*
+	 * XXX memcpy, instead of just extracting a pointer, to work around buggy
+	 * array code: it won't ensure proper alignment of Interval objects on
+	 * machines where double requires 8-byte alignment. That should be fixed,
+	 * but in the meantime...
+	 *
+	 * Note: must use DatumGetPointer here, not DatumGetIntervalP, else some
+	 * compilers optimize into double-aligned load/store anyway.
+	 */
+	memcpy((void *) &sumX1, DatumGetPointer(collectdatums[0]), sizeof(Interval));
+	memcpy((void *) &N1, DatumGetPointer(collectdatums[1]), sizeof(Interval));
+	memcpy((void *) &sumX2, DatumGetPointer(transdatums[0]), sizeof(Interval));
+	memcpy((void *) &N2, DatumGetPointer(transdatums[1]), sizeof(Interval));
+
+	newsum = DatumGetIntervalP(DirectFunctionCall2(interval_pl,
+												   IntervalPGetDatum(&sumX1),
+												   IntervalPGetDatum(&sumX2)));
+	N1.time += N2.time;
+
+	collectdatums[0] = IntervalPGetDatum(newsum);
+	collectdatums[1] = IntervalPGetDatum(&N1);
+
+	result = construct_array(collectdatums, 2,
+							 INTERVALOID, sizeof(Interval), false, 'd');
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}
+#endif

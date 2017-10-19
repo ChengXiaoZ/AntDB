@@ -83,7 +83,7 @@ NON_EXEC_STATIC LWLockPadded *LWLockArray = NULL;
  * if necessary, but it seems unlikely that more than a few locks could
  * ever be held simultaneously.
  */
-#define MAX_SIMUL_LWLOCKS	100
+#define MAX_SIMUL_LWLOCKS	200
 
 static int	num_held_lwlocks = 0;
 static LWLockId held_lwlocks[MAX_SIMUL_LWLOCKS];

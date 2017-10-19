@@ -15,6 +15,15 @@
 /* Define if building universal (internal helper macro) */
 #undef AC_APPLE_UNIVERSAL_BUILD
 
+/* ADB version as a string */
+#undef ADB_VERSION
+
+/* ADB version as a number */
+#undef ADB_VERSION_NUM
+
+/* A string containing the version number of ADB, platform, and C compiler */
+#undef ADB_VERSION_STR
+
 /* The normal alignment of `double', in bytes. */
 #undef ALIGNOF_DOUBLE
 
@@ -688,6 +697,19 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+/* Postgres-XC major version as a string */
+#undef PGXC_MAJORVERSION
+
+/* Postgres-XC version as a string */
+#undef PGXC_VERSION
+
+/* Postgres-XC version as a number */
+#undef PGXC_VERSION_NUM
+
+/* A string containing the version number of Postgres-XC, platform, and C
+   compiler */
+#undef PGXC_VERSION_STR
 
 /* Define to the name of a signed 64-bit integer type. */
 #undef PG_INT64_TYPE

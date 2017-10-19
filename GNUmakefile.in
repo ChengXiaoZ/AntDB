@@ -14,9 +14,9 @@ all:
 	+@echo "All of PostgreSQL successfully made. Ready to install."
 
 docs:
-	$(MAKE) -C doc all
+	$(MAKE) -C doc-xc all
 
-$(call recurse,world,doc src config contrib,all)
+$(call recurse,world,doc-xc src config contrib,all)
 world:
 	+@echo "PostgreSQL, contrib, and documentation successfully made. Ready to install."
 
@@ -24,28 +24,28 @@ world:
 world-contrib-recurse: world-src-recurse
 
 html man:
-	$(MAKE) -C doc $@
+	$(MAKE) -C doc-xc $@
 
 install:
 	+@echo "PostgreSQL installation complete."
 
 install-docs:
-	$(MAKE) -C doc install
+	$(MAKE) -C doc-xc install
 
-$(call recurse,install-world,doc src config contrib,install)
+$(call recurse,install-world,doc-xc src config contrib,install)
 install-world:
 	+@echo "PostgreSQL, contrib, and documentation installation complete."
 
 # build src/ before contrib/
 install-world-contrib-recurse: install-world-src-recurse
 
-$(call recurse,installdirs uninstall coverage init-po update-po,doc src config)
+$(call recurse,installdirs uninstall coverage,doc-xc init-po update-po,doc src config)
 
-$(call recurse,distprep,doc src config contrib)
+$(call recurse,distprep,doc-xc src config contrib)
 
 # clean, distclean, etc should apply to contrib too, even though
 # it's not built by default
-$(call recurse,clean,doc contrib src config)
+$(call recurse,clean,doc-xc contrib src config)
 clean:
 # Garbage from autoconf:
 	@rm -rf autom4te.cache/
@@ -53,7 +53,7 @@ clean:
 # Important: distclean `src' last, otherwise Makefile.global
 # will be gone too soon.
 distclean maintainer-clean:
-	$(MAKE) -C doc $@
+	$(MAKE) -C doc-xc $@
 	$(MAKE) -C contrib $@
 	$(MAKE) -C config $@
 	$(MAKE) -C src $@
@@ -70,7 +70,7 @@ $(call recurse,check-world,src/test src/pl src/interfaces/ecpg contrib,check)
 
 $(call recurse,installcheck-world,src/test src/pl src/interfaces/ecpg contrib,installcheck)
 
-$(call recurse,maintainer-check,doc src config contrib)
+$(call recurse,maintainer-check,doc-xc src config contrib)
 
 GNUmakefile: GNUmakefile.in $(top_builddir)/config.status
 	./config.status $@

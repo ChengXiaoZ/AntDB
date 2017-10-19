@@ -22,6 +22,9 @@
 #include "optimizer/restrictinfo.h"
 #include "utils/hsearch.h"
 
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
 
 typedef struct JoinHashEntry
 {

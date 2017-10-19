@@ -19,7 +19,11 @@
 #ifndef PG_PLTEMPLATE_H
 #define PG_PLTEMPLATE_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_pltemplate definition.  cpp turns this into

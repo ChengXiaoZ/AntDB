@@ -188,6 +188,14 @@ static relopt_int intRelOpts[] =
 	},
 	{
 		{
+			"autovacuum_multixact_freeze_max_age",
+			"Multixact age at which to autovacuum a table to prevent multixact wraparound",
+			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST
+		},
+		-1, 100000000, 2000000000
+	},
+	{
+		{
 			"autovacuum_freeze_table_age",
 			"Age at which VACUUM should perform a full table sweep to replace old Xid values with FrozenXID",
 			RELOPT_KIND_HEAP | RELOPT_KIND_TOAST

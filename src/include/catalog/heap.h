@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/catalog/heap.h
  *
@@ -130,5 +131,38 @@ extern void CheckAttributeType(const char *attname,
 				   Oid atttypid, Oid attcollation,
 				   List *containing_rowtypes,
 				   bool allow_system_table_mods);
+
+#ifdef PGXC
+/* Functions related to distribution data of relations */
+extern void AddRelationDistribution(Oid relid,
+				DistributeBy *distributeby,
+				PGXCSubCluster *subcluster,
+				List 		 *parentOids,
+				TupleDesc	 descriptor);
+extern void GetRelationDistributionItems(Oid relid,
+										 DistributeBy *distributeby,
+										 TupleDesc descriptor,
+										 char *locatortype,
+										 int *hashalgorithm,
+										 int *hashbuckets,
+										 AttrNumber *attnum
+#ifdef ADB
+										 , Oid *funcid
+										 , int *numatts
+										 , int16 **attnums 
+#endif
+										 );
+#ifdef ADB
+extern void AddPgxcRelationDependFunction(Oid relid,
+										  DistributeBy *distributeby,
+										  PGXCSubCluster *subcluster,
+										  List *parentOids,
+										  TupleDesc descriptor);
+#endif
+extern Oid *GetRelationDistributionNodes(PGXCSubCluster *subcluster,
+										 int *numnodes);
+extern Oid *BuildRelationDistributionNodes(List *nodes, int *numnodes);
+extern Oid *SortRelationDistributionNodes(Oid *nodeoids, int numnodes);
+#endif
 
 #endif   /* HEAP_H */

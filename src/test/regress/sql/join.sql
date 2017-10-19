@@ -44,23 +44,29 @@ INSERT INTO J2_TBL VALUES (NULL, 0);
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL AS tx;
+  FROM J1_TBL AS tx 
+  ORDER BY i, j, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL tx;
+  FROM J1_TBL tx 
+  ORDER BY i, j, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL AS t1 (a, b, c);
+  FROM J1_TBL AS t1 (a, b, c) 
+  ORDER BY a, b, c;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c);
+  FROM J1_TBL t1 (a, b, c)
+  ORDER BY a, b, c;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e);
+  FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e) 
+  ORDER BY a, b, c, d, e;
 
 SELECT '' AS "xxx", t1.a, t2.e
   FROM J1_TBL t1 (a, b, c), J2_TBL t2 (d, e)
-  WHERE t1.a = t2.d;
+  WHERE t1.a = t2.d
+  ORDER BY a, e;
 
 
 --
@@ -70,7 +76,8 @@ SELECT '' AS "xxx", t1.a, t2.e
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL CROSS JOIN J2_TBL;
+  FROM J1_TBL CROSS JOIN J2_TBL
+  ORDER BY J1_TBL.i, J1_TBL.j, J1_TBL.t, J2_TBL.i, J2_TBL.k;
 
 -- ambiguous column
 SELECT '' AS "xxx", i, k, t
@@ -78,18 +85,22 @@ SELECT '' AS "xxx", i, k, t
 
 -- resolve previous ambiguity by specifying the table name
 SELECT '' AS "xxx", t1.i, k, t
-  FROM J1_TBL t1 CROSS JOIN J2_TBL t2;
+  FROM J1_TBL t1 CROSS JOIN J2_TBL t2
+  ORDER BY i, k, t;
 
 SELECT '' AS "xxx", ii, tt, kk
   FROM (J1_TBL CROSS JOIN J2_TBL)
-    AS tx (ii, jj, tt, ii2, kk);
+    AS tx (ii, jj, tt, ii2, kk)
+    ORDER BY ii, tt, kk;
 
 SELECT '' AS "xxx", tx.ii, tx.jj, tx.kk
   FROM (J1_TBL t1 (a, b, c) CROSS JOIN J2_TBL t2 (d, e))
-    AS tx (ii, jj, tt, ii2, kk);
+    AS tx (ii, jj, tt, ii2, kk)
+    ORDER BY ii, jj, kk;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b;
+  FROM J1_TBL CROSS JOIN J2_TBL a CROSS JOIN J2_TBL b
+  ORDER BY J1_TBL.i,J1_TBL.j,J1_TBL.t,a.i,a.k,b.i,b.k;
 
 
 --
@@ -106,11 +117,13 @@ SELECT '' AS "xxx", *
 
 -- Inner equi-join on specified column
 SELECT '' AS "xxx", *
-  FROM J1_TBL INNER JOIN J2_TBL USING (i);
+  FROM J1_TBL INNER JOIN J2_TBL USING (i)
+  ORDER BY i, j, k, t;
 
 -- Same as above, slightly different syntax
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL USING (i);
+  FROM J1_TBL JOIN J2_TBL USING (i)
+  ORDER BY i, j, k, t;
 
 SELECT '' AS "xxx", *
   FROM J1_TBL t1 (a, b, c) JOIN J2_TBL t2 (a, d) USING (a)
@@ -127,18 +140,22 @@ SELECT '' AS "xxx", *
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL NATURAL JOIN J2_TBL;
+  FROM J1_TBL NATURAL JOIN J2_TBL
+  ORDER BY i, j, k, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d);
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (a, d)
+  ORDER BY a, b, c, d;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a);
+  FROM J1_TBL t1 (a, b, c) NATURAL JOIN J2_TBL t2 (d, a)
+  ORDER BY a, b, c, d;
 
 -- mismatch number of columns
 -- currently, Postgres will fill in with underlying names
 SELECT '' AS "xxx", *
-  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a);
+  FROM J1_TBL t1 (a, b) NATURAL JOIN J2_TBL t2 (a)
+  ORDER BY a, b, t, k;
 
 
 --
@@ -146,10 +163,12 @@ SELECT '' AS "xxx", *
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i);
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.i)
+  ORDER BY J1_TBL.i, J1_TBL.j, J1_TBL.t, J2_TBL.i, J2_TBL.k;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k);
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i = J2_TBL.k)
+  ORDER BY J1_TBL.i, J1_TBL.j, J1_TBL.t, J2_TBL.i, J2_TBL.k;
 
 
 --
@@ -157,7 +176,8 @@ SELECT '' AS "xxx", *
 --
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k);
+  FROM J1_TBL JOIN J2_TBL ON (J1_TBL.i <= J2_TBL.k)
+  ORDER BY J1_TBL.i, J1_TBL.j, J1_TBL.t, J2_TBL.i, J2_TBL.k;
 
 
 --
@@ -174,10 +194,12 @@ SELECT '' AS "xxx", *
   ORDER BY i, k, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i);
+  FROM J1_TBL RIGHT OUTER JOIN J2_TBL USING (i)
+  ORDER BY i, j, k, t;
 
 SELECT '' AS "xxx", *
-  FROM J1_TBL RIGHT JOIN J2_TBL USING (i);
+  FROM J1_TBL RIGHT JOIN J2_TBL USING (i)
+  ORDER BY i, j, k, t;
 
 SELECT '' AS "xxx", *
   FROM J1_TBL FULL OUTER JOIN J2_TBL USING (i)
@@ -214,7 +236,8 @@ INSERT INTO t3 VALUES ( 'bb', 13 );
 INSERT INTO t3 VALUES ( 'cc', 23 );
 INSERT INTO t3 VALUES ( 'dd', 33 );
 
-SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name);
+SELECT * FROM t1 FULL JOIN t2 USING (name) FULL JOIN t3 USING (name) 
+ORDER BY name,t1.n, t2.n, t3.n;
 
 --
 -- Test interactions of join syntax and subqueries
@@ -225,50 +248,58 @@ SELECT * FROM
 (SELECT * FROM t2) as s2
 INNER JOIN
 (SELECT * FROM t3) s3
-USING (name);
+USING (name)
+ORDER BY name, s2.n, s3.n;
 
 SELECT * FROM
 (SELECT * FROM t2) as s2
 LEFT JOIN
 (SELECT * FROM t3) s3
-USING (name);
+USING (name)
+ORDER BY name, s2.n, s3.n;
 
 SELECT * FROM
 (SELECT * FROM t2) as s2
 FULL JOIN
 (SELECT * FROM t3) s3
-USING (name);
+USING (name)
+ORDER BY name, s2.n, s3.n;
 
 -- Cases with non-nullable expressions in subquery results;
 -- make sure these go to null as expected
 SELECT * FROM
 (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
 NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3
+ORDER BY name, s2_n, s3_n;
 
 SELECT * FROM
 (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
 NATURAL LEFT JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3
+ORDER BY name, s2_n, s3_n;
 
 SELECT * FROM
 (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
 NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3
+ORDER BY name, s2_n, s3_n;
 
 SELECT * FROM
 (SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
 NATURAL INNER JOIN
 (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
 NATURAL INNER JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3
+ORDER BY name, s1_n, s2_n, s3_n;
 
 SELECT * FROM
 (SELECT name, n as s1_n, 1 as s1_1 FROM t1) as s1
 NATURAL FULL JOIN
 (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
 NATURAL FULL JOIN
-(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3;
+(SELECT name, n as s3_n, 3 as s3_2 FROM t3) s3
+ORDER BY name, s1_n, s2_n, s3_n;
 
 SELECT * FROM
 (SELECT name, n as s1_n FROM t1) as s1
@@ -277,7 +308,8 @@ NATURAL FULL JOIN
     (SELECT name, n as s2_n FROM t2) as s2
     NATURAL FULL JOIN
     (SELECT name, n as s3_n FROM t3) as s3
-  ) ss2;
+  ) ss2
+  ORDER BY name, s1_n, s2_n, s3_n;
 
 SELECT * FROM
 (SELECT name, n as s1_n FROM t1) as s1
@@ -286,7 +318,8 @@ NATURAL FULL JOIN
     (SELECT name, n as s2_n, 2 as s2_2 FROM t2) as s2
     NATURAL FULL JOIN
     (SELECT name, n as s3_n FROM t3) as s3
-  ) ss2;
+  ) ss2
+  ORDER BY name, s1_n, s2_n, s3_n;
 
 
 -- Test for propagation of nullability constraints into sub-joins
@@ -304,27 +337,30 @@ insert into y values (2,222);
 insert into y values (3,333);
 insert into y values (4,null);
 
-select * from x;
-select * from y;
+select * from x ORDER BY x1;
+select * from y ORDER BY y1;
 
-select * from x left join y on (x1 = y1 and x2 is not null);
-select * from x left join y on (x1 = y1 and y2 is not null);
+select * from x left join y on (x1 = y1 and x2 is not null) ORDER BY x1, x2, y1, y2;
+select * from x left join y on (x1 = y1 and y2 is not null) ORDER BY x1, x2, y1, y2;
 
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1);
+on (x1 = xx1) ORDER BY x1, x2, y1, y2;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and x2 is not null);
+on (x1 = xx1 and x2 is not null) ORDER BY x1, x2, y1, y2;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and y2 is not null);
+on (x1 = xx1 and y2 is not null) ORDER BY x1, x2, y1, y2;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1 and xx2 is not null);
+on (x1 = xx1 and xx2 is not null) ORDER BY x1, x2, y1, y2;
 -- these should NOT give the same answers as above
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (x2 is not null);
+on (x1 = xx1) where (x2 is not null)
+ORDER BY x1, x2, y1, y2;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (y2 is not null);
+on (x1 = xx1) where (y2 is not null)
+ORDER BY x1, x2, y1, y2;
 select * from (x left join y on (x1 = y1)) left join x xx(xx1,xx2)
-on (x1 = xx1) where (xx2 is not null);
+on (x1 = xx1) where (xx2 is not null)
+ORDER BY x1, x2, y1, y2;
 
 --
 -- regression test: check for bug with propagation of implied equality
@@ -356,7 +392,7 @@ rollback;
 --
 -- regression test: be sure we cope with proven-dummy append rels
 --
-explain (costs off)
+explain (costs off, nodes off, num_nodes off)
 select aa, bb, unique1, unique1
   from tenk1 right join b on aa = unique1
   where bb < bb and bb is null;
@@ -426,11 +462,11 @@ INSERT INTO t3 VALUES (7, 8);
 INSERT INTO t3 VALUES (500, 100);
 
 DELETE FROM t3 USING t1 table1 WHERE t3.x = table1.a;
-SELECT * FROM t3;
+SELECT * FROM t3 ORDER By x, y;
 DELETE FROM t3 USING t1 JOIN t2 USING (a) WHERE t3.x > t1.a;
-SELECT * FROM t3;
+SELECT * FROM t3 ORDER By x, y;
 DELETE FROM t3 USING t3 t3_other WHERE t3.x = t3_other.x AND t3.y = t3_other.y;
-SELECT * FROM t3;
+SELECT * FROM t3 ORDER By x, y;
 
 -- Test join against inheritance tree
 
@@ -438,7 +474,7 @@ create temp table t2a () inherits (t2);
 
 insert into t2a values (200, 2001);
 
-select * from t1 left join t2 on (t1.a = t2.a);
+select * from t1 left join t2 on (t1.a = t2.a) order by 1,2,3,4;
 
 --
 -- regression test for 8.1 merge right join bug
@@ -457,9 +493,11 @@ set enable_nestloop to off;
 
 -- these should give the same results
 
-select tt1.*, tt2.* from tt1 left join tt2 on tt1.joincol = tt2.joincol;
+select tt1.*, tt2.* from tt1 left join tt2 on tt1.joincol = tt2.joincol 
+      ORDER BY tt1_id, tt2_id; 
 
-select tt1.*, tt2.* from tt2 right join tt1 on tt1.joincol = tt2.joincol;
+select tt1.*, tt2.* from tt2 right join tt1 on tt1.joincol = tt2.joincol 
+      ORDER BY tt1_id, tt2_id; 
 
 reset enable_hashjoin;
 reset enable_nestloop;
@@ -484,7 +522,7 @@ LEFT JOIN (
         FROM tt3 b LEFT JOIN tt3 c ON (b.f1 = c.f1)
         WHERE c.f1 IS NULL
 ) AS d ON (a.f1 = d.f1)
-WHERE d.f1 IS NULL;
+WHERE d.f1 IS NULL ORDER BY f1;
 
 --
 -- regression test for proper handling of outer joins within antijoins
@@ -492,7 +530,7 @@ WHERE d.f1 IS NULL;
 
 create temp table tt4x(c1 int, c2 int, c3 int);
 
-explain (costs off)
+explain (costs off, NODES OFF, NUM_NODES OFF)
 select * from tt4x t1
 where not exists (
   select 1 from tt4x t2
@@ -517,7 +555,8 @@ insert into tt6 values(1, 9);
 insert into tt6 values(1, 2);
 insert into tt6 values(2, 9);
 
-select * from tt5,tt6 where tt5.f1 = tt6.f1 and tt5.f1 = tt5.f2 - tt6.f2;
+select * from tt5,tt6 where tt5.f1 = tt6.f1 and tt5.f1 = tt5.f2 - tt6.f2 
+      ORDER BY tt5.f1, tt5.f2, tt6.f1, tt6.f2;
 
 --
 -- regression test for problems of the sort depicted in bug #3588
@@ -539,7 +578,8 @@ select yy.pkyy as yy_pkyy, yy.pkxx as yy_pkxx, yya.pkyy as yya_pkyy,
 from yy
      left join (SELECT * FROM yy where pkyy = 101) as yya ON yy.pkyy = yya.pkyy
      left join xx xxa on yya.pkxx = xxa.pkxx
-     left join xx xxb on coalesce (xxa.pkxx, 1) = xxb.pkxx;
+     left join xx xxb on coalesce (xxa.pkxx, 1) = xxb.pkxx 
+     ORDER BY yy_pkyy, yy_pkxx, yya_pkyy, xxa_pkxx, xxb_pkxx;
 
 --
 -- regression test for improper pushing of constants across outer-join clauses
@@ -555,14 +595,16 @@ insert into zt2 values(53);
 select * from
   zt2 left join zt3 on (f2 = f3)
       left join zt1 on (f3 = f1)
-where f2 = 53;
+where f2 = 53 
+ORDER BY f1, f2, f3;
 
 create temp view zv1 as select *,'dummy'::text AS junk from zt1;
 
 select * from
   zt2 left join zt3 on (f2 = f3)
       left join zv1 on (f3 = f1)
-where f2 = 53;
+where f2 = 53 
+ORDER BY f1, f2, f3;
 
 --
 -- regression test for improper extraction of OR indexqual conditions
@@ -703,7 +745,7 @@ ON sub1.key1 = sub2.key3;
 -- test case where a PlaceHolderVar is used as a nestloop parameter
 --
 
-EXPLAIN (COSTS OFF)
+EXPLAIN (NUM_NODES OFF, NODES OFF, COSTS OFF)
 SELECT qq, unique1
   FROM
   ( SELECT COALESCE(q1, 0) AS qq FROM int8_tbl a ) AS ss1
@@ -728,20 +770,23 @@ create temp table nt1 (
   id int primary key,
   a1 boolean,
   a2 boolean
-);
+)
+distribute by replication;
 create temp table nt2 (
   id int primary key,
   nt1_id int,
   b1 boolean,
   b2 boolean,
   foreign key (nt1_id) references nt1(id)
-);
+)
+distribute by replication;
 create temp table nt3 (
   id int primary key,
   nt2_id int,
   c1 boolean,
   foreign key (nt2_id) references nt2(id)
-);
+)
+distribute by replication;
 
 insert into nt1 values (1,true,true);
 insert into nt1 values (2,true,false);
@@ -753,7 +798,7 @@ insert into nt3 values (1,1,true);
 insert into nt3 values (2,2,false);
 insert into nt3 values (3,3,true);
 
-explain (costs off)
+explain (costs off, NODES OFF, NUM_NODES OFF)
 select nt3.id
 from nt3 as nt3
   left join
@@ -782,7 +827,7 @@ where nt3.id = 1 and ss2.b3;
 -- test case where a PlaceHolderVar is propagated into a subquery
 --
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select * from
   int8_tbl t1 left join
   (select q1 as x, 42 as y from int8_tbl t2) ss
@@ -802,21 +847,21 @@ order by 1,2;
 --
 -- test the corner cases FULL JOIN ON TRUE and FULL JOIN ON FALSE
 --
-select * from int4_tbl a full join int4_tbl b on true;
-select * from int4_tbl a full join int4_tbl b on false;
+select * from int4_tbl a full join int4_tbl b on true order by 1,2;
+select * from int4_tbl a full join int4_tbl b on false order by 1,2;
 
 --
 -- test for ability to use a cartesian join when necessary
 --
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select * from
   tenk1 join int4_tbl on f1 = twothousand,
   int4(sin(1)) q1,
   int4(sin(0)) q2
 where q1 = thousand or q2 = thousand;
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select * from
   tenk1 join int4_tbl on f1 = twothousand,
   int4(sin(1)) q1,
@@ -827,7 +872,7 @@ where thousand = (q1 + q2);
 -- test ability to generate a suitable plan for a star-schema query
 --
 
-explain (costs off)
+explain (costs off, NODES OFF, NUM_NODES OFF)
 select * from
   tenk1, int8_tbl a, int8_tbl b
 where thousand = a.q1 and tenthous = b.q1 and a.q2 = 1 and b.q2 = 2;
@@ -836,7 +881,7 @@ where thousand = a.q1 and tenthous = b.q1 and a.q2 = 1 and b.q2 = 2;
 -- test a corner case in which we shouldn't apply the star-schema optimization
 --
 
-explain (costs off)
+explain (costs off, nodes off, num_nodes off)
 select t1.unique2, t1.stringu1, t2.unique1, t2.stringu2 from
   tenk1 t1
   inner join int4_tbl i1
@@ -885,19 +930,19 @@ where t1.unique1 < i4.f1;
 -- test placement of movable quals in a parameterized join tree
 --
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select * from tenk1 t1 left join
   (tenk1 t2 join tenk1 t3 on t2.thousand = t3.unique2)
   on t1.hundred = t2.hundred and t1.ten = t3.ten
 where t1.unique1 = 1;
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select * from tenk1 t1 left join
   (tenk1 t2 join tenk1 t3 on t2.thousand = t3.unique2)
   on t1.hundred = t2.hundred and t1.ten + t2.ten = t3.ten
 where t1.unique1 = 1;
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select count(*) from
   tenk1 a join tenk1 b on a.unique1 = b.unique2
   left join tenk1 c on a.unique2 = b.unique1 and c.thousand = a.thousand
@@ -908,7 +953,7 @@ select count(*) from
   left join tenk1 c on a.unique2 = b.unique1 and c.thousand = a.thousand
   join int4_tbl on b.thousand = f1;
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select b.unique1 from
   tenk1 a join tenk1 b on a.unique1 = b.unique2
   left join tenk1 c on b.unique1 = 42 and c.thousand = a.thousand
@@ -923,7 +968,7 @@ select b.unique1 from
   right join int4_tbl i2 on i2.f1 = b.tenthous
   order by 1;
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 select * from
 (
   select unique1, q1, coalesce(unique1, -1) + q1 as fault
@@ -944,7 +989,7 @@ order by fault;
 -- test handling of potential equivalence clauses above outer joins
 --
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 select q1, unique2, thousand, hundred
   from int8_tbl a left join tenk1 b on q1 = unique2
   where coalesce(thousand,123) = q1 and q1 = coalesce(hundred,123);
@@ -953,7 +998,7 @@ select q1, unique2, thousand, hundred
   from int8_tbl a left join tenk1 b on q1 = unique2
   where coalesce(thousand,123) = q1 and q1 = coalesce(hundred,123);
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 select f1, unique2, case when unique2 is null then f1 else 0 end
   from int4_tbl a left join tenk1 b on f1 = unique2
   where (case when unique2 is null then f1 else 0 end) = 0;
@@ -966,7 +1011,7 @@ select f1, unique2, case when unique2 is null then f1 else 0 end
 -- another case with equivalence clauses above outer joins (bug #8591)
 --
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 select a.unique1, b.unique1, c.unique1, coalesce(b.twothousand, a.twothousand)
   from tenk1 a left join tenk1 b on b.thousand = a.unique1                        left join tenk1 c on c.unique2 = coalesce(b.twothousand, a.twothousand)
   where a.unique2 = 5530 and coalesce(b.twothousand, a.twothousand) = 44;
@@ -979,7 +1024,7 @@ select a.unique1, b.unique1, c.unique1, coalesce(b.twothousand, a.twothousand)
 -- check handling of join aliases when flattening multiple levels of subquery
 --
 
-explain (verbose, costs off)
+explain (verbose, costs off, num_nodes off, nodes off)
 select foo1.join_key as foo1_id, foo3.join_key AS foo3_id, bug_field from
   (values (0),(1)) foo1(join_key)
 left join
@@ -1010,7 +1055,7 @@ using (join_key);
 -- test successful handling of nested outer joins with degenerate join quals
 --
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select t1.* from
   text_tbl t1
   left join (select *, '***'::text as d1 from int8_tbl i8b1) b1
@@ -1031,9 +1076,9 @@ select t1.* from
     on (b2.d2 = b1.q2)
   on (t1.f1 = b1.d1)
   left join int4_tbl i4
-  on (i8.q2 = i4.f1);
+  on (i8.q2 = i4.f1) order by 1;
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select t1.* from
   text_tbl t1
   left join (select *, '***'::text as d1 from int8_tbl i8b1) b1
@@ -1054,9 +1099,9 @@ select t1.* from
     on (b2.d2 = b1.q2)
   on (t1.f1 = b1.d1)
   left join int4_tbl i4
-  on (i8.q2 = i4.f1);
+  on (i8.q2 = i4.f1) order by 1;
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select t1.* from
   text_tbl t1
   left join (select *, '***'::text as d1 from int8_tbl i8b1) b1
@@ -1079,9 +1124,9 @@ select t1.* from
     on (b2.d2 = b1.q2)
   on (t1.f1 = b1.d1)
   left join int4_tbl i4
-  on (i8.q2 = i4.f1);
+  on (i8.q2 = i4.f1) order by 1;
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select * from
   text_tbl t1
   inner join int8_tbl i8
@@ -1098,7 +1143,7 @@ select * from
   right join text_tbl t2
   on t1.f1 = 'doh!'
   left join int4_tbl i4
-  on i8.q1 = i4.f1;
+  on i8.q1 = i4.f1 order by 1,2,3,4;
 
 --
 -- test for appropriate join order in the presence of lateral references
@@ -1199,10 +1244,10 @@ select * from
 -- test ability to push constants through outer join clauses
 --
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select * from int4_tbl a left join tenk1 b on f1 = unique2 where f1 = 0;
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select * from tenk1 a full join tenk1 b using(unique2) where unique2 = 42;
 
 --
@@ -1214,7 +1259,7 @@ explain (costs off)
 set enable_hashjoin to off;
 set enable_nestloop to off;
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
   select a.q2, b.q1
     from int8_tbl a left join int8_tbl b on a.q2 = coalesce(b.q1, 1)
     where coalesce(b.q1, 1) > 0;
@@ -1239,14 +1284,14 @@ INSERT INTO b VALUES (0, 0), (1, NULL);
 INSERT INTO c VALUES (0), (1);
 
 -- all three cases should be optimizable into a simple seqscan
-explain (costs off) SELECT a.* FROM a LEFT JOIN b ON a.b_id = b.id;
-explain (costs off) SELECT b.* FROM b LEFT JOIN c ON b.c_id = c.id;
-explain (costs off)
+explain (verbose true, costs false, nodes false, num_nodes false) SELECT a.* FROM a LEFT JOIN b ON a.b_id = b.id;
+explain (verbose true, costs false, nodes false, num_nodes false) SELECT b.* FROM b LEFT JOIN c ON b.c_id = c.id;
+explain (verbose true, costs false, nodes false, num_nodes false)
   SELECT a.* FROM a LEFT JOIN (b left join c on b.c_id = c.id)
   ON (a.b_id = b.id);
 
 -- check optimization of outer join within another special join
-explain (costs off)
+explain (verbose true, costs false, nodes false, num_nodes false)
 select id from a where id in (
 	select b.id from b left join c on b.id = c.id
 );
@@ -1259,24 +1304,24 @@ insert into parent values (1, 10), (2, 20), (3, 30);
 insert into child values (1, 100), (4, 400);
 
 -- this case is optimizable
-select p.* from parent p left join child c on (p.k = c.k);
-explain (costs off)
-  select p.* from parent p left join child c on (p.k = c.k);
+select p.* from parent p left join child c on (p.k = c.k) order by 1,2;
+explain (verbose true, costs false, nodes false, num_nodes false)
+  select p.* from parent p left join child c on (p.k = c.k) order by 1,2;
 
 -- this case is not
 select p.*, linked from parent p
   left join (select c.*, true as linked from child c) as ss
-  on (p.k = ss.k);
-explain (costs off)
+  on (p.k = ss.k) order by p.k;
+explain (verbose true, costs false, nodes false, num_nodes false)
   select p.*, linked from parent p
     left join (select c.*, true as linked from child c) as ss
-    on (p.k = ss.k);
+    on (p.k = ss.k) order by p.k;
 
 -- check for a 9.0rc1 bug: join removal breaks pseudoconstant qual handling
 select p.* from
   parent p left join child c on (p.k = c.k)
   where p.k = 1 and p.k = 2;
-explain (costs off)
+explain (verbose true, costs false, nodes false, num_nodes false)
 select p.* from
   parent p left join child c on (p.k = c.k)
   where p.k = 1 and p.k = 2;
@@ -1284,7 +1329,7 @@ select p.* from
 select p.* from
   (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k
   where p.k = 1 and p.k = 2;
-explain (costs off)
+explain (verbose true, costs false, nodes false, num_nodes false)
 select p.* from
   (parent p left join child c on (p.k = c.k)) join parent x on p.k = x.k
   where p.k = 1 and p.k = 2;
@@ -1313,7 +1358,7 @@ SELECT * FROM
   LEFT JOIN
     (SELECT q1, q2, COALESCE(dat1, q1) AS y
      FROM int8_tbl LEFT JOIN innertab ON q2 = id) ss2
-  ON true;
+  ON true order by 1, 2, 3, 4;
 
 rollback;
 
@@ -1322,7 +1367,7 @@ begin;
 
 create temp table uniquetbl (f1 text unique);
 
-explain (costs off)
+explain (costs off, nodes off, num_nodes off)
 select t1.* from
   uniquetbl as t1
   left join (select *, '***'::text as d1 from uniquetbl) t2
@@ -1330,7 +1375,7 @@ select t1.* from
   left join uniquetbl t3
   on t2.d1 = t3.f1;
 
-explain (costs off)
+explain (costs off, nodes off, num_nodes off)
 select t0.*
 from
  text_tbl t0
@@ -1372,40 +1417,40 @@ select * from
 
 select unique2, x.*
 from tenk1 a, lateral (select * from int4_tbl b where f1 = a.unique1) x;
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select unique2, x.*
   from tenk1 a, lateral (select * from int4_tbl b where f1 = a.unique1) x;
 select unique2, x.*
 from int4_tbl x, lateral (select unique2 from tenk1 where f1 = unique1) ss;
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select unique2, x.*
   from int4_tbl x, lateral (select unique2 from tenk1 where f1 = unique1) ss;
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select unique2, x.*
   from int4_tbl x cross join lateral (select unique2 from tenk1 where f1 = unique1) ss;
 select unique2, x.*
-from int4_tbl x left join lateral (select unique1, unique2 from tenk1 where f1 = unique1) ss on true;
-explain (costs off)
+from int4_tbl x left join lateral (select unique1, unique2 from tenk1 where f1 = unique1) ss on true order by 1,2;
+explain (costs off, num_nodes off, nodes off)
   select unique2, x.*
   from int4_tbl x left join lateral (select unique1, unique2 from tenk1 where f1 = unique1) ss on true;
 
 -- check scoping of lateral versus parent references
 -- the first of these should return int8_tbl.q2, the second int8_tbl.q1
-select *, (select r from (select q1 as q2) x, (select q2 as r) y) from int8_tbl;
-select *, (select r from (select q1 as q2) x, lateral (select q2 as r) y) from int8_tbl;
+select *, (select r from (select q1 as q2) x, (select q2 as r) y) from int8_tbl order by 1,2,3;
+select *, (select r from (select q1 as q2) x, lateral (select q2 as r) y) from int8_tbl order by 1,2,3;
 
 -- lateral with function in FROM
 select count(*) from tenk1 a, lateral generate_series(1,two) g;
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select count(*) from tenk1 a, lateral generate_series(1,two) g;
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select count(*) from tenk1 a cross join lateral generate_series(1,two) g;
 -- don't need the explicit LATERAL keyword for functions
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select count(*) from tenk1 a, generate_series(1,two) g;
 
 -- lateral with UNION ALL subselect
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select * from generate_series(100,200) g,
     lateral (select * from int8_tbl a where g = q1 union all
              select * from int8_tbl b where g = q2) ss;
@@ -1414,26 +1459,26 @@ select * from generate_series(100,200) g,
            select * from int8_tbl b where g = q2) ss;
 
 -- lateral with VALUES
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select count(*) from tenk1 a,
     tenk1 b join lateral (values(a.unique1)) ss(x) on b.unique2 = ss.x;
 select count(*) from tenk1 a,
   tenk1 b join lateral (values(a.unique1)) ss(x) on b.unique2 = ss.x;
 
 -- lateral injecting a strange outer join condition
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
   select * from int8_tbl a,
     int8_tbl x left join lateral (select a.q1 from int4_tbl y) ss(z)
       on x.q2 = ss.z;
 select * from int8_tbl a,
   int8_tbl x left join lateral (select a.q1 from int4_tbl y) ss(z)
-    on x.q2 = ss.z;
+    on x.q2 = ss.z order by 1,2,3,4,5;
 
 -- lateral reference to a join alias variable
 select * from (select f1/2 as x from int4_tbl) ss1 join int4_tbl i4 on x = f1,
   lateral (select x) ss2(y);
 select * from (select f1 as x from int4_tbl) ss1 join int4_tbl i4 on x = f1,
-  lateral (values(x)) ss2(y);
+  lateral (values(x)) ss2(y) ORDER BY 1,2,3;
 select * from ((select f1/2 as x from int4_tbl) ss1 join int4_tbl i4 on x = f1) j,
   lateral (select x) ss2(y);
 
@@ -1441,64 +1486,64 @@ select * from ((select f1/2 as x from int4_tbl) ss1 join int4_tbl i4 on x = f1) 
 select * from (values(1)) x(lb),
   lateral generate_series(lb,4) x4;
 select * from (select f1/1000000000 from int4_tbl) x(lb),
-  lateral generate_series(lb,4) x4;
+  lateral generate_series(lb,4) x4 ORDER BY 1, 2;
 select * from (values(1)) x(lb),
   lateral (values(lb)) y(lbcopy);
 select * from (values(1)) x(lb),
   lateral (select lb from int4_tbl) y(lbcopy);
 select * from
   int8_tbl x left join (select q1,coalesce(q2,0) q2 from int8_tbl) y on x.q2 = y.q1,
-  lateral (values(x.q1,y.q1,y.q2)) v(xq1,yq1,yq2);
+  lateral (values(x.q1,y.q1,y.q2)) v(xq1,yq1,yq2) ORDER BY 1,2,3,4,5,6,7;
 select * from
   int8_tbl x left join (select q1,coalesce(q2,0) q2 from int8_tbl) y on x.q2 = y.q1,
-  lateral (select x.q1,y.q1,y.q2) v(xq1,yq1,yq2);
+  lateral (select x.q1,y.q1,y.q2) v(xq1,yq1,yq2) ORDER BY 1,2,3,4,5,6,7;
 select x.* from
   int8_tbl x left join (select q1,coalesce(q2,0) q2 from int8_tbl) y on x.q2 = y.q1,
-  lateral (select x.q1,y.q1,y.q2) v(xq1,yq1,yq2);
+  lateral (select x.q1,y.q1,y.q2) v(xq1,yq1,yq2) ORDER BY 1,2;
 select v.* from
   (int8_tbl x left join (select q1,coalesce(q2,0) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
-  lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy);
+  lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy) ORDER BY 1,2;
 select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
-  lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy);
+  lateral (select x.q1,y.q1 union all select x.q2,y.q2) v(vx,vy) ORDER BY 1,2;
 create temp table dual();
 insert into dual default values;
 analyze dual;
 select v.* from
   (int8_tbl x left join (select q1,(select coalesce(q2,0)) q2 from int8_tbl) y on x.q2 = y.q1)
   left join int4_tbl z on z.f1 = x.q2,
-  lateral (select x.q1,y.q1 from dual union all select x.q2,y.q2 from dual) v(vx,vy);
+  lateral (select x.q1,y.q1 from dual union all select x.q2,y.q2 from dual) v(vx,vy) ORDER BY 1,2;
 
-explain (verbose, costs off)
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from
   int8_tbl a left join
   lateral (select *, a.q2 as x from int8_tbl b) ss on a.q2 = ss.q1;
 select * from
   int8_tbl a left join
-  lateral (select *, a.q2 as x from int8_tbl b) ss on a.q2 = ss.q1;
-explain (verbose, costs off)
+  lateral (select *, a.q2 as x from int8_tbl b) ss on a.q2 = ss.q1 order by 1,2,3,4,5;
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from
   int8_tbl a left join
   lateral (select *, coalesce(a.q2, 42) as x from int8_tbl b) ss on a.q2 = ss.q1;
 select * from
   int8_tbl a left join
-  lateral (select *, coalesce(a.q2, 42) as x from int8_tbl b) ss on a.q2 = ss.q1;
+  lateral (select *, coalesce(a.q2, 42) as x from int8_tbl b) ss on a.q2 = ss.q1 order by 1,2,3,4,5;
 
 -- lateral can result in join conditions appearing below their
 -- real semantic level
-explain (verbose, costs off)
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from int4_tbl i left join
   lateral (select * from int2_tbl j where i.f1 = j.f1) k on true;
 select * from int4_tbl i left join
-  lateral (select * from int2_tbl j where i.f1 = j.f1) k on true;
-explain (verbose, costs off)
+  lateral (select * from int2_tbl j where i.f1 = j.f1) k on true order by 1,2;
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from int4_tbl i left join
   lateral (select coalesce(i) from int2_tbl j where i.f1 = j.f1) k on true;
 select * from int4_tbl i left join
-  lateral (select coalesce(i) from int2_tbl j where i.f1 = j.f1) k on true;
-explain (verbose, costs off)
+  lateral (select coalesce(i) from int2_tbl j where i.f1 = j.f1) k on true order by 1,2;
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from int4_tbl a,
   lateral (
     select * from int4_tbl b left join int8_tbl c on (b.f1 = q1 and a.f1 = q2)
@@ -1506,10 +1551,10 @@ select * from int4_tbl a,
 select * from int4_tbl a,
   lateral (
     select * from int4_tbl b left join int8_tbl c on (b.f1 = q1 and a.f1 = q2)
-  ) ss;
+  ) ss order by 1,2,3,4;
 
 -- lateral reference in a PlaceHolderVar evaluated at join level
-explain (verbose, costs off)
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from
   int8_tbl a left join lateral
   (select b.q1 as bq1, c.q1 as cq1, least(a.q1,b.q1,c.q1) from
@@ -1519,10 +1564,10 @@ select * from
   int8_tbl a left join lateral
   (select b.q1 as bq1, c.q1 as cq1, least(a.q1,b.q1,c.q1) from
    int8_tbl b cross join int8_tbl c) ss
-  on a.q2 = ss.bq1;
+  on a.q2 = ss.bq1, num_nodes off, nodes off;
 
 -- case requiring nested PlaceHolderVars
-explain (verbose, costs off)
+explain (verbose, num_nodes off, nodes off, costs off)
 select * from
   int8_tbl c left join (
     int8_tbl a left join (select q1, coalesce(q2,42) as x from int8_tbl b) ss1
@@ -1533,7 +1578,7 @@ select * from
   lateral (select ss2.y) ss3;
 
 -- case that breaks the old ph_may_need optimization
-explain (verbose, costs off)
+explain (verbose, costs off, num_nodes off, nodes off)
 select c.*,a.*,ss1.q1,ss2.q1,ss3.* from
   int8_tbl c left join (
     int8_tbl a left join
@@ -1546,7 +1591,7 @@ select c.*,a.*,ss1.q1,ss2.q1,ss3.* from
   lateral (select * from int4_tbl i where ss2.y > f1) ss3;
 
 -- check processing of postponed quals (bug #9041)
-explain (verbose, costs off)
+explain (verbose, costs off, num_nodes off, nodes off)
 select * from
   (select 1 as x) x cross join (select 2 as y) y
   left join lateral (
@@ -1554,7 +1599,7 @@ select * from
   ) zz on zz.z = y.y;
 
 -- check we don't try to do a unique-ified semijoin with LATERAL
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select * from
   (values (0,9998), (1,1000)) v(id,x),
   lateral (select f1 from int4_tbl

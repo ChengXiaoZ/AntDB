@@ -24,6 +24,10 @@
 #include "access/transam.h"
 #include "utils/snapmgr.h"
 
+#ifdef PGXC
+#include "utils/builtins.h"
+#endif
+
 /*
  * Single-item cache for results of TransactionLogFetch.  It's worth having
  * such a cache because we frequently find ourselves repeatedly checking the
@@ -37,6 +41,10 @@ static XLogRecPtr cachedCommitLSN;
 /* Local functions */
 static XidStatus TransactionLogFetch(TransactionId transactionId);
 
+#ifdef PGXC
+/* It is not really necessary to make it appear in header file */
+Datum pgxc_is_committed(PG_FUNCTION_ARGS);
+#endif
 
 /* ----------------------------------------------------------------
  *		Postgres log access method interface
@@ -92,6 +100,27 @@ TransactionLogFetch(TransactionId transactionId)
 
 	return xidstatus;
 }
+
+#ifdef PGXC
+/*
+ * For given Transaction ID, check if transaction is committed or aborted
+ */
+Datum
+pgxc_is_committed(PG_FUNCTION_ARGS)
+{
+	TransactionId	tid = (TransactionId) PG_GETARG_UINT32(0);
+	XidStatus   xidstatus;
+
+	xidstatus = TransactionLogFetch(tid);
+
+	if (xidstatus == TRANSACTION_STATUS_COMMITTED)
+		PG_RETURN_BOOL(true);
+	else if (xidstatus == TRANSACTION_STATUS_ABORTED)
+		PG_RETURN_BOOL(false);
+	else
+		PG_RETURN_NULL();
+}
+#endif
 
 /* ----------------------------------------------------------------
  *						Interface functions

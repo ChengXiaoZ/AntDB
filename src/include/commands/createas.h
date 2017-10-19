@@ -25,5 +25,8 @@ extern void ExecCreateTableAs(CreateTableAsStmt *stmt, const char *queryString,
 extern int	GetIntoRelEFlags(IntoClause *intoClause);
 
 extern DestReceiver *CreateIntoRelDestReceiver(IntoClause *intoClause);
+#ifdef PGXC
+extern Relation		get_dest_into_rel(DestReceiver *self);
+#endif /* PGXC */
 
 #endif   /* CREATEAS_H */

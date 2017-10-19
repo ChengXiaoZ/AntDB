@@ -30,6 +30,11 @@
 #include "catalog/pg_range.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
+#ifdef PGXC
+#include "catalog/pgxc_class.h"
+#include "catalog/pgxc_node.h"
+#include "catalog/pgxc_group.h"
+#endif
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "utils/array.h"
@@ -1622,7 +1627,7 @@ get_relname_relid(const char *relname, Oid relnamespace)
 						   ObjectIdGetDatum(relnamespace));
 }
 
-#ifdef NOT_USED
+#ifdef PGXC
 /*
  * get_relnatts
  *
@@ -2183,6 +2188,407 @@ getBaseTypeAndTypmod(Oid typid, int32 *typmod)
 
 	return typid;
 }
+
+#ifdef PGXC
+
+#ifdef ADB
+/*
+ * get_namespaceid
+ *	  Given a namespace name, look up the namespace OID.
+ *
+ * Returns InvalidOid if there is no such namespace
+ */
+Oid
+get_namespaceid(const char *nspname)
+{
+	return GetSysCacheOid(NAMESPACENAME,
+						  CStringGetDatum(nspname),
+						  0, 0, 0);
+}
+
+/*
+ * get_typ_namespace
+ *
+ *		Given the type OID, find the namespace
+ *		It returns InvalidOid if the cache lookup fails...
+ */
+Oid
+get_typ_namespace(Oid typid)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache(TYPEOID,
+						ObjectIdGetDatum(typid),
+						0, 0, 0);
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_type typtup = (Form_pg_type) GETSTRUCT(tp);
+		Oid			result;
+
+		result = typtup->typnamespace;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return InvalidOid;
+}
+
+/*
+ * get_typname_typid
+ *	  Given a type name and namespace OID, look up the type OID.
+ *
+ * Returns InvalidOid if there is no such type
+ */
+Oid
+get_typname_typid(const char *typname, Oid typnamespace)
+{
+	return GetSysCacheOid(TYPENAMENSP,
+						  CStringGetDatum(typname),
+						  ObjectIdGetDatum(typnamespace),
+						  0, 0);
+}
+
+/*
+ * get_funcid
+ *	  Given a function name, argument types and namespace OID, look up
+ * the function OID.
+ *
+ * Returns InvalidOid if there is no such function
+ */
+Oid
+get_funcid(const char *funcname, oidvector *argtypes, Oid funcnsp)
+{
+	return GetSysCacheOid(PROCNAMEARGSNSP,
+						  CStringGetDatum(funcname),
+						  PointerGetDatum(argtypes),
+						  ObjectIdGetDatum(funcnsp),
+						  0);
+}
+
+/*
+ * get_opnamespace
+ *	  Given an opno, find the namespace
+ *
+ * Returns InvalidOid if there is no such operator
+ */
+Oid
+get_opnamespace(Oid opno)
+{
+	HeapTuple	tp;
+
+	tp = SearchSysCache(OPEROID,
+						ObjectIdGetDatum(opno),
+						0, 0, 0);
+	if (HeapTupleIsValid(tp))
+	{
+		Form_pg_operator optup = (Form_pg_operator) GETSTRUCT(tp);
+		Oid				result;
+
+		result = optup->oprnamespace;
+		ReleaseSysCache(tp);
+		return result;
+	}
+	else
+		return InvalidOid;
+}
+
+/*
+ * get_operid
+ *	  Given an operator name, argument types and namespace OID, look up
+ * the operator OID.
+ *
+ * Returns InvalidOid if there is no such operator
+ */
+Oid
+get_operid(const char *oprname, Oid oprleft, Oid oprright, Oid oprnsp)
+{
+	return GetSysCacheOid(OPERNAMENSP,
+						  CStringGetDatum(oprname),
+						  ObjectIdGetDatum(oprleft),
+						  ObjectIdGetDatum(oprright),
+						  ObjectIdGetDatum(oprnsp));
+}
+#endif
+
+/*
+ * get_typename
+ *		Get type name for given type ID
+ */
+char *
+get_typename(Oid typid)
+{
+	HeapTuple		tuple;
+	Form_pg_type	typeForm;
+	char		   *result;
+#ifdef ADB
+	StringInfoData	buf;
+#endif
+
+	tuple = SearchSysCache1(TYPEOID, ObjectIdGetDatum(typid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for type %u", typid);
+
+	typeForm = (Form_pg_type) GETSTRUCT(tuple);
+#ifdef ADB
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "%s.%s",
+					 get_namespace_name(typeForm->typnamespace),
+					 NameStr(typeForm->typname));
+	result = pstrdup(buf.data);
+	pfree(buf.data);
+#else
+	result = pstrdup(NameStr(typeForm->typname));
+#endif
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * get_pgxc_nodeoid
+ *		Obtain PGXC Node Oid for given node name
+ *		Return Invalid Oid if object does not exist
+ */
+Oid
+get_pgxc_nodeoid(const char *nodename)
+{
+	return GetSysCacheOid1(PGXCNODENAME,
+						   PointerGetDatum(nodename));
+}
+
+/*
+ * get_pgxc_nodename
+ *		Get node name for given Oid
+ */
+char *
+get_pgxc_nodename(Oid nodeid)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+	char		   *result;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = pstrdup(NameStr(nodeForm->node_name));
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+ /*
+ * get_pgxc_node_id
+ *		Get node identifier for a given Oid
+ */
+uint32
+get_pgxc_node_id(Oid nodeid)
+{
+	HeapTuple	tuple;
+	Form_pgxc_node	nodeForm;
+	uint32		result;
+
+	if (nodeid == InvalidOid)
+		return 0;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = nodeForm->node_id;
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * get_pgxc_nodetype
+ *		Get node type for given Oid
+ */
+char
+get_pgxc_nodetype(Oid nodeid)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+	char			result;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = nodeForm->node_type;
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * get_pgxc_nodeport
+ *		Get node port for given Oid
+ */
+int
+get_pgxc_nodeport(Oid nodeid)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+	int				result;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = nodeForm->node_port;
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * get_pgxc_nodehost
+ *		Get node host for given Oid
+ */
+char *
+get_pgxc_nodehost(Oid nodeid)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+	char		   *result;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = pstrdup(NameStr(nodeForm->node_host));
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * is_pgxc_nodepreferred
+ *		Determine if node is a preferred one
+ */
+bool
+is_pgxc_nodepreferred(Oid nodeid)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+	bool			result;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = nodeForm->nodeis_preferred;
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * is_pgxc_nodeprimary
+ *		Determine if node is a primary one
+ */
+bool
+is_pgxc_nodeprimary(Oid nodeid)
+{
+	HeapTuple		tuple;
+	Form_pgxc_node	nodeForm;
+	bool			result;
+
+	tuple = SearchSysCache1(PGXCNODEOID, ObjectIdGetDatum(nodeid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for node %u", nodeid);
+
+	nodeForm = (Form_pgxc_node) GETSTRUCT(tuple);
+	result = nodeForm->nodeis_primary;
+	ReleaseSysCache(tuple);
+
+	return result;
+}
+
+/*
+ * get_pgxc_groupoid
+ *		Obtain PGXC Group Oid for given group name
+ *		Return Invalid Oid if group does not exist
+ */
+Oid
+get_pgxc_groupoid(const char *groupname)
+{
+	return GetSysCacheOid1(PGXCGROUPNAME,
+						   PointerGetDatum(groupname));
+}
+
+/*
+ * get_pgxc_groupmembers
+ *		Obtain PGXC Group members for given group Oid
+ *		Return number of members and their list
+ *
+ * Member list is returned as a palloc'd array
+ */
+int
+get_pgxc_groupmembers(Oid groupid, Oid **members)
+{
+	HeapTuple		tuple;
+	Form_pgxc_group		groupForm;
+	int			nmembers;
+
+	tuple = SearchSysCache1(PGXCGROUPOID, ObjectIdGetDatum(groupid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for group %u", groupid);
+
+	groupForm = (Form_pgxc_group) GETSTRUCT(tuple);
+	nmembers = (int) groupForm->group_members.dim1;
+	*members = (Oid *) palloc(nmembers * sizeof(Oid));
+	memcpy(*members, groupForm->group_members.values, nmembers * sizeof(Oid));
+
+	ReleaseSysCache(tuple);
+	return nmembers;
+}
+
+/*
+ * get_pgxc_classnodes
+ *		Obtain PGXC class Datanode list for given relation Oid
+ *		Return number of Datanodes and their list
+ *
+ * Node list is returned as a palloc'd array
+ */
+int
+get_pgxc_classnodes(Oid tableid, Oid **nodes)
+{
+	HeapTuple		tuple;
+	Form_pgxc_class		classForm;
+	int			numnodes;
+
+	tuple = SearchSysCache1(PGXCCLASSRELID, ObjectIdGetDatum(tableid));
+
+	if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for relation %u", tableid);
+
+	classForm = (Form_pgxc_class) GETSTRUCT(tuple);
+	numnodes = (int) classForm->nodeoids.dim1;
+	*nodes = (Oid *) palloc(numnodes * sizeof(Oid));
+	memcpy(*nodes, classForm->nodeoids.values, numnodes * sizeof(Oid));
+
+	ReleaseSysCache(tuple);
+	return numnodes;
+}
+#endif
 
 /*
  * get_typavgwidth

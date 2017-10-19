@@ -897,6 +897,10 @@ toast_insert_or_update(Relation rel, HeapTuple newtup, HeapTuple oldtup,
 		result_tuple->t_len = new_tuple_len;
 		result_tuple->t_self = newtup->t_self;
 		result_tuple->t_tableOid = newtup->t_tableOid;
+#ifdef PGXC
+		result_tuple->t_xc_node_id = newtup->t_xc_node_id;
+#endif
+
 		new_data = (HeapTupleHeader) ((char *) result_tuple + HEAPTUPLESIZE);
 		result_tuple->t_data = new_data;
 
@@ -1076,6 +1080,9 @@ toast_flatten_tuple_to_datum(HeapTupleHeader tup,
 	tmptup.t_len = tup_len;
 	ItemPointerSetInvalid(&(tmptup.t_self));
 	tmptup.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tmptup.t_xc_node_id = 0;
+#endif
 	tmptup.t_data = tup;
 
 	/*

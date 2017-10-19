@@ -2170,7 +2170,12 @@ mp_result
 mp_int_binary_len(mp_int z)
 {
 	mp_result	res = mp_int_count_bits(z);
+#ifdef ADB
+	/* fix: Value stored to 'bytes' during its initialization is never read */
+	int			bytes;
+#else
 	int			bytes = mp_int_unsigned_len(z);
+#endif
 
 	if (res <= 0)
 		return res;

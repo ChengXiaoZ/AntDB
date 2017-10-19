@@ -28,6 +28,13 @@
 
 #include "access/hash.h"
 
+#ifdef PGXC
+#include "catalog/pg_type.h"
+#include "utils/builtins.h"
+#include "utils/timestamp.h"
+#include "utils/date.h"
+#include "utils/nabstime.h"
+#endif
 
 /* Note: this is used for both "char" and boolean datatypes */
 Datum
@@ -521,3 +528,198 @@ hash_uint32(uint32 k)
 	/* report the result */
 	return UInt32GetDatum(c);
 }
+
+#ifdef PGXC
+/*
+ * compute_hash()
+ * Generic hash function for all datatypes
+ */
+Datum
+compute_hash(Oid type, Datum value, char locator)
+{
+	int16	tmp16;
+	int32	tmp32;
+	int64	tmp64;
+	Oid		tmpoid;
+	char	tmpch;
+
+	switch (type)
+	{
+		case INT8OID:
+			/* This gives added advantage that
+			 *	a = 8446744073709551359
+			 * and	a = 8446744073709551359::int8 both work*/
+			tmp64 = DatumGetInt64(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashint8, value);
+			return tmp64;
+		case INT2OID:
+			tmp16 = DatumGetInt16(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashint2, tmp16);
+			return tmp16;
+		case OIDOID:
+			tmpoid = DatumGetObjectId(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashoid, tmpoid);
+			return tmpoid;
+		case INT4OID:
+			tmp32 = DatumGetInt32(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashint4, tmp32);
+			return tmp32;
+		case BOOLOID:
+			tmpch = DatumGetBool(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashchar, tmpch);
+			return tmpch;
+
+		case CHAROID:
+			return DirectFunctionCall1(hashchar, value);
+		case NAMEOID:
+			return DirectFunctionCall1(hashname, value);
+		case INT2VECTOROID:
+			return DirectFunctionCall1(hashint2vector, value);
+
+#ifdef ADB
+		case VARCHAR2OID:
+		case NVARCHAR2OID:
+#endif
+		case VARCHAROID:
+		case TEXTOID:
+			return DirectFunctionCall1(hashtext, value);
+
+		case OIDVECTOROID:
+			return DirectFunctionCall1(hashoidvector, value);
+		case FLOAT4OID:
+			return DirectFunctionCall1(hashfloat4, value);
+		case FLOAT8OID:
+			return DirectFunctionCall1(hashfloat8, value);
+
+		case ABSTIMEOID:
+			tmp32 = DatumGetAbsoluteTime(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashint4, tmp32);
+			return tmp32;
+		case RELTIMEOID:
+			tmp32 = DatumGetRelativeTime(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashint4, tmp32);
+			return tmp32;
+		case CASHOID:
+			return DirectFunctionCall1(hashint8, value);
+
+		case BPCHAROID:
+			return DirectFunctionCall1(hashbpchar, value);
+		case BYTEAOID:
+			return DirectFunctionCall1(hashvarlena, value);
+
+		case DATEOID:
+			tmp32 = DatumGetDateADT(value);
+			if (locator == LOCATOR_TYPE_HASH)
+				return DirectFunctionCall1(hashint4, tmp32);
+			return tmp32;
+		case TIMEOID:
+			return DirectFunctionCall1(time_hash, value);
+		case TIMESTAMPOID:
+			return DirectFunctionCall1(timestamp_hash, value);
+		case TIMESTAMPTZOID:
+			return DirectFunctionCall1(timestamp_hash, value);
+		case INTERVALOID:
+			return DirectFunctionCall1(interval_hash, value);
+		case TIMETZOID:
+			return DirectFunctionCall1(timetz_hash, value);
+
+		case NUMERICOID:
+			return DirectFunctionCall1(hash_numeric, value);
+		default:
+			ereport(ERROR,(errmsg("Unhandled datatype for modulo or hash distribution\n")));
+	}
+	/* Control should not come here. */
+	ereport(ERROR,(errmsg("Unhandled datatype for modulo or hash distribution\n")));
+	/* Keep compiler silent */
+	return (Datum)0;
+}
+
+
+/*
+ * get_compute_hash_function
+ * Get hash function name depending on the hash type.
+ * For some cases of hash or modulo distribution, a function might
+ * be required or not.
+ */
+char *
+get_compute_hash_function(Oid type, char locator)
+{
+	switch (type)
+	{
+		case INT8OID:
+			if (locator == LOCATOR_TYPE_HASH)
+				return "hashint8";
+			return NULL;
+		case INT2OID:
+			if (locator == LOCATOR_TYPE_HASH)
+				return "hashint2";
+			return NULL;
+		case OIDOID:
+			if (locator == LOCATOR_TYPE_HASH)
+				return "hashoid";
+			return NULL;
+		case DATEOID:
+		case INT4OID:
+			if (locator == LOCATOR_TYPE_HASH)
+				return "hashint4";
+			return NULL;
+		case BOOLOID:
+			if (locator == LOCATOR_TYPE_HASH)
+				return "hashchar";
+			return NULL;
+		case CHAROID:
+			return "hashchar";
+		case NAMEOID:
+			return "hashname";
+		case INT2VECTOROID:
+			return "hashint2vector";
+#ifdef ADB
+		case VARCHAR2OID:
+		case NVARCHAR2OID:
+#endif
+		case VARCHAROID:
+		case TEXTOID:
+			return "hashtext";
+		case OIDVECTOROID:
+			return "hashoidvector";
+		case FLOAT4OID:
+			return "hashfloat4";
+		case FLOAT8OID:
+			return "hashfloat8";
+		case RELTIMEOID:
+		case ABSTIMEOID:
+			if (locator == LOCATOR_TYPE_HASH)
+				return "hashint4";
+			return NULL;
+		case CASHOID:
+				return "hashint8";
+		case BPCHAROID:
+			return "hashbpchar";
+		case BYTEAOID:
+			return "hashvarlena";
+		case TIMEOID:
+			return "time_hash";
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			return "timestamp_hash";
+		case INTERVALOID:
+			return "interval_hash";
+		case TIMETZOID:
+			return "timetz_hash";
+		case NUMERICOID:
+			return "hash_numeric";
+		default:
+			ereport(ERROR,(errmsg("Unhandled datatype for modulo or hash distribution\n")));
+	}
+
+	/* Keep compiler quiet */
+	return NULL;
+}
+#endif

@@ -1948,6 +1948,10 @@ stringrule(char *result, const struct rule * rp, long dstoff, long gmtoff)
 {
 	long		tod;
 
+#ifdef ADB
+	/* CCC:Access to field 'r_dycode' results in a dereference of a null pointer (loaded from variable 'rp') */
+	AssertArg(rp != NULL);
+#endif /* ADB */
 	result = end(result);
 	if (rp->r_dycode == DC_DOM)
 	{

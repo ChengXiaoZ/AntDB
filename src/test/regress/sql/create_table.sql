@@ -53,6 +53,27 @@ CREATE TABLE tenk1 (
 	string4		name
 ) WITH OIDS;
 
+-- Replicated
+CREATE TABLE tenk1_r (
+	unique1		int4,
+	unique2		int4,
+	two			int4,
+	four		int4,
+	ten			int4,
+	twenty		int4,
+	hundred		int4,
+	thousand	int4,
+	twothousand	int4,
+	fivethous	int4,
+	tenthous	int4,
+	odd			int4,
+	even		int4,
+	stringu1	name,
+	stringu2	name,
+	string4		name
+) WITH OIDS
+distribute by replication;
+
 CREATE TABLE tenk2 (
 	unique1 	int4,
 	unique2 	int4,
@@ -94,7 +115,6 @@ CREATE TABLE student (
 CREATE TABLE stud_emp (
 	percent 	int4
 ) INHERITS (emp, student);
-
 
 CREATE TABLE city (
 	name		name,
@@ -187,10 +207,13 @@ CREATE TABLE hash_txt_heap (
 	random 		text
 );
 
+-- PGXC: Here replication is used to ensure correct index creation
+-- when a non-shippable expression is used.
+-- PGXCTODO: this should be removed once global constraints are supported
 CREATE TABLE hash_f8_heap (
 	seqno		int4,
 	random 		float8
-);
+) DISTRIBUTE BY REPLICATION;
 
 -- don't include the hash_ovfl_heap stuff in the distribution
 -- the data set is too large for what it's worth
@@ -235,7 +258,7 @@ CREATE TABLE array_index_op_test (
 CREATE TABLE IF NOT EXISTS test_tsvector(
 	t text,
 	a tsvector
-);
+) distribute by replication;
 
 CREATE TABLE IF NOT EXISTS test_tsvector(
 	t text

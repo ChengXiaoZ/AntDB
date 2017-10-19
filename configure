@@ -762,7 +762,9 @@ build_os
 build_vendor
 build_cpu
 build
+PGXC_VERSION
 PG_MAJORVERSION
+ADB_VERSION
 configure_args
 target_alias
 host_alias
@@ -2047,16 +2049,38 @@ ac_configure="$SHELL $ac_aux_dir/configure"  # Please don't use this var.
 configure_args=$ac_configure_args
 
 
+ADB_VERSION='2.2devel'
+
 
 cat >>confdefs.h <<_ACEOF
-#define PG_VERSION "$PACKAGE_VERSION"
+#define ADB_VERSION "$ADB_VERSION"
 _ACEOF
+
 
 PG_MAJORVERSION=`expr "$PACKAGE_VERSION" : '\([0-9][0-9]*\.[0-9][0-9]*\)'`
 
 
 cat >>confdefs.h <<_ACEOF
 #define PG_MAJORVERSION "$PG_MAJORVERSION"
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define PG_VERSION "$PACKAGE_VERSION ADB $ADB_VERSION"
+_ACEOF
+
+
+PGXC_VERSION='1.2devel'
+
+PGXC_MAJORVERSION=`expr "$PGXC_VERSION" : '\([0-9][0-9]*\.[0-9][0-9]*\)'`
+
+cat >>confdefs.h <<_ACEOF
+#define PGXC_MAJORVERSION "$PGXC_MAJORVERSION"
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define PGXC_VERSION "$PGXC_VERSION"
 _ACEOF
 
 
@@ -2211,7 +2235,7 @@ PostgreSQL has apparently not been ported to your platform yet.
 To try a manual configuration, look into the src/template directory
 for a similar platform and use the '--with-template=' option.
 
-Please also contact <pgsql-bugs@postgresql.org> to see about
+Please also contact <postgres-xc-bugs@lists.sourceforge.net> to see about
 rectifying this.  Include the above 'checking host system type...'
 line.
 *******************************************************************
@@ -2222,7 +2246,7 @@ PostgreSQL has apparently not been ported to your platform yet.
 To try a manual configuration, look into the src/template directory
 for a similar platform and use the '--with-template=' option.
 
-Please also contact <pgsql-bugs@postgresql.org> to see about
+Please also contact <postgres-xc-bugs@lists.sourceforge.net> to see about
 rectifying this.  Include the above 'checking host system type...'
 line.
 *******************************************************************
@@ -3945,6 +3969,9 @@ else
     CFLAGS="-O"
   fi
 fi
+
+# for ADB set "-DPGXC -DADB" by default
+CFLAGS="$CFLAGS -DPGXC -DADB"
 
 # set CFLAGS_VECTOR from the environment, if available
 if test "$ac_env_CFLAGS_VECTOR_set" = set; then
@@ -30772,6 +30799,16 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+cat >>confdefs.h <<_ACEOF
+#define PGXC_VERSION_STR "Postgres-XC $PGXC_VERSION on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"
+_ACEOF
+
+
+cat >>confdefs.h <<_ACEOF
+#define ADB_VERSION_STR "ADB $ADB_VERSION on $host, compiled by $cc_string, `expr $ac_cv_sizeof_void_p \* 8`-bit"
+_ACEOF
+
+
 # Supply a numeric version string for use by 3rd party add-ons
 # awk -F is a regex on some platforms, and not on others, so make "." a tab
 PG_VERSION_NUM="`echo "$PACKAGE_VERSION" | sed 's/[A-Za-z].*$//' |
@@ -30783,6 +30820,23 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
+
+ADB_VERSION_NUM="`echo "$ADB_VERSION" | sed 's/[A-Za-z].*$//' |
+tr '.' '	' |
+$AWK '{printf "%d%02d%02d", $1, $2, (NF >= 3) ? $3 : 0}'`"
+
+cat >>confdefs.h <<_ACEOF
+#define ADB_VERSION_NUM $ADB_VERSION_NUM
+_ACEOF
+
+
+PGXC_VERSION_NUM="`echo "$PGXC_VERSION" | sed 's/[A-Za-z].*$//' |
+tr '.' '	' |
+$AWK '{printf "%d%02d%02d", $1, $2, (NF >= 3) ? $3 : 0}'`"
+
+cat >>confdefs.h <<_ACEOF
+#define PGXC_VERSION_NUM $PGXC_VERSION_NUM
+_ACEOF
 
 
 # Begin output steps

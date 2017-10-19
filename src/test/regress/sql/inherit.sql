@@ -1,10 +1,11 @@
 --
 -- Test inheritance features
 --
-CREATE TABLE a (aa TEXT);
-CREATE TABLE b (bb TEXT) INHERITS (a);
-CREATE TABLE c (cc TEXT) INHERITS (a);
-CREATE TABLE d (dd TEXT) INHERITS (b,c,a);
+
+CREATE TABLE a (aa TEXT) distribute by roundrobin;
+CREATE TABLE b (bb TEXT) INHERITS (a) distribute by roundrobin;
+CREATE TABLE c (cc TEXT) INHERITS (a) distribute by roundrobin;
+CREATE TABLE d (dd TEXT) INHERITS (b,c,a) distribute by roundrobin;
 
 INSERT INTO a(aa) VALUES('aaa');
 INSERT INTO a(aa) VALUES('aaaa');
@@ -34,14 +35,26 @@ INSERT INTO d(aa) VALUES('dddddd');
 INSERT INTO d(aa) VALUES('ddddddd');
 INSERT INTO d(aa) VALUES('dddddddd');
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+-- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- queries do not show any result. Hence in order to ensure data consistency, we
+-- add following SQLs. In case above set of queries start producing valid
+-- results in XC, we should remove the following set
+SELECT * FROM a ORDER BY a.aa;
+SELECT * from b ORDER BY b.aa;
+SELECT * FROM c ORDER BY c.aa;
+SELECT * from d ORDER BY d.aa;
+SELECT * FROM ONLY a ORDER BY a.aa;
+SELECT * from ONLY b ORDER BY b.aa;
+SELECT * FROM ONLY c ORDER BY c.aa;
+SELECT * from ONLY d ORDER BY d.aa;
 
 UPDATE a SET aa='zzzz' WHERE aa='aaaa';
 UPDATE ONLY a SET aa='zzzzz' WHERE aa='aaaaa';
@@ -49,49 +62,97 @@ UPDATE b SET aa='zzz' WHERE aa='aaa';
 UPDATE ONLY b SET aa='zzz' WHERE aa='aaa';
 UPDATE a SET aa='zzzzzz' WHERE aa LIKE 'aaa%';
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+-- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- queries do not show any result. Hence in order to ensure data consistency, we
+-- add following SQLs. In case above set of queries start producing valid
+-- results in XC, we should remove the following set
+SELECT * FROM a ORDER BY a.aa;
+SELECT * from b ORDER BY b.aa;
+SELECT * FROM c ORDER BY c.aa;
+SELECT * from d ORDER BY d.aa;
+SELECT * FROM ONLY a ORDER BY a.aa;
+SELECT * from ONLY b ORDER BY b.aa;
+SELECT * FROM ONLY c ORDER BY c.aa;
+SELECT * from ONLY d ORDER BY d.aa;
 
 UPDATE b SET aa='new';
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+-- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- queries do not show any result. Hence in order to ensure data consistency, we
+-- add following SQLs. In case above set of queries start producing valid
+-- results in XC, we should remove the following set
+SELECT * FROM a ORDER BY a.aa;
+SELECT * from b ORDER BY b.aa;
+SELECT * FROM c ORDER BY c.aa;
+SELECT * from d ORDER BY d.aa;
+SELECT * FROM ONLY a ORDER BY a.aa;
+SELECT * from ONLY b ORDER BY b.aa;
+SELECT * FROM ONLY c ORDER BY c.aa;
+SELECT * from ONLY d ORDER BY d.aa;
 
 UPDATE a SET aa='new';
 
 DELETE FROM ONLY c WHERE aa='new';
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+-- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- queries do not show any result. Hence in order to ensure data consistency, we
+-- add following SQLs. In case above set of queries start producing valid
+-- results in XC, we should remove the following set
+SELECT * FROM a ORDER BY a.aa;
+SELECT * from b ORDER BY b.aa;
+SELECT * FROM c ORDER BY c.aa;
+SELECT * from d ORDER BY d.aa;
+SELECT * FROM ONLY a ORDER BY a.aa;
+SELECT * from ONLY b ORDER BY b.aa;
+SELECT * FROM ONLY c ORDER BY c.aa;
+SELECT * from ONLY d ORDER BY d.aa;
 
 DELETE FROM a;
 
-SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid;
-SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid;
-SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid;
-SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid;
-SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid;
+SELECT relname, a.* FROM a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+SELECT relname, a.* FROM ONLY a, pg_class where a.tableoid = pg_class.oid ORDER BY relname, a.aa;
+SELECT relname, b.* FROM ONLY b, pg_class where b.tableoid = pg_class.oid ORDER BY relname, b.aa;
+SELECT relname, c.* FROM ONLY c, pg_class where c.tableoid = pg_class.oid ORDER BY relname, c.aa;
+SELECT relname, d.* FROM ONLY d, pg_class where d.tableoid = pg_class.oid ORDER BY relname, d.aa;
+-- In Postgres-XC OIDs are not consistent across the cluster. Hence above
+-- queries do not show any result. Hence in order to ensure data consistency, we
+-- add following SQLs. In case above set of queries start producing valid
+-- results in XC, we should remove the following set
+SELECT * FROM a ORDER BY a.aa;
+SELECT * from b ORDER BY b.aa;
+SELECT * FROM c ORDER BY c.aa;
+SELECT * from d ORDER BY d.aa;
+SELECT * FROM ONLY a ORDER BY a.aa;
+SELECT * from ONLY b ORDER BY b.aa;
+SELECT * FROM ONLY c ORDER BY c.aa;
+SELECT * from ONLY d ORDER BY d.aa;
 
 -- Confirm PRIMARY KEY adds NOT NULL constraint to child table
 CREATE TEMP TABLE z (b TEXT, PRIMARY KEY(aa, b)) inherits (a);
@@ -118,7 +179,9 @@ insert into bar2 values(4,4,4);
 
 update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
 
-select tableoid::regclass::text as relname, bar.* from bar order by 1,2;
+-- The next query may not provide consisitent result to be useful
+-- in Postgres-XC regression test.
+-- select tableoid::regclass::text as relname, bar.* from bar order by 1,2;
 
 -- Check UPDATE with inherited target and an appendrel subquery
 update bar set f2 = f2 + 100
@@ -126,7 +189,9 @@ from
   ( select f1 from foo union all select f1+3 from foo ) ss
 where bar.f1 = ss.f1;
 
-select tableoid::regclass::text as relname, bar.* from bar order by 1,2;
+-- The next query may not provide consisitent result to be useful
+-- in Postgres-XC regression test.
+-- select tableoid::regclass::text as relname, bar.* from bar order by 1,2;
 
 /* Test multiple inheritance of column defaults */
 
@@ -353,15 +418,15 @@ analyze patest0;
 analyze patest1;
 analyze patest2;
 
-explain (costs off)
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
+explain (costs off, num_nodes off, nodes off)
+select * from patest0 join (select f1 from int4_tbl where f1 >= 0 order by f1 limit 1) ss on id = f1;
+select * from patest0 join (select f1 from int4_tbl where f1 >= 0 order by f1 limit 1) ss on id = f1;
 
 drop index patest2i;
 
-explain (costs off)
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
-select * from patest0 join (select f1 from int4_tbl limit 1) ss on id = f1;
+explain (costs off, num_nodes off, nodes off)
+select * from patest0 join (select f1 from int4_tbl where f1 >= 0 order by f1 limit 1) ss on id = f1;
+select * from patest0 join (select f1 from int4_tbl where f1 >= 0 order by f1 limit 1) ss on id = f1;
 
 drop table patest0 cascade;
 
@@ -387,16 +452,16 @@ insert into matest3 (name) values ('Test 5');
 insert into matest3 (name) values ('Test 6');
 
 set enable_indexscan = off;  -- force use of seqscan/sort, so no merge
-explain (verbose, costs off) select * from matest0 order by 1-id;
+explain (verbose, costs off, num_nodes off, nodes off) select * from matest0 order by 1-id;
 select * from matest0 order by 1-id;
-explain (verbose, costs off) select min(1-id) from matest0;
+explain (verbose, costs off, num_nodes off, nodes off) select min(1-id) from matest0;
 select min(1-id) from matest0;
 reset enable_indexscan;
 
 set enable_seqscan = off;  -- plan with fewest seqscans should be merge
-explain (verbose, costs off) select * from matest0 order by 1-id;
+explain (verbose, costs off, num_nodes off, nodes off) select * from matest0 order by 1-id;
 select * from matest0 order by 1-id;
-explain (verbose, costs off) select min(1-id) from matest0;
+explain (verbose, costs off, num_nodes off, nodes off) select min(1-id) from matest0;
 select min(1-id) from matest0;
 reset enable_seqscan;
 
@@ -414,7 +479,7 @@ create index matest1i on matest1 (b, c);
 
 set enable_nestloop = off;  -- we want a plan with two MergeAppends
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 select t1.* from matest0 t1, matest0 t2
 where t1.b = t2.b and t2.c = t2.d
 order by t1.b limit 10;
@@ -432,39 +497,39 @@ set enable_indexscan = on;
 set enable_bitmapscan = off;
 
 -- Check handling of duplicated, constant, or volatile targetlist items
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT thousand, tenthous FROM tenk1
 UNION ALL
 SELECT thousand, thousand FROM tenk1
 ORDER BY thousand, tenthous;
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT thousand, tenthous, thousand+tenthous AS x FROM tenk1
 UNION ALL
 SELECT 42, 42, hundred FROM tenk1
 ORDER BY thousand, tenthous;
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT thousand, tenthous FROM tenk1
 UNION ALL
 SELECT thousand, random()::integer FROM tenk1
 ORDER BY thousand, tenthous;
 
 -- Check min/max aggregate optimization
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT min(x) FROM
   (SELECT unique1 AS x FROM tenk1 a
    UNION ALL
    SELECT unique2 AS x FROM tenk1 b) s;
 
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT min(y) FROM
   (SELECT unique1 AS x, unique1 AS y FROM tenk1 a
    UNION ALL
    SELECT unique2 AS x, unique2 AS y FROM tenk1 b) s;
 
 -- XXX planner doesn't recognize that index on unique2 is sufficiently sorted
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT x, y FROM
   (SELECT thousand AS x, tenthous AS y FROM tenk1 a
    UNION ALL
@@ -472,7 +537,7 @@ SELECT x, y FROM
 ORDER BY x, y;
 
 -- exercise rescan code path via a repeatedly-evaluated subquery
-explain (costs off)
+explain (costs off, num_nodes off, nodes off)
 SELECT
     ARRAY(SELECT f.i FROM (
         (SELECT d + g.i FROM generate_series(4, 30, 3) d ORDER BY 1)

@@ -18,7 +18,6 @@
 #include "nodes/parsenodes.h"
 #include "storage/relfilenode.h"
 
-
 typedef struct FormData_pg_sequence
 {
 	NameData	sequence_name;

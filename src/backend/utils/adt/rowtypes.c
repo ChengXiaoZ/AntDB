@@ -323,6 +323,9 @@ record_out(PG_FUNCTION_ARGS)
 	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
 	ItemPointerSetInvalid(&(tuple.t_self));
 	tuple.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple.t_xc_node_id = 0;
+#endif
 	tuple.t_data = rec;
 
 	/*
@@ -668,6 +671,9 @@ record_send(PG_FUNCTION_ARGS)
 	tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
 	ItemPointerSetInvalid(&(tuple.t_self));
 	tuple.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple.t_xc_node_id = 0;
+#endif
 	tuple.t_data = rec;
 
 	/*
@@ -817,10 +823,16 @@ record_cmp(FunctionCallInfo fcinfo)
 	tuple1.t_len = HeapTupleHeaderGetDatumLength(record1);
 	ItemPointerSetInvalid(&(tuple1.t_self));
 	tuple1.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple1.t_xc_node_id = 0;
+#endif
 	tuple1.t_data = record1;
 	tuple2.t_len = HeapTupleHeaderGetDatumLength(record2);
 	ItemPointerSetInvalid(&(tuple2.t_self));
 	tuple2.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple2.t_xc_node_id = 0;
+#endif
 	tuple2.t_data = record2;
 
 	/*
@@ -1054,10 +1066,16 @@ record_eq(PG_FUNCTION_ARGS)
 	tuple1.t_len = HeapTupleHeaderGetDatumLength(record1);
 	ItemPointerSetInvalid(&(tuple1.t_self));
 	tuple1.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple1.t_xc_node_id = 0;
+#endif
 	tuple1.t_data = record1;
 	tuple2.t_len = HeapTupleHeaderGetDatumLength(record2);
 	ItemPointerSetInvalid(&(tuple2.t_self));
 	tuple2.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple2.t_xc_node_id = 0;
+#endif
 	tuple2.t_data = record2;
 
 	/*

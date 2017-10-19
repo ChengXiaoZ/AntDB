@@ -61,6 +61,13 @@ extern bool enable_nestloop;
 extern bool enable_material;
 extern bool enable_mergejoin;
 extern bool enable_hashjoin;
+#ifdef PGXC
+extern bool enable_fast_query_shipping;
+extern bool enable_remotejoin;
+extern bool enable_remotegroup;
+extern bool enable_remotesort;
+extern bool enable_remotelimit;
+#endif
 extern int	constraint_exclusion;
 
 extern double clamp_row_est(double nrows);
@@ -84,6 +91,9 @@ extern void cost_functionscan(Path *path, PlannerInfo *root,
 				  RelOptInfo *baserel, ParamPathInfo *param_info);
 extern void cost_valuesscan(Path *path, PlannerInfo *root,
 				RelOptInfo *baserel, ParamPathInfo *param_info);
+#ifdef PGXC
+extern void cost_remotequery(RemoteQueryPath *rqpath, PlannerInfo *root, RelOptInfo *rel);
+#endif
 extern void cost_ctescan(Path *path, PlannerInfo *root,
 			 RelOptInfo *baserel, ParamPathInfo *param_info);
 extern void cost_recursive_union(Plan *runion, Plan *nrterm, Plan *rterm);

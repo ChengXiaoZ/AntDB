@@ -50,9 +50,10 @@ static void expandTupleDesc(TupleDesc tupdesc, Alias *eref,
 				int rtindex, int sublevels_up,
 				int location, bool include_dropped,
 				List **colnames, List **colvars);
-static int	specialAttNum(const char *attname);
 static bool isQueryUsingTempRelation_walker(Node *node, void *context);
-
+#ifndef PGXC
+static int	specialAttNum(const char *attname);
+#endif
 
 /*
  * refnameRangeTblEntry
@@ -1023,6 +1024,10 @@ addRangeTableEntry(ParseState *pstate,
 	rte->relid = RelationGetRelid(rel);
 	rte->relkind = rel->rd_rel->relkind;
 
+#ifdef PGXC
+	rte->relname = RelationGetRelationName(rel);
+#endif
+
 	/*
 	 * Build the list of effective column names using user-supplied aliases
 	 * and/or actual column names.
@@ -1082,6 +1087,10 @@ addRangeTableEntryForRelation(ParseState *pstate,
 	rte->alias = alias;
 	rte->relid = RelationGetRelid(rel);
 	rte->relkind = rel->rd_rel->relkind;
+
+#ifdef PGXC
+	rte->relname = RelationGetRelationName(rel);
+#endif
 
 	/*
 	 * Build the list of effective column names using user-supplied aliases
@@ -2484,8 +2493,13 @@ attnameAttNum(Relation rd, const char *attname, bool sysColOK)
  * Caller needs to verify that it really is an attribute of the rel,
  * at least in the case of "oid", which is now optional.
  */
+#ifdef PGXC
+int
+specialAttNum(const char *attname)
+#else
 static int
 specialAttNum(const char *attname)
+#endif
 {
 	Form_pg_attribute sysatt;
 

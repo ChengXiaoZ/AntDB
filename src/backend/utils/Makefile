@@ -23,11 +23,14 @@ $(SUBDIRS:%=%-recursive): fmgroids.h
 # see explanation in ../parser/Makefile
 fmgroids.h: fmgrtab.c ;
 
-fmgrtab.c: Gen_fmgrtab.pl $(catalogdir)/Catalog.pm $(top_srcdir)/src/include/catalog/pg_proc.h
-	$(PERL) -I $(catalogdir) $< $(top_srcdir)/src/include/catalog/pg_proc.h
+fmgrtab.c: Gen_fmgrtab.pl $(catalogdir)/Catalog.pm ../catalog/pg_proc.h
+	$(PERL) -I $(catalogdir) $< ../catalog/pg_proc.h
 
 errcodes.h: $(top_srcdir)/src/backend/utils/errcodes.txt generate-errcodes.pl
 	$(PERL) $(srcdir)/generate-errcodes.pl $< > $@
+
+../catalog/pg_proc.h: $(top_srcdir)/src/include/catalog/pg_proc.h
+	$(MAKE) -C ../catalog pg_proc.h
 
 ifneq ($(enable_dtrace), yes)
 probes.h: Gen_dummy_probes.sed

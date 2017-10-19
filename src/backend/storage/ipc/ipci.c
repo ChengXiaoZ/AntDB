@@ -23,6 +23,9 @@
 #include "commands/async.h"
 #include "miscadmin.h"
 #include "pgstat.h"
+#ifdef PGXC
+#include "pgxc/nodemgr.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/postmaster.h"
@@ -128,6 +131,10 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, BTreeShmemSize());
 		size = add_size(size, SyncScanShmemSize());
 		size = add_size(size, AsyncShmemSize());
+#ifdef PGXC
+		size = add_size(size, NodeTablesShmemSize());
+#endif
+
 #ifdef EXEC_BACKEND
 		size = add_size(size, ShmemBackendArraySize());
 #endif
@@ -237,6 +244,11 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	BTreeShmemInit();
 	SyncScanShmemInit();
 	AsyncShmemInit();
+
+#ifdef PGXC
+	NodeTablesShmemInit();
+#endif
+
 
 #ifdef EXEC_BACKEND
 

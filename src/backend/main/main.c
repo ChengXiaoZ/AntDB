@@ -384,6 +384,7 @@ help(const char *progname)
 	printf(_("  -t pa|pl|ex        show timings after each query\n"));
 	printf(_("  -T                 send SIGSTOP to all backend processes if one dies\n"));
 	printf(_("  -W NUM             wait NUM seconds to allow attach from a debugger\n"));
+	printf(_("  --localxid         use local transaction id (used only by initdb)\n"));
 
 	printf(_("\nOptions for single-user mode:\n"));
 	printf(_("  --single           selects single-user mode (must be first argument)\n"));
@@ -398,6 +399,13 @@ help(const char *progname)
 	printf(_("  DBNAME             database name (mandatory argument in bootstrapping mode)\n"));
 	printf(_("  -r FILENAME        send stdout and stderr to given file\n"));
 	printf(_("  -x NUM             internal use\n"));
+
+#ifdef PGXC
+	printf(_("\nNode options:\n"));
+	printf(_("  --coordinator      start as a Coordinator\n"));
+	printf(_("  --datanode         start as a Datanode\n"));
+	printf(_("  --restoremode      start to restore existing schema on the new node to be added\n"));
+#endif
 
 	printf(_("\nPlease read the documentation for the complete list of run-time\n"
 	 "configuration settings and how to set them on the command line or in\n"

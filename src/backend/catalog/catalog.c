@@ -37,13 +37,22 @@
 #include "catalog/pg_shseclabel.h"
 #include "catalog/pg_tablespace.h"
 #include "catalog/toasting.h"
+#ifdef PGXC
+#include "catalog/pgxc_node.h"
+#include "catalog/pgxc_group.h"
+#endif
 #include "common/relpath.h"
 #include "miscadmin.h"
 #include "storage/fd.h"
 #include "utils/fmgroids.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
-
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
+#ifdef ADB
+#include "catalog/adb_ha_sync_log.h"
+#endif
 
 
 /*
@@ -99,10 +108,19 @@ GetDatabasePath(Oid dbNode, Oid spcNode)
 	{
 		/* All other tablespaces are accessed via symlinks */
 		pathlen = 9 + 1 + OIDCHARS + 1 + strlen(TABLESPACE_VERSION_DIRECTORY) +
+#ifdef PGXC
+			/* Postgres-XC tablespaces include node name in path */
+			strlen(PGXCNodeName) + 1 +
+#endif
 			1 + OIDCHARS + 1;
 		path = (char *) palloc(pathlen);
+#ifdef PGXC
+		snprintf(path, pathlen, "pg_tblspc/%u/%s_%s/%u",
+				 spcNode, TABLESPACE_VERSION_DIRECTORY, PGXCNodeName, dbNode);
+#else
 		snprintf(path, pathlen, "pg_tblspc/%u/%s/%u",
 				 spcNode, TABLESPACE_VERSION_DIRECTORY, dbNode);
+#endif
 	}
 	return path;
 }
@@ -177,7 +195,15 @@ IsToastClass(Form_pg_class reltuple)
 bool
 IsSystemNamespace(Oid namespaceId)
 {
+#ifdef ADB
+	return (namespaceId == PG_CATALOG_NAMESPACE ||
+			namespaceId == PG_ORACLE_NAMESPACE);
+#elif defined(ADBMGRD)
+	return (namespaceId == PG_CATALOG_NAMESPACE ||
+			namespaceId == PG_MANAGER_NAMESPACE);
+#else
 	return namespaceId == PG_CATALOG_NAMESPACE;
+#endif
 }
 
 /*
@@ -246,6 +272,14 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedDependRelationId ||
 		relationId == SharedSecLabelRelationId ||
 		relationId == TableSpaceRelationId ||
+#ifdef PGXC
+		relationId == PgxcGroupRelationId ||
+		relationId == PgxcNodeRelationId ||
+#endif
+#ifdef ADB
+		relationId == AdbHaSyncLogRelationId ||
+		relationId == AdbHaSyncLogOidIndexId ||
+#endif
 		relationId == DbRoleSettingRelationId)
 		return true;
 	/* These are their indexes (see indexing.h) */
@@ -262,6 +296,13 @@ IsSharedRelation(Oid relationId)
 		relationId == SharedSecLabelObjectIndexId ||
 		relationId == TablespaceOidIndexId ||
 		relationId == TablespaceNameIndexId ||
+#ifdef PGXC
+		relationId == PgxcNodeNodeNameIndexId ||
+		relationId == PgxcNodeNodeIdIndexId ||
+		relationId == PgxcNodeOidIndexId ||
+		relationId == PgxcGroupGroupNameIndexId ||
+		relationId == PgxcGroupOidIndexId ||
+#endif
 		relationId == DbRoleSettingDatidRolidIndexId)
 		return true;
 	/* These are their toast tables and toast indexes (see toasting.h) */

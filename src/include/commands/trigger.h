@@ -147,9 +147,15 @@ extern void ExecASDeleteTriggers(EState *estate,
 extern bool ExecBRDeleteTriggers(EState *estate,
 					 EPQState *epqstate,
 					 ResultRelInfo *relinfo,
+#ifdef PGXC
+					 HeapTupleHeader datanode_tuphead,
+#endif
 					 ItemPointer tupleid);
 extern void ExecARDeleteTriggers(EState *estate,
 					 ResultRelInfo *relinfo,
+#ifdef PGXC
+					 HeapTupleHeader trigtuphead,
+#endif
 					 ItemPointer tupleid);
 extern bool ExecIRDeleteTriggers(EState *estate,
 					 ResultRelInfo *relinfo,
@@ -161,12 +167,18 @@ extern void ExecASUpdateTriggers(EState *estate,
 extern TupleTableSlot *ExecBRUpdateTriggers(EState *estate,
 					 EPQState *epqstate,
 					 ResultRelInfo *relinfo,
+#ifdef PGXC
+					 HeapTupleHeader datanode_tuphead,
+#endif
 					 ItemPointer tupleid,
 					 TupleTableSlot *slot);
 extern void ExecARUpdateTriggers(EState *estate,
 					 ResultRelInfo *relinfo,
 					 ItemPointer tupleid,
 					 HeapTuple newtuple,
+#ifdef PGXC
+					 HeapTupleHeader trigtuphead,
+#endif
 					 List *recheckIndexes);
 extern TupleTableSlot *ExecIRUpdateTriggers(EState *estate,
 					 ResultRelInfo *relinfo,
@@ -181,6 +193,9 @@ extern void AfterTriggerBeginXact(void);
 extern void AfterTriggerBeginQuery(void);
 extern void AfterTriggerEndQuery(EState *estate);
 extern void AfterTriggerFireDeferred(void);
+#ifdef PGXC
+extern bool IsAnyAfterTriggerDeferred(void);
+#endif
 extern void AfterTriggerEndXact(bool isCommit);
 extern void AfterTriggerBeginSubXact(void);
 extern void AfterTriggerEndSubXact(bool isCommit);
@@ -206,5 +221,14 @@ extern bool RI_Initial_Check(Trigger *trigger,
 extern int	RI_FKey_trigger_type(Oid tgfoid);
 
 extern Datum pg_trigger_depth(PG_FUNCTION_ARGS);
+
+#ifdef PGXC
+/* Postgres-XC related functions for triggers */
+extern bool pgxc_trig_oldrow_reqd(Relation rel, CmdType commandType);
+extern int16 pgxc_get_trigevent(CmdType commandType);
+extern bool pgxc_should_exec_br_trigger(Relation rel, int16 trigevent);
+extern bool pgxc_should_exec_ar_trigger(Relation rel, CmdType commandType);
+extern bool pgxc_has_trigger_for_event(int16 tg_event, TriggerDesc *trigdesc);
+#endif
 
 #endif   /* TRIGGER_H */

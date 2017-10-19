@@ -360,6 +360,14 @@ typedef uint32 SubTransactionId;
 #define InvalidSubTransactionId		((SubTransactionId) 0)
 #define TopSubTransactionId			((SubTransactionId) 1)
 
+#if defined(ADB) || defined(AGTM)
+typedef uint32 GlobalTransactionId;
+
+#define InvalidGlobalTransactionId		((GlobalTransactionId) 0)
+
+#define GlobalTransactionIdIsValid(xid)	((xid) != InvalidGlobalTransactionId)
+#endif
+
 /* MultiXactId must be equivalent to TransactionId, to fit in t_xmax */
 typedef TransactionId MultiXactId;
 
@@ -586,12 +594,21 @@ typedef NameData *Name;
  * Trap
  *		Generates an exception if the given condition is true.
  */
+#ifdef STATIC_ANALYZE
+#define Trap(condition, errorType) \
+do { \
+	if ((condition)) \
+		ExceptionalCondition(CppAsString(condition), (errorType), \
+							 __FILE__, __LINE__); \
+} while (0)
+#else /* STATIC_ANALYZE */
 #define Trap(condition, errorType) \
 	do { \
 		if ((assert_enabled) && (condition)) \
 			ExceptionalCondition(CppAsString(condition), (errorType), \
 								 __FILE__, __LINE__); \
 	} while (0)
+#endif /* STATIC_ANALYZE */
 
 /*
  *	TrapMacro is the same as Trap but it's intended for use in macros:
@@ -600,10 +617,17 @@ typedef NameData *Name;
  *
  *	Isn't CPP fun?
  */
+#ifdef STATIC_ANALYZE
+#define TrapMacro(condition, errorType) \
+	((bool) (! (condition) || \
+			 (ExceptionalCondition(CppAsString(condition), (errorType), \
+								   __FILE__, __LINE__), 0)))
+#else /* STATIC_ANALYZE */
 #define TrapMacro(condition, errorType) \
 	((bool) ((! assert_enabled) || ! (condition) || \
 			 (ExceptionalCondition(CppAsString(condition), (errorType), \
 								   __FILE__, __LINE__), 0)))
+#endif /* STATIC_ANALYZE */
 
 #define Assert(condition) \
 		Trap(!(condition), "FailedAssertion")

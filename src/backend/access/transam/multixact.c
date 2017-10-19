@@ -984,7 +984,10 @@ GetNewMultiXactId(int nmembers, MultiXactOffset *offset)
 	 * Note these are pretty much the same protections in GetNewTransactionId.
 	 *----------
 	 */
-	if (!MultiXactIdPrecedes(result, MultiXactState->multiVacLimit))
+	if (!MultiXactIdPrecedes(result, MultiXactState->multiVacLimit) ||
+		!MultiXactState->oldestOffsetKnown ||
+		(MultiXactState->nextOffset - MultiXactState->oldestOffset
+		 > MULTIXACT_MEMBER_SAFE_THRESHOLD))
 	{
 		/*
 		 * For safety's sake, we release MultiXactGenLock while sending

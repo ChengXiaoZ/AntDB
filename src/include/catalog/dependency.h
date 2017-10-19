@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/catalog/dependency.h
  *
@@ -141,9 +142,17 @@ typedef enum ObjectClass
 	OCLASS_ROLE,				/* pg_authid */
 	OCLASS_DATABASE,			/* pg_database */
 	OCLASS_TBLSPACE,			/* pg_tablespace */
-	OCLASS_FDW,					/* pg_foreign_data_wrapper */
-	OCLASS_FOREIGN_SERVER,		/* pg_foreign_server */
-	OCLASS_USER_MAPPING,		/* pg_user_mapping */
+	OCLASS_FDW,				/* pg_foreign_data_wrapper */
+	OCLASS_FOREIGN_SERVER,			/* pg_foreign_server */
+	OCLASS_USER_MAPPING,			/* pg_user_mapping */
+#ifdef PGXC
+	OCLASS_PGXC_CLASS,			/* pgxc_class */
+	OCLASS_PGXC_NODE,			/* pgxc_node */
+	OCLASS_PGXC_GROUP,			/* pgxc_group */
+#endif
+#ifdef ADB
+	OCLASS_ADB_HA_SYNC_LOG,		/* adb_ha_sync_log */
+#endif
 	OCLASS_DEFACL,				/* pg_default_acl */
 	OCLASS_EXTENSION,			/* pg_extension */
 	OCLASS_EVENT_TRIGGER,		/* pg_event_trigger */

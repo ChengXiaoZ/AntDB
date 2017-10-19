@@ -33,6 +33,10 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "optimizer/pgxcplan.h"
+#endif
 
 static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerId);
 
@@ -40,7 +44,11 @@ static void AlterSchemaOwner_internal(HeapTuple tup, Relation rel, Oid newOwnerI
  * CREATE SCHEMA
  */
 Oid
+#ifdef PGXC
+CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString, bool sentToRemote)
+#else
 CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
+#endif
 {
 	const char *schemaName = stmt->schemaname;
 	const char *authId = stmt->authid;
@@ -138,6 +146,16 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 	 */
 	parsetree_list = transformCreateSchemaStmt(stmt);
 
+#ifdef PGXC
+	/*
+	 * Add a RemoteQuery node for a query at top level on a remote Coordinator,
+	 * if not done already.
+	 */
+	if (!sentToRemote)
+		parsetree_list = AddRemoteQueryNode(parsetree_list, queryString,
+											EXEC_ON_ALL_NODES, false);
+#endif
+
 	/*
 	 * Execute each command contained in the CREATE SCHEMA.  Since the grammar
 	 * allows only utility commands in CREATE SCHEMA, there is no need to pass
@@ -154,6 +172,9 @@ CreateSchemaCommand(CreateSchemaStmt *stmt, const char *queryString)
 					   PROCESS_UTILITY_SUBCOMMAND,
 					   NULL,
 					   None_Receiver,
+#ifdef PGXC
+					   true,
+#endif /* PGXC */
 					   NULL);
 		/* make sure later steps can see the object created here */
 		CommandCounterIncrement();

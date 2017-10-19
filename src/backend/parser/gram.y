@@ -8,6 +8,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -57,12 +58,17 @@
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "parser/gramparse.h"
+#include "nodes/nodes.h"
+#include "pgxc/poolmgr.h"
 #include "parser/parser.h"
 #include "storage/lmgr.h"
 #include "utils/date.h"
 #include "utils/datetime.h"
 #include "utils/numeric.h"
 #include "utils/xml.h"
+#ifdef PGXC
+#include "miscadmin.h"
+#endif
 
 
 /*
@@ -125,42 +131,9 @@ typedef struct PrivTarget
 
 static void base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner,
 						 const char *msg);
-static Node *makeColumnRef(char *colname, List *indirection,
-						   int location, core_yyscan_t yyscanner);
-static Node *makeTypeCast(Node *arg, TypeName *typename, int location);
-static Node *makeStringConst(char *str, int location);
-static Node *makeStringConstCast(char *str, int location, TypeName *typename);
-static Node *makeIntConst(int val, int location);
-static Node *makeFloatConst(char *str, int location);
-static Node *makeBitStringConst(char *str, int location);
-static Node *makeNullAConst(int location);
-static Node *makeAConst(Value *v, int location);
-static Node *makeBoolAConst(bool state, int location);
-static void check_qualified_name(List *names, core_yyscan_t yyscanner);
-static List *check_func_name(List *names, core_yyscan_t yyscanner);
-static List *check_indirection(List *indirection, core_yyscan_t yyscanner);
-static List *extractArgTypes(List *parameters);
-static void insertSelectOptions(SelectStmt *stmt,
-								List *sortClause, List *lockingClause,
-								Node *limitOffset, Node *limitCount,
-								WithClause *withClause,
-								core_yyscan_t yyscanner);
-static Node *makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg);
-static Node *doNegate(Node *n, int location);
-static void doNegateFloat(Value *v);
-static Node *makeAArrayExpr(List *elements, int location);
-static Node *makeXmlExpr(XmlExprOp op, char *name, List *named_args,
-						 List *args, int location);
-static List *mergeTableFuncParameters(List *func_args, List *columns);
-static TypeName *TableFuncTypeName(List *columns);
-static RangeVar *makeRangeVarFromAnyName(List *names, int position, core_yyscan_t yyscanner);
-static void SplitColQualList(List *qualList,
-							 List **constraintList, CollateClause **collClause,
-							 core_yyscan_t yyscanner);
 static void processCASbits(int cas_bits, int location, const char *constrType,
 			   bool *deferrable, bool *initdeferred, bool *not_valid,
 			   bool *no_inherit, core_yyscan_t yyscanner);
-static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %}
 
@@ -208,6 +181,10 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	AccessPriv			*accesspriv;
 	InsertStmt			*istmt;
 	VariableSetStmt		*vsetstmt;
+/* PGXC_BEGIN */
+	DistributeBy		*distby;
+	PGXCSubCluster		*subclus;
+/* PGXC_END */
 }
 
 %type <node>	stmt schema_stmt
@@ -219,7 +196,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		AlterCompositeTypeStmt AlterUserStmt AlterUserMappingStmt AlterUserSetStmt
 		AlterRoleStmt AlterRoleSetStmt
 		AlterDefaultPrivilegesStmt DefACLAction
-		AnalyzeStmt ClosePortalStmt ClusterStmt CommentStmt
+		AnalyzeStmt CleanConnStmt ClosePortalStmt ClusterStmt CommentStmt
 		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateExtensionStmt CreateGroupStmt CreateOpClassStmt
 		CreateOpFamilyStmt AlterOpFamilyStmt CreatePLangStmt
@@ -231,7 +208,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		DropGroupStmt DropOpClassStmt DropOpFamilyStmt DropPLangStmt DropStmt
 		DropAssertStmt DropTrigStmt DropRuleStmt DropCastStmt DropRoleStmt
 		DropUserStmt DropdbStmt DropTableSpaceStmt DropFdwStmt
-		DropForeignServerStmt DropUserMappingStmt ExplainStmt FetchStmt
+		DropForeignServerStmt DropUserMappingStmt ExplainStmt ExecDirectStmt FetchStmt
 		GrantStmt GrantRoleStmt IndexStmt InsertStmt ListenStmt LoadStmt
 		LockStmt NotifyStmt ExplainableStmt PreparableStmt
 		CreateFunctionStmt AlterFunctionStmt ReindexStmt RemoveAggrStmt
@@ -244,6 +221,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 		DeallocateStmt PrepareStmt ExecuteStmt
 		DropOwnedStmt ReassignOwnedStmt
 		AlterTSConfigurationStmt AlterTSDictionaryStmt
+		BarrierStmt AlterNodeStmt CreateNodeStmt DropNodeStmt
+		CreateNodeGroupStmt DropNodeGroupStmt
 		CreateMatViewStmt RefreshMatViewStmt
 
 %type <node>	select_no_parens select_with_parens select_clause
@@ -260,6 +239,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <list>	createdb_opt_list alterdb_opt_list copy_opt_list
 				transaction_mode_list
 				create_extension_opt_list alter_extension_opt_list
+				pgxcnode_list pgxcnodes
 %type <defelt>	createdb_opt_item alterdb_opt_item copy_opt_item
 				transaction_mode_item
 				create_extension_opt_item alter_extension_opt_item
@@ -295,6 +275,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				database_name access_method_clause access_method attr_name
 				name cursor_name file_name
 				index_name opt_index_name cluster_index_specification
+				pgxcnode_name pgxcgroup_name
 
 %type <list>	func_name handler_name qual_Op qual_all_Op subquery_Op
 				opt_class opt_inline_handler opt_validator validator_clause
@@ -378,6 +359,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> opt_freeze opt_default opt_recheck
 %type <defelt>	opt_binary opt_oids copy_delimiter
 
+/* PGEXC_BEGIN */
+%type <str>		DirectStmt CleanConnDbName CleanConnUserName
+/* PGXC_END */
 %type <boolean> copy_from opt_program
 
 %type <ival>	opt_column event cursor_options opt_hold opt_set_data
@@ -487,6 +471,13 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <windef>	window_definition over_clause window_specification
 				opt_frame_clause frame_extent frame_bound
 %type <str>		opt_existing_window_name
+
+/* PGXC_BEGIN */
+%type <str>		opt_barrier_id OptDistributeType
+%type <distby>	OptDistributeBy OptDistributeByInternal
+%type <subclus> OptSubCluster OptSubClusterInternal
+/* PGXC_END */
+
 %type <boolean> opt_if_not_exists
 
 /*
@@ -510,25 +501,29 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
  */
 
 /* ordinary key words in alphabetical order */
+/* PGXC - added DISTRIBUTE, DIRECT, COORDINATOR, CLEAN,  NODE, BARRIER */
 %token <keyword> ABORT_P ABSOLUTE_P ACCESS ACTION ADD_P ADMIN AFTER
 	AGGREGATE ALL ALSO ALTER ALWAYS ANALYSE ANALYZE AND ANY ARRAY AS ASC
 	ASSERTION ASSIGNMENT ASYMMETRIC AT ATTRIBUTE AUTHORIZATION
 
-	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
+	BACKWARD BARRIER BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BY
 
 	CACHE CALLED CASCADE CASCADED CASE CAST CATALOG_P CHAIN CHAR_P
-	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
+	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLEAN CLOSE
 	CLUSTER COALESCE COLLATE COLLATION COLUMN COMMENT COMMENTS COMMIT
 	COMMITTED CONCURRENTLY CONFIGURATION CONNECTION CONSTRAINT CONSTRAINTS
-	CONTENT_P CONTINUE_P CONVERSION_P COPY COST CREATE
+	CONTENT_P CONTINUE_P CONVERSION_P COORDINATOR COPY COST CREATE
 	CROSS CSV CURRENT_P
 	CURRENT_CATALOG CURRENT_DATE CURRENT_ROLE CURRENT_SCHEMA
 	CURRENT_TIME CURRENT_TIMESTAMP CURRENT_USER CURSOR CYCLE
 
 	DATA_P DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS DESC
-	DICTIONARY DISABLE_P DISCARD DISTINCT DO DOCUMENT_P DOMAIN_P DOUBLE_P DROP
+/* PGXC_BEGIN */
+	DICTIONARY DIRECT DISABLE_P DISCARD DISTINCT DISTRIBUTE DO DOCUMENT_P DOMAIN_P DOUBLE_P
+/* PGXC_END */
+	DROP
 
 	EACH ELSE ENABLE_P ENCODING ENCRYPTED END_P ENUM_P ESCAPE EVENT EXCEPT
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
@@ -556,7 +551,8 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 	MAPPING MATCH MATERIALIZED MAXVALUE MINUTE_P MINVALUE MODE MONTH_P MOVE
 
-	NAME_P NAMES NATIONAL NATURAL NCHAR NEXT NO NONE
+ /* PGXC added NODE token */
+	NAME_P NAMES NATIONAL NATURAL NCHAR NEXT NO NODE NONE
 	NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P NULLIF
 	NULLS_P NUMERIC
 
@@ -564,7 +560,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	ORDER OUT_P OUTER_P OVER OVERLAPS OVERLAY OWNED OWNER
 
 	PARSER PARTIAL PARTITION PASSING PASSWORD PLACING PLANS POSITION
-	PRECEDING PRECISION PRESERVE PREPARE PREPARED PRIMARY
+
+/* PGXC_BEGIN */
+	PRECEDING PRECISION PREFERRED PRESERVE PREPARE PREPARED PRIMARY
+/* PGXC_END */
+
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE PROGRAM
 
 	QUOTE
@@ -684,6 +684,14 @@ stmtblock:	stmtmulti
 /* the thrashing around here is to discard "empty" statements... */
 stmtmulti:	stmtmulti ';' stmt
 				{
+#ifdef ADB
+					BaseStmt *base;
+					if ($1 != NIL)
+					{
+						base = (BaseStmt *)llast($1);
+						base->endpos = @2;
+					}
+#endif
 					if ($3 != NULL)
 						$$ = lappend($1, $3);
 					else
@@ -712,6 +720,7 @@ stmt :
 			| AlterForeignTableStmt
 			| AlterFunctionStmt
 			| AlterGroupStmt
+			| AlterNodeStmt
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
 			| AlterSeqStmt
@@ -725,7 +734,9 @@ stmt :
 			| AlterUserSetStmt
 			| AlterUserStmt
 			| AnalyzeStmt
+			| BarrierStmt
 			| CheckPointStmt
+			| CleanConnStmt
 			| ClosePortalStmt
 			| ClusterStmt
 			| CommentStmt
@@ -742,6 +753,8 @@ stmt :
 			| CreateForeignTableStmt
 			| CreateFunctionStmt
 			| CreateGroupStmt
+			| CreateNodeGroupStmt
+			| CreateNodeStmt
 			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
@@ -768,6 +781,8 @@ stmt :
 			| DropFdwStmt
 			| DropForeignServerStmt
 			| DropGroupStmt
+			| DropNodeGroupStmt
+			| DropNodeStmt
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
@@ -781,6 +796,7 @@ stmt :
 			| DropUserMappingStmt
 			| DropdbStmt
 			| ExecuteStmt
+			| ExecDirectStmt
 			| ExplainStmt
 			| FetchStmt
 			| GrantStmt
@@ -1713,6 +1729,9 @@ AlterTableStmt:
 			ALTER TABLE relation_expr alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $3;
 					n->cmds = $4;
 					n->relkind = OBJECT_TABLE;
@@ -1722,6 +1741,9 @@ AlterTableStmt:
 		|	ALTER TABLE IF_P EXISTS relation_expr alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $5;
 					n->cmds = $6;
 					n->relkind = OBJECT_TABLE;
@@ -1731,6 +1753,9 @@ AlterTableStmt:
 		|	ALTER INDEX qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $3;
 					n->cmds = $4;
 					n->relkind = OBJECT_INDEX;
@@ -1740,6 +1765,9 @@ AlterTableStmt:
 		|	ALTER INDEX IF_P EXISTS qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $5;
 					n->cmds = $6;
 					n->relkind = OBJECT_INDEX;
@@ -1749,6 +1777,9 @@ AlterTableStmt:
 		|	ALTER SEQUENCE qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $3;
 					n->cmds = $4;
 					n->relkind = OBJECT_SEQUENCE;
@@ -1758,6 +1789,9 @@ AlterTableStmt:
 		|	ALTER SEQUENCE IF_P EXISTS qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $5;
 					n->cmds = $6;
 					n->relkind = OBJECT_SEQUENCE;
@@ -1767,6 +1801,9 @@ AlterTableStmt:
 		|	ALTER VIEW qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $3;
 					n->cmds = $4;
 					n->relkind = OBJECT_VIEW;
@@ -1776,6 +1813,9 @@ AlterTableStmt:
 		|	ALTER VIEW IF_P EXISTS qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $5;
 					n->cmds = $6;
 					n->relkind = OBJECT_VIEW;
@@ -1785,6 +1825,9 @@ AlterTableStmt:
 		|	ALTER MATERIALIZED VIEW qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $4;
 					n->cmds = $5;
 					n->relkind = OBJECT_MATVIEW;
@@ -1794,6 +1837,9 @@ AlterTableStmt:
 		|	ALTER MATERIALIZED VIEW IF_P EXISTS qualified_name alter_table_cmds
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADBA */
 					n->relation = $6;
 					n->cmds = $7;
 					n->relkind = OBJECT_MATVIEW;
@@ -2161,6 +2207,40 @@ alter_table_cmd:
 					n->def = (Node *)$1;
 					$$ = (Node *) n;
 				}
+/* PGXC_BEGIN */
+			/* ALTER TABLE <name> DISTRIBUTE BY ... */
+			| OptDistributeByInternal
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_DistributeBy;
+					n->def = (Node *)$1;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> TO [ NODE (nodelist) | GROUP groupname ] */
+			| OptSubClusterInternal
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_SubCluster;
+					n->def = (Node *)$1;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> ADD NODE (nodelist) */
+			| ADD_P NODE pgxcnodes
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_AddNodeList;
+					n->def = (Node *)$3;
+					$$ = (Node *)n;
+				}
+			/* ALTER TABLE <name> DELETE NODE (nodelist) */
+			| DELETE_P NODE pgxcnodes
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					n->subtype = AT_DeleteNodeList;
+					n->def = (Node *)$3;
+					$$ = (Node *)n;
+				}
+/* PGXC_END */
 		;
 
 alter_column_default:
@@ -2559,12 +2639,25 @@ copy_generic_opt_arg_list_item:
  *		QUERY :
  *				CREATE TABLE relname
  *
+ *		PGXC-related extensions:
+ *		1) Distribution type of a table:
+ *			DISTRIBUTE BY ( HASH(column) | MODULO(column) |
+ *							REPLICATION | ROUNDROBIN )
+ *		2) Subcluster for table
+ *			TO ( GROUP groupname | NODE nodename1,...,nodenameN )
+ *
  *****************************************************************************/
 
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 			OptInherit OptWith OnCommitOption OptTableSpace
+/* PGXC_BEGIN */
+			OptDistributeBy OptSubCluster
+/* PGXC_END */
 				{
 					CreateStmt *n = makeNode(CreateStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					$4->relpersistence = $2;
 					n->relation = $4;
 					n->tableElts = $6;
@@ -2574,13 +2667,23 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $10;
 					n->tablespacename = $11;
 					n->if_not_exists = false;
+/* PGXC_BEGIN */
+					n->distributeby = $12;
+					n->subcluster = $13;
+/* PGXC_END */
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name '('
 			OptTableElementList ')' OptInherit OptWith OnCommitOption
 			OptTableSpace
+/* PGXC_BEGIN */
+			OptDistributeBy OptSubCluster
+/* PGXC_END */
 				{
 					CreateStmt *n = makeNode(CreateStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					$7->relpersistence = $2;
 					n->relation = $7;
 					n->tableElts = $9;
@@ -2590,12 +2693,27 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $13;
 					n->tablespacename = $14;
 					n->if_not_exists = true;
+/* PGXC_BEGIN */
+					n->distributeby = $15;
+					n->subcluster = $16;
+					if (n->inhRelations != NULL && n->distributeby != NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("CREATE TABLE cannot contains both an INHERITS and a DISTRIBUTE BY clause"),
+								 parser_errposition(exprLocation((Node *) n->distributeby))));
+/* PGXC_END */
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE qualified_name OF any_name
 			OptTypedTableElementList OptWith OnCommitOption OptTableSpace
+/* PGXC_BEGIN */
+			OptDistributeBy OptSubCluster
+/* PGXC_END */
 				{
 					CreateStmt *n = makeNode(CreateStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					$4->relpersistence = $2;
 					n->relation = $4;
 					n->tableElts = $7;
@@ -2606,12 +2724,27 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $9;
 					n->tablespacename = $10;
 					n->if_not_exists = false;
+/* PGXC_BEGIN */
+					n->distributeby = $11;
+					n->subcluster = $12;
+					if (n->inhRelations != NULL && n->distributeby != NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("CREATE TABLE cannot contains both an INHERITS and a DISTRIBUTE BY clause"),
+								 parser_errposition(exprLocation((Node *) n->distributeby))));
+/* PGXC_END */
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE IF_P NOT EXISTS qualified_name OF any_name
 			OptTypedTableElementList OptWith OnCommitOption OptTableSpace
+/* PGXC_BEGIN */
+			OptDistributeBy OptSubCluster
+/* PGXC_END */
 				{
 					CreateStmt *n = makeNode(CreateStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					$7->relpersistence = $2;
 					n->relation = $7;
 					n->tableElts = $10;
@@ -2622,6 +2755,15 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->oncommit = $12;
 					n->tablespacename = $13;
 					n->if_not_exists = true;
+/* PGXC_BEGIN */
+					n->distributeby = $14;
+					n->subcluster = $15;
+					if (n->inhRelations != NULL && n->distributeby != NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("CREATE TABLE cannot contains both an INHERITS and a DISTRIBUTE BY clause"),
+								 parser_errposition(exprLocation((Node *) n->distributeby))));
+/* PGXC_END */
 					$$ = (Node *)n;
 				}
 		;
@@ -3179,6 +3321,66 @@ OptTableSpace:   TABLESPACE name					{ $$ = $2; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+/* PGXC_BEGIN */
+OptDistributeBy: OptDistributeByInternal			{ $$ = $1; }
+			| /* EMPTY */							{ $$ = NULL; }
+		;
+
+/*
+ * For the distribution type, we use IDENT to limit the impact of keywords
+ * related to distribution on other commands and to allow extensibility for
+ * new distributions.
+ */
+OptDistributeType: IDENT							{ $$ = $1; }
+		;
+
+OptDistributeByInternal:  DISTRIBUTE BY OptDistributeType
+				{
+					DistributeBy *n = makeNode(DistributeBy);
+					if (strcmp($3, "replication") == 0)
+						n->disttype = DISTTYPE_REPLICATION;
+					else if (strcmp($3, "roundrobin") == 0)
+						n->disttype = DISTTYPE_ROUNDROBIN;
+                    else
+                        ereport(ERROR,
+                                (errcode(ERRCODE_SYNTAX_ERROR),
+                                 errmsg("unrecognized distribution option \"%s\"", $3)));
+					n->colname = NULL;
+					$$ = n;
+				}
+			| DISTRIBUTE BY func_name '(' func_arg_list ')'
+				{
+					DistributeBy *n = makeNode(DistributeBy);
+					n->disttype = DISTTYPE_USER_DEFINED;
+					n->funcname = $3;
+					n->funcargs = $5;
+					transformDistributeBy(n);
+					$$ = n;
+				}
+		;
+
+OptSubCluster: OptSubClusterInternal				{ $$ = $1; }
+			| /* EMPTY */							{ $$ = NULL; }
+		;
+
+OptSubClusterInternal:
+			TO NODE pgxcnodes
+				{
+					PGXCSubCluster *n = makeNode(PGXCSubCluster);
+					n->clustertype = SUBCLUSTER_NODE;
+					n->members = $3;
+					$$ = n;
+				}
+			| TO GROUP_P pgxcgroup_name
+				{
+					PGXCSubCluster *n = makeNode(PGXCSubCluster);
+					n->clustertype = SUBCLUSTER_GROUP;
+					n->members = list_make1(makeString($3));
+					$$ = n;
+				}
+		;
+/* PGXC_END */
+
 OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
@@ -3201,6 +3403,9 @@ CreateAsStmt:
 		CREATE OptTemp TABLE create_as_target AS SelectStmt opt_with_data
 				{
 					CreateTableAsStmt *ctas = makeNode(CreateTableAsStmt);
+#ifdef ADB
+					ctas->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					ctas->query = $6;
 					ctas->into = $4;
 					ctas->relkind = OBJECT_TABLE;
@@ -3214,6 +3419,9 @@ CreateAsStmt:
 
 create_as_target:
 			qualified_name opt_column_list OptWith OnCommitOption OptTableSpace
+/* PGXC_BEGIN */
+			OptDistributeBy OptSubCluster
+/* PGXC_END */
 				{
 					$$ = makeNode(IntoClause);
 					$$->rel = $1;
@@ -3223,6 +3431,10 @@ create_as_target:
 					$$->tableSpaceName = $5;
 					$$->viewQuery = NULL;
 					$$->skipData = false;		/* might get changed later */
+/* PGXC_BEGIN */
+					$$->distributeby = $6;
+					$$->subcluster = $7;
+/* PGXC_END */
 				}
 		;
 
@@ -3308,6 +3520,9 @@ CreateSeqStmt:
 					n->sequence = $4;
 					n->options = $5;
 					n->ownerId = InvalidOid;
+/* PGXC_BEGIN */
+					n->is_serial = false;
+/* PGXC_END */
 					$$ = (Node *)n;
 				}
 		;
@@ -3319,6 +3534,9 @@ AlterSeqStmt:
 					n->sequence = $3;
 					n->options = $4;
 					n->missing_ok = false;
+/* PGXC_BEGIN */
+					n->is_serial = false;
+/* PGXC_END */
 					$$ = (Node *)n;
 				}
 			| ALTER SEQUENCE IF_P EXISTS qualified_name SeqOptList
@@ -6069,6 +6287,9 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 			opt_reloptions OptTableSpace where_clause
 				{
 					IndexStmt *n = makeNode(IndexStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					n->unique = $2;
 					n->concurrent = $4;
 					n->idxname = $5;
@@ -7914,6 +8135,27 @@ TransactionStmt:
 					n->gid = $3;
 					$$ = (Node *)n;
 				}
+			| COMMIT PREPARED IF_P EXISTS Sconst
+				{
+					TransactionStmt *n = makeNode(TransactionStmt);
+#if defined(ADB)
+					n->missing_ok = true;
+#endif
+					n->kind = TRANS_STMT_COMMIT_PREPARED;
+					n->gid = $5;
+					$$ = (Node *)n;
+				}
+			| ROLLBACK PREPARED IF_P EXISTS Sconst
+				{
+					TransactionStmt *n = makeNode(TransactionStmt);
+#if defined(ADB)
+					n->missing_ok = true;
+#endif
+					n->kind = TRANS_STMT_ROLLBACK_PREPARED;
+					n->missing_ok = TRUE;
+					n->gid = $5;
+					$$ = (Node *)n;
+				}
 		;
 
 opt_transaction:	WORK							{}
@@ -7968,6 +8210,9 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list opt_reloptions
 				AS SelectStmt opt_check_option
 				{
 					ViewStmt *n = makeNode(ViewStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					n->view = $4;
 					n->view->relpersistence = $2;
 					n->aliases = $5;
@@ -7980,6 +8225,9 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list opt_reloptions
 				AS SelectStmt opt_check_option
 				{
 					ViewStmt *n = makeNode(ViewStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					n->view = $6;
 					n->view->relpersistence = $4;
 					n->aliases = $7;
@@ -7992,6 +8240,9 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list opt_reloptions
 				AS SelectStmt
 				{
 					ViewStmt *n = makeNode(ViewStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					n->view = $5;
 					n->view->relpersistence = $2;
 					n->aliases = $7;
@@ -8004,6 +8255,9 @@ ViewStmt: CREATE OptTemp VIEW qualified_name opt_column_list opt_reloptions
 				AS SelectStmt
 				{
 					ViewStmt *n = makeNode(ViewStmt);
+#ifdef ADB
+					n->grammar = PARSE_GRAM_POSTGRES;
+#endif /* ADB */
 					n->view = $7;
 					n->view->relpersistence = $4;
 					n->aliases = $9;
@@ -8619,6 +8873,136 @@ opt_name_list:
 		;
 
 
+/* PGXC_BEGIN */
+BarrierStmt: CREATE BARRIER opt_barrier_id
+				{
+					BarrierStmt *n = makeNode(BarrierStmt);
+					n->id = $3;
+					$$ = (Node *)n;
+				}
+			;
+
+opt_barrier_id:
+				Sconst
+				{
+					$$ = pstrdup($1);
+				}
+			| /* EMPTY */
+				{
+					$$ = NULL;
+				}
+			;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *
+ *		CREATE NODE nodename WITH
+ *				(
+ *					[ TYPE = ('datanode' | 'coordinator'), ]
+ *					[ HOST = 'hostname', ]
+ *					[ PORT = portnum, ]
+ *					[ PRIMARY [ = boolean ], ]
+ *					[ PREFERRED [ = boolean ] ]
+ *				)
+ *
+ *****************************************************************************/
+
+CreateNodeStmt: CREATE NODE pgxcnode_name OptWith
+				{
+					CreateNodeStmt *n = makeNode(CreateNodeStmt);
+					n->node_name = $3;
+					n->options = $4;
+					$$ = (Node *)n;
+				}
+		;
+
+pgxcnode_name:
+			ColId							{ $$ = $1; };
+
+pgxcgroup_name:
+			ColId							{ $$ = $1; };
+
+pgxcnodes:
+			'(' pgxcnode_list ')'			{ $$ = $2; }
+		;
+
+pgxcnode_list:
+			pgxcnode_list ',' pgxcnode_name		{ $$ = lappend($1, makeString($3)); }
+			| pgxcnode_name						{ $$ = list_make1(makeString($1)); }
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *		ALTER NODE nodename WITH
+ *				(
+ *					[ TYPE = ('datanode' | 'coordinator'), ]
+ *					[ HOST = 'hostname', ]
+ *					[ PORT = portnum, ]
+ *					[ PRIMARY [ = boolean ], ]
+ *					[ PREFERRED [ = boolean ], ]
+ *				)
+ *
+ *****************************************************************************/
+
+AlterNodeStmt: ALTER NODE pgxcnode_name OptWith
+				{
+					AlterNodeStmt *n = makeNode(AlterNodeStmt);
+					n->node_name = $3;
+					n->options = $4;
+					$$ = (Node *)n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *				DROP NODE nodename
+ *
+ *****************************************************************************/
+
+DropNodeStmt: DROP NODE pgxcnode_name
+				{
+					DropNodeStmt *n = makeNode(DropNodeStmt);
+					n->node_name = $3;
+					$$ = (Node *)n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *				CREATE NODE GROUP groupname WITH (node1,...,nodeN)
+ *
+ *****************************************************************************/
+
+CreateNodeGroupStmt: CREATE NODE GROUP_P pgxcgroup_name WITH pgxcnodes
+				{
+					CreateGroupStmt *n = makeNode(CreateGroupStmt);
+					n->group_name = $4;
+					n->nodes = $6;
+					$$ = (Node *)n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *				DROP NODE GROUP groupname
+ *
+ *****************************************************************************/
+
+DropNodeGroupStmt: DROP NODE GROUP_P pgxcgroup_name
+				{
+					DropGroupStmt *n = makeNode(DropGroupStmt);
+					n->group_name = $4;
+					$$ = (Node *)n;
+				}
+		;
+
+/* PGXC_END */
+
 /*****************************************************************************
  *
  *		QUERY:
@@ -8705,6 +9089,84 @@ explain_option_arg:
 /*****************************************************************************
  *
  *		QUERY:
+ *				EXECUTE DIRECT ON ( nodename [, ... ] ) query
+ *
+ *****************************************************************************/
+
+ExecDirectStmt: EXECUTE DIRECT ON pgxcnodes DirectStmt
+				{
+					ExecDirectStmt *n = makeNode(ExecDirectStmt);
+					n->node_names = $4;
+					n->query = $5;
+					$$ = (Node *)n;
+
+					if (!superuser())
+						ereport(ERROR,
+						       (errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						        errmsg("must be superuser to use EXECUTE DIRECT")));
+				}
+		;
+
+DirectStmt:
+			Sconst					/* by default all are $$=$1 */
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *
+ *		CLEAN CONNECTION TO { COORDINATOR ( nodename ) | NODE ( nodename ) | ALL {FORCE} }
+ *				[ FOR DATABASE dbname ]
+ *				[ TO USER username ]
+ *
+ *****************************************************************************/
+
+CleanConnStmt: CLEAN CONNECTION TO COORDINATOR pgxcnodes CleanConnDbName CleanConnUserName
+				{
+					CleanConnStmt *n = makeNode(CleanConnStmt);
+					n->is_coord = true;
+					n->nodes = $5;
+					n->is_force = false;
+					n->dbname = $6;
+					n->username = $7;
+					$$ = (Node *)n;
+				}
+				| CLEAN CONNECTION TO NODE pgxcnodes CleanConnDbName CleanConnUserName
+				{
+					CleanConnStmt *n = makeNode(CleanConnStmt);
+					n->is_coord = false;
+					n->nodes = $5;
+					n->is_force = false;
+					n->dbname = $6;
+					n->username = $7;
+					$$ = (Node *)n;
+				}
+				| CLEAN CONNECTION TO ALL opt_force CleanConnDbName CleanConnUserName
+				{
+					CleanConnStmt *n = makeNode(CleanConnStmt);
+					n->is_coord = true;
+					n->nodes = NIL;
+					n->is_force = $5;
+					n->dbname = $6;
+					n->username = $7;
+					$$ = (Node *)n;
+				}
+		;
+
+CleanConnDbName: FOR DATABASE database_name		{ $$ = $3; }
+				| FOR database_name				{ $$ = $2; }
+				| /* EMPTY */					{ $$ = NULL; }
+		;
+
+CleanConnUserName: TO USER RoleId				{ $$ = $3; }
+				| TO RoleId						{ $$ = $2; }
+				| /* EMPTY */					{ $$ = NULL; }
+		;
+/* PGXC_END */
+
+/*****************************************************************************
+ *
+ *		QUERY:
  *				PREPARE <plan_name> [(args, ...)] AS <query>
  *
  *****************************************************************************/
@@ -8757,6 +9219,11 @@ ExecuteStmt: EXECUTE name execute_param_clause
 					ctas->is_select_into = false;
 					/* cram additional flags into the IntoClause */
 					$4->rel->relpersistence = $2;
+#ifdef PGXC
+					ereport(ERROR,
+							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+							 errmsg("CREATE TABLE AS EXECUTE not yet supported")));
+#endif
 					$4->skipData = !($9);
 					$$ = (Node *) ctas;
 				}
@@ -11120,6 +11587,12 @@ c_expr:		columnref								{ $$ = $1; }
 					r->location = @1;
 					$$ = (Node *)r;
 				}
+			| '.' ROW
+				{
+					RownumExpr *r = makeNode(RownumExpr);
+					r->location = @1;
+					$$ = (Node*)r;
+				}
 		;
 
 /*
@@ -12700,6 +13173,7 @@ ColLabel:	IDENT									{ $$ = $1; }
 
 /* "Unreserved" keywords --- available for use as any kind of name.
  */
+/* PGXC - added DISTRIBUTE, DIRECT, COORDINATOR, CLEAN, NODE, BARRIER */
 unreserved_keyword:
 			  ABORT_P
 			| ABSOLUTE_P
@@ -12717,6 +13191,9 @@ unreserved_keyword:
 			| AT
 			| ATTRIBUTE
 			| BACKWARD
+/* PGXC_BEGIN */
+			| BARRIER
+/* PGXC_END */
 			| BEFORE
 			| BEGIN_P
 			| BY
@@ -12729,6 +13206,7 @@ unreserved_keyword:
 			| CHARACTERISTICS
 			| CHECKPOINT
 			| CLASS
+			| CLEAN
 			| CLOSE
 			| CLUSTER
 			| COMMENT
@@ -12741,6 +13219,7 @@ unreserved_keyword:
 			| CONTENT_P
 			| CONTINUE_P
 			| CONVERSION_P
+			| COORDINATOR
 			| COPY
 			| COST
 			| CSV
@@ -12759,8 +13238,12 @@ unreserved_keyword:
 			| DELIMITER
 			| DELIMITERS
 			| DICTIONARY
+			| DIRECT
 			| DISABLE_P
 			| DISCARD
+/* PGXC_BEGIN */
+			| DISTRIBUTE
+/* PGXC_END */
 			| DOCUMENT_P
 			| DOMAIN_P
 			| DOUBLE_P
@@ -12837,6 +13320,7 @@ unreserved_keyword:
 			| NAMES
 			| NEXT
 			| NO
+			| NODE
 			| NOTHING
 			| NOTIFY
 			| NOWAIT
@@ -12857,6 +13341,9 @@ unreserved_keyword:
 			| PASSWORD
 			| PLANS
 			| PRECEDING
+/* PGXC_BEGIN */
+			| PREFERRED
+/* PGXC_END */
 			| PREPARE
 			| PREPARED
 			| PRESERVE
@@ -13152,563 +13639,6 @@ base_yyerror(YYLTYPE *yylloc, core_yyscan_t yyscanner, const char *msg)
 	parser_yyerror(msg);
 }
 
-static Node *
-makeColumnRef(char *colname, List *indirection,
-			  int location, core_yyscan_t yyscanner)
-{
-	/*
-	 * Generate a ColumnRef node, with an A_Indirection node added if there
-	 * is any subscripting in the specified indirection list.  However,
-	 * any field selection at the start of the indirection list must be
-	 * transposed into the "fields" part of the ColumnRef node.
-	 */
-	ColumnRef  *c = makeNode(ColumnRef);
-	int		nfields = 0;
-	ListCell *l;
-
-	c->location = location;
-	foreach(l, indirection)
-	{
-		if (IsA(lfirst(l), A_Indices))
-		{
-			A_Indirection *i = makeNode(A_Indirection);
-
-			if (nfields == 0)
-			{
-				/* easy case - all indirection goes to A_Indirection */
-				c->fields = list_make1(makeString(colname));
-				i->indirection = check_indirection(indirection, yyscanner);
-			}
-			else
-			{
-				/* got to split the list in two */
-				i->indirection = check_indirection(list_copy_tail(indirection,
-																  nfields),
-												   yyscanner);
-				indirection = list_truncate(indirection, nfields);
-				c->fields = lcons(makeString(colname), indirection);
-			}
-			i->arg = (Node *) c;
-			return (Node *) i;
-		}
-		else if (IsA(lfirst(l), A_Star))
-		{
-			/* We only allow '*' at the end of a ColumnRef */
-			if (lnext(l) != NULL)
-				parser_yyerror("improper use of \"*\"");
-		}
-		nfields++;
-	}
-	/* No subscripting, so all indirection gets added to field list */
-	c->fields = lcons(makeString(colname), indirection);
-	return (Node *) c;
-}
-
-static Node *
-makeTypeCast(Node *arg, TypeName *typename, int location)
-{
-	TypeCast *n = makeNode(TypeCast);
-	n->arg = arg;
-	n->typeName = typename;
-	n->location = location;
-	return (Node *) n;
-}
-
-static Node *
-makeStringConst(char *str, int location)
-{
-	A_Const *n = makeNode(A_Const);
-
-	n->val.type = T_String;
-	n->val.val.str = str;
-	n->location = location;
-
-	return (Node *)n;
-}
-
-static Node *
-makeStringConstCast(char *str, int location, TypeName *typename)
-{
-	Node *s = makeStringConst(str, location);
-
-	return makeTypeCast(s, typename, -1);
-}
-
-static Node *
-makeIntConst(int val, int location)
-{
-	A_Const *n = makeNode(A_Const);
-
-	n->val.type = T_Integer;
-	n->val.val.ival = val;
-	n->location = location;
-
-	return (Node *)n;
-}
-
-static Node *
-makeFloatConst(char *str, int location)
-{
-	A_Const *n = makeNode(A_Const);
-
-	n->val.type = T_Float;
-	n->val.val.str = str;
-	n->location = location;
-
-	return (Node *)n;
-}
-
-static Node *
-makeBitStringConst(char *str, int location)
-{
-	A_Const *n = makeNode(A_Const);
-
-	n->val.type = T_BitString;
-	n->val.val.str = str;
-	n->location = location;
-
-	return (Node *)n;
-}
-
-static Node *
-makeNullAConst(int location)
-{
-	A_Const *n = makeNode(A_Const);
-
-	n->val.type = T_Null;
-	n->location = location;
-
-	return (Node *)n;
-}
-
-static Node *
-makeAConst(Value *v, int location)
-{
-	Node *n;
-
-	switch (v->type)
-	{
-		case T_Float:
-			n = makeFloatConst(v->val.str, location);
-			break;
-
-		case T_Integer:
-			n = makeIntConst(v->val.ival, location);
-			break;
-
-		case T_String:
-		default:
-			n = makeStringConst(v->val.str, location);
-			break;
-	}
-
-	return n;
-}
-
-/* makeBoolAConst()
- * Create an A_Const string node and put it inside a boolean cast.
- */
-static Node *
-makeBoolAConst(bool state, int location)
-{
-	A_Const *n = makeNode(A_Const);
-
-	n->val.type = T_String;
-	n->val.val.str = (state ? "t" : "f");
-	n->location = location;
-
-	return makeTypeCast((Node *)n, SystemTypeName("bool"), -1);
-}
-
-/* check_qualified_name --- check the result of qualified_name production
- *
- * It's easiest to let the grammar production for qualified_name allow
- * subscripts and '*', which we then must reject here.
- */
-static void
-check_qualified_name(List *names, core_yyscan_t yyscanner)
-{
-	ListCell   *i;
-
-	foreach(i, names)
-	{
-		if (!IsA(lfirst(i), String))
-			parser_yyerror("syntax error");
-	}
-}
-
-/* check_func_name --- check the result of func_name production
- *
- * It's easiest to let the grammar production for func_name allow subscripts
- * and '*', which we then must reject here.
- */
-static List *
-check_func_name(List *names, core_yyscan_t yyscanner)
-{
-	ListCell   *i;
-
-	foreach(i, names)
-	{
-		if (!IsA(lfirst(i), String))
-			parser_yyerror("syntax error");
-	}
-	return names;
-}
-
-/* check_indirection --- check the result of indirection production
- *
- * We only allow '*' at the end of the list, but it's hard to enforce that
- * in the grammar, so do it here.
- */
-static List *
-check_indirection(List *indirection, core_yyscan_t yyscanner)
-{
-	ListCell *l;
-
-	foreach(l, indirection)
-	{
-		if (IsA(lfirst(l), A_Star))
-		{
-			if (lnext(l) != NULL)
-				parser_yyerror("improper use of \"*\"");
-		}
-	}
-	return indirection;
-}
-
-/* extractArgTypes()
- * Given a list of FunctionParameter nodes, extract a list of just the
- * argument types (TypeNames) for input parameters only.  This is what
- * is needed to look up an existing function, which is what is wanted by
- * the productions that use this call.
- */
-static List *
-extractArgTypes(List *parameters)
-{
-	List	   *result = NIL;
-	ListCell   *i;
-
-	foreach(i, parameters)
-	{
-		FunctionParameter *p = (FunctionParameter *) lfirst(i);
-
-		if (p->mode != FUNC_PARAM_OUT && p->mode != FUNC_PARAM_TABLE)
-			result = lappend(result, p->argType);
-	}
-	return result;
-}
-
-/* insertSelectOptions()
- * Insert ORDER BY, etc into an already-constructed SelectStmt.
- *
- * This routine is just to avoid duplicating code in SelectStmt productions.
- */
-static void
-insertSelectOptions(SelectStmt *stmt,
-					List *sortClause, List *lockingClause,
-					Node *limitOffset, Node *limitCount,
-					WithClause *withClause,
-					core_yyscan_t yyscanner)
-{
-	Assert(IsA(stmt, SelectStmt));
-
-	/*
-	 * Tests here are to reject constructs like
-	 *	(SELECT foo ORDER BY bar) ORDER BY baz
-	 */
-	if (sortClause)
-	{
-		if (stmt->sortClause)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple ORDER BY clauses not allowed"),
-					 parser_errposition(exprLocation((Node *) sortClause))));
-		stmt->sortClause = sortClause;
-	}
-	/* We can handle multiple locking clauses, though */
-	stmt->lockingClause = list_concat(stmt->lockingClause, lockingClause);
-	if (limitOffset)
-	{
-		if (stmt->limitOffset)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple OFFSET clauses not allowed"),
-					 parser_errposition(exprLocation(limitOffset))));
-		stmt->limitOffset = limitOffset;
-	}
-	if (limitCount)
-	{
-		if (stmt->limitCount)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple LIMIT clauses not allowed"),
-					 parser_errposition(exprLocation(limitCount))));
-		stmt->limitCount = limitCount;
-	}
-	if (withClause)
-	{
-		if (stmt->withClause)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("multiple WITH clauses not allowed"),
-					 parser_errposition(exprLocation((Node *) withClause))));
-		stmt->withClause = withClause;
-	}
-}
-
-static Node *
-makeSetOp(SetOperation op, bool all, Node *larg, Node *rarg)
-{
-	SelectStmt *n = makeNode(SelectStmt);
-
-	n->op = op;
-	n->all = all;
-	n->larg = (SelectStmt *) larg;
-	n->rarg = (SelectStmt *) rarg;
-	return (Node *) n;
-}
-
-/* SystemFuncName()
- * Build a properly-qualified reference to a built-in function.
- */
-List *
-SystemFuncName(char *name)
-{
-	return list_make2(makeString("pg_catalog"), makeString(name));
-}
-
-/* SystemTypeName()
- * Build a properly-qualified reference to a built-in type.
- *
- * typmod is defaulted, but may be changed afterwards by caller.
- * Likewise for the location.
- */
-TypeName *
-SystemTypeName(char *name)
-{
-	return makeTypeNameFromNameList(list_make2(makeString("pg_catalog"),
-											   makeString(name)));
-}
-
-/* doNegate()
- * Handle negation of a numeric constant.
- *
- * Formerly, we did this here because the optimizer couldn't cope with
- * indexquals that looked like "var = -4" --- it wants "var = const"
- * and a unary minus operator applied to a constant didn't qualify.
- * As of Postgres 7.0, that problem doesn't exist anymore because there
- * is a constant-subexpression simplifier in the optimizer.  However,
- * there's still a good reason for doing this here, which is that we can
- * postpone committing to a particular internal representation for simple
- * negative constants.	It's better to leave "-123.456" in string form
- * until we know what the desired type is.
- */
-static Node *
-doNegate(Node *n, int location)
-{
-	if (IsA(n, A_Const))
-	{
-		A_Const *con = (A_Const *)n;
-
-		/* report the constant's location as that of the '-' sign */
-		con->location = location;
-
-		if (con->val.type == T_Integer)
-		{
-			con->val.val.ival = -con->val.val.ival;
-			return n;
-		}
-		if (con->val.type == T_Float)
-		{
-			doNegateFloat(&con->val);
-			return n;
-		}
-	}
-
-	return (Node *) makeSimpleA_Expr(AEXPR_OP, "-", NULL, n, location);
-}
-
-static void
-doNegateFloat(Value *v)
-{
-	char   *oldval = v->val.str;
-
-	Assert(IsA(v, Float));
-	if (*oldval == '+')
-		oldval++;
-	if (*oldval == '-')
-		v->val.str = oldval+1;	/* just strip the '-' */
-	else
-	{
-		char   *newval = (char *) palloc(strlen(oldval) + 2);
-
-		*newval = '-';
-		strcpy(newval+1, oldval);
-		v->val.str = newval;
-	}
-}
-
-static Node *
-makeAArrayExpr(List *elements, int location)
-{
-	A_ArrayExpr *n = makeNode(A_ArrayExpr);
-
-	n->elements = elements;
-	n->location = location;
-	return (Node *) n;
-}
-
-static Node *
-makeXmlExpr(XmlExprOp op, char *name, List *named_args, List *args,
-			int location)
-{
-	XmlExpr		*x = makeNode(XmlExpr);
-
-	x->op = op;
-	x->name = name;
-	/*
-	 * named_args is a list of ResTarget; it'll be split apart into separate
-	 * expression and name lists in transformXmlExpr().
-	 */
-	x->named_args = named_args;
-	x->arg_names = NIL;
-	x->args = args;
-	/* xmloption, if relevant, must be filled in by caller */
-	/* type and typmod will be filled in during parse analysis */
-	x->type = InvalidOid;			/* marks the node as not analyzed */
-	x->location = location;
-	return (Node *) x;
-}
-
-/*
- * Merge the input and output parameters of a table function.
- */
-static List *
-mergeTableFuncParameters(List *func_args, List *columns)
-{
-	ListCell   *lc;
-
-	/* Explicit OUT and INOUT parameters shouldn't be used in this syntax */
-	foreach(lc, func_args)
-	{
-		FunctionParameter *p = (FunctionParameter *) lfirst(lc);
-
-		if (p->mode != FUNC_PARAM_IN && p->mode != FUNC_PARAM_VARIADIC)
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("OUT and INOUT arguments aren't allowed in TABLE functions")));
-	}
-
-	return list_concat(func_args, columns);
-}
-
-/*
- * Determine return type of a TABLE function.  A single result column
- * returns setof that column's type; otherwise return setof record.
- */
-static TypeName *
-TableFuncTypeName(List *columns)
-{
-	TypeName *result;
-
-	if (list_length(columns) == 1)
-	{
-		FunctionParameter *p = (FunctionParameter *) linitial(columns);
-
-		result = (TypeName *) copyObject(p->argType);
-	}
-	else
-		result = SystemTypeName("record");
-
-	result->setof = true;
-
-	return result;
-}
-
-/*
- * Convert a list of (dotted) names to a RangeVar (like
- * makeRangeVarFromNameList, but with position support).  The
- * "AnyName" refers to the any_name production in the grammar.
- */
-static RangeVar *
-makeRangeVarFromAnyName(List *names, int position, core_yyscan_t yyscanner)
-{
-	RangeVar *r = makeNode(RangeVar);
-
-	switch (list_length(names))
-	{
-		case 1:
-			r->catalogname = NULL;
-			r->schemaname = NULL;
-			r->relname = strVal(linitial(names));
-			break;
-		case 2:
-			r->catalogname = NULL;
-			r->schemaname = strVal(linitial(names));
-			r->relname = strVal(lsecond(names));
-			break;
-		case 3:
-			r->catalogname = strVal(linitial(names));
-			r->schemaname = strVal(lsecond(names));
-			r->relname = strVal(lthird(names));
-			break;
-		default:
-			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("improper qualified name (too many dotted names): %s",
-							NameListToString(names)),
-					 parser_errposition(position)));
-			break;
-	}
-
-	r->relpersistence = RELPERSISTENCE_PERMANENT;
-	r->location = position;
-
-	return r;
-}
-
-/* Separate Constraint nodes from COLLATE clauses in a ColQualList */
-static void
-SplitColQualList(List *qualList,
-				 List **constraintList, CollateClause **collClause,
-				 core_yyscan_t yyscanner)
-{
-	ListCell   *cell;
-	ListCell   *prev;
-	ListCell   *next;
-
-	*collClause = NULL;
-	prev = NULL;
-	for (cell = list_head(qualList); cell; cell = next)
-	{
-		Node   *n = (Node *) lfirst(cell);
-
-		next = lnext(cell);
-		if (IsA(n, Constraint))
-		{
-			/* keep it in list */
-			prev = cell;
-			continue;
-		}
-		if (IsA(n, CollateClause))
-		{
-			CollateClause *c = (CollateClause *) n;
-
-			if (*collClause)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("multiple COLLATE clauses not allowed"),
-						 parser_errposition(c->location)));
-			*collClause = c;
-		}
-		else
-			elog(ERROR, "unexpected node type %d", (int) n->type);
-		/* remove non-Constraint nodes from qualList */
-		qualList = list_delete_cell(qualList, cell, prev);
-	}
-	*constraintList = qualList;
-}
-
 /*
  * Process result of ConstraintAttributeSpec, and set appropriate bool flags
  * in the output command node.  Pass NULL for any flags the particular
@@ -13778,66 +13708,6 @@ processCASbits(int cas_bits, int location, const char *constrType,
 							constrType),
 					 parser_errposition(location)));
 	}
-}
-
-/*----------
- * Recursive view transformation
- *
- * Convert
- *
- *     CREATE RECURSIVE VIEW relname (aliases) AS query
- *
- * to
- *
- *     CREATE VIEW relname (aliases) AS
- *         WITH RECURSIVE relname (aliases) AS (query)
- *         SELECT aliases FROM relname
- *
- * Actually, just the WITH ... part, which is then inserted into the original
- * view definition as the query.
- * ----------
- */
-static Node *
-makeRecursiveViewSelect(char *relname, List *aliases, Node *query)
-{
-	SelectStmt *s = makeNode(SelectStmt);
-	WithClause *w = makeNode(WithClause);
-	CommonTableExpr *cte = makeNode(CommonTableExpr);
-	List	   *tl = NIL;
-	ListCell   *lc;
-
-	/* create common table expression */
-	cte->ctename = relname;
-	cte->aliascolnames = aliases;
-	cte->ctequery = query;
-	cte->location = -1;
-
-	/* create WITH clause and attach CTE */
-	w->recursive = true;
-	w->ctes = list_make1(cte);
-	w->location = -1;
-
-	/* create target list for the new SELECT from the alias list of the
-	 * recursive view specification */
-	foreach (lc, aliases)
-	{
-		ResTarget *rt = makeNode(ResTarget);
-
-		rt->name = NULL;
-		rt->indirection = NIL;
-		rt->val = makeColumnRef(strVal(lfirst(lc)), NIL, -1, 0);
-		rt->location = -1;
-
-		tl = lappend(tl, rt);
-	}
-
-	/* create new SELECT combining WITH clause, target list, and fake FROM
-	 * clause */
-	s->withClause = w;
-	s->targetList = tl;
-	s->fromClause = list_make1(makeRangeVar(NULL, relname, -1));
-
-	return (Node *) s;
 }
 
 /* parser_init()

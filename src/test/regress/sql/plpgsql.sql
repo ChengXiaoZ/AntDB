@@ -43,7 +43,7 @@ create unique index WSlot_name on WSlot using btree (slotname bpchar_ops);
 create table PField (
     name	text,
     comment	text
-);
+) distribute by replication;
 
 create unique index PField_name on PField using btree (name text_ops);
 
@@ -1400,6 +1400,7 @@ update PSlot set slotlink = 'HS.base.hub1.1' where slotname = 'PS.base.b2';
 --
 -- Now we take a look at the patchfield
 --
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select * from PField_v1 where pfname = 'PF0_1' order by slotname;
 select * from PField_v1 where pfname = 'PF0_2' order by slotname;
 
@@ -1442,7 +1443,7 @@ SELECT recursion_test(4,3);
 --
 -- Test the FOUND magic variable
 --
-CREATE TABLE found_test_tbl (a int);
+CREATE TABLE found_test_tbl (a int) distribute by roundrobin;
 
 create function test_found()
   returns boolean as '
@@ -1481,7 +1482,7 @@ create function test_found()
   end;' language plpgsql;
 
 select test_found();
-select * from found_test_tbl;
+select * from found_test_tbl order by 1;
 
 --
 -- Test set-returning functions for PL/pgSQL
@@ -1497,7 +1498,7 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 
-select * from test_table_func_rec();
+select * from test_table_func_rec() order by 1;
 
 create function test_table_func_row() returns setof found_test_tbl as '
 DECLARE
@@ -1509,7 +1510,7 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 
-select * from test_table_func_row();
+select * from test_table_func_row() order by 1;
 
 create function test_ret_set_scalar(int,int) returns setof int as '
 DECLARE
@@ -1521,7 +1522,7 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 
-select * from test_ret_set_scalar(1,10);
+select * from test_ret_set_scalar(1,10) order by 1;
 
 create function test_ret_set_rec_dyn(int) returns setof record as '
 DECLARE
@@ -1539,8 +1540,8 @@ BEGIN
 	RETURN;
 END;' language plpgsql;
 
-SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int);
-SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text);
+SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int) order by a, b, c;
+SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text) order by a, b, c;
 
 create function test_ret_rec_dyn(int) returns record as '
 DECLARE
@@ -1555,8 +1556,8 @@ BEGIN
 	END IF;
 END;' language plpgsql;
 
-SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int);
-SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text);
+SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int) order by a, b, c;
+SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text) order by a, b, c;
 
 --
 -- Test handling of OUT parameters, including polymorphic cases.
@@ -1597,7 +1598,7 @@ begin
   return;
 end$$ language plpgsql;
 
-select * from f1(42);
+select * from f1(42) order by 1;
 
 drop function f1(int);
 
@@ -1623,7 +1624,7 @@ begin
   return next;
 end$$ language plpgsql;
 
-select * from f1(42);
+select * from f1(42) order by j, k;;
 
 drop function f1(int);
 
@@ -1680,7 +1681,7 @@ BEGIN
 END;' language plpgsql;
 
 SELECT perform_test_func();
-SELECT * FROM perform_test;
+SELECT * FROM perform_test order by a, b;
 
 drop table perform_test;
 
@@ -1953,6 +1954,7 @@ begin
 end
 $$ language plpgsql;
 
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select refcursor_test2(20000, 20000) as "Should be false",
        refcursor_test2(20, 20) as "Should be true";
 
@@ -2542,7 +2544,7 @@ end$$ language plpgsql;
 
 select footest();
 
-select * from foo;
+select * from foo order by 1, 2;
 
 create or replace function footest() returns void as $$
 declare x record;
@@ -2623,7 +2625,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();
+select * from sc_test() order by 1;
 
 create or replace function sc_test() returns setof integer as $$
 declare
@@ -2640,7 +2642,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();  -- fails because of NO SCROLL specification
+select * from sc_test() order by 1;  -- fails because of NO SCROLL specification
 
 create or replace function sc_test() returns setof integer as $$
 declare
@@ -2657,14 +2659,14 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();
+select * from sc_test() order by 1;
 
 create or replace function sc_test() returns setof integer as $$
 declare
   c refcursor;
   x integer;
 begin
-  open c scroll for execute 'select f1 from int4_tbl';
+  open c scroll for execute 'select f1 from int4_tbl order by 1';
   fetch last from c into x;
   while found loop
     return next x;
@@ -2681,7 +2683,7 @@ declare
   c refcursor;
   x integer;
 begin
-  open c scroll for execute 'select f1 from int4_tbl';
+  open c scroll for execute 'select f1 from int4_tbl order by 1';
   fetch last from c into x;
   while found loop
     return next x;
@@ -2714,7 +2716,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();
+select * from sc_test() order by 1;
 
 create or replace function sc_test() returns setof integer as $$
 declare
@@ -2731,7 +2733,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from sc_test();
+select * from sc_test() order by 1;
 
 drop function sc_test();
 
@@ -2769,7 +2771,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from ret_query1();
+select * from ret_query1() order by 1, 2;
 
 create type record_type as (x text, y int, z boolean);
 
@@ -2780,7 +2782,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from ret_query2(8);
+select * from ret_query2(8) order by 1;
 
 -- test EXECUTE USING
 create function exc_using(int, text) returns int as $$
@@ -2865,7 +2867,7 @@ create temp table forc_test as
 
 create or replace function forc01() returns void as $$
 declare
-  c cursor for select * from forc_test;
+  c cursor for select * from forc_test order by 1;
 begin
   for r in c loop
     raise notice '%, %', r.i, r.j;
@@ -2876,7 +2878,7 @@ $$ language plpgsql;
 
 select forc01();
 
-select * from forc_test;
+select * from forc_test order by 1, 2;
 
 -- same, with a cursor whose portal name doesn't match variable name
 create or replace function forc01() returns void as $$
@@ -2884,7 +2886,7 @@ declare
   c refcursor := 'fooled_ya';
   r record;
 begin
-  open c for select * from forc_test;
+  open c for select * from forc_test order by 1;
   loop
     fetch c into r;
     exit when not found;
@@ -2896,7 +2898,7 @@ $$ language plpgsql;
 
 select forc01();
 
-select * from forc_test;
+select * from forc_test order by 1;
 
 drop function forc01();
 
@@ -2922,7 +2924,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from return_dquery();
+select * from return_dquery() order by 1;
 
 drop function return_dquery();
 
@@ -2939,19 +2941,19 @@ begin
 end;
 $$ language plpgsql;
 
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2,3,4;
 
 alter table tabwithcols drop column b;
 
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2,3;
 
 alter table tabwithcols drop column d;
 
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2;
 
 alter table tabwithcols add column d int;
 
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2,3;
 
 drop function returnqueryf();
 drop table tabwithcols;
@@ -3434,7 +3436,7 @@ begin
 end;
 $$ language plpgsql immutable strict;
 
-select * from tftest(10);
+select * from tftest(10) order by 1, 2;
 
 create or replace function tftest(a1 int) returns table(a int, b int) as $$
 begin
@@ -3445,7 +3447,7 @@ begin
 end;
 $$ language plpgsql immutable strict;
 
-select * from tftest(10);
+select * from tftest(10) order by 1, 2;
 
 drop function tftest(int);
 
@@ -3468,7 +3470,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from rttest();
+select * from rttest() order by 1;
 
 drop function rttest();
 
@@ -3700,7 +3702,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from conflict_test();
+select * from conflict_test() order by 1,2;
 
 create or replace function conflict_test() returns setof int8_tbl as $$
 #variable_conflict use_variable
@@ -3713,7 +3715,8 @@ begin
 end;
 $$ language plpgsql;
 
-select * from conflict_test();
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
+select * from conflict_test() order by 1,2;
 
 create or replace function conflict_test() returns setof int8_tbl as $$
 #variable_conflict use_column
@@ -3726,7 +3729,7 @@ begin
 end;
 $$ language plpgsql;
 
-select * from conflict_test();
+select * from conflict_test() order by 1,2;
 
 drop function conflict_test();
 

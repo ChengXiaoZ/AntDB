@@ -25,6 +25,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/backend/access/transam/clog.c
  *
@@ -67,6 +68,11 @@
 
 #define GetLSNIndex(slotno, xid)	((slotno) * CLOG_LSNS_PER_PAGE + \
 	((xid) % (TransactionId) CLOG_XACTS_PER_PAGE) / CLOG_XACTS_PER_LSN_GROUP)
+
+#ifdef PGXC 
+/* Check if there is about a 1 billion XID difference for XID wraparound */
+#define CLOG_WRAP_CHECK_DELTA (2^30 / CLOG_XACTS_PER_PAGE)
+#endif
 
 
 /*
@@ -150,6 +156,11 @@ TransactionIdSetTreeStatus(TransactionId xid, int nsubxids,
 
 	Assert(status == TRANSACTION_STATUS_COMMITTED ||
 		   status == TRANSACTION_STATUS_ABORTED);
+
+	if (status == TRANSACTION_STATUS_COMMITTED)
+		elog(DEBUG1, "Record transaction commit %u", xid);
+	else
+		elog(DEBUG1, "Record transaction abort %u", xid);
 
 	/*
 	 * See how many subxids, if any, are on the same page as the parent, if
@@ -613,20 +624,56 @@ ExtendCLOG(TransactionId newestXact)
 	 * No work except at first XID of a page.  But beware: just after
 	 * wraparound, the first XID of page zero is FirstNormalTransactionId.
 	 */
+#ifdef PGXC  /* PGXC_COORD || PGXC_DATANODE */
+	/* 
+	 * In PGXC, it may be that a node is not involved in a transaction,
+	 * and therefore will be skipped, so we need to detect this by using
+	 * the latest_page_number instead of the pg index.
+	 *
+	 * Also, there is a special case of when transactions wrap-around that
+	 * we need to detect.
+	 */
+	pageno = TransactionIdToPage(newestXact);
+
+	/* 
+	 * The first condition makes sure we did not wrap around 
+	 * The second checks if we are still using the same page
+	 * Note that this value can change and we are not holding a lock, 
+	 * so we repeat the check below. We do it this way instead of 
+	 * grabbing the lock to avoid lock contention.
+	 */
+	if (ClogCtl->shared->latest_page_number - pageno <= CLOG_WRAP_CHECK_DELTA 
+			&& pageno <= ClogCtl->shared->latest_page_number)
+		return;
+#else
 	if (TransactionIdToPgIndex(newestXact) != 0 &&
 		!TransactionIdEquals(newestXact, FirstNormalTransactionId))
 		return;
 
 	pageno = TransactionIdToPage(newestXact);
+#endif
 
 	LWLockAcquire(CLogControlLock, LW_EXCLUSIVE);
+
+#ifdef PGXC
+	/*
+	 * We repeat the check.  Another process may have written 
+	 * out the page already and advanced the latest_page_number
+	 * while we were waiting for the lock.
+	 */
+	if (ClogCtl->shared->latest_page_number - pageno <= CLOG_WRAP_CHECK_DELTA 
+			&& pageno <= ClogCtl->shared->latest_page_number)
+	{
+		LWLockRelease(CLogControlLock);
+		return;
+	}
+#endif
 
 	/* Zero the page and make an XLOG entry about it */
 	ZeroCLOGPage(pageno, true);
 
 	LWLockRelease(CLogControlLock);
 }
-
 
 /*
  * Remove all CLOG segments before the one holding the passed transaction ID

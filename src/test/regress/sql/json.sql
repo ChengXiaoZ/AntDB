@@ -98,7 +98,7 @@ SELECT x, 'txt' || x as y
 FROM generate_series(1,3) AS x;
 
 SELECT row_to_json(q,true)
-FROM rows q;
+FROM rows q order by x;
 
 SELECT row_to_json(row((select array_agg(x) as d from generate_series(5,10) x)),false);
 
@@ -111,8 +111,10 @@ SELECT json_agg(q)
          FROM generate_series(1,2) x,
               generate_series(4,5) y) q;
 
-SELECT json_agg(q)
-  FROM rows q;
+-- The following statement does not provide consistent result useful in the regression
+-- although the result is correct.
+-- SELECT json_agg(q order by 1)
+--   FROM rows q;
 
 -- non-numeric output
 SELECT row_to_json(q)

@@ -48,10 +48,18 @@ AggregateCreate(const char *aggName,
 				Oid *aggArgTypes,
 				int numArgs,
 				List *aggtransfnName,
+#ifdef PGXC
+				List *aggcollectfnName,
+#endif
 				List *aggfinalfnName,
 				List *aggsortopName,
 				Oid aggTransType,
+#ifdef PGXC
+				const char *agginitval,
+				const char *agginitcollect)
+#else
 				const char *agginitval)
+#endif
 {
 	Relation	aggdesc;
 	HeapTuple	tup;
@@ -59,6 +67,9 @@ AggregateCreate(const char *aggName,
 	Datum		values[Natts_pg_aggregate];
 	Form_pg_proc proc;
 	Oid			transfn;
+#ifdef PGXC
+	Oid			collectfn = InvalidOid;	/* can be omitted */
+#endif
 	Oid			finalfn = InvalidOid;	/* can be omitted */
 	Oid			sortop = InvalidOid;	/* can be omitted */
 	bool		hasPolyArg;
@@ -81,6 +92,15 @@ AggregateCreate(const char *aggName,
 	if (!aggtransfnName)
 		elog(ERROR, "aggregate must have a transition function");
 
+#ifdef PGXC
+
+	if (aggTransType == INTERNALOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				 errmsg("unsafe use of pseudo-type \"internal\""),
+				 errdetail("Transition type can not be \"internal\".")));
+
+#endif
 	/* check for polymorphic and INTERNAL arguments */
 	hasPolyArg = false;
 	hasInternalArg = false;
@@ -104,7 +124,12 @@ AggregateCreate(const char *aggName,
 
 	/* find the transfn */
 	nargs_transfn = numArgs + 1;
+#ifdef PGXC
+	/* Need to allocate at least 2 items for collection function */
+	fnArgs = (Oid *) palloc((nargs_transfn < 2 ? 2 : nargs_transfn) * sizeof(Oid));
+#else
 	fnArgs = (Oid *) palloc(nargs_transfn * sizeof(Oid));
+#endif
 	fnArgs[0] = aggTransType;
 	memcpy(fnArgs + 1, aggArgTypes, numArgs * sizeof(Oid));
 	transfn = lookup_agg_function(aggtransfnName, nargs_transfn, fnArgs,
@@ -147,6 +172,26 @@ AggregateCreate(const char *aggName,
 	}
 	ReleaseSysCache(tup);
 
+#ifdef PGXC
+	if (aggcollectfnName)
+	{
+		/*
+		 * Collection function must be of two arguments, both of type aggTransType
+		 * and return type is also aggTransType
+		 */
+		fnArgs[0] = aggTransType;
+		fnArgs[1] = aggTransType;
+		collectfn = lookup_agg_function(aggcollectfnName, 2, fnArgs,
+										  &rettype);
+		if (rettype != aggTransType)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("return type of collection function %s is not %s",
+							NameListToString(aggcollectfnName),
+							format_type_be(aggTransType))));
+	}
+
+#endif
 	/* handle finalfn, if supplied */
 	if (aggfinalfnName)
 	{
@@ -269,11 +314,19 @@ AggregateCreate(const char *aggName,
 	values[Anum_pg_aggregate_aggfinalfn - 1] = ObjectIdGetDatum(finalfn);
 	values[Anum_pg_aggregate_aggsortop - 1] = ObjectIdGetDatum(sortop);
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
+#ifdef PGXC
+	values[Anum_pg_aggregate_aggcollectfn - 1] = ObjectIdGetDatum(collectfn);
+#endif
 	if (agginitval)
 		values[Anum_pg_aggregate_agginitval - 1] = CStringGetTextDatum(agginitval);
 	else
 		nulls[Anum_pg_aggregate_agginitval - 1] = true;
-
+#ifdef PGXC
+	if (agginitcollect)
+		values[Anum_pg_aggregate_agginitcollect - 1] = CStringGetTextDatum(agginitcollect);
+	else
+		nulls[Anum_pg_aggregate_agginitcollect - 1] = true;
+#endif
 	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
 	tupDesc = aggdesc->rd_att;
 
@@ -299,6 +352,17 @@ AggregateCreate(const char *aggName,
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
+#ifdef PGXC
+	if (OidIsValid(collectfn))
+	{
+		/* Depends on collection function */
+		referenced.classId = ProcedureRelationId;
+		referenced.objectId = collectfn;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	}
+
+#endif
 	/* Depends on final function, if any */
 	if (OidIsValid(finalfn))
 	{

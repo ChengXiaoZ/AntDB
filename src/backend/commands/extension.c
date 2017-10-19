@@ -753,6 +753,9 @@ execute_sql_string(const char *sql, const char *filename)
 							   PROCESS_UTILITY_QUERY,
 							   NULL,
 							   dest,
+#ifdef PGXC
+							   true,	/* this is created at remote node level */
+#endif /* PGXC */
 							   NULL);
 			}
 
@@ -1377,7 +1380,11 @@ CreateExtension(CreateExtensionStmt *stmt)
 			csstmt->authid = NULL;		/* will be created by current user */
 			csstmt->schemaElts = NIL;
 			csstmt->if_not_exists = false;
+#ifdef PGXC
+			CreateSchemaCommand(csstmt, NULL, true);
+#else
 			CreateSchemaCommand(csstmt, NULL);
+#endif
 
 			/*
 			 * CreateSchemaCommand includes CommandCounterIncrement, so new

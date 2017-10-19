@@ -21,7 +21,11 @@
 #ifndef PG_TS_CONFIG_MAP_H
 #define PG_TS_CONFIG_MAP_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_ts_config_map definition.  cpp turns this into

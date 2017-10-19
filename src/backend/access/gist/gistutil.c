@@ -596,7 +596,12 @@ gistFormTuple(GISTSTATE *giststate, Relation r,
 
 	for (i = 0; i < r->rd_att->natts; i++)
 	{
+#ifdef ADB
+		/* fix: Branch condition evaluates to a garbage value */
+		if (isnull[i] == true)
+#else
 		if (isnull[i])
+#endif
 			compatt[i] = (Datum) 0;
 		else
 		{

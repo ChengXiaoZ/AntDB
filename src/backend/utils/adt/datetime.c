@@ -40,7 +40,6 @@ static int DecodeNumberField(int len, char *str,
 				  struct pg_tm * tm, fsec_t *fsec, bool *is2digits);
 static int DecodeTime(char *str, int fmask, int range,
 		   int *tmask, struct pg_tm * tm, fsec_t *fsec);
-static int	DecodeTimezone(char *str, int *tzp);
 static const datetkn *datebsearch(const char *key, const datetkn *base, int nel);
 static int DecodeDate(char *str, int fmask, int *tmask, bool *is2digits,
 		   struct pg_tm * tm);
@@ -53,6 +52,10 @@ static void AdjustFractSeconds(double frac, struct pg_tm * tm, fsec_t *fsec,
 				   int scale);
 static void AdjustFractDays(double frac, struct pg_tm * tm, fsec_t *fsec,
 				int scale);
+#ifdef ADB
+static void AdjustFracMonths(double frac, struct pg_tm *tm, fsec_t *fsec,
+				int scale);
+#endif
 static int DetermineTimeZoneOffsetInternal(struct pg_tm * tm, pg_tz *tzp,
 								pg_time_t *tp);
 static int DetermineTimeZoneAbbrevOffsetInternal(pg_time_t t, const char *abbr,
@@ -223,8 +226,14 @@ static datetkn deltatktbl[] = {
 	{"seconds", UNITS, DTK_SECOND},
 	{"secs", UNITS, DTK_SECOND},
 	{DTIMEZONE, UNITS, DTK_TZ}, /* "timezone" time offset */
+#ifdef ADB
+	{"timezone_a", UNITS, DTK_TZ_ABBR}, /* timezone abbreviations */
+#endif
 	{"timezone_h", UNITS, DTK_TZ_HOUR}, /* timezone hour units */
 	{"timezone_m", UNITS, DTK_TZ_MINUTE},		/* timezone minutes units */
+#ifdef ADB
+	{"timezone_r", UNITS, DTK_TZ_REGION}, /* timezone region */
+#endif
 	{"undefined", RESERV, DTK_INVALID}, /* pre-v6.1 invalid time */
 	{"us", UNITS, DTK_MICROSEC},	/* "microsecond" relative */
 	{"usec", UNITS, DTK_MICROSEC},		/* "microsecond" relative */
@@ -501,6 +510,22 @@ AdjustFractDays(double frac, struct pg_tm * tm, fsec_t *fsec, int scale)
 	frac -= extra_days;
 	AdjustFractSeconds(frac, tm, fsec, SECS_PER_DAY);
 }
+
+#ifdef ADB
+static void
+AdjustFracMonths(double frac, struct pg_tm *tm, fsec_t *fsec, int scale)
+{
+	int			extra_months;
+
+	if (frac == 0)
+		return ;
+	frac *= scale;
+	extra_months = (int)frac;
+	tm->tm_mon += extra_months;
+	frac -= extra_months;
+	AdjustFractDays(frac, tm, fsec, DAYS_PER_MONTH);
+}
+#endif
 
 /* Fetch a fractional-second value with suitable error checking */
 static int
@@ -2875,7 +2900,7 @@ DecodeNumberField(int len, char *str, int fmask,
  *
  * Return 0 if okay (and set *tzp), a DTERR code if not okay.
  */
-static int
+int
 DecodeTimezone(char *str, int *tzp)
 {
 	int			tz;
@@ -3287,8 +3312,12 @@ DecodeInterval(char **field, int *ftype, int nf, int range,
 
 					case DTK_YEAR:
 						tm->tm_year += val;
+#ifdef ADB
+						AdjustFracMonths(fval, tm, fsec, MONTHS_PER_YEAR);
+#else
 						if (fval != 0)
 							tm->tm_mon += fval * MONTHS_PER_YEAR;
+#endif
 						tmask = DTK_M(YEAR);
 						break;
 
@@ -3945,8 +3974,20 @@ EncodeTimeOnly(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, int style,
  *	German - dd.mm.yyyy hh:mm:ss tz
  *	XSD - yyyy-mm-ddThh:mm:ss.ss+/-tz
  */
+#ifdef ADB
+void
+EncodeDateTime(struct pg_tm * tm,
+				fsec_t fsec,
+				bool print_tz,
+				int tz,
+				const char *tzn,
+				int style,
+				char *str,
+				bool is_ora_date)
+#else
 void
 EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char *tzn, int style, char *str)
+#endif
 {
 	int			day;
 
@@ -3963,6 +4004,18 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 		case USE_ISO_DATES:
 		case USE_XSD_DATES:
 			/* Compatible with ISO-8601 date formats */
+#ifdef ADB
+			if (is_ora_date &&
+				tm->tm_hour == 0 &&
+				tm->tm_min == 0 &&
+				tm->tm_sec == 0)
+			{
+				sprintf(str, "%04d-%02d-%02d",
+						(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
+						tm->tm_mon, tm->tm_mday);
+			} else
+			{
+#endif
 
 			if (style == USE_ISO_DATES)
 				sprintf(str, "%04d-%02d-%02d %02d:%02d:",
@@ -3974,6 +4027,9 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 						tm->tm_mon, tm->tm_mday, tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
+#ifdef ADB
+			}
+#endif
 
 			if (print_tz)
 				EncodeTimezone(str, tz, style);
@@ -3990,11 +4046,25 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 			else
 				sprintf(str, "%02d/%02d", tm->tm_mon, tm->tm_mday);
 
+#ifdef ADB
+			if (is_ora_date &&
+				tm->tm_hour == 0 &&
+				tm->tm_min == 0 &&
+				tm->tm_sec == 0)
+			{
+				sprintf(str + 5, "/%04d",
+					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));
+			} else
+			{
+#endif
 			sprintf(str + 5, "/%04d %02d:%02d:",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
+#ifdef ADB
+			}
+#endif
 
 			/*
 			 * Note: the uses of %.*s in this function would be risky if the
@@ -4019,11 +4089,25 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 
 			sprintf(str, "%02d.%02d", tm->tm_mday, tm->tm_mon);
 
+#ifdef ADB
+			if (is_ora_date &&
+				tm->tm_hour == 0 &&
+				tm->tm_min == 0 &&
+				tm->tm_sec == 0)
+			{
+				sprintf(str + 5, ".%04d",
+					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));
+			} else
+			{
+#endif
 			sprintf(str + 5, ".%04d %02d:%02d:",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1),
 					tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
+#ifdef ADB
+			}
+#endif
 
 			if (print_tz)
 			{
@@ -4051,10 +4135,22 @@ EncodeDateTime(struct pg_tm * tm, fsec_t fsec, bool print_tz, int tz, const char
 				sprintf(str + 4, "%02d %3s", tm->tm_mday, months[tm->tm_mon - 1]);
 			else
 				sprintf(str + 4, "%3s %02d", months[tm->tm_mon - 1], tm->tm_mday);
-
+#ifdef ADB
+			if (is_ora_date &&
+				tm->tm_hour == 0 &&
+				tm->tm_min == 0 &&
+				tm->tm_sec == 0)
+			{
+				/* ignore time */
+			} else
+			{
+#endif
 			sprintf(str + 10, " %02d:%02d:", tm->tm_hour, tm->tm_min);
 
 			AppendTimestampSeconds(str + strlen(str), tm, fsec);
+#ifdef ADB
+			}
+#endif
 
 			sprintf(str + strlen(str), " %04d",
 					(tm->tm_year > 0) ? tm->tm_year : -(tm->tm_year - 1));

@@ -52,11 +52,11 @@ COPY basictest (testvarchar) FROM stdin;
 short
 \.
 
-select * from basictest;
+select * from basictest order by 1, 2, 3, 4;
 
 -- check that domains inherit operations from base types
 select testtext || testvarchar as concat, testnumeric + 42 as sum
-from basictest;
+from basictest order by 1,2;
 
 -- check that union/case/coalesce type resolution handles domains properly
 select coalesce(4::domainint4, 7) is of (int4) as t;
@@ -85,9 +85,9 @@ INSERT INTO domarrtest values ('{2,2}', '{{"a","b"},{"c","d"},{"e","f"}}');
 INSERT INTO domarrtest values ('{2,2}', '{{"a"},{"c"}}');
 INSERT INTO domarrtest values (NULL, '{{"a","b","c"},{"d","e","f"}}');
 INSERT INTO domarrtest values (NULL, '{{"toolong","b","c"},{"d","e","f"}}');
-select * from domarrtest;
-select testint4arr[1], testchar4arr[2:2] from domarrtest;
-select array_dims(testint4arr), array_dims(testchar4arr) from domarrtest;
+select * from domarrtest order by 1, 2;
+select testint4arr[1], testchar4arr[2:2] from domarrtest order by 1, 2;
+select array_dims(testint4arr), array_dims(testchar4arr) from domarrtest order by 1, 2;
 
 COPY domarrtest FROM stdin;
 {3,4}	{q,w,e}
@@ -98,7 +98,7 @@ COPY domarrtest FROM stdin;	-- fail
 {3,4}	{qwerty,w,e}
 \.
 
-select * from domarrtest;
+select * from domarrtest order by 1, 2;
 
 drop table domarrtest;
 drop domain domainint4arr restrict;
@@ -147,7 +147,7 @@ a	b	c	\N	d
 a	b	c	\N	a
 \.
 
-select * from nulltest;
+select * from nulltest order by 1, 2, 3, 4, 5;
 
 -- Test out coerced (casted) constraints
 SELECT cast('1' as dnotnull);
@@ -179,7 +179,8 @@ create table defaulttest
             , col6 ddef2 DEFAULT '88'
             , col7 ddef4 DEFAULT 8000
             , col8 ddef5
-            );
+            )
+	distribute by replication;
 insert into defaulttest(col4) values(0); -- fails, col5 defaults to null
 alter table defaulttest alter column col5 drop default;
 insert into defaulttest default values; -- succeeds, inserts domain default
@@ -195,7 +196,7 @@ COPY defaulttest(col5) FROM stdin;
 42
 \.
 
-select * from defaulttest;
+select * from defaulttest order by 1,2,3,4,5,6,7,8;
 
 drop table defaulttest cascade;
 
@@ -228,15 +229,15 @@ drop domain dnotnulltest cascade;
 create table domdeftest (col1 ddef1);
 
 insert into domdeftest default values;
-select * from domdeftest;
+select * from domdeftest order by 1;
 
 alter domain ddef1 set default '42';
 insert into domdeftest default values;
-select * from domdeftest;
+select * from domdeftest order by 1;
 
 alter domain ddef1 drop default;
 insert into domdeftest default values;
-select * from domdeftest;
+select * from domdeftest order by 1;
 
 drop table domdeftest;
 
@@ -278,19 +279,19 @@ create domain dom as integer;
 create view domview as select cast(col1 as dom) from domtab;
 insert into domtab (col1) values (null);
 insert into domtab (col1) values (5);
-select * from domview;
+select * from domview order by 1;
 
 alter domain dom set not null;
 select * from domview; -- fail
 
 alter domain dom drop not null;
-select * from domview;
+select * from domview order by 1;
 
 alter domain dom add constraint domchkgt6 check(value > 6);
 select * from domview; --fail
 
 alter domain dom drop constraint domchkgt6 restrict;
-select * from domview;
+select * from domview order by 1;
 
 -- cleanup
 drop domain ddef1 restrict;

@@ -25,6 +25,17 @@
 #define MaxTransactionIdAttributeNumber			(-5)
 #define MaxCommandIdAttributeNumber				(-6)
 #define TableOidAttributeNumber					(-7)
+#ifdef PGXC
+#define XC_NodeIdAttributeNumber				(-8)
+#ifdef ADB
+#define ADB_RowIdAttributeNumber				(-9)
+#define FirstLowInvalidHeapAttributeNumber		(-10)
+#else /* ADB */
+#define FirstLowInvalidHeapAttributeNumber		(-9)
+#endif /* ADB */
+#else /* PGXC */
 #define FirstLowInvalidHeapAttributeNumber		(-8)
+#endif
+
 
 #endif   /* SYSATTR_H */

@@ -358,6 +358,13 @@ check_foreign_key(PG_FUNCTION_ARGS)
 		/* internal error */
 		elog(ERROR, "%s: check_foreign_key: # of plans changed in meantime",
 			 trigger->tgname);
+#ifdef ADB
+	/*
+	 * fix: Array access (from variable 'argtypes') results in a null
+	 * pointer dereference
+	 */
+	AssertArg(argtypes);
+#endif
 
 	/* For each column in key ... */
 	for (i = 0; i < nkeys; i++)
@@ -576,6 +583,13 @@ check_foreign_key(PG_FUNCTION_ARGS)
 
 		snprintf(ident, sizeof(ident), "%s$%u", trigger->tgname, rel->rd_id);
 		plan = find_plan(ident, &FPlans, &nFPlans);
+#ifdef ADB
+		/* Array access (via field 'splan') results in a null pointer
+		 * dereference
+		 */
+		if (plan->splan == NULL)
+			PG_RETURN_NULL();
+#endif
 		ret = SPI_execp(plan->splan[r], kvals, NULL, tcount);
 		/* we have no NULLs - so we pass   ^^^^  here */
 

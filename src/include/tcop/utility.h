@@ -25,17 +25,29 @@ typedef enum
 
 /* Hook for plugins to get control in ProcessUtility() */
 typedef void (*ProcessUtility_hook_type) (Node *parsetree,
-					  const char *queryString, ProcessUtilityContext context,
-													  ParamListInfo params,
-									DestReceiver *dest, char *completionTag);
+										  const char *queryString, ProcessUtilityContext context,
+										  ParamListInfo params,
+										  DestReceiver *dest, 
+#ifdef PGXC
+										  bool sentToRemote,
+#endif /* PGXC */
+										  char *completionTag);
 extern PGDLLIMPORT ProcessUtility_hook_type ProcessUtility_hook;
 
 extern void ProcessUtility(Node *parsetree, const char *queryString,
-			   ProcessUtilityContext context, ParamListInfo params,
-			   DestReceiver *dest, char *completionTag);
+						   ProcessUtilityContext context, ParamListInfo params,
+						   DestReceiver *dest, 
+#ifdef PGXC
+									bool sentToRemote,
+#endif /* PGXC */
+						   char *completionTag);
 extern void standard_ProcessUtility(Node *parsetree, const char *queryString,
-						ProcessUtilityContext context, ParamListInfo params,
-						DestReceiver *dest, char *completionTag);
+									ProcessUtilityContext context, ParamListInfo params,
+									DestReceiver *dest,
+#ifdef PGXC
+									bool sentToRemote,
+#endif /* PGXC */
+									char *completionTag);
 
 extern bool UtilityReturnsTuples(Node *parsetree);
 
@@ -49,4 +61,16 @@ extern LogStmtLevel GetCommandLogLevel(Node *parsetree);
 
 extern bool CommandIsReadOnly(Node *parsetree);
 
+#ifdef PGXC
+extern bool pgxc_lock_for_utility_stmt(Node *parsetree);
+#endif
+
+#ifdef ADBMGRD
+/* in utility_mgr.c */
+extern const char *mgr_CreateCommandTag(Node *parsetree);
+extern void mgr_ProcessUtility(Node *parsetree, const char *queryString,
+									ProcessUtilityContext context, ParamListInfo params,
+									DestReceiver *dest,
+									char *completionTag);
+#endif /* ADBMGRD */
 #endif   /* UTILITY_H */

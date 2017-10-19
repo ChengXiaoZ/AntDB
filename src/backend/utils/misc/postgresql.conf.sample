@@ -114,7 +114,7 @@
 #shared_buffers = 32MB			# min 128kB
 					# (change requires restart)
 #temp_buffers = 8MB			# min 800kB
-#max_prepared_transactions = 0		# zero disables the feature
+#max_prepared_transactions = 10		# zero disables the feature
 					# (change requires restart)
 # Note:  Increasing max_prepared_transactions costs ~600 bytes of shared memory
 # per transaction slot, plus lock space (see max_locks_per_transaction).
@@ -568,14 +568,66 @@
 
 #transform_null_equals = off
 
-
-#------------------------------------------------------------------------------
+##------------------------------------------------------------------------------
 # ERROR HANDLING
 #------------------------------------------------------------------------------
 
 #exit_on_error = off			# terminate session on any error?
 #restart_after_crash = on		# reinitialize after backend crash?
 
+#------------------------------------------------------------------------------
+# DATA NODES AND CONNECTION POOLING
+#------------------------------------------------------------------------------
+
+#min_pool_size = 1			# Initial pool size
+					# (change requires restart)
+#max_pool_size = 100			# Maximum pool size
+					# (change requires restart)
+#persistent_datanode_connections = off	# Set persistent connection mode for pooler
+					# if set at on, connections taken for session
+					# are not put back to pool
+#max_coordinators = 16			# Maximum number of Coordinators
+					# that can be defined in cluster
+					# (change requires restart)
+#max_datanodes = 16			# Maximum number of Datanodes
+					# that can be defined in cluster
+					# (change requires restart)
+
+#------------------------------------------------------------------------------
+# GTM CONNECTION
+#------------------------------------------------------------------------------
+
+#gtm_host = 'localhost'			# Host name or address of GTM
+					# (change requires restart)
+#gtm_port = 6666			# Port of GTM
+					# (change requires restart)
+#pgxc_node_name = ''			# Coordinator or Datanode name
+					# (change requires restart)
+
+#gtm_backup_barrier = off		# Specify to backup gtm restart point for each barrier.
+
+##------------------------------------------------------------------------------
+# OTHER PG-XC OPTIONS
+#------------------------------------------------------------------------------
+#enforce_two_phase_commit = on		# Enforce the usage of two-phase commit on transactions
+					# where temporary objects are used or ON COMMIT actions
+					# are pending.
+					# Usage of commit instead of two-phase commit may break
+					# data consistency so use at your own risk.
+
+# - Postgres-XC specific Planner Method Configuration
+
+#enable_fast_query_shipping = on
+#enable_remotejoin = on
+#enable_remotegroup = on
+#enable_remotelimit = on
+#enable_remotesort = on
+
+##------------------------------------------------------------------------------
+# ADB OPTIONS
+##------------------------------------------------------------------------------
+#enable_adb_ha_sync_log = on			# Enable record each commit sql for HA synchronization
+#enable_abd_ha_sync_log_select = off	# Disable record SELECT SQL
 
 #------------------------------------------------------------------------------
 # CONFIG FILE INCLUDES

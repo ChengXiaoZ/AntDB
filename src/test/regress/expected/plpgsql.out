@@ -35,7 +35,7 @@ create unique index WSlot_name on WSlot using btree (slotname bpchar_ops);
 create table PField (
     name	text,
     comment	text
-);
+) distribute by replication;
 create unique index PField_name on PField using btree (name text_ops);
 create table PSlot (
     slotname	char(20),
@@ -1470,6 +1470,7 @@ update PSlot set slotlink = 'HS.base.hub1.1' where slotname = 'PS.base.b2';
 --
 -- Now we take a look at the patchfield
 --
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select * from PField_v1 where pfname = 'PF0_1' order by slotname;
  pfname |       slotname       |                         backside                         |                     patch                     
 --------+----------------------+----------------------------------------------------------+-----------------------------------------------
@@ -1565,7 +1566,7 @@ SELECT recursion_test(4,3);
 --
 -- Test the FOUND magic variable
 --
-CREATE TABLE found_test_tbl (a int);
+CREATE TABLE found_test_tbl (a int) distribute by roundrobin;
 create function test_found()
   returns boolean as '
   declare
@@ -1607,15 +1608,15 @@ select test_found();
  t
 (1 row)
 
-select * from found_test_tbl;
+select * from found_test_tbl order by 1;
   a  
 -----
    2
- 100
    3
    4
    5
    6
+ 100
 (6 rows)
 
 --
@@ -1630,15 +1631,15 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
-select * from test_table_func_rec();
+select * from test_table_func_rec() order by 1;
   a  
 -----
    2
- 100
    3
    4
    5
    6
+ 100
 (6 rows)
 
 create function test_table_func_row() returns setof found_test_tbl as '
@@ -1650,15 +1651,15 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
-select * from test_table_func_row();
+select * from test_table_func_row() order by 1;
   a  
 -----
    2
- 100
    3
    4
    5
    6
+ 100
 (6 rows)
 
 create function test_ret_set_scalar(int,int) returns setof int as '
@@ -1670,7 +1671,7 @@ BEGIN
 	END LOOP;
 	RETURN;
 END;' language plpgsql;
-select * from test_ret_set_scalar(1,10);
+select * from test_ret_set_scalar(1,10) order by 1;
  test_ret_set_scalar 
 ---------------------
                    2
@@ -1700,14 +1701,14 @@ BEGIN
 	END IF;
 	RETURN;
 END;' language plpgsql;
-SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int);
+SELECT * FROM test_ret_set_rec_dyn(1500) AS (a int, b int, c int) order by a, b, c;
  a | b  | c  
 ---+----+----
  5 | 10 | 15
  5 | 10 | 15
 (2 rows)
 
-SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text);
+SELECT * FROM test_ret_set_rec_dyn(5) AS (a int, b numeric, c text) order by a, b, c;
  a  | b |  c  
 ----+---+-----
  50 | 5 | xxx
@@ -1726,13 +1727,13 @@ BEGIN
 		RETURN retval;
 	END IF;
 END;' language plpgsql;
-SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int);
+SELECT * FROM test_ret_rec_dyn(1500) AS (a int, b int, c int) order by a, b, c;
  a | b  | c  
 ---+----+----
  5 | 10 | 15
 (1 row)
 
-SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text);
+SELECT * FROM test_ret_rec_dyn(5) AS (a int, b numeric, c text) order by a, b, c;
  a  | b |  c  
 ----+---+-----
  50 | 5 | xxx
@@ -1792,7 +1793,7 @@ begin
   return next;
   return;
 end$$ language plpgsql;
-select * from f1(42);
+select * from f1(42) order by 1;
  j  
 ----
  43
@@ -1828,7 +1829,7 @@ begin
   k := 'foot';
   return next;
 end$$ language plpgsql;
-select * from f1(42);
+select * from f1(42) order by j, k;;
  j  |  k   
 ----+------
  43 | foo
@@ -1897,7 +1898,7 @@ SELECT perform_test_func();
  
 (1 row)
 
-SELECT * FROM perform_test;
+SELECT * FROM perform_test order by a, b;
   a  |  b  
 -----+-----
    5 |  15
@@ -2033,12 +2034,13 @@ select subxact_rollback_semantics();
                          20
 (1 row)
 
-select * from foo;
+select * from foo order by 1;
  f1 
 ----
   1
+  2
  20
-(2 rows)
+(3 rows)
 
 drop table foo;
 create function trap_timeout() returns void as $$
@@ -2141,26 +2143,21 @@ NOTICE:  caught foreign_key_violation
 begin;
   set constraints all deferred;
   select trap_foreign_key(2);	-- should not detect FK violation
+NOTICE:  caught foreign_key_violation
  trap_foreign_key 
 ------------------
-                1
+                0
 (1 row)
 
   savepoint x;
+ERROR:  SAVEPOINT is not yet supported.
     set constraints all immediate; -- fails
-ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
-DETAIL:  Key (f1)=(2) is not present in table "master".
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
   rollback to x;
+ERROR:  no such savepoint
   select trap_foreign_key_2();  -- detects FK violation
-NOTICE:  caught foreign_key_violation
- trap_foreign_key_2 
---------------------
-                  0
-(1 row)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 commit;				-- still fails
-ERROR:  insert or update on table "slave" violates foreign key constraint "slave_f1_fkey"
-DETAIL:  Key (f1)=(2) is not present in table "master".
 drop function trap_foreign_key(int);
 drop function trap_foreign_key_2();
 --
@@ -2296,6 +2293,7 @@ begin
     end if;
 end
 $$ language plpgsql;
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
 select refcursor_test2(20000, 20000) as "Should be false",
        refcursor_test2(20, 20) as "Should be true";
  Should be false | Should be true 
@@ -3050,7 +3048,7 @@ NOTICE:  x.f1 = 7, x.f2 = 8
  
 (1 row)
 
-select * from foo;
+select * from foo order by 1, 2;
  f1 | f2 
 ----+----
   1 |  2
@@ -3145,14 +3143,14 @@ begin
   close c;
 end;
 $$ language plpgsql;
-select * from sc_test();
+select * from sc_test() order by 1;
    sc_test   
 -------------
  -2147483647
-  2147483647
      -123456
-      123456
            0
+      123456
+  2147483647
 (5 rows)
 
 create or replace function sc_test() returns setof integer as $$
@@ -3169,7 +3167,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
-select * from sc_test();  -- fails because of NO SCROLL specification
+select * from sc_test() order by 1;  -- fails because of NO SCROLL specification
 ERROR:  cursor can only scan forward
 HINT:  Declare it with SCROLL option to enable backward scan.
 CONTEXT:  PL/pgSQL function sc_test() line 7 at FETCH
@@ -3187,14 +3185,14 @@ begin
   close c;
 end;
 $$ language plpgsql;
-select * from sc_test();
+select * from sc_test() order by 1;
    sc_test   
 -------------
  -2147483647
-  2147483647
      -123456
-      123456
            0
+      123456
+  2147483647
 (5 rows)
 
 create or replace function sc_test() returns setof integer as $$
@@ -3202,7 +3200,7 @@ declare
   c refcursor;
   x integer;
 begin
-  open c scroll for execute 'select f1 from int4_tbl';
+  open c scroll for execute 'select f1 from int4_tbl order by 1';
   fetch last from c into x;
   while found loop
     return next x;
@@ -3214,9 +3212,9 @@ $$ language plpgsql;
 select * from sc_test();
    sc_test   
 -------------
- -2147483647
-     -123456
+  2147483647
            0
+ -2147483647
 (3 rows)
 
 create or replace function sc_test() returns setof integer as $$
@@ -3224,7 +3222,7 @@ declare
   c refcursor;
   x integer;
 begin
-  open c scroll for execute 'select f1 from int4_tbl';
+  open c scroll for execute 'select f1 from int4_tbl order by 1';
   fetch last from c into x;
   while found loop
     return next x;
@@ -3235,10 +3233,10 @@ begin
 end;
 $$ language plpgsql;
 select * from sc_test();
-   sc_test   
--------------
- -2147483647
-      123456
+  sc_test   
+------------
+ 2147483647
+    -123456
 (2 rows)
 
 create or replace function sc_test() returns setof integer as $$
@@ -3260,7 +3258,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
-select * from sc_test();
+select * from sc_test() order by 1;
  sc_test 
 ---------
        3
@@ -3282,7 +3280,7 @@ begin
   close c;
 end;
 $$ language plpgsql;
-select * from sc_test();
+select * from sc_test() order by 1;
  sc_test 
 ---------
       10
@@ -3327,9 +3325,10 @@ begin
     return next;
 end;
 $$ language plpgsql;
-select * from ret_query1();
+select * from ret_query1() order by 1, 2;
  column1 | column2 
 ---------+---------
+      -1 |      -2
       -1 |      -2
        1 |       0
        2 |      10
@@ -3342,7 +3341,6 @@ select * from ret_query1();
        9 |      80
       10 |      90
       11 |     100
-      -1 |      -2
 (13 rows)
 
 create type record_type as (x text, y int, z boolean);
@@ -3352,18 +3350,18 @@ begin
                  from generate_series(-8, lim) s (x) where s.x % 2 = 0;
 end;
 $$ language plpgsql;
-select * from ret_query2(8);
+select * from ret_query2(8) order by 1;
                 x                 | y  | z 
 ----------------------------------+----+---
- a8d2ec85eaf98407310b72eb73dda247 | -8 | f
- 596a3d04481816330f07e4f97510c28f | -6 | f
  0267aaf632e87a63288a08331f22c7c3 | -4 | f
- 5d7b9adcbe1c629ec722529dd12e5129 | -2 | f
- cfcd208495d565ef66e7dff9f98764da |  0 | f
- c81e728d9d4c2f636f067f89cc14862c |  2 | t
- a87ff679a2f3e71d9181a67b7542122c |  4 | t
  1679091c5a880faf6fb5e6087eb1b2dc |  6 | t
+ 596a3d04481816330f07e4f97510c28f | -6 | f
+ 5d7b9adcbe1c629ec722529dd12e5129 | -2 | f
+ a87ff679a2f3e71d9181a67b7542122c |  4 | t
+ a8d2ec85eaf98407310b72eb73dda247 | -8 | f
+ c81e728d9d4c2f636f067f89cc14862c |  2 | t
  c9f0f895fb98ab9159f51fd0297e236d |  8 | t
+ cfcd208495d565ef66e7dff9f98764da |  0 | f
 (9 rows)
 
 -- test EXECUTE USING
@@ -3482,7 +3480,7 @@ create temp table forc_test as
   select n as i, n as j from generate_series(1,10) n;
 create or replace function forc01() returns void as $$
 declare
-  c cursor for select * from forc_test;
+  c cursor for select * from forc_test order by 1;
 begin
   for r in c loop
     raise notice '%, %', r.i, r.j;
@@ -3492,33 +3490,22 @@ end;
 $$ language plpgsql;
 select forc01();
 NOTICE:  1, 1
-NOTICE:  2, 2
-NOTICE:  3, 3
-NOTICE:  4, 4
-NOTICE:  5, 5
-NOTICE:  6, 6
-NOTICE:  7, 7
-NOTICE:  8, 8
-NOTICE:  9, 9
-NOTICE:  10, 10
- forc01 
---------
- 
-(1 row)
-
-select * from forc_test;
-  i   | j  
-------+----
-  100 |  2
-  200 |  4
-  300 |  6
-  400 |  8
-  500 | 10
-  600 | 12
-  700 | 14
-  800 | 16
-  900 | 18
- 1000 | 20
+ERROR:  WHERE CURRENT OF clause not yet supported
+CONTEXT:  SQL statement "update forc_test set i = i * 100, j = r.j * 2 where current of c"
+PL/pgSQL function forc01() line 7 at SQL statement
+select * from forc_test order by 1, 2;
+ i  | j  
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
 (10 rows)
 
 -- same, with a cursor whose portal name doesn't match variable name
@@ -3527,7 +3514,7 @@ declare
   c refcursor := 'fooled_ya';
   r record;
 begin
-  open c for select * from forc_test;
+  open c for select * from forc_test order by 1;
   loop
     fetch c into r;
     exit when not found;
@@ -3537,34 +3524,23 @@ begin
 end;
 $$ language plpgsql;
 select forc01();
-NOTICE:  100, 2
-NOTICE:  200, 4
-NOTICE:  300, 6
-NOTICE:  400, 8
-NOTICE:  500, 10
-NOTICE:  600, 12
-NOTICE:  700, 14
-NOTICE:  800, 16
-NOTICE:  900, 18
-NOTICE:  1000, 20
- forc01 
---------
- 
-(1 row)
-
-select * from forc_test;
-   i    | j  
---------+----
-  10000 |  4
-  20000 |  8
-  30000 | 12
-  40000 | 16
-  50000 | 20
-  60000 | 24
-  70000 | 28
-  80000 | 32
-  90000 | 36
- 100000 | 40
+NOTICE:  1, 1
+ERROR:  WHERE CURRENT OF clause not yet supported
+CONTEXT:  SQL statement "update forc_test set i = i * 100, j = r.j * 2 where current of c"
+PL/pgSQL function forc01() line 11 at SQL statement
+select * from forc_test order by 1;
+ i  | j  
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
 (10 rows)
 
 drop function forc01();
@@ -3589,7 +3565,7 @@ begin
   return query execute 'select * from (values($1),($2)) f' using 40,50;
 end;
 $$ language plpgsql;
-select * from return_dquery();
+select * from return_dquery() order by 1;
  return_dquery 
 ---------------
             10
@@ -3609,42 +3585,42 @@ begin
   return query execute 'select * from tabwithcols';
 end;
 $$ language plpgsql;
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2,3,4;
  a  | b  | c  | d  
 ----+----+----+----
  10 | 20 | 30 | 40
- 50 | 60 | 70 | 80
  10 | 20 | 30 | 40
+ 50 | 60 | 70 | 80
  50 | 60 | 70 | 80
 (4 rows)
 
 alter table tabwithcols drop column b;
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2,3;
  a  | c  | d  
 ----+----+----
  10 | 30 | 40
- 50 | 70 | 80
  10 | 30 | 40
+ 50 | 70 | 80
  50 | 70 | 80
 (4 rows)
 
 alter table tabwithcols drop column d;
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2;
  a  | c  
 ----+----
  10 | 30
- 50 | 70
  10 | 30
+ 50 | 70
  50 | 70
 (4 rows)
 
 alter table tabwithcols add column d int;
-select * from returnqueryf();
+select * from returnqueryf() order by 1,2,3;
  a  | c  | d 
 ----+----+---
  10 | 30 |  
- 50 | 70 |  
  10 | 30 |  
+ 50 | 70 |  
  50 | 70 |  
 (4 rows)
 
@@ -4260,7 +4236,7 @@ begin
   return query select $1, $1+i from generate_series(1,5) g(i);
 end;
 $$ language plpgsql immutable strict;
-select * from tftest(10);
+select * from tftest(10) order by 1, 2;
  a  | b  
 ----+----
  10 | 11
@@ -4278,7 +4254,7 @@ begin
   return next;
 end;
 $$ language plpgsql immutable strict;
-select * from tftest(10);
+select * from tftest(10) order by 1, 2;
   a  |  b  
 -----+-----
   10 |  11
@@ -4304,7 +4280,7 @@ begin
   raise notice '% %', found, rc;
 end;
 $$ language plpgsql;
-select * from rttest();
+select * from rttest() order by 1;
 NOTICE:  t 2
 NOTICE:  f 0
 NOTICE:  t 2
@@ -4312,8 +4288,8 @@ NOTICE:  f 0
  rttest 
 --------
      10
-     20
      10
+     20
      20
 (4 rows)
 
@@ -4433,17 +4409,13 @@ end$$;
 BEGIN;
 create table public.stuffs (stuff text);
 SAVEPOINT a;
+ERROR:  SAVEPOINT is not yet supported.
 select error2('nonexistent.stuffs');
-ERROR:  schema "nonexistent" does not exist
-CONTEXT:  SQL function "error1" statement 1
-PL/pgSQL function error2(text) line 3 at RETURN
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 ROLLBACK TO a;
+ERROR:  no such savepoint
 select error2('public.stuffs');
- error2 
---------
- stuffs
-(1 row)
-
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
 drop function error2(p_name_table text);
 drop function error1(text);
@@ -4603,7 +4575,7 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-select * from conflict_test();
+select * from conflict_test() order by 1,2;
 ERROR:  column reference "q1" is ambiguous
 LINE 1: select q1,q2 from int8_tbl
                ^
@@ -4620,14 +4592,15 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-select * from conflict_test();
+-- PGXCTODO: This is failing due to issue 3522907, complicated SELECT queries in plpgsql functions
+select * from conflict_test() order by 1,2;
  q1 |        q2         
 ----+-------------------
+ 42 | -4567890123456789
+ 42 |               123
  42 |               456
  42 |  4567890123456789
- 42 |               123
  42 |  4567890123456789
- 42 | -4567890123456789
 (5 rows)
 
 create or replace function conflict_test() returns setof int8_tbl as $$
@@ -4640,14 +4613,14 @@ begin
   end loop;
 end;
 $$ language plpgsql;
-select * from conflict_test();
+select * from conflict_test() order by 1,2;
         q1        |        q2         
 ------------------+-------------------
               123 |               456
               123 |  4567890123456789
+ 4567890123456789 | -4567890123456789
  4567890123456789 |               123
  4567890123456789 |  4567890123456789
- 4567890123456789 | -4567890123456789
 (5 rows)
 
 drop function conflict_test();

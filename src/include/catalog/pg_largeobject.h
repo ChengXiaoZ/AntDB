@@ -19,7 +19,11 @@
 #ifndef PG_LARGEOBJECT_H
 #define PG_LARGEOBJECT_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_largeobject definition.  cpp turns this into

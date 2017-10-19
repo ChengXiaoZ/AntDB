@@ -422,11 +422,11 @@ extern double rint(double x);
 extern int	inet_aton(const char *cp, struct in_addr * addr);
 #endif
 
-#if !HAVE_DECL_STRLCAT
+#if !HAVE_DECL_STRLCAT || defined(__clang__)
 extern size_t strlcat(char *dst, const char *src, size_t siz);
 #endif
 
-#if !HAVE_DECL_STRLCPY
+#if !HAVE_DECL_STRLCPY || defined(__clang__)
 extern size_t strlcpy(char *dst, const char *src, size_t siz);
 #endif
 

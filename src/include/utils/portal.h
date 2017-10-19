@@ -178,6 +178,9 @@ typedef struct PortalData
 	/* Presentation data, primarily used by the pg_cursors system view */
 	TimestampTz creation_time;	/* time at which this portal was defined */
 	bool		visible;		/* include this portal in pg_cursors? */
+#ifdef ADB
+	ParseGrammar grammar;
+#endif
 
 	/*
 	 * This field belongs with createSubid, but in pre-9.5 branches, add it
@@ -214,7 +217,11 @@ extern void AtSubAbort_Portals(SubTransactionId mySubid,
 				   ResourceOwner myXactOwner,
 				   ResourceOwner parentXactOwner);
 extern void AtSubCleanup_Portals(SubTransactionId mySubid);
+#ifdef ADB
+extern Portal CreatePortal(const char *name, bool allowDup, bool dupSilent, ParseGrammar grammar);
+#else
 extern Portal CreatePortal(const char *name, bool allowDup, bool dupSilent);
+#endif
 extern Portal CreateNewPortal(void);
 extern void PinPortal(Portal portal);
 extern void UnpinPortal(Portal portal);

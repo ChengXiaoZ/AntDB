@@ -24,6 +24,12 @@ extern PGDLLIMPORT post_parse_analyze_hook_type post_parse_analyze_hook;
 
 extern Query *parse_analyze(Node *parseTree, const char *sourceText,
 			  Oid *paramTypes, int numParams);
+#ifdef ADB
+extern Query *parse_analyze_for_gram(Node *parseTree, const char *sourceText,
+			  Oid *paramTypes, int numParams, ParseGrammar grammar);
+extern Query *parse_analyze_varparams_for_gram(Node *parseTree, const char *sourceText,
+						Oid **paramTypes, int *numParams, ParseGrammar grammar);
+#endif
 extern Query *parse_analyze_varparams(Node *parseTree, const char *sourceText,
 						Oid **paramTypes, int *numParams);
 

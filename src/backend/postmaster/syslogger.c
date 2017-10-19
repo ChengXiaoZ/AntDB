@@ -1236,6 +1236,9 @@ logfile_rotate(bool time_based_rotation, int size_rotation_for)
 	if (csvlogFile != NULL &&
 		(time_based_rotation || (size_rotation_for & LOG_DESTINATION_CSVLOG)))
 	{
+#ifdef ADB
+		AssertArg(csvfilename);
+#endif
 		if (Log_truncate_on_rotation && time_based_rotation &&
 			last_csv_file_name != NULL &&
 			strcmp(csvfilename, last_csv_file_name) != 0)

@@ -19,9 +19,13 @@
 #ifndef PG_CONSTRAINT_H
 #define PG_CONSTRAINT_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
 #include "catalog/dependency.h"
 #include "nodes/pg_list.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_constraint definition.  cpp turns this into

@@ -2,21 +2,21 @@
 CREATE TABLE truncate_a (col1 integer primary key);
 INSERT INTO truncate_a VALUES (1);
 INSERT INTO truncate_a VALUES (2);
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a ORDER BY 1;
 -- Roll truncate back
 BEGIN;
 TRUNCATE truncate_a;
 ROLLBACK;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a ORDER BY 1;
 -- Commit the truncate this time
 BEGIN;
 TRUNCATE truncate_a;
 COMMIT;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a ORDER BY 1;
 
 -- Test foreign-key checks
 CREATE TABLE trunc_b (a int REFERENCES truncate_a);
-CREATE TABLE trunc_c (a serial PRIMARY KEY);
+CREATE TABLE trunc_c (a serial PRIMARY KEY) DISTRIBUTE BY REPLICATION;
 CREATE TABLE trunc_d (a int REFERENCES trunc_c);
 CREATE TABLE trunc_e (a int REFERENCES truncate_a, b int REFERENCES trunc_c);
 
@@ -94,35 +94,35 @@ CREATE TABLE trunc_faa (col3 text) INHERITS (trunc_fa);
 INSERT INTO trunc_faa VALUES (5, 'five', 'FIVE');
 
 BEGIN;
-SELECT * FROM trunc_f;
+SELECT * FROM trunc_f ORDER BY 1;
 TRUNCATE trunc_f;
-SELECT * FROM trunc_f;
+SELECT * FROM trunc_f ORDER BY 1;
 ROLLBACK;
 
 BEGIN;
-SELECT * FROM trunc_f;
+SELECT * FROM trunc_f ORDER BY 1;
 TRUNCATE ONLY trunc_f;
-SELECT * FROM trunc_f;
+SELECT * FROM trunc_f ORDER BY 1;
 ROLLBACK;
 
 BEGIN;
-SELECT * FROM trunc_f;
-SELECT * FROM trunc_fa;
-SELECT * FROM trunc_faa;
+SELECT * FROM trunc_f ORDER BY 1;
+SELECT * FROM trunc_fa ORDER BY 1, 2;
+SELECT * FROM trunc_faa ORDER BY 1, 2;
 TRUNCATE ONLY trunc_fb, ONLY trunc_fa;
-SELECT * FROM trunc_f;
-SELECT * FROM trunc_fa;
-SELECT * FROM trunc_faa;
+SELECT * FROM trunc_f ORDER BY 1;
+SELECT * FROM trunc_fa ORDER BY 1, 2;
+SELECT * FROM trunc_faa ORDER BY 1, 2;
 ROLLBACK;
 
 BEGIN;
-SELECT * FROM trunc_f;
-SELECT * FROM trunc_fa;
-SELECT * FROM trunc_faa;
+SELECT * FROM trunc_f ORDER BY 1;
+SELECT * FROM trunc_fa ORDER BY 1, 2;
+SELECT * FROM trunc_faa ORDER BY 1, 2;
 TRUNCATE ONLY trunc_fb, trunc_fa;
-SELECT * FROM trunc_f;
-SELECT * FROM trunc_fa;
-SELECT * FROM trunc_faa;
+SELECT * FROM trunc_f ORDER BY 1;
+SELECT * FROM trunc_fa ORDER BY 1, 2;
+SELECT * FROM trunc_faa ORDER BY 1, 2;
 ROLLBACK;
 
 DROP TABLE trunc_f CASCADE;
@@ -188,19 +188,19 @@ ALTER SEQUENCE truncate_a_id1 OWNED BY truncate_a.id1;
 
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a ORDER BY id;
 
 TRUNCATE truncate_a;
 
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a ORDER BY id;
 
 TRUNCATE truncate_a RESTART IDENTITY;
 
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a ORDER BY id;
 
 -- check rollback of a RESTART IDENTITY operation
 BEGIN;
@@ -210,7 +210,7 @@ SELECT * FROM truncate_a;
 ROLLBACK;
 INSERT INTO truncate_a DEFAULT VALUES;
 INSERT INTO truncate_a DEFAULT VALUES;
-SELECT * FROM truncate_a;
+SELECT * FROM truncate_a order by 1,2;
 
 DROP TABLE truncate_a;
 

@@ -248,6 +248,10 @@ widget_in(char *str)
 	int			i;
 	WIDGET	   *result;
 
+#ifdef ADB
+	AssertArg(str);
+#endif /* ADB */
+
 	for (i = 0, p = str; *p && i < NARGS && *p != RDELIM; p++)
 	{
 		if (*p == DELIM || (*p == LDELIM && i == 0))
@@ -260,6 +264,9 @@ widget_in(char *str)
 				 errmsg("invalid input syntax for type widget: \"%s\"",
 						str)));
 
+#ifdef ADB
+	Assert(coord[0] && coord[1] && coord[2]);
+#endif /* ADB */
 	result = (WIDGET *) palloc(sizeof(WIDGET));
 	result->center.x = atof(coord[0]);
 	result->center.y = atof(coord[1]);

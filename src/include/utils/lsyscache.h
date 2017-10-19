@@ -97,6 +97,9 @@ extern bool get_func_leakproof(Oid funcid);
 extern float4 get_func_cost(Oid funcid);
 extern float4 get_func_rows(Oid funcid);
 extern Oid	get_relname_relid(const char *relname, Oid relnamespace);
+#ifdef PGXC
+extern int	get_relnatts(Oid relid);
+#endif
 extern char *get_rel_name(Oid relid);
 extern Oid	get_rel_namespace(Oid relid);
 extern Oid	get_rel_type_id(Oid relid);
@@ -139,6 +142,28 @@ extern Oid	get_typcollation(Oid typid);
 extern bool type_is_collatable(Oid typid);
 extern Oid	getBaseType(Oid typid);
 extern Oid	getBaseTypeAndTypmod(Oid typid, int32 *typmod);
+#ifdef PGXC
+#ifdef ADB
+extern Oid	get_namespaceid(const char *nspname);
+extern Oid	get_typ_namespace(Oid typid);
+extern Oid	get_typname_typid(const char *typname, Oid typnamespace);
+extern Oid	get_funcid(const char *funcname, oidvector *argtypes, Oid funcnsp);
+extern Oid	get_opnamespace(Oid opno);
+extern Oid	get_operid(const char *oprname, Oid oprleft, Oid oprright, Oid oprnsp);
+#endif
+extern char *get_typename(Oid typid);
+extern char *get_pgxc_nodename(Oid nodeoid);
+extern Oid	get_pgxc_nodeoid(const char *nodename);
+extern uint32	get_pgxc_node_id(Oid nodeid);
+extern char	get_pgxc_nodetype(Oid nodeid);
+extern int	get_pgxc_nodeport(Oid nodeid);
+extern char *get_pgxc_nodehost(Oid nodeid);
+extern bool	is_pgxc_nodepreferred(Oid nodeid);
+extern bool	is_pgxc_nodeprimary(Oid nodeid);
+extern Oid	get_pgxc_groupoid(const char *groupname);
+extern int	get_pgxc_groupmembers(Oid groupid, Oid **members);
+extern int	get_pgxc_classnodes(Oid tableid, Oid **nodes);
+#endif
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
 extern bool get_attstatsslot(HeapTuple statstuple,

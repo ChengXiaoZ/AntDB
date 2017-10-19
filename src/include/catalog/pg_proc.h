@@ -23,7 +23,11 @@
 #ifndef PG_PROC_H
 #define PG_PROC_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_proc definition.  cpp turns this into
@@ -226,6 +230,10 @@ DATA(insert OID = 1258 (  textcat		   PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2
 DATA(insert OID =  84 (  boolne			   PGNSP PGUID 12 1 0 0 0 f f f t t f i 2 0 16 "16 16" _null_ _null_ _null_ _null_ boolne _null_ _null_ _null_ ));
 DATA(insert OID =  89 (  version		   PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ pgsql_version _null_ _null_ _null_ ));
 DESCR("PostgreSQL version string");
+#ifdef PGXC
+DATA(insert OID =  90 (  pgxc_version	   PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 25 "" _null_ _null_ _null_ _null_ pgxc_version _null_ _null_ _null_ ));
+DESCR("Postgres-XC version string");
+#endif
 
 /* OIDS 100 - 199 */
 
@@ -416,8 +424,10 @@ DATA(insert OID = 236 (  float4			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 70
 DESCR("convert int2 to float4");
 DATA(insert OID = 237 (  int2			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 21 "701" _null_ _null_ _null_ _null_	dtoi2 _null_ _null_ _null_ ));
 DESCR("convert float8 to int2");
+#define FLOAT8TOINT2OID		237
 DATA(insert OID = 238 (  int2			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 21 "700" _null_ _null_ _null_ _null_	ftoi2 _null_ _null_ _null_ ));
 DESCR("convert float4 to int2");
+#define FLOAT4TOINT2OID		238
 DATA(insert OID = 239 (  line_distance	   PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 701 "628 628" _null_ _null_ _null_ _null_	line_distance _null_ _null_ _null_ ));
 
 DATA(insert OID = 240 (  abstimein		   PGNSP PGUID 12 1 0 0 0 f f f f t f s 1 0 702 "2275" _null_ _null_ _null_ _null_	abstimein _null_ _null_ _null_ ));
@@ -525,10 +535,12 @@ DATA(insert OID = 316 (  float8			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 70
 DESCR("convert int4 to float8");
 DATA(insert OID = 317 (  int4			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 23 "701" _null_ _null_ _null_ _null_	dtoi4 _null_ _null_ _null_ ));
 DESCR("convert float8 to int4");
+#define FLOAT8TOINT4OID		317
 DATA(insert OID = 318 (  float4			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 700  "23" _null_ _null_ _null_ _null_	i4tof _null_ _null_ _null_ ));
 DESCR("convert int4 to float4");
 DATA(insert OID = 319 (  int4			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1  0 23 "700" _null_ _null_ _null_ _null_	ftoi4 _null_ _null_ _null_ ));
 DESCR("convert float4 to int4");
+#define FLOAT4TOINT4OID		319
 
 DATA(insert OID = 330 (  btgettuple		   PGNSP PGUID 12 1 0 0 0 f f f f t f v 2 0 16 "2281 2281" _null_ _null_ _null_ _null_	btgettuple _null_ _null_ _null_ ));
 DESCR("btree(internal)");
@@ -743,6 +755,7 @@ DATA(insert OID = 482 (  float8			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 70
 DESCR("convert int8 to float8");
 DATA(insert OID = 483 (  int8			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 20 "701" _null_ _null_ _null_ _null_	dtoi8 _null_ _null_ _null_ ));
 DESCR("convert float8 to int8");
+#define FLOAT8TOINT8OID		483
 
 /* OIDS 500 - 599 */
 
@@ -755,6 +768,7 @@ DATA(insert OID = 652 (  float4			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 70
 DESCR("convert int8 to float4");
 DATA(insert OID = 653 (  int8			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 20 "700" _null_ _null_ _null_ _null_	ftoi8 _null_ _null_ _null_ ));
 DESCR("convert float4 to int8");
+#define FLOAT4TOINT8OID		653
 
 DATA(insert OID = 714 (  int2			   PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 21 "20" _null_ _null_ _null_ _null_ int82 _null_ _null_ _null_ ));
 DESCR("convert int8 to int2");
@@ -1750,12 +1764,15 @@ DESCR("does not match LIKE expression");
 /* SEQUENCE functions */
 DATA(insert OID = 1574 (  nextval			PGNSP PGUID 12 1 0 0 0 f f f f t f v 1 0 20 "2205" _null_ _null_ _null_ _null_	nextval_oid _null_ _null_ _null_ ));
 DESCR("sequence next value");
+#define FUNC_NEXTVAL_OID	1574
 DATA(insert OID = 1575 (  currval			PGNSP PGUID 12 1 0 0 0 f f f f t f v 1 0 20 "2205" _null_ _null_ _null_ _null_	currval_oid _null_ _null_ _null_ ));
 DESCR("sequence current value");
 DATA(insert OID = 1576 (  setval			PGNSP PGUID 12 1 0 0 0 f f f f t f v 2 0 20 "2205 20" _null_ _null_ _null_ _null_  setval_oid _null_ _null_ _null_ ));
 DESCR("set sequence value");
+#define FUNC_SETVAL2_OID	1576
 DATA(insert OID = 1765 (  setval			PGNSP PGUID 12 1 0 0 0 f f f f t f v 3 0 20 "2205 20 16" _null_ _null_ _null_ _null_ setval3_oid _null_ _null_ _null_ ));
 DESCR("set sequence value and is_called status");
+#define FUNC_SETVAL3_OID	1765
 DATA(insert OID = 3078 (  pg_sequence_parameters	PGNSP PGUID 12 1 0 0 0 f f f f t f s 1 0 2249 "26" "{26,20,20,20,20,16}" "{i,o,o,o,o,o}" "{sequence_oid,start_value,minimum_value,maximum_value,increment,cycle_option}" _null_ pg_sequence_parameters _null_ _null_ _null_));
 DESCR("sequence parameters, for use by information schema");
 
@@ -2234,18 +2251,24 @@ DESCR("exponentiation");
 DATA(insert OID = 1739 ( numeric_power			PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1700 "1700 1700" _null_ _null_ _null_ _null_	numeric_power _null_ _null_ _null_ ));
 DATA(insert OID = 1740 ( numeric				PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "23" _null_ _null_ _null_ _null_ int4_numeric _null_ _null_ _null_ ));
 DESCR("convert int4 to numeric");
+#define INT4TONUMERICOID	1740
 DATA(insert OID = 1741 ( log					PGNSP PGUID 14 1 0 0 0 f f f f t f i 1 0 1700 "1700" _null_ _null_ _null_ _null_ "select pg_catalog.log(10, $1)" _null_ _null_ _null_ ));
 DESCR("base 10 logarithm");
 DATA(insert OID = 1742 ( numeric				PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "700" _null_ _null_ _null_ _null_ float4_numeric _null_ _null_ _null_ ));
 DESCR("convert float4 to numeric");
+#define FLOAT4TONUMERICOID	1742
 DATA(insert OID = 1743 ( numeric				PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "701" _null_ _null_ _null_ _null_ float8_numeric _null_ _null_ _null_ ));
 DESCR("convert float8 to numeric");
+#define FLOAT8TONUMERICOID	1743
 DATA(insert OID = 1744 ( int4					PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 23 "1700" _null_ _null_ _null_ _null_ numeric_int4 _null_ _null_ _null_ ));
 DESCR("convert numeric to int4");
+#define NUMERICTOINT4OID	1744
 DATA(insert OID = 1745 ( float4					PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 700 "1700" _null_ _null_ _null_ _null_ numeric_float4 _null_ _null_ _null_ ));
 DESCR("convert numeric to float4");
+#define NUMERICTOFLOAT4OID	1745
 DATA(insert OID = 1746 ( float8					PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 701 "1700" _null_ _null_ _null_ _null_ numeric_float8 _null_ _null_ _null_ ));
 DESCR("convert numeric to float8");
+#define NUMERICTOFLOAT8OID	1746
 DATA(insert OID = 1973 ( div					PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1700 "1700 1700" _null_ _null_ _null_ _null_	numeric_div_trunc _null_ _null_ _null_ ));
 DESCR("trunc(x/y)");
 DATA(insert OID = 1980 ( numeric_div_trunc		PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1700 "1700 1700" _null_ _null_ _null_ _null_	numeric_div_trunc _null_ _null_ _null_ ));
@@ -2269,12 +2292,16 @@ DESCR("less-equal-greater");
 DATA(insert OID = 1771 ( numeric_uminus			PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "1700" _null_ _null_ _null_ _null_ numeric_uminus _null_ _null_ _null_ ));
 DATA(insert OID = 1779 ( int8					PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 20 "1700" _null_ _null_ _null_ _null_ numeric_int8 _null_ _null_ _null_ ));
 DESCR("convert numeric to int8");
+#define NUMERICTOINT8OID	1779
 DATA(insert OID = 1781 ( numeric				PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "20" _null_ _null_ _null_ _null_ int8_numeric _null_ _null_ _null_ ));
 DESCR("convert int8 to numeric");
+#define INT8TONUMERICOID	1781
 DATA(insert OID = 1782 ( numeric				PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "21" _null_ _null_ _null_ _null_ int2_numeric _null_ _null_ _null_ ));
 DESCR("convert int2 to numeric");
+#define INT2TONUMERICOID	1782
 DATA(insert OID = 1783 ( int2					PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 21 "1700" _null_ _null_ _null_ _null_ numeric_int2 _null_ _null_ _null_ ));
 DESCR("convert numeric to int2");
+#define NUMERICTOINT2OID	1783
 
 /* formatting */
 DATA(insert OID = 1770 ( to_char			PGNSP PGUID 12 1 0 0 0 f f f f t f s 2 0 25 "1184 25" _null_ _null_ _null_ _null_  timestamptz_to_char _null_ _null_ _null_ ));
@@ -2448,6 +2475,22 @@ DESCR("aggregate final function");
 
 DATA(insert OID = 3535 (  string_agg_transfn		PGNSP PGUID 12 1 0 0 0 f f f f f f i 3 0 2281 "2281 25 25" _null_ _null_ _null_ _null_ string_agg_transfn _null_ _null_ _null_ ));
 DESCR("aggregate transition function");
+#ifdef PGXC
+DATA(insert OID = 9018 (  float8_collect			PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1022 "1022 1022" _null_ _null_ _null_ _null_ float8_collect _null_ _null_ _null_ ));
+DESCR("aggregate collection function");
+DATA(insert OID = 9016 (  numeric_avg_collect		PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1231 "1231 1231" _null_ _null_ _null_ _null_ numeric_avg_collect _null_ _null_ _null_ ));
+DESCR("aggregate collection function");
+DATA(insert OID = 9020 (  numeric_collect			PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1231 "1231 1231" _null_ _null_ _null_ _null_ numeric_collect _null_ _null_ _null_ ));
+DESCR("aggregate collection function");
+DATA(insert OID = 9019 (  interval_collect			PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1187 "1187 1187" _null_ _null_ _null_ _null_ interval_collect _null_ _null_ _null_ ));
+DESCR("aggregate transition function");
+DATA(insert OID = 9017 (  int8_avg_collect			PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1016 "1016 1016" _null_ _null_ _null_ _null_ int8_avg_collect _null_ _null_ _null_ ));
+DESCR("AVG(int) collection function");
+DATA(insert OID = 9021 (  int8_sum_to_int8			PGNSP PGUID 12 1 0 0 0 f f f f f f i 2 0 20 "20 20" _null_ _null_ _null_ _null_ int8_sum_to_int8 _null_ _null_ _null_ ));
+DESCR("SUM(int) collection function");
+DATA(insert OID = 9022 (  float8_regr_collect		PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1022 "1022 1022" _null_ _null_ _null_ _null_ float8_regr_collect _null_ _null_ _null_ ));
+DESCR("REGR_...(double, double) collection function");
+#endif
 DATA(insert OID = 3536 (  string_agg_finalfn		PGNSP PGUID 12 1 0 0 0 f f f f f f i 1 0 25 "2281" _null_ _null_ _null_ _null_ string_agg_finalfn _null_ _null_ _null_ ));
 DESCR("aggregate final function");
 DATA(insert OID = 3538 (  string_agg				PGNSP PGUID 12 1 0 0 0 t f f f f f i 2 0 25 "25 25" _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
@@ -2907,7 +2950,11 @@ DATA(insert OID = 2084 (  pg_show_all_settings	PGNSP PGUID 12 1 1000 0 0 f f f f
 DESCR("SHOW ALL as a function");
 DATA(insert OID = 1371 (  pg_lock_status   PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{25,26,26,23,21,25,28,26,26,21,25,23,25,16,16}" "{o,o,o,o,o,o,o,o,o,o,o,o,o,o,o}" "{locktype,database,relation,page,tuple,virtualxid,transactionid,classid,objid,objsubid,virtualtransaction,pid,mode,granted,fastpath}" _null_ pg_lock_status _null_ _null_ _null_ ));
 DESCR("view system lock information");
+#ifdef ADB
+DATA(insert OID = 1065 (  pg_prepared_xact PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{28,25,1184,26,26,30}" "{o,o,o,o,o,o}" "{transaction,gid,prepared,ownerid,dbid,rnodes}" _null_ pg_prepared_xact _null_ _null_ _null_ ));
+#else
 DATA(insert OID = 1065 (  pg_prepared_xact PGNSP PGUID 12 1 1000 0 0 f f f f t t v 0 0 2249 "" "{28,25,1184,26,26}" "{o,o,o,o,o}" "{transaction,gid,prepared,ownerid,dbid}" _null_ pg_prepared_xact _null_ _null_ _null_ ));
+#endif
 DESCR("view two-phase transactions");
 DATA(insert OID = 3819 (  pg_get_multixact_members PGNSP PGUID 12 1 1000 0 0 f f f f t t v 1 0 2249 "28" "{28,28,25}" "{i,o,o}" "{multixid,xid,mode}" _null_ pg_get_multixact_members _null_ _null_ _null_ ));
 DESCR("view members of a multixactid");
@@ -3091,6 +3138,10 @@ DATA(insert OID = 2244 (  max				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 1042 "
 DESCR("maximum value of all bpchar input values");
 DATA(insert OID = 2797 (  max				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 27 "27" _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("maximum value of all tid input values");
+#ifdef ADB
+DATA(insert OID = 4051 (  max				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 86 "86" _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
+DESCR("maximum value of all rid input values");
+#endif /* ADB */
 
 DATA(insert OID = 2131 (  min				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 20 "20" _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("minimum value of all bigint input values");
@@ -3130,6 +3181,10 @@ DATA(insert OID = 2245 (  min				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 1042 "
 DESCR("minimum value of all bpchar input values");
 DATA(insert OID = 2798 (  min				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 27 "27" _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
 DESCR("minimum value of all tid input values");
+#ifdef ADB
+DATA(insert OID = 4052 (  min				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 86 "86" _null_ _null_ _null_ _null_ aggregate_dummy _null_ _null_ _null_ ));
+DESCR("minimum value of all rid input values");
+#endif /* ADB */
 
 /* count has two forms: count(any) and count(*) */
 DATA(insert OID = 2147 (  count				PGNSP PGUID 12 1 0 0 0 t f f f f f i 1 0 20 "2276" _null_ _null_ _null_ _null_	aggregate_dummy _null_ _null_ _null_ ));
@@ -4708,7 +4763,20 @@ DESCR("SP-GiST support for radix tree over text");
 DATA(insert OID = 4030 (  spg_text_inner_consistent PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_  spg_text_inner_consistent _null_ _null_ _null_ ));
 DESCR("SP-GiST support for radix tree over text");
 DATA(insert OID = 4031 (  spg_text_leaf_consistent	PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "2281 2281" _null_ _null_ _null_ _null_  spg_text_leaf_consistent _null_ _null_ _null_ ));
-DESCR("SP-GiST support for radix tree over text");
+DESCR("SP-GiST support for suffix tree over text");
+
+#ifdef PGXC
+DATA(insert OID = 3200 ( pgxc_pool_check	PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ pgxc_pool_check _null_ _null_ _null_ ));
+DESCR("check connection information consistency in pooler");
+DATA(insert OID = 3201 ( pgxc_pool_reload	PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ pgxc_pool_reload _null_ _null_ _null_ ));
+DESCR("reload connection information in pooler and reload server sessions");
+DATA(insert OID = 3202 ( pgxc_node_str		PGNSP PGUID 12 1 0 0 0 f f f f t f s 0 0 19 "" _null_ _null_ _null_ _null_ pgxc_node_str _null_ _null_ _null_ ));
+DESCR("get the name of the node");
+DATA(insert OID = 3203 (  pgxc_is_committed	PGNSP PGUID 12 1 1 0 0 f f f f t t s 1 0 16 "28" _null_ _null_ _null_ _null_ pgxc_is_committed _null_ _null_ _null_ ));
+DESCR("is given GXID committed or aborted?");
+DATA(insert OID = 3204 ( pgxc_lock_for_backup	PGNSP PGUID 12 1 0 0 0 f f f f t f v 0 0 16 "" _null_ _null_ _null_ _null_ pgxc_lock_for_backup _null_ _null_ _null_ ));
+DESCR("lock the cluster for taking backup");
+#endif
 
 DATA(insert OID = 3469 (  spg_range_quad_config PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 2278 "2281 2281" _null_ _null_ _null_ _null_  spg_range_quad_config _null_ _null_ _null_ ));
 DESCR("SP-GiST support for quad tree over range");
@@ -4725,6 +4793,402 @@ DESCR("SP-GiST support for quad tree over range");
 /* event triggers */
 DATA(insert OID = 3566 (  pg_event_trigger_dropped_objects		PGNSP PGUID 12 10 100 0 0 f f f f t t s 0 0 2249 "" "{26,26,23,25,25,25,25}" "{o,o,o,o,o,o,o}" "{classid, objid, objsubid, object_type, schema_name, object_name, object_identity}" _null_ pg_event_trigger_dropped_objects _null_ _null_ _null_ ));
 DESCR("list objects dropped by the current command");
+
+#ifdef ADB
+/* rowid builtin functions */
+DATA(insert OID = 4033 (  rowid_in              PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 86 "2275" _null_ _null_ _null_ _null_ rowid_in _null_ _null_ _null_ ));
+DATA(insert OID = 4034 (  rowid_out             PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2275 "86" _null_ _null_ _null_ _null_ rowid_out _null_ _null_ _null_ ));
+DATA(insert OID = 4035 (  rowid_recv            PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 86 "2281" _null_ _null_ _null_ _null_ rowid_recv _null_ _null_ _null_ ));
+DATA(insert OID = 4036 (  rowid_send            PGNSP PGUID 12 1 0 0 0 f f f f t f i 1 0 17 "86" _null_ _null_ _null_ _null_ rowid_send _null_ _null_ _null_ ));
+DATA(insert OID = 4037 (  rowid_eq              PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "86 86" _null_ _null_ _null_ _null_ rowid_eq _null_ _null_ _null_ ));
+DATA(insert OID = 4038 (  rowid_ne              PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "86 86" _null_ _null_ _null_ _null_ rowid_ne _null_ _null_ _null_ ));
+DATA(insert OID = 4039 (  rowid_lt              PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "86 86" _null_ _null_ _null_ _null_ rowid_lt _null_ _null_ _null_ ));
+DATA(insert OID = 4040 (  rowid_le              PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "86 86" _null_ _null_ _null_ _null_ rowid_le _null_ _null_ _null_ ));
+DATA(insert OID = 4041 (  rowid_gt              PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "86 86" _null_ _null_ _null_ _null_ rowid_gt _null_ _null_ _null_ ));
+DATA(insert OID = 4042 (  rowid_ge              PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "86 86" _null_ _null_ _null_ _null_ rowid_ge _null_ _null_ _null_ ));
+DATA(insert OID = 4049 (  rowid_larger          PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 86 "86 86" _null_ _null_ _null_ _null_ rowid_larger _null_ _null_ _null_ ));
+DESCR("larger of two");
+DATA(insert OID = 4050 (  rowid_smaller         PGNSP PGUID 12 1 0 0 0 f f f f t f i 2 0 86 "86 86" _null_ _null_ _null_ _null_ rowid_smaller _null_ _null_ _null_ ));
+DESCR("smaller of two");
+/*
+ * Oracle built-in data types' funtions
+ * Oid starts with 4900
+ */
+
+/* varchar2 built-in functions */
+DATA(insert OID = 4900 (  varchar2in            ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 1043 "2275 26 23" _null_ _null_ _null_ _null_ varchar2in _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID = 4901 (  varchar2out           ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2275 "1043" _null_ _null_ _null_ _null_ varchar2out _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID = 4902 (  varchar2recv          ORANSP PGUID 12 1 0 0 0 f f f f t f s 3 0 1043 "2281 26 23" _null_ _null_ _null_ _null_  varchar2recv _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID = 4903 (  varchar2              ORANSP PGUID 12 1 0 0 varchar_transform f f f f t f i 3 0 3968 "3968 23 16" _null_ _null_ _null_ _null_ varchar2 _null_ _null_ _null_ ));
+DESCR("adjust varchar2() to typmod length");
+
+/* nvarchar2 built-in functions */
+DATA(insert OID = 4904 (  nvarchar2in           ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 1043 "2275 26 23" _null_ _null_ _null_ _null_ nvarchar2in _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID = 4905 (  nvarchar2out          ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2275 "1043" _null_ _null_ _null_ _null_ nvarchar2out _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID = 4906 (  nvarchar2recv         ORANSP PGUID 12 1 0 0 0 f f f f t f s 3 0 1043 "2281 26 23" _null_ _null_ _null_ _null_  nvarchar2recv _null_ _null_ _null_ ));
+DESCR("I/O");
+DATA(insert OID = 4907 (  nvarchar2             ORANSP PGUID 12 1 0 0 varchar_transform f f f f t f i 3 0 3969 "3969 23 16" _null_ _null_ _null_ _null_ nvarchar2 _null_ _null_ _null_ ));
+DESCR("adjust nvarchar2() to typmod length");
+
+DATA(insert OID = 4908 (  ora_date_out          ORANSP PGUID 12 1 0 0 0 f f f f t f s 1 0 2275 "1114" _null_ _null_ _null_ _null_ ora_date_out _null_ _null_ _null_ ));
+DESCR("I/O");
+
+/*
+ * oracle schema builtin functions
+ * Oid starts with 5000
+ */
+DATA(insert OID = 5000 (  orastr_instr4         ORANSP PGUID 12 1 0 0 0 f f f f t f i 4 0 23 "25 25 23 23" _null_ _null_ _null_ _null_	orastr_instr4 _null_ _null_ _null_ ));
+DATA(insert OID = 5001 (  add_months            ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1082 "1082 23" _null_ _null_ _null_ _null_	add_months _null_ _null_ _null_ ));
+DATA(insert OID = 5002 (  last_day              ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1082 "1082" _null_ _null_ _null_ _null_	last_day _null_ _null_ _null_ ));
+DATA(insert OID = 5003 (  months_between        ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1700 "1082 1082" _null_ _null_ _null_ _null_	months_between _null_ _null_ _null_ ));
+DATA(insert OID = 5004 (  ora_next_day          ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1082 "1082 25" _null_ _null_ _null_ _null_	ora_next_day _null_ _null_ _null_ ));
+
+DATA(insert OID = 5006 (  ora_date_round        ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1082 "1082 25" _null_ _null_ _null_ _null_	ora_date_round _null_ _null_ _null_ ));
+DATA(insert OID = 5007 (  ora_timestamptz_round ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1184 "1184 25" _null_ _null_ _null_ _null_	ora_timestamptz_round _null_ _null_ _null_ ));
+DATA(insert OID = 5008 (  nvl                   ORANSP PGUID 12 1 0 0 0 f f f f f f i 2 0 2283 "2283 2283" _null_ _null_ _null_ _null_	ora_nvl _null_ _null_ _null_ ));
+DATA(insert OID = 5009 (  nvl2                  ORANSP PGUID 12 1 0 0 0 f f f f f f i 3 0 2283 "2276 2283 2283" _null_ _null_ _null_ _null_	ora_nvl2 _null_ _null_ _null_ ));
+DATA(insert OID = 5010 (  lnnvl                 ORANSP PGUID 12 1 0 0 0 f f f f f f i 1 0 16 "16" _null_ _null_ _null_ _null_	ora_lnnvl _null_ _null_ _null_ ));
+DATA(insert OID = 5011 (  orachr_first          ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_	orachr_first _null_ _null_ _null_ ));
+DATA(insert OID = 5012 (  orachr_last           ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_	orachr_last _null_ _null_ _null_ ));
+DATA(insert OID = 5013 (  ora_to_multi_byte     ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_	ora_to_multi_byte _null_ _null_ _null_ ));
+DATA(insert OID = 5014 (  ora_to_single_byte    ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_	ora_to_single_byte _null_ _null_ _null_ ));
+DATA(insert OID = 5015 (  ora_date_trunc        ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1082 "1082 25" _null_ _null_ _null_ _null_	ora_date_trunc _null_ _null_ _null_ ));
+DATA(insert OID = 5016 (  ora_timestamptz_trunc ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1184 "1184 25" _null_ _null_ _null_ _null_	ora_timestamptz_trunc _null_ _null_ _null_ ));
+DATA(insert OID = 5017 (  orastr_substr2        ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 25 "25 23" _null_ _null_ _null_ _null_	orastr_substr2 _null_ _null_ _null_ ));
+DATA(insert OID = 5018 (  orastr_substr3        ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 25 "25 23 23" _null_ _null_ _null_ _null_	orastr_substr3 _null_ _null_ _null_ ));
+DATA(insert OID = 5019 (  ora_dump              ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 25 "25 23" _null_ _null_ _null_ _null_	ora_dump _null_ _null_ _null_ ));
+DATA(insert OID = 5020 (  orastr_bpcharlen      ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 23 "1042" _null_ _null_ _null_ _null_	orastr_bpcharlen _null_ _null_ _null_ ));
+DATA(insert OID = 5023 (  bin_to_num            ORANSP PGUID 12 1 0 23 0 f f f f f f s 1 0 20 "23" "{23}" "{v}" _null_ _null_	ora_bin_to_num _null_ _null_ _null_ ));
+DATA(insert OID = 5024 (  ora_sys_now           ORANSP PGUID 12 1 0 0 0 f f f f t f s 0 0 1114 "" _null_ _null_ _null_ _null_ ora_sys_now _null_ _null_ _null_ ));
+DATA(insert OID = 5025 (  soundex               ORANSP PGUID 12 1 0 0 0 f f f f t f s 1 0 25 "25" _null_ _null_ _null_ _null_ orastr_soundex _null_ _null_ _null_ ));
+DATA(insert OID = 5026 (  ora_dbtimezone        ORANSP PGUID 12 1 0 0 0 f f f f t f i 0 0 1186 "" _null_ _null_ _null_ _null_	ora_dbtimezone _null_ _null_ _null_ ));
+DATA(insert OID = 5027 (  ora_session_timezone  ORANSP PGUID 12 1 0 0 0 f f f f t f i 0 0 1186 "" _null_ _null_ _null_ _null_	ora_session_timezone _null_ _null_ _null_ ));
+
+/* oracle nls_ functions */
+DATA(insert OID = 5050 (  nls_initcap           ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_ initcap _null_ _null_ _null_ ));
+DESCR("Oracle: capitalize each word");
+DATA(insert OID = 5051 (  nls_lower             ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_ lower _null_ _null_ _null_ ));
+DESCR("Oracle: lowercase");
+DATA(insert OID = 5052 (  nls_upper             ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_ upper _null_ _null_ _null_ ));
+DESCR("Oracle: uppercase");
+
+/*
+ * oracle dbms random functions
+ * Oid starts with 5100
+ */
+DATA(insert OID = 5100 (  dbms_random_initialize ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2278 "23" _null_ _null_ _null_ _null_	dbms_random_initialize _null_ _null_ _null_ ));
+DATA(insert OID = 5101 (  dbms_random_normal    ORANSP PGUID 12 1 0 0 0 f f f f t f v 0 0 701 "" _null_ _null_ _null_ _null_	dbms_random_normal _null_ _null_ _null_ ));
+DATA(insert OID = 5102 (  dbms_random_random    ORANSP PGUID 12 1 0 0 0 f f f f t f v 0 0 23 "" _null_ _null_ _null_ _null_	dbms_random_random _null_ _null_ _null_ ));
+DATA(insert OID = 5103 (  dbms_random_seed_int  ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2278 "23" _null_ _null_ _null_ _null_	dbms_random_seed_int _null_ _null_ _null_ ));
+DATA(insert OID = 5104 (  dbms_random_seed_varchar ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2278 "25" _null_ _null_ _null_ _null_	dbms_random_seed_varchar _null_ _null_ _null_ ));
+DATA(insert OID = 5105 (  dbms_random_string    ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 25 "25 23" _null_ _null_ _null_ _null_	dbms_random_string _null_ _null_ _null_ ));
+DATA(insert OID = 5106 (  dbms_random_terminate ORANSP PGUID 12 1 0 0 0 f f f f t f i 0 0 2278 "" _null_ _null_ _null_ _null_	dbms_random_terminate _null_ _null_ _null_ ));
+DATA(insert OID = 5107 (  dbms_random_value_range ORANSP PGUID 12 1 0 0 0 f f f f t f v 2 0 701 "701 701" _null_ _null_ _null_ _null_	dbms_random_value_range _null_ _null_ _null_ ));
+DATA(insert OID = 5108 (  dbms_random_value     ORANSP PGUID 12 1 0 0 0 f f f f t f v 0 0 701 "" _null_ _null_ _null_ _null_	dbms_random_value _null_ _null_ _null_ ));
+
+/*
+ * oracle regular expression function
+ * Oid starts with 5120
+ */
+
+/* oracle regexp_count */
+DATA(insert OID = 5120 (  regexp_count          ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 23 "25 25" _null_ _null_ _null_ _null_	ora_regexp_count2 _null_ _null_ _null_ ));
+DATA(insert OID = 5121 (  regexp_count          ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 23 "25 25 23" _null_ _null_ _null_ _null_	ora_regexp_count3 _null_ _null_ _null_ ));
+DATA(insert OID = 5122 (  regexp_count          ORANSP PGUID 12 1 0 0 0 f f f f t f i 4 0 23 "25 25 23 25" _null_ _null_ _null_ _null_	ora_regexp_count _null_ _null_ _null_ ));
+
+/* oracle regexp_replace */
+DATA(insert OID = 5123 (  regexp_replace        ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 25 "25 25" _null_ _null_ _null_ _null_	ora_regexp_replace2 _null_ _null_ _null_ ));
+DATA(insert OID = 5124 (  regexp_replace        ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 25 "25 25 25" _null_ _null_ _null_ _null_	ora_regexp_replace3 _null_ _null_ _null_ ));
+DATA(insert OID = 5125 (  regexp_replace        ORANSP PGUID 12 1 0 0 0 f f f f t f i 4 0 25 "25 25 25 23" _null_ _null_ _null_ _null_	ora_regexp_replace4 _null_ _null_ _null_ ));
+DATA(insert OID = 5126 (  regexp_replace        ORANSP PGUID 12 1 0 0 0 f f f f t f i 5 0 25 "25 25 25 23 23" _null_ _null_ _null_ _null_	ora_regexp_replace5 _null_ _null_ _null_ ));
+DATA(insert OID = 5127 (  regexp_replace        ORANSP PGUID 12 1 0 0 0 f f f f t f i 6 0 25 "25 25 25 23 23 25" _null_ _null_ _null_ _null_	ora_regexp_replace _null_ _null_ _null_ ));
+
+/* oracle regexp_substr */
+DATA(insert OID = 5128 (  regexp_substr         ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 25 "25 25" _null_ _null_ _null_ _null_	ora_regexp_substr2 _null_ _null_ _null_ ));
+DATA(insert OID = 5129 (  regexp_substr         ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 25 "25 25 23" _null_ _null_ _null_ _null_	ora_regexp_substr3 _null_ _null_ _null_ ));
+DATA(insert OID = 5130 (  regexp_substr         ORANSP PGUID 12 1 0 0 0 f f f f t f i 4 0 25 "25 25 23 23" _null_ _null_ _null_ _null_	ora_regexp_substr4 _null_ _null_ _null_ ));
+DATA(insert OID = 5131 (  regexp_substr         ORANSP PGUID 12 1 0 0 0 f f f f t f i 5 0 25 "25 25 23 23 25" _null_ _null_ _null_ _null_	ora_regexp_substr5 _null_ _null_ _null_ ));
+DATA(insert OID = 5132 (  regexp_substr         ORANSP PGUID 12 1 0 0 0 f f f f t f i 6 0 25 "25 25 23 23 25 23" _null_ _null_ _null_ _null_	ora_regexp_substr _null_ _null_ _null_ ));
+
+/* oracle regexp_instr */
+DATA(insert OID = 5133 (  regexp_instr          ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 23 "25 25" _null_ _null_ _null_ _null_	ora_regexp_instr2 _null_ _null_ _null_ ));
+DATA(insert OID = 5134 (  regexp_instr          ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 23 "25 25 23" _null_ _null_ _null_ _null_	ora_regexp_instr3 _null_ _null_ _null_ ));
+DATA(insert OID = 5135 (  regexp_instr          ORANSP PGUID 12 1 0 0 0 f f f f t f i 4 0 23 "25 25 23 23" _null_ _null_ _null_ _null_	ora_regexp_instr4 _null_ _null_ _null_ ));
+DATA(insert OID = 5136 (  regexp_instr          ORANSP PGUID 12 1 0 0 0 f f f f t f i 5 0 23 "25 25 23 23 23" _null_ _null_ _null_ _null_	ora_regexp_instr5 _null_ _null_ _null_ ));
+DATA(insert OID = 5137 (  regexp_instr          ORANSP PGUID 12 1 0 0 0 f f f f t f i 6 0 23 "25 25 23 23 23 25" _null_ _null_ _null_ _null_	ora_regexp_instr6 _null_ _null_ _null_ ));
+DATA(insert OID = 5138 (  regexp_instr          ORANSP PGUID 12 1 0 0 0 f f f f t f i 7 0 23 "25 25 23 23 23 25 23" _null_ _null_ _null_ _null_	ora_regexp_instr _null_ _null_ _null_ ));
+
+/* oracle regexp_like */
+DATA(insert OID = 5139 (  regexp_like           ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 16 "25 25" _null_ _null_ _null_ _null_	ora_regexp_like2 _null_ _null_ _null_ ));
+DATA(insert OID = 5140 (  regexp_like           ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 16 "25 25 25" _null_ _null_ _null_ _null_	ora_regexp_like _null_ _null_ _null_ ));
+
+/*
+ * Oracle Conversion functions
+ * Oid starts with 5160
+ */
+DATA(insert OID = 5160 (  convert               ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 25 "25 19" _null_ _null_ _null_ _null_	orastr_convert2 _null_ _null_ _null_ ));
+DATA(insert OID = 5161 (  convert               ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 25 "25 19 19" _null_ _null_ _null_ _null_ orastr_convert _null_ _null_ _null_ ));
+
+DATA(insert OID = 5162 (  translate             ORANSP PGUID 12 1 0 0 0 f f f f t f i 3 0 25 "25 25 25" _null_ _null_ _null_ _null_ orastr_translate _null_ _null_ _null_ ));
+DESCR("oracle map a set of characters appearing in string");
+DATA(insert OID = 5163 (  nls_charset_id        ORANSP PGUID 12 1 0 0 0 f f f f t f s 1 0 23 "19" _null_ _null_ _null_ _null_ orastr_nls_charset_id _null_ _null_ _null_ ));
+DESCR("oracle convert encoding name to encoding id");
+DATA(insert OID = 5164 (  nls_charset_name      ORANSP PGUID 12 1 0 0 0 f f f f t f s 1 0 19 "23" _null_ _null_ _null_ _null_ orastr_nls_charset_name _null_ _null_ _null_ ));
+DESCR("oracle convert encoding id to encoding name");
+
+DATA(insert OID = 5165 (  numtoyminterval       ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1186 "1700 25" _null_ _null_ _null_ _null_	ora_numtoyminterval _null_ _null_ _null_ ));
+DATA(insert OID = 5166 (  numtodsinterval       ORANSP PGUID 12 1 0 0 0 f f f f t f i 2 0 1186 "1700 25" _null_ _null_ _null_ _null_	ora_numtodsinterval _null_ _null_ _null_ ));
+DATA(insert OID = 5167 (  to_yminterval         ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1186 "25" _null_ _null_ _null_ _null_ ora_to_yminterval _null_ _null_ _null_ ));
+DATA(insert OID = 5168 (  to_dsinterval         ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1186 "25" _null_ _null_ _null_ _null_ ora_to_dsinterval _null_ _null_ _null_ ));
+
+DATA(insert OID = 5200 (  int4_tochar	     ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "23" _null_ _null_ _null_ _null_	int4_tochar _null_ _null_ _null_ ));
+#define INT4TOCHAROID		5200
+DESCR("convert integer to text");
+
+DATA(insert OID = 5201 (  int8_tochar	     ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "20" _null_ _null_ _null_ _null_	int8_tochar _null_ _null_ _null_ ));
+#define INT8TOCHAROID		5201
+DESCR("convert bigint to text");
+
+DATA(insert OID = 5202 (  float4_tochar      ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "700" _null_ _null_ _null_ _null_	float4_tochar _null_ _null_ _null_ ));
+#define FLOAT4TOCHAROID		5202
+DESCR("convert float to text");
+
+DATA(insert OID = 5203 (  float8_tochar      ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "701" _null_ _null_ _null_ _null_	float8_tochar _null_ _null_ _null_ ));
+#define FLOAT8TOCHAROID		5203
+DESCR("convert double precision to text");
+
+DATA(insert OID = 5204 (  numeric_tochar     ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "1700" _null_ _null_ _null_ _null_	numeric_tochar _null_ _null_ _null_ ));
+#define NUMERICTOCHAROID	5204
+DESCR("convert numeric to text");
+
+DATA(insert OID = 5205 (  text_tochar	     ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "25" _null_ _null_ _null_ _null_	text_tochar _null_ _null_ _null_ ));
+#define TEXTTOCHAROID		5205
+DESCR("convert string to text");
+
+DATA(insert OID = 5206 (  timestamp_tochar   ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "1114" _null_ _null_ _null_ _null_	timestamp_tochar _null_ _null_ _null_ ));
+#define TSTOCHAROID			5206
+DESCR("convert timestamp without time zone to text");
+
+DATA(insert OID = 5207 (  timestamptz_tochar ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 25 "1184" _null_ _null_ _null_ _null_	timestamptz_tochar _null_ _null_ _null_ ));
+#define TSTZTOCHAROID		5207
+DESCR("convert timestamp with time zone to text");
+
+DATA(insert OID = 5208 (  interval_tochar    ORANSP PGUID 12 1 0 0 0 f f f f t f s 1 0 25 "1186" _null_ _null_ _null_ _null_  interval_tochar _null_ _null_ _null_ ));
+#define INTERVALTOCHAROID	5208
+DESCR("convert interval to text");
+
+DATA(insert OID = 5210 (  trunc_text_toint2  ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 21 "25" _null_ _null_ _null_ _null_ trunc_text_toint2 _null_ _null_ _null_ ));
+#define TRUNC_TEXTTOINT2OID		5210
+DESCR("convert trunc(text::numeric) to smallint");
+
+DATA(insert OID = 5211 (  trunc_text_toint4  ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 23 "25" _null_ _null_ _null_ _null_ trunc_text_toint4 _null_ _null_ _null_ ));
+#define TRUNC_TEXTTOINT4OID		5211
+DESCR("convert trunc(text::numeric) to integer");
+
+DATA(insert OID = 5212 (  trunc_text_toint8  ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 20 "25" _null_ _null_ _null_ _null_ trunc_text_toint8 _null_ _null_ _null_ ));
+#define TRUNC_TEXTTOINT8OID		5212
+DESCR("convert trunc(text::numeric) to bigint");
+
+DATA(insert OID = 5213 (  text_tofloat4      ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 700 "25" _null_ _null_ _null_ _null_ text_tofloat4 _null_ _null_ _null_ ));
+#define TEXTTOFLOAT4OID		5213
+DESCR("convert text to float");
+
+DATA(insert OID = 5214 (  text_tofloat8      ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 701 "25" _null_ _null_ _null_ _null_ text_tofloat8 _null_ _null_ _null_ ));
+#define TEXTTOFLOAT8OID		5214
+DESCR("convert text to double precision");
+
+DATA(insert OID = 5215 (  text_todate        ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 3970 "25" _null_ _null_ _null_ _null_ text_todate _null_ _null_ _null_ ));
+#define TEXTTODATEOID		5215
+DESCR("convert text to oracle's date");
+
+DATA(insert OID = 5216 (  text_totimestamp   ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1114 "25" _null_ _null_ _null_ _null_ text_totimestamp _null_ _null_ _null_ ));
+#define TEXTTOTSOID			5216
+DESCR("convert text to timestamp without time zone");
+
+DATA(insert OID = 5217 (  text_totimestamptz ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1184 "25" _null_ _null_ _null_ _null_ text_totimestamptz _null_ _null_ _null_ ));
+#define TEXTTOTSTZOID		5217
+DESCR("convert text to timestamp with time zone");
+
+DATA(insert OID = 5218 (  text_tocstring     ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 2275 "25" _null_ _null_ _null_ _null_ text_tocstring _null_ _null_ _null_ ));
+#define TEXTTOCSTRINGOID	5218
+DESCR("convert text to string");
+
+DATA(insert OID = 5219 (  text_tonumber      ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "25" _null_ _null_ _null_ _null_ text_tonumber _null_ _null_ _null_ ));
+#define TEXTTONUMERICOID	5219
+DESCR("convert text to numeric");
+
+DATA(insert OID = 5220 (  float4_tonumber    ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "700" _null_ _null_ _null_ _null_ float4_tonumber _null_ _null_ _null_ ));
+DESCR("convert float to numeric");
+
+DATA(insert OID = 5221 (  float8_tonumber    ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 1700 "701" _null_ _null_ _null_ _null_ float8_tonumber _null_ _null_ _null_ ));
+DESCR("convert double precision to numeric");
+
+DATA(insert OID = 5222 (  numeric_toint2	 ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 21 "1700" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::smallint" _null_ _null_ _null_ ));
+DESCR("convert numeric trunc to smallint");
+#define TRUNC_NUMERICTOINT2OID	5222
+
+DATA(insert OID = 5223 (  numeric_toint4	 ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 23 "1700" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::integer" _null_ _null_ _null_ ));
+DESCR("convert numeric trunc to integer");
+#define TRUNC_NUMERICTOINT4OID	5223
+
+DATA(insert OID = 5224 (  numeric_toint8	 ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 20 "1700" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::bigint" _null_ _null_ _null_ ));
+DESCR("convert numeric trunc to bigint");
+#define TRUNC_NUMERICTOINT8OID	5224
+
+DATA(insert OID = 5225 (  float_toint2	     ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 21 "700" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::smallint" _null_ _null_ _null_ ));
+DESCR("convert float trunc to smallint");
+#define TRUNC_FLOAT4TOINT2OID	5225
+
+DATA(insert OID = 5226 (  float_toint4	     ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 23 "700" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::integer" _null_ _null_ _null_ ));
+DESCR("convert float trunc to integer");
+#define TRUNC_FLOAT4TOINT4OID	5226
+
+DATA(insert OID = 5227 (  float_toint8	     ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 20 "700" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::bigint" _null_ _null_ _null_ ));
+DESCR("convert float trunc to bigint");
+#define TRUNC_FLOAT4TOINT8OID	5227
+
+DATA(insert OID = 5228 (  double_toint2	     ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 21 "701" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::smallint" _null_ _null_ _null_ ));
+DESCR("convert double precision trunc to smallint");
+#define TRUNC_FLOAT8TOINT2OID	5228
+
+DATA(insert OID = 5229 (  double_toint4	     ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 23 "701" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::integer" _null_ _null_ _null_ ));
+DESCR("convert float trunc to integer");
+#define TRUNC_FLOAT8TOINT4OID	5229
+
+DATA(insert OID = 5230 (  double_toint8	     ORANSP PGUID 14 1 0 0 0 f f f f t f i 1 0 20 "701" _null_ _null_ _null_ _null_ "select (pg_catalog.trunc($1))::bigint" _null_ _null_ _null_ ));
+DESCR("convert float trunc to bigint");
+#define TRUNC_FLOAT8TOINT8OID	5230
+
+DATA(insert OID = 5231 (  text_toint2        ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 21 "25" _null_ _null_ _null_ _null_ text_toint2 _null_ _null_ _null_ ));
+#define TEXTTOINT2OID		5231
+DESCR("convert text to smallint");
+
+DATA(insert OID = 5232 (  text_toint4        ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 23 "25" _null_ _null_ _null_ _null_ text_toint4 _null_ _null_ _null_ ));
+#define TEXTTOINT4OID		5232
+DESCR("convert text to integer");
+
+DATA(insert OID = 5233 (  text_toint8        ORANSP PGUID 12 1 0 0 0 f f f f t f i 1 0 20 "25" _null_ _null_ _null_ _null_ text_toint8 _null_ _null_ _null_ ));
+#define TEXTTOINT8OID		5233
+DESCR("convert text to bigint");
+
+#endif
+
+#ifdef ADBMGRD
+DATA(insert OID = 3474 (  mgr_start_agent		PGNSP PGUID 12 10 400 0 0 f f f f f t s 2 0 2249 "2275 2275" "{19,16,25}" "{o,o,o}" "{hostname,success,description}" _null_ mgr_start_agent _null_ _null_ _null_ ));
+DESCR("state list of start agent");
+
+DATA(insert OID = 3178 (  mgr_init_gtm      PGNSP PGUID 12 10 400 0 0 f f f f f t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm _null_ _null_ _null_ ));
+DESCR("init gtm");
+
+DATA(insert OID = 3180 (  mgr_init_gtm_proxy      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm_proxy _null_ _null_ _null_ ));
+DESCR("init gtm proxy");
+
+DATA(insert OID = 3182 (  mgr_init_gtm_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_gtm_all _null_ _null_ _null_ ));
+DESCR("init gtm all");
+
+DATA(insert OID = 3183 ( mgr_init_cn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_cn_master _null_ _null_ _null_ ));
+DESCR("init coordinator master");
+
+DATA(insert OID = 3185 ( mgr_init_dn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_master _null_ _null_ _null_ ));
+DESCR("init datanode master");
+
+DATA(insert OID = 3187 (  mgr_init_dn_slave        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_slave _null_ _null_ _null_ ));
+DESCR("init datanode slave");
+
+DATA(insert OID = 3188 (  mgr_init_dn_slave_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_init_dn_slave_all _null_ _null_ _null_ ));
+DESCR("init datanode slave all");
+
+DATA(insert OID = 3189 ( mgr_start_cn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_cn_master _null_ _null_ _null_ ));
+DESCR("start coordinator master");
+
+DATA(insert OID = 3190 ( mgr_stop_cn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_cn_master _null_ _null_ _null_ ));
+DESCR("stop coordinator master");
+
+DATA(insert OID = 3214 (  mgr_monitor_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_all _null_ _null_ _null_ ));
+DESCR("monitor all");
+
+DATA(insert OID = 3191 (  mgr_monitor_coord_all            PGNSP PGUID 12 10 400 0 0 f f f f f t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_coord_all _null_ _null_ _null_ ));
+DESCR("monitor coordinator all");
+
+DATA(insert OID = 3196 (  mgr_monitor_coord_namelist           PGNSP PGUID 12 1 0 2276 0 f f f f f f s 1 0 2249 "2276" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_coord_namelist _null_ _null_ _null_ ));
+DESCR("monitor coordinator namelist");
+
+DATA(insert OID = 3199 (  mgr_monitor_dnmaster_namelist           PGNSP PGUID 12 1 0 2276 0 f f f f f f s 1 0 2249 "2276" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_dnmaster_namelist _null_ _null_ _null_ ));
+DESCR("monitor datanode master namelist");
+
+DATA(insert OID = 3400 (  mgr_monitor_dnslave_namelist           PGNSP PGUID 12 1 0 2276 0 f f f f f f s 1 0 2249 "2276" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_dnslave_namelist _null_ _null_ _null_ ));
+DESCR("monitor datanode slave namelist");
+
+DATA(insert OID = 3197 (  mgr_monitor_dnmaster_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_dnmaster_all _null_ _null_ _null_ ));
+DESCR("init gtm all");
+
+DATA(insert OID = 3198 (  mgr_monitor_dnslave_all            PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "" "{19,19,16,25}" "{o,o,o,o}" "{nodename,nodetype,status,description}" _null_ mgr_monitor_dnslave_all _null_ _null_ _null_ ));
+DESCR("monitor datanode slave all");
+
+DATA(insert OID = 3192 (  mgr_start_gtm        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_gtm _null_ _null_ _null_ ));
+DESCR("mgr start gtm");
+
+DATA(insert OID = 3193 (  mgr_stop_gtm        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm _null_ _null_ _null_ ));
+DESCR("mgr stop gtm");
+
+DATA(insert OID = 3194 ( mgr_start_gtm_proxy      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_gtm_proxy _null_ _null_ _null_ ));
+DESCR("start gtm proxy");
+
+DATA(insert OID = 3195 ( mgr_stop_gtm_proxy      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_gtm_proxy _null_ _null_ _null_ ));
+DESCR("stop gtm proxy");
+
+DATA(insert OID = 3205 ( mgr_start_dn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_master _null_ _null_ _null_ ));
+DESCR("mgr start dn master");
+
+DATA(insert OID = 3206 ( mgr_stop_dn_master      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_master _null_ _null_ _null_ ));
+DESCR("mgr stop dn master");
+
+DATA(insert OID = 3207 ( mgr_start_dn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_dn_slave _null_ _null_ _null_ ));
+DESCR("mgr start dn slave");
+
+DATA(insert OID = 3208 ( mgr_stop_dn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_slave _null_ _null_ _null_ ));
+DESCR("mgr stop dn slave");
+
+DATA(insert OID = 3209 (  mgr_append_dnmaster        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_append_dnmaster _null_ _null_ _null_ ));
+DESCR("mgr append datanode master");
+
+DATA(insert OID = 3210 ( mgr_failover_one_dn      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_failover_one_dn _null_ _null_ _null_ ));
+DESCR("mgr failover datanode");
+
+DATA(insert OID = 3213 ( mgr_configure_nodes_all      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 0 0 2249 "" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_configure_nodes_all _null_ _null_ _null_ ));
+DESCR("mgr_configure_nodes_all");
+
+DATA(insert OID = 3215 ( mgr_start_one_dn_master      PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_start_one_dn_master _null_ _null_ _null_ ));
+DESCR("mgr start one dn master");
+
+DATA(insert OID = 3216 ( mgr_stop_one_dn_master      PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_one_dn_master _null_ _null_ _null_ ));
+DESCR("mgr stop one dn master");
+
+DATA(insert OID = 3217 ( mgr_stop_cn_master_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_cn_master_f _null_ _null_ _null_ ));
+DESCR("stop coordinator master fast");
+
+DATA(insert OID = 3218 ( mgr_stop_cn_master_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_cn_master_i _null_ _null_ _null_ ));
+DESCR("stop coordinator master immediate");
+
+DATA(insert OID = 3219 ( mgr_stop_dn_master_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_master_f _null_ _null_ _null_ ));
+DESCR("mgr stop dn master fast");
+
+DATA(insert OID = 3220 ( mgr_stop_dn_master_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_master_i _null_ _null_ _null_ ));
+DESCR("mgr stop dn master immediate");
+
+DATA(insert OID = 3221 ( mgr_stop_dn_slave_f      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_slave_f _null_ _null_ _null_ ));
+DESCR("mgr stop dn slave fast");
+
+DATA(insert OID = 3222 ( mgr_stop_dn_slave_i      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,success,description}" _null_ mgr_stop_dn_slave_i _null_ _null_ _null_ ));
+DESCR("mgr stop dn slave immediate");
+
+#endif
+
 /*
  * Symbolic values for provolatile column: these indicate whether the result
  * of a function is dependent *only* on the values of its explicit arguments,

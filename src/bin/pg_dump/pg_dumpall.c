@@ -62,6 +62,11 @@ static char *constructConnStr(const char **keywords, const char **values);
 static PGresult *executeQuery(PGconn *conn, const char *query);
 static void executeCommand(PGconn *conn, const char *query);
 
+#ifdef PGXC
+static void dumpNodes(PGconn *conn);
+static void dumpNodeGroups(PGconn *conn);
+#endif /* PGXC */
+
 static char pg_dump_bin[MAXPGPATH];
 static const char *progname;
 static PQExpBuffer pgdumpopts;
@@ -83,6 +88,10 @@ static int	server_version;
 static FILE *OPF;
 static char *filename = NULL;
 
+#ifdef PGXC
+static int	dump_nodes = 0;
+static int include_nodes = 0;
+#endif /* PGXC */
 #define exit_nicely(code) exit(code)
 
 int
@@ -127,7 +136,10 @@ main(int argc, char *argv[])
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 		{"no-security-labels", no_argument, &no_security_labels, 1},
 		{"no-unlogged-table-data", no_argument, &no_unlogged_table_data, 1},
-
+#ifdef PGXC
+		{"dump-nodes", no_argument, &dump_nodes, 1},
+		{"include-nodes", no_argument, &include_nodes, 1},
+#endif
 		{NULL, 0, NULL, 0}
 	};
 
@@ -365,6 +377,11 @@ main(int argc, char *argv[])
 	if (no_unlogged_table_data)
 		appendPQExpBuffer(pgdumpopts, " --no-unlogged-table-data");
 
+#ifdef PGXC
+	if (include_nodes)
+		appendPQExpBuffer(pgdumpopts, " --include-nodes");
+#endif
+
 	/*
 	 * If there was a database specified on the command line, use that,
 	 * otherwise try to connect to database "postgres", and failing that
@@ -519,6 +536,15 @@ main(int argc, char *argv[])
 			if (server_version >= 90000)
 				dumpDbRoleConfig(conn);
 		}
+
+#ifdef PGXC
+		/* Dump nodes and node groups */
+		if (dump_nodes)
+		{
+			dumpNodes(conn);
+			dumpNodeGroups(conn);
+		}
+#endif
 	}
 
 	if (!globals_only && !roles_only && !tablespaces_only)
@@ -572,6 +598,10 @@ help(void)
 	printf(_("  --use-set-session-authorization\n"
 			 "                               use SET SESSION AUTHORIZATION commands instead of\n"
 			 "                               ALTER OWNER commands to set ownership\n"));
+#ifdef PGXC
+	printf(_("  --dump-nodes                 include nodes and node groups in the dump\n"));
+	printf(_("  --include-nodes              include TO NODE clause in the dumped CREATE TABLE commands\n"));
+#endif
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -d, --dbname=CONNSTR     connect using connection string\n"));
@@ -665,6 +695,7 @@ dumpRoles(PGconn *conn)
 			 "pg_catalog.shobj_description(oid, 'pg_authid') as rolcomment, "
 						  "rolname = current_user AS is_current_user "
 						  "FROM pg_authid "
+						  "WHERE oid != 10 "
 						  "ORDER BY 2");
 	else if (server_version >= 80200)
 		printfPQExpBuffer(buf,
@@ -2146,3 +2177,76 @@ doShellQuoting(PQExpBuffer buf, const char *str)
 	appendPQExpBufferChar(buf, '"');
 #endif   /* WIN32 */
 }
+
+#ifdef PGXC
+static void
+dumpNodes(PGconn *conn)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	int			num;
+	int			i;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query, "select 'CREATE NODE ' || node_name || '"
+					" WITH (TYPE = ' || chr(39) || (case when node_type='C'"
+					" then 'coordinator' else 'datanode' end) || chr(39)"
+					" || ' , HOST = ' || chr(39) || node_host || chr(39)"
+					" || ', PORT = ' || node_port || (case when nodeis_primary='t'"
+					" then ', PRIMARY' else ' ' end) || (case when nodeis_preferred"
+					" then ', PREFERRED' else ' ' end) || ');' "
+					" as node_query from pg_catalog.pgxc_node order by oid");
+
+	res = executeQuery(conn, query->data);
+
+	num = PQntuples(res);
+
+	if (num > 0)
+		fprintf(OPF, "--\n-- Nodes\n--\n\n");
+
+	for (i = 0; i < num; i++)
+	{
+		fprintf(OPF, "%s\n", PQgetvalue(res, i, PQfnumber(res, "node_query")));
+	}
+	fprintf(OPF, "\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+}
+
+static void
+dumpNodeGroups(PGconn *conn)
+{
+	PQExpBuffer query;
+	PGresult   *res;
+	int			num;
+	int			i;
+
+	query = createPQExpBuffer();
+
+	appendPQExpBuffer(query,
+						"select 'CREATE NODE GROUP ' || pgxc_group.group_name"
+						" || ' WITH(' || string_agg(node_name,',') || ');'"
+						" as group_query from pg_catalog.pgxc_node, pg_catalog.pgxc_group"
+						" where pgxc_node.oid = any (pgxc_group.group_members)"
+						" group by pgxc_group.group_name"
+						" order by pgxc_group.group_name");
+
+	res = executeQuery(conn, query->data);
+
+	num = PQntuples(res);
+
+	if (num > 0)
+		fprintf(OPF, "--\n-- Node groups\n--\n\n");
+
+	for (i = 0; i < num; i++)
+	{
+		fprintf(OPF, "%s\n", PQgetvalue(res, i, PQfnumber(res, "group_query")));
+	}
+	fprintf(OPF, "\n");
+
+	PQclear(res);
+	destroyPQExpBuffer(query);
+}
+#endif

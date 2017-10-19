@@ -58,6 +58,10 @@ gbt_var_key_readable(const GBT_VARKEY *k)
 {
 	GBT_VARKEY_R r;
 
+#ifdef ADB
+	/* fix: Dereference of null pointer */
+	AssertArg(k);
+#endif
 	r.lower = (bytea *) &(((char *) k)[VARHDRSZ]);
 	if (VARSIZE(k) > (VARHDRSZ + (VARSIZE(r.lower))))
 		r.upper = (bytea *) &(((char *) k)[VARHDRSZ + INTALIGN(VARSIZE(r.lower))]);

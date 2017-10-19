@@ -26,7 +26,12 @@
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h"
 #include "utils/selfuncs.h"
+#ifdef PGXC
+#include "commands/tablecmds.h"
+#include "optimizer/restrictinfo.h"
+#endif /* PGXC */
 
 
 typedef enum

@@ -33,11 +33,11 @@ create temp table quadtable(f1 int, q quad);
 insert into quadtable values (1, ((3.3,4.4),(5.5,6.6)));
 insert into quadtable values (2, ((null,4.4),(5.5,6.6)));
 
-select * from quadtable;
+select * from quadtable order by f1, q;
 
 select f1, q.c1 from quadtable;		-- fails, q is a table reference
 
-select f1, (q).c1, (qq.q).c1.i from quadtable qq;
+select f1, (q).c1, (qq.q).c1.i from quadtable qq order by 1;
 
 create temp table people (fn fullname, bd date);
 
@@ -60,7 +60,7 @@ select * from people;
 
 insert into quadtable (f1, q.c1.r, q.c2.i) values(44,55,66);
 
-select * from quadtable;
+select * from quadtable order by f1, q;
 
 -- The object here is to ensure that toasted references inside
 -- composite values don't cause problems.  The large f1 value will
@@ -71,7 +71,7 @@ insert into pp values (repeat('abcdefghijkl', 100000));
 
 insert into people select ('Jim', f1, null)::fullname, current_date from pp;
 
-select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people;
+select (fn).first, substr((fn).last, 1, 20), length((fn).last) from people order by 1, 2;
 
 -- Test row comparison semantics.  Prior to PG 8.2 we did this in a totally
 -- non-spec-compliant way.
@@ -107,7 +107,7 @@ where (unique1, unique2) < any (select ten, ten from tenk1 where hundred < 3)
 order by 1;
 
 -- Also check row comparison with an indexable condition
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select thousand, tenthous from tenk1
 where (thousand, tenthous) >= (997, 5000)
 order by thousand, tenthous;
@@ -134,12 +134,12 @@ reset enable_sort;
 -- Check row comparisons with IN
 select * from int8_tbl i8 where i8 in (row(123,456));  -- fail, type mismatch
 
-explain (costs off)
+explain (num_nodes off, nodes off, costs off)
 select * from int8_tbl i8
 where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
 
 select * from int8_tbl i8
-where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)');
+where i8 in (row(123,456)::int8_tbl, '(4567890123456789,123)') order by 1, 2;
 
 -- Check some corner cases involving empty rowtypes
 select ROW();
@@ -196,7 +196,7 @@ UPDATE price
     FROM unnest(ARRAY[(10, 123.00), (11, 99.99)]::price_input[]) input_prices
     WHERE price_key_from_table(price.*) = price_key_from_input(input_prices.*);
 
-select * from price;
+select * from price order by id;
 
 rollback;
 
@@ -226,7 +226,7 @@ $$ language sql;
 select fcompos1(row(1,'one'));
 select fcompos2(row(2,'two'));
 select fcompos3(row(3,'three'));
-select * from compos;
+select * from compos ORDER BY 1,2;
 
 --
 -- We allow I/O conversion casts from composite types to strings to be
@@ -248,41 +248,41 @@ select (row('Jim', 'Beam')).text;  -- error
 -- (bug #11210 and other reports)
 --
 
-select row_to_json(i) from int8_tbl i;
-select row_to_json(i) from int8_tbl i(x,y);
+select row_to_json(i) from int8_tbl_r i;
+select row_to_json(i) from int8_tbl_r i(x,y);
 
-create temp view vv1 as select * from int8_tbl;
+create temp view vv1 as select * from int8_tbl_r;
 select row_to_json(i) from vv1 i;
 select row_to_json(i) from vv1 i(x,y);
 
 select row_to_json(ss) from
-  (select q1, q2 from int8_tbl) as ss;
+  (select q1, q2 from int8_tbl_r) as ss;
 select row_to_json(ss) from
-  (select q1, q2 from int8_tbl offset 0) as ss;
+  (select q1, q2 from int8_tbl_r offset 0) as ss;
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl) as ss;
+  (select q1 as a, q2 as b from int8_tbl_r) as ss;
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl offset 0) as ss;
+  (select q1 as a, q2 as b from int8_tbl_r offset 0) as ss;
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl) as ss(x,y);
+  (select q1 as a, q2 as b from int8_tbl_r) as ss(x,y);
 select row_to_json(ss) from
-  (select q1 as a, q2 as b from int8_tbl offset 0) as ss(x,y);
+  (select q1 as a, q2 as b from int8_tbl_r offset 0) as ss(x,y);
 
-explain (costs off)
+explain (costs off, NODES OFF, NUM_NODES OFF)
 select row_to_json(q) from
-  (select thousand, tenthous from tenk1
+  (select thousand, tenthous from tenk1_r
    where thousand = 42 and tenthous < 2000 offset 0) q;
 select row_to_json(q) from
-  (select thousand, tenthous from tenk1
+  (select thousand, tenthous from tenk1_r
    where thousand = 42 and tenthous < 2000 offset 0) q;
 select row_to_json(q) from
-  (select thousand as x, tenthous as y from tenk1
+  (select thousand as x, tenthous as y from tenk1_r
    where thousand = 42 and tenthous < 2000 offset 0) q;
 select row_to_json(q) from
-  (select thousand as x, tenthous as y from tenk1
+  (select thousand as x, tenthous as y from tenk1_r
    where thousand = 42 and tenthous < 2000 offset 0) q(a,b);
 
-create temp table tt1 as select * from int8_tbl limit 2;
+create temp table tt1 as select * from int8_tbl_r limit 2;
 create temp table tt2 () inherits(tt1);
 insert into tt2 values(0,0);
 select row_to_json(r) from (select q2,q1 from tt1 offset 0) r;

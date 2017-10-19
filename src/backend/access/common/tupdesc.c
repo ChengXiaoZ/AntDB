@@ -462,7 +462,7 @@ TupleDescInitEntry(TupleDesc desc,
 	/*
 	 * sanity checks
 	 */
-	AssertArg(PointerIsValid(desc));
+	AssertArg(PointerIsValid(desc) && desc->attrs);
 	AssertArg(attributeNumber >= 1);
 	AssertArg(attributeNumber <= desc->natts);
 

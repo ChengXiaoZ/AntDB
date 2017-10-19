@@ -23,6 +23,8 @@ ifneq ($(subdir), src/backend)
 all: $(subsysfilename)
 endif
 
+CFLAGS += -I$(top_srcdir)/src/interfaces
+
 SUBSYS.o: $(SUBDIROBJS) $(OBJS)
 	$(LD) $(LDREL) $(LDOUT) $@ $^
 

@@ -37,6 +37,10 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#ifdef PGXC
+#include "pgxc/execRemote.h"
+#include "pgxc/pgxc.h"
+#endif
 
 
 Datum		fmgr_internal_validator(PG_FUNCTION_ARGS);
@@ -909,10 +913,33 @@ fmgr_sql_validator(PG_FUNCTION_ARGS)
 				Node	   *parsetree = (Node *) lfirst(lc);
 				List	   *querytree_sublist;
 
+#ifdef PGXC
+				/* Block CTAS in SQL functions */
+				if (IsA(parsetree, CreateTableAsStmt))
+					ereport(ERROR,
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							errmsg("In XC, SQL functions cannot contain utility statements")));
+#endif
+
 				querytree_sublist = pg_analyze_and_rewrite_params(parsetree,
 																  prosrc,
 									   (ParserSetupHook) sql_fn_parser_setup,
 																  pinfo);
+
+#ifdef PGXC
+				/* Check if the list of queries contains temporary objects */
+				if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+				{
+					if (pgxc_query_contains_utility(querytree_sublist))
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("In XC, SQL functions cannot contain utility statements")));
+
+					if (pgxc_query_contains_temp_tables(querytree_sublist))
+						ExecSetTempObjectIncluded();
+				}
+#endif
+
 				querytree_list = list_concat(querytree_list,
 											 querytree_sublist);
 			}

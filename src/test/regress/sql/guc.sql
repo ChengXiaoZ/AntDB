@@ -147,6 +147,7 @@ SELECT '2006-08-13 12:34:56'::timestamptz;
 --
 -- Test DISCARD TEMP
 --
+
 CREATE TEMP TABLE reset_test ( data text ) ON COMMIT DELETE ROWS;
 SELECT relname FROM pg_class WHERE relname = 'reset_test';
 DISCARD TEMP;
@@ -171,6 +172,9 @@ SELECT name FROM pg_cursors;
 SHOW vacuum_cost_delay;
 SELECT relname from pg_class where relname = 'tmp_foo';
 SELECT current_user = 'temp_reset_user';
+RESET SESSION AUTHORIZATION;
+DROP TABLE tmp_foo; -- Need to release the ON COMMIT actions
+SET SESSION AUTHORIZATION temp_reset_user;
 -- discard everything
 DISCARD ALL;
 -- look again

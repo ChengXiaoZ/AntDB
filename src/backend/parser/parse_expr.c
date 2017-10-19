@@ -34,6 +34,10 @@
 #include "utils/lsyscache.h"
 #include "utils/xml.h"
 
+#ifdef ADB
+#include "tcop/tcopprot.h"
+#include "oraschema/oracoerce.h"
+#endif
 
 bool		Transform_null_equals = false;
 
@@ -74,6 +78,13 @@ static Node *make_row_distinct_op(ParseState *pstate, List *opname,
 					 RowExpr *lrow, RowExpr *rrow, int location);
 static Expr *make_distinct_op(ParseState *pstate, List *opname,
 				 Node *ltree, Node *rtree, int location);
+
+#ifdef ADB
+static void ora_select_common_type(ParseState *pstate,
+								   List *exprs,
+								   Oid *typoid,
+								   int32 *typmod);
+#endif
 
 
 /*
@@ -124,9 +135,20 @@ static Node *
 transformExprRecurse(ParseState *pstate, Node *expr)
 {
 	Node	   *result;
+#ifdef ADB
+	int			sv_grammar;
+#endif
 
 	if (expr == NULL)
 		return NULL;
+
+#ifdef ADB
+	sv_grammar = current_grammar;
+	current_grammar = pstate->p_grammar;
+
+	PG_TRY();
+	{
+#endif
 
 	/* Guard against stack overflow due to overly complex expressions */
 	check_stack_depth();
@@ -136,7 +158,32 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 		case T_ColumnRef:
 			result = transformColumnRef(pstate, (ColumnRef *) expr);
 			break;
+#ifdef ADB
+		case T_ColumnRefJoin:
+			if(pstate->p_expr_kind != EXPR_KIND_JOIN_ON
+				&& pstate->p_expr_kind != EXPR_KIND_WHERE)
+			{
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+					,errmsg("syntax error")
+					,parser_errposition(pstate, ((ColumnRefJoin*)expr)->location)));
+			}else
+			{
+				ColumnRefJoin *crj = (ColumnRefJoin*)expr;
+				result = expr;
+				Assert(crj->column && IsA(crj->column,ColumnRef));
 
+				StaticAssertExpr(offsetof(ColumnRefJoin, column) == offsetof(ColumnRefJoin, var), "column and var must union");
+				crj->var = (Var*)transformColumnRef(pstate, crj->column);
+				if(crj->var == NULL || !IsA(crj->column, Var)
+					|| crj->var->varattno == 0)
+				{
+					ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
+						,errmsg("syntax error")
+						,parser_errposition(pstate, crj->location)));
+				}
+			}
+			break;
+#endif /* ADB */
 		case T_ParamRef:
 			result = transformParamRef(pstate, (ParamRef *) expr);
 			break;
@@ -349,6 +396,7 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 		case T_CoerceToDomain:
 		case T_CoerceToDomainValue:
 		case T_SetToDefault:
+		case T_RownumExpr:
 			{
 				result = (Node *) expr;
 				break;
@@ -360,6 +408,15 @@ transformExprRecurse(ParseState *pstate, Node *expr)
 			result = NULL;		/* keep compiler quiet */
 			break;
 	}
+#ifdef ADB
+	} PG_CATCH();
+	{
+		current_grammar = sv_grammar;
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	current_grammar = sv_grammar;
+#endif
 
 	return result;
 }
@@ -907,6 +964,15 @@ transformAExprOp(ParseState *pstate, A_Expr *a)
 		lexpr = transformExprRecurse(pstate, lexpr);
 		rexpr = transformExprRecurse(pstate, rexpr);
 
+#ifdef ADB
+		if (IsOracleParseGram(pstate) && lexpr && rexpr)
+			result = transformOraAExprOp(pstate,
+										 a->name,
+										 lexpr,
+										 rexpr,
+										 a->location);
+		else
+#endif
 		result = (Node *) make_op(pstate,
 								  a->name,
 								  lexpr,
@@ -1241,6 +1307,16 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 {
 	List	   *targs;
 	ListCell   *args;
+#ifdef ADB
+	Node			*result;
+	OraCoerceKind	sv_coerce_kind;
+
+	sv_coerce_kind = current_coerce_kind;
+	if (IsOracleParseGram(pstate))
+		current_coerce_kind = ORA_COERCE_COMMON_FUNCTION;
+	PG_TRY();
+	{
+#endif
 
 	/* Transform the list of arguments ... */
 	targs = NIL;
@@ -1249,7 +1325,59 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 		targs = lappend(targs, transformExprRecurse(pstate,
 													(Node *) lfirst(args)));
 	}
+#ifdef ADB
+	if (IsOracleParseGram(pstate))
+	{
+		char *nspname = NULL;
+		char *objname = NULL;
 
+		/* deconstruct namespace and object name */
+		DeconstructQualifiedName(fn->funcname, &nspname, &objname);
+
+		if (nspname == NULL || strcasecmp(nspname, "oracle") == 0)
+		{
+			/*
+			 * transform arguments of oracle's function NVL before
+			 * transforming the NVL function.
+			 */
+			if (objname && strcasecmp(objname, "nvl") == 0)
+				targs = transformNvlArgs(pstate, targs);
+			else
+			/*
+			 * transform arguments of oracle's function NVL2 before
+			 * transforming the NVL2 function.
+			 */
+			if (objname && strcasecmp(objname, "nvl2") == 0)
+				targs = transformNvl2Args(pstate, targs);
+			/*
+			 * others cases
+			 */
+			else
+			{
+				/* do nothing, keep compiler quiet. */
+			}
+		}
+	}
+
+	result = ParseFuncOrColumn(pstate,
+							   fn->funcname,
+							   targs,
+							   fn->agg_order,
+							   fn->agg_star,
+							   fn->agg_distinct,
+							   fn->func_variadic,
+							   fn->over,
+							   false,
+							   fn->location);
+	} PG_CATCH();
+	{
+		current_coerce_kind = sv_coerce_kind;
+		PG_RE_THROW();
+	} PG_END_TRY();
+	current_coerce_kind = sv_coerce_kind;
+
+	return result;
+#else
 	/* ... and hand off to ParseFuncOrColumn */
 	return ParseFuncOrColumn(pstate,
 							 fn->funcname,
@@ -1261,7 +1389,49 @@ transformFuncCall(ParseState *pstate, FuncCall *fn)
 							 fn->over,
 							 false,
 							 fn->location);
+#endif
 }
+
+#ifdef ADB
+static Node *
+transformDecodeExpr(ParseState *pstate, Node *warg, Node *expr, Oid stype)
+{
+	A_Expr		*aexpr;
+	Node		*sexpr;
+	Node		*result;
+	OraCoerceKind sv_coerce_kind;
+
+	Assert(pstate && warg && expr);
+	if (!OidIsValid(stype) || IsA(warg, NullTest))
+		return transformExprRecurse(pstate, warg);
+
+	Assert(IsA(warg, A_Expr));
+	aexpr = (A_Expr *)warg;
+
+	sexpr = transformExprRecurse(pstate, aexpr->rexpr);
+
+	sv_coerce_kind = current_coerce_kind;
+	current_coerce_kind = ORA_COERCE_SPECIAL_FUNCTION;
+	PG_TRY();
+	{
+		sexpr = coerce_to_common_type(pstate,
+									  sexpr,
+									  stype,
+									  "CASE/WHEN");
+		result = (Node*)make_op(pstate,
+								aexpr->name,
+								expr,
+								sexpr,
+								aexpr->location);
+	} PG_CATCH();
+	{
+		current_coerce_kind = sv_coerce_kind;
+		PG_RE_THROW();
+	} PG_END_TRY();
+
+	return result;
+}
+#endif
 
 static Node *
 transformCaseExpr(ParseState *pstate, CaseExpr *c)
@@ -1274,6 +1444,10 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 	ListCell   *l;
 	Node	   *defresult;
 	Oid			ptype;
+#ifdef ADB
+	Node	   *expr;
+	Oid			stype;
+#endif
 
 	/* If we already transformed this node, do nothing */
 	if (OidIsValid(c->casetype))
@@ -1315,6 +1489,53 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 
 	newc->arg = (Expr *) arg;
 
+#ifdef ADB
+	/*
+	 * Oracle automatically converts expr and each search value to
+	 * the data type of the first search value before comparing.
+	 */
+	if (IsOracleParseGram(pstate) && c->isdecode)
+	{
+		A_Expr			*aexpr;
+		Node			*sexpr;
+		OraCoerceKind 	sv_coerce_kind;
+		CaseWhen 		*cw = (CaseWhen *)linitial(c->args);
+
+		if (IsA(cw->expr, NullTest))
+		{
+			NullTest *nt = (NullTest *)(cw->expr);
+			Assert(nt->nulltesttype == IS_NULL);
+			stype = TEXTOID;
+			expr = transformExprRecurse(pstate, (Node*)nt->arg);;
+		} else
+		{
+			Assert(IsA(cw->expr, A_Expr));
+			aexpr = (A_Expr *)cw->expr;
+			sexpr = transformExprRecurse(pstate, aexpr->rexpr);
+			stype = exprType(sexpr);
+			if (IS_NUMERIC_TYPE(stype))
+				stype = NUMERICOID;
+			if (IS_CHARACTER_TYPE(stype))
+				stype = TEXTOID;
+			expr = transformExprRecurse(pstate, aexpr->lexpr);
+		}
+
+		sv_coerce_kind = current_coerce_kind;
+		current_coerce_kind = ORA_COERCE_SPECIAL_FUNCTION;
+		PG_TRY();
+		{
+			expr = coerce_to_common_type(pstate,
+										 expr,
+										 stype,
+										 "CASE");
+		} PG_CATCH();
+		{
+			current_coerce_kind = sv_coerce_kind;
+			PG_RE_THROW();
+		} PG_END_TRY();
+	}
+#endif
+
 	/* transform the list of arguments */
 	newargs = NIL;
 	resultexprs = NIL;
@@ -1335,6 +1556,12 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 											 warg,
 											 w->location);
 		}
+
+#ifdef ADB
+		if (IsOracleParseGram(pstate) && c->isdecode)
+			neww->expr = (Expr *)transformDecodeExpr(pstate, warg, expr, stype);
+		else
+#endif
 		neww->expr = (Expr *) transformExprRecurse(pstate, warg);
 
 		neww->expr = (Expr *) coerce_to_boolean(pstate,
@@ -1368,6 +1595,86 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 	 * determining preferred type. This is how the code worked before, but it
 	 * seems a little bogus to me --- tgl
 	 */
+#ifdef ADB
+	if (IsOracleParseGram(pstate) && c->isdecode)
+	{
+		Oid 	typoid = InvalidOid;
+		Oid		ntype = InvalidOid;
+		int32 	typmod = -1;
+		int		nlocation = -1;
+		OraCoerceKind	sv_coerce_kind;
+
+		resultexprs = lappend(resultexprs, newc->defresult);
+		ora_select_common_type(pstate, resultexprs, &typoid, &typmod);
+		if (!OidIsValid(typoid))
+			typoid = select_common_type(pstate, resultexprs, "CASE", NULL);
+
+		Assert(OidIsValid(typoid));
+		ptype = typoid;
+		newc->casetype = ptype;
+
+		sv_coerce_kind = current_coerce_kind;
+		current_coerce_kind = ORA_COERCE_SPECIAL_FUNCTION;
+		PG_TRY();
+		{
+			Node *cnode = NULL;
+			ntype = exprType((const Node *)newc->defresult);
+			nlocation = exprLocation((const Node *)newc->defresult);
+
+			/* Convert default result clause, if necessary */
+			cnode = coerce_to_target_type(pstate,
+										  (Node *) newc->defresult,
+										  ntype,
+										  ptype,
+										  typmod,
+										  COERCION_IMPLICIT,
+										  COERCE_IMPLICIT_CAST,
+										  nlocation);
+			if (cnode == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("CASE/ELSE could not convert type %s to %s",
+								format_type_be(ntype),
+								format_type_be(ptype)),
+						parser_errposition(pstate, nlocation)));
+			newc->defresult = (Expr *)cnode;
+
+			/* Convert when-clause results, if necessary */
+			foreach(l, newc->args)
+			{
+				CaseWhen   *w = (CaseWhen *) lfirst(l);
+				ntype = exprType((const Node *)w->result);
+				nlocation = exprLocation((const Node *)w->result);
+
+				cnode = coerce_to_target_type(pstate,
+											  (Node *) w->result,
+											  ntype,
+											  ptype,
+											  typmod,
+											  COERCION_IMPLICIT,
+											  COERCE_IMPLICIT_CAST,
+											  nlocation);
+				if (cnode == NULL)
+					ereport(ERROR,
+							(errcode(ERRCODE_DATATYPE_MISMATCH),
+							 errmsg("CASE/WHEN could not convert type %s to %s",
+									format_type_be(ntype),
+									format_type_be(ptype)),
+							parser_errposition(pstate, nlocation)));
+
+				w->result = (Expr *)cnode;
+				newc->location = c->location;
+			}
+		} PG_CATCH();
+		{
+			current_coerce_kind = sv_coerce_kind;
+			PG_RE_THROW();
+		} PG_END_TRY();
+		current_coerce_kind = sv_coerce_kind;
+
+		return (Node *) newc;
+	} 
+#endif
 	resultexprs = lcons(newc->defresult, resultexprs);
 
 	ptype = select_common_type(pstate, resultexprs, "CASE", NULL);
@@ -1393,7 +1700,6 @@ transformCaseExpr(ParseState *pstate, CaseExpr *c)
 								  ptype,
 								  "CASE/WHEN");
 	}
-
 	newc->location = c->location;
 
 	return (Node *) newc;
@@ -1846,6 +2152,38 @@ transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
 	return (Node *) newc;
 }
 
+#ifdef ADB
+static void
+ora_select_common_type(ParseState *pstate,
+					   List *exprs,
+					   Oid *typoid,
+					   int32 *typmod)
+{
+	Node	*pexpr = NULL;
+	Oid		ptype = InvalidOid;
+	int32	ptypmod = -1;
+
+	Assert(pstate && exprs);
+	Assert(IsOracleParseGram(pstate));
+
+	pexpr = (Node *) linitial(exprs);
+	ptype = exprType((const Node *)pexpr);
+
+	if (ptype == UNKNOWNOID ||
+		IS_CHARACTER_TYPE(ptype))
+		ptype = TEXTOID;
+
+	if (IS_NUMERIC_TYPE(ptype))
+		ptype = NUMERICOID;
+
+	if (typoid)
+		*typoid = ptype;
+	if (typmod)
+		*typmod = ptypmod;
+	return ;
+}
+#endif
+
 static Node *
 transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 {
@@ -1862,9 +2200,91 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 		Node	   *newe;
 
 		newe = transformExprRecurse(pstate, e);
+#ifdef ADB
+		if (IsOracleParseGram(pstate) &&
+			IsA(newe, Const) &&
+			((Const *)newe)->constisnull)
+			return (Node*)makeNullConst(UNKNOWNOID, -1, InvalidOid);
+			
+#endif
 		newargs = lappend(newargs, newe);
 	}
 
+#ifdef ADB
+	if (IsOracleParseGram(pstate))
+	{
+		Oid		targetTypeId = InvalidOid;
+		int32	targetTypMod = -1;
+		OraCoerceKind sv_coerce_kind;
+
+		sv_coerce_kind = current_coerce_kind;
+		current_coerce_kind = ORA_COERCE_SPECIAL_FUNCTION;
+		PG_TRY();
+		{
+			ora_select_common_type(pstate, newargs, &targetTypeId, &targetTypMod);
+			newm->minmaxtype = targetTypeId;
+
+			/* Convert arguments if necessary */
+			foreach(args, newargs)
+			{
+				Node	   *e = (Node *) lfirst(args);
+				Node	   *newe = NULL;
+
+				if (m->op == IS_LEAST)
+				{
+					/*
+					 * LEAST returns the least of the list of exprs. All exprs after
+					 * the first are implicitly converted to the data type of the
+					 * first expr before the comparison.
+					 */
+					newe = coerce_to_common_type(pstate,
+												 e,
+												 newm->minmaxtype,
+												 funcname);
+				} else
+				{
+					/*
+					 * GREATEST returns the greatest of the list of one or more 
+					 * expressions. Oracle Database uses the first expr to determine
+					 * the return type. If the first expr is numeric, then Oracle
+					 * determines the argument with the highest numeric precedence, 
+					 * implicitly converts the remaining arguments to that data type
+					 * before the comparison, and returns that data type. If the 
+					 * first expr is not numeric, then each expr after the first is
+					 * implicitly converted to the data type of the first expr before
+					 * the comparison.
+					 */
+					Oid		inputTypeId = exprType(e);
+
+					Assert(m->op == IS_GREATEST);
+					newe = coerce_to_target_type(pstate,
+												 e,
+												 inputTypeId,
+												 targetTypeId,
+												 targetTypMod,
+												 COERCION_IMPLICIT,
+												 COERCE_IMPLICIT_CAST,
+												 -1);
+					if (newe == NULL)
+						ereport(ERROR,
+								(errcode(ERRCODE_CANNOT_COERCE),
+								 errmsg("%s could not convert type %s to %s",
+										funcname,
+										format_type_be(inputTypeId),
+										format_type_be(targetTypeId)),
+								 parser_errposition(pstate, exprLocation(e))));
+				}
+				newcoercedargs = lappend(newcoercedargs, newe);
+			}
+		} PG_CATCH();
+		{
+			current_coerce_kind = sv_coerce_kind;
+			PG_RE_THROW();
+		} PG_END_TRY();
+		current_coerce_kind = sv_coerce_kind;
+	} else
+	{
+#endif
 	newm->minmaxtype = select_common_type(pstate, newargs, funcname, NULL);
 	/* minmaxcollid and inputcollid will be set by parse_collate.c */
 
@@ -1879,6 +2299,9 @@ transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
 									 funcname);
 		newcoercedargs = lappend(newcoercedargs, newe);
 	}
+#ifdef ADB
+	}
+#endif
 
 	newm->args = newcoercedargs;
 	newm->location = m->location;
@@ -2108,6 +2531,12 @@ transformCurrentOfExpr(ParseState *pstate, CurrentOfExpr *cexpr)
 {
 	int			sublevels_up;
 
+#ifdef PGXC
+	ereport(ERROR,
+			(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
+				(errmsg("WHERE CURRENT OF clause not yet supported"))));
+#endif
+
 	/* CURRENT OF can only appear at top level of UPDATE/DELETE */
 	Assert(pstate->p_target_rangetblentry != NULL);
 	cexpr->cvarno = RTERangeTablePosn(pstate,
@@ -2324,6 +2753,11 @@ make_row_comparison_op(ParseState *pstate, List *opname,
 		Node	   *rarg = (Node *) lfirst(r);
 		OpExpr	   *cmp;
 
+#ifdef ADB
+		if (IsOracleParseGram(pstate) && larg && rarg)
+			cmp = (OpExpr *)transformOraAExprOp(pstate, opname, larg, rarg, location);
+		else
+#endif
 		cmp = (OpExpr *) make_op(pstate, opname, larg, rarg, location);
 		Assert(IsA(cmp, OpExpr));
 

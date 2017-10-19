@@ -12,7 +12,7 @@ CREATE VIEW tv AS SELECT type, sum(amt) AS totamt FROM t GROUP BY type;
 SELECT * FROM tv ORDER BY type;
 
 -- create a materialized view with no data, and confirm correct behavior
-EXPLAIN (costs off)
+EXPLAIN (costs off, nodes off)
   CREATE MATERIALIZED VIEW tm AS SELECT type, sum(amt) AS totamt FROM t GROUP BY type WITH NO DATA;
 CREATE MATERIALIZED VIEW tm AS SELECT type, sum(amt) AS totamt FROM t GROUP BY type WITH NO DATA;
 SELECT relispopulated FROM pg_class WHERE oid = 'tm'::regclass;
@@ -20,17 +20,17 @@ SELECT * FROM tm;
 REFRESH MATERIALIZED VIEW tm;
 SELECT relispopulated FROM pg_class WHERE oid = 'tm'::regclass;
 CREATE UNIQUE INDEX tm_type ON tm (type);
-SELECT * FROM tm;
+SELECT * FROM tm ORDER BY type, totamt ;
 
 -- create various views
-EXPLAIN (costs off)
+EXPLAIN (costs off, nodes off)
   CREATE MATERIALIZED VIEW tvm AS SELECT * FROM tv ORDER BY type;
 CREATE MATERIALIZED VIEW tvm AS SELECT * FROM tv ORDER BY type;
 SELECT * FROM tvm;
 CREATE MATERIALIZED VIEW tmm AS SELECT sum(totamt) AS grandtot FROM tm;
 CREATE MATERIALIZED VIEW tvmm AS SELECT sum(totamt) AS grandtot FROM tvm;
 CREATE VIEW tvv AS SELECT sum(totamt) AS grandtot FROM tv;
-EXPLAIN (costs off)
+EXPLAIN (costs off, nodes off)
   CREATE MATERIALIZED VIEW tvvm AS SELECT * FROM tvv;
 CREATE MATERIALIZED VIEW tvvm AS SELECT * FROM tvv;
 CREATE VIEW tvvmv AS SELECT * FROM tvvm;
@@ -115,12 +115,13 @@ DROP VIEW v_test1 CASCADE;
 
 -- test that vacuum does not make empty matview look unpopulated
 CREATE TABLE hoge (i int);
-INSERT INTO hoge VALUES (generate_series(1,100000));
+INSERT INTO hoge SELECT generate_series(1,100000);
 CREATE MATERIALIZED VIEW hogeview AS SELECT * FROM hoge WHERE i % 2 = 0;
 CREATE INDEX hogeviewidx ON hogeview (i);
 DELETE FROM hoge;
 REFRESH MATERIALIZED VIEW hogeview;
 SELECT * FROM hogeview WHERE i < 10;
+-- The following statement does not work with 1.2.1 and master so far.
 VACUUM ANALYZE hogeview;
 SELECT * FROM hogeview WHERE i < 10;
 DROP TABLE hoge CASCADE;
@@ -138,14 +139,14 @@ ALTER TABLE v RENAME COLUMN i TO x;
 INSERT INTO v values (1, 2);
 CREATE UNIQUE INDEX mv_v_ii ON mv_v (ii);
 REFRESH MATERIALIZED VIEW mv_v;
-SELECT * FROM v;
-SELECT * FROM mv_v;
+SELECT * FROM v ORDER BY 1;
+SELECT * FROM mv_v ORDER BY 1;
 DROP TABLE v CASCADE;
 
 -- make sure that matview rows can be referenced as source rows (bug #9398)
 CREATE TABLE v AS SELECT generate_series(1,10) AS a;
 CREATE MATERIALIZED VIEW mv_v AS SELECT a FROM v WHERE a <= 5;
 DELETE FROM v WHERE EXISTS ( SELECT * FROM mv_v WHERE mv_v.a = v.a );
-SELECT * FROM v;
-SELECT * FROM mv_v;
+SELECT * FROM v ORDER BY 1;
+SELECT * FROM mv_v ORDER BY 1;
 DROP TABLE v CASCADE;

@@ -50,16 +50,14 @@ COPY x (b, c, d, e) from stdin with oids delimiter ',' null 'x';
 COPY x from stdin WITH DELIMITER AS ';' NULL AS '';
 COPY x from stdin WITH DELIMITER AS ':' NULL AS E'\\X' ENCODING 'sql_ascii';
 -- check results of copy in
-SELECT * FROM x;
+SELECT * FROM x ORDER BY a, b;
    a   | b  |     c      |   d    |          e           
 -------+----+------------+--------+----------------------
-  9999 |    | \N         | NN     | before trigger fired
- 10000 | 21 | 31         | 41     | before trigger fired
- 10001 | 22 | 32         | 42     | before trigger fired
- 10002 | 23 | 33         | 43     | before trigger fired
- 10003 | 24 | 34         | 44     | before trigger fired
- 10004 | 25 | 35         | 45     | before trigger fired
- 10005 | 26 | 36         | 46     | before trigger fired
+     1 |  1 | stuff      | test_1 | after trigger fired
+     2 |  2 | stuff      | test_2 | after trigger fired
+     3 |  3 | stuff      | test_3 | after trigger fired
+     4 |  4 | stuff      | test_4 | after trigger fired
+     5 |  5 | stuff      | test_5 | after trigger fired
      6 |    | 45         | 80     | before trigger fired
      7 |    | x          | \x     | before trigger fired
      8 |    | ,          | \,     | before trigger fired
@@ -73,11 +71,13 @@ SELECT * FROM x;
   4006 |  6 | BackslashN | \N     | before trigger fired
   4007 |  7 | XX         | XX     | before trigger fired
   4008 |  8 | Delimiter  | :      | before trigger fired
-     1 |  1 | stuff      | test_1 | after trigger fired
-     2 |  2 | stuff      | test_2 | after trigger fired
-     3 |  3 | stuff      | test_3 | after trigger fired
-     4 |  4 | stuff      | test_4 | after trigger fired
-     5 |  5 | stuff      | test_5 | after trigger fired
+  9999 |    | \N         | NN     | before trigger fired
+ 10000 | 21 | 31         | 41     | before trigger fired
+ 10001 | 22 | 32         | 42     | before trigger fired
+ 10002 | 23 | 33         | 43     | before trigger fired
+ 10003 | 24 | 34         | 44     | before trigger fired
+ 10004 | 25 | 35         | 45     | before trigger fired
+ 10005 | 26 | 36         | 46     | before trigger fired
 (25 rows)
 
 -- COPY w/ oids on a table w/o oids should fail
@@ -93,7 +93,7 @@ ERROR:  table "no_oids" does not have OIDs
 COPY no_oids TO stdout WITH OIDS;
 ERROR:  table "no_oids" does not have OIDs
 -- check copy out
-COPY x TO stdout;
+COPY (select * from x order by 1,2,3,4,5) TO stdout;
 9999	\N	\\N	NN	before trigger fired
 10000	21	31	41	before trigger fired
 10001	22	32	42	before trigger fired
@@ -119,7 +119,7 @@ COPY x TO stdout;
 3	3	stuff	test_3	after trigger fired
 4	4	stuff	test_4	after trigger fired
 5	5	stuff	test_5	after trigger fired
-COPY x (c, e) TO stdout;
+COPY (select c,e from x order by 1,2) TO stdout;
 \\N	before trigger fired
 31	before trigger fired
 32	before trigger fired
@@ -145,7 +145,7 @@ stuff	after trigger fired
 stuff	after trigger fired
 stuff	after trigger fired
 stuff	after trigger fired
-COPY x (b, e) TO stdout WITH NULL 'I''m null';
+COPY (select b,e from x order by 1,2) TO stdout WITH NULL 'I''m null';
 I'm null	before trigger fired
 21	before trigger fired
 22	before trigger fired
@@ -233,24 +233,24 @@ COPY testnl FROM stdin CSV;
 -- test end of copy marker
 CREATE TEMP TABLE testeoc (a text);
 COPY testeoc FROM stdin CSV;
-COPY testeoc TO stdout CSV;
-a\.
-\.b
-c\.d
+COPY (select * from testeoc order by a using ~<~) TO stdout CSV;
 "\."
+\.b
+a\.
+c\.d
 -- test handling of nonstandard null marker that violates escaping rules
 CREATE TEMP TABLE testnull(a int, b text);
 INSERT INTO testnull VALUES (1, E'\\0'), (NULL, NULL);
-COPY testnull TO stdout WITH NULL AS E'\\0';
+COPY (select * from testnull order by 1,2) TO stdout WITH NULL AS E'\\0';
 1	\\0
 \0	\0
 COPY testnull FROM stdin WITH NULL AS E'\\0';
-SELECT * FROM testnull;
+SELECT * FROM testnull ORDER BY 1,2;
  a  | b  
 ----+----
   1 | \0
-    | 
  42 | \0
+    | 
     | 
 (4 rows)
 
@@ -258,7 +258,7 @@ BEGIN;
 CREATE TABLE vistest (LIKE testeoc);
 COPY vistest FROM stdin CSV;
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  a0
@@ -268,7 +268,7 @@ SELECT * FROM vistest;
 BEGIN;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  a1
@@ -278,7 +278,7 @@ SELECT * FROM vistest;
 SAVEPOINT s1;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  d1
@@ -286,7 +286,7 @@ SELECT * FROM vistest;
 (2 rows)
 
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  d1
@@ -296,7 +296,7 @@ SELECT * FROM vistest;
 BEGIN;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV FREEZE;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  a2
@@ -306,7 +306,7 @@ SELECT * FROM vistest;
 SAVEPOINT s1;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV FREEZE;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  d2
@@ -314,7 +314,7 @@ SELECT * FROM vistest;
 (2 rows)
 
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  d2
@@ -324,7 +324,7 @@ SELECT * FROM vistest;
 BEGIN;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV FREEZE;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a 
 ---
  x
@@ -367,7 +367,7 @@ SELECT truncate_in_subxact();
 (1 row)
 
 COPY vistest FROM stdin CSV FREEZE;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  d4
@@ -375,7 +375,7 @@ SELECT * FROM vistest;
 (2 rows)
 
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
  a  
 ----
  d4

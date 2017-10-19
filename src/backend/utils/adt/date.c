@@ -126,12 +126,19 @@ date_in(PG_FUNCTION_ARGS)
 	int			ftype[MAXDATEFIELDS];
 	char		workbuf[MAXDATELEN + 1];
 
-	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
-						  field, ftype, MAXDATEFIELDS, &nf);
-	if (dterr == 0)
-		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tzp);
-	if (dterr != 0)
-		DateTimeParseError(dterr, str, "date");
+	if((nf=try_decode_date(str, tm)) ==0
+		|| str[nf] != '\0')
+	{ 
+		dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+							  field, ftype, MAXDATEFIELDS, &nf);
+		if (dterr == 0)
+			dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tzp);
+		if (dterr != 0)
+			DateTimeParseError(dterr, str, "date");
+	}else
+	{
+		dtype = DTK_DATE;
+	} 
 
 	switch (dtype)
 	{
@@ -1052,12 +1059,16 @@ time_in(PG_FUNCTION_ARGS)
 	int			dtype;
 	int			ftype[MAXDATEFIELDS];
 
-	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
-						  field, ftype, MAXDATEFIELDS, &nf);
-	if (dterr == 0)
-		dterr = DecodeTimeOnly(field, ftype, nf, &dtype, tm, &fsec, &tz);
-	if (dterr != 0)
-		DateTimeParseError(dterr, str, "time");
+	if((nf=try_decode_time(str, tm, &fsec, &tz)) == 0
+		|| str[nf] != '\0')
+	{ 
+		dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+							  field, ftype, MAXDATEFIELDS, &nf);
+		if (dterr == 0)
+			dterr = DecodeTimeOnly(field, ftype, nf, &dtype, tm, &fsec, &tz);
+		if (dterr != 0)
+			DateTimeParseError(dterr, str, "time");
+	}
 
 	tm2time(tm, fsec, &result);
 	AdjustTimeForTypmod(&result, typmod);
@@ -1890,12 +1901,16 @@ timetz_in(PG_FUNCTION_ARGS)
 	int			dtype;
 	int			ftype[MAXDATEFIELDS];
 
-	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
-						  field, ftype, MAXDATEFIELDS, &nf);
-	if (dterr == 0)
-		dterr = DecodeTimeOnly(field, ftype, nf, &dtype, tm, &fsec, &tz);
-	if (dterr != 0)
-		DateTimeParseError(dterr, str, "time with time zone");
+	if((nf=try_decode_time(str, tm, &fsec, &tz)) == 0
+		|| str[nf] != '\0')
+	{
+		dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+							  field, ftype, MAXDATEFIELDS, &nf);
+		if (dterr == 0)
+			dterr = DecodeTimeOnly(field, ftype, nf, &dtype, tm, &fsec, &tz);
+		if (dterr != 0)
+			DateTimeParseError(dterr, str, "time with time zone");
+	}
 
 	result = (TimeTzADT *) palloc(sizeof(TimeTzADT));
 	tm2timetz(tm, fsec, tz, result);

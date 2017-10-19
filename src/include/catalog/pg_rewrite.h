@@ -22,7 +22,11 @@
 #ifndef PG_REWRITE_H
 #define PG_REWRITE_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_rewrite definition.  cpp turns this into

@@ -18,34 +18,34 @@ INSERT INTO empsalary VALUES
 ('sales', 3, 4800, '2007-08-01'),
 ('develop', 8, 6000, '2006-10-01'),
 ('develop', 11, 5200, '2007-08-15');
-SELECT depname, empno, salary, sum(salary) OVER (PARTITION BY depname) FROM empsalary ORDER BY depname, salary;
+SELECT depname, empno, salary, sum(salary) OVER (PARTITION BY depname) FROM empsalary ORDER BY 1, 2, 3, 4;
   depname  | empno | salary |  sum  
 -----------+-------+--------+-------
  develop   |     7 |   4200 | 25100
- develop   |     9 |   4500 | 25100
- develop   |    11 |   5200 | 25100
- develop   |    10 |   5200 | 25100
  develop   |     8 |   6000 | 25100
- personnel |     5 |   3500 |  7400
+ develop   |     9 |   4500 | 25100
+ develop   |    10 |   5200 | 25100
+ develop   |    11 |   5200 | 25100
  personnel |     2 |   3900 |  7400
+ personnel |     5 |   3500 |  7400
+ sales     |     1 |   5000 | 14600
  sales     |     3 |   4800 | 14600
  sales     |     4 |   4800 | 14600
- sales     |     1 |   5000 | 14600
 (10 rows)
 
-SELECT depname, empno, salary, rank() OVER (PARTITION BY depname ORDER BY salary) FROM empsalary;
+SELECT depname, empno, salary, rank() OVER (PARTITION BY depname ORDER BY salary) FROM empsalary ORDER BY 1, 2, 3, 4;
   depname  | empno | salary | rank 
 -----------+-------+--------+------
  develop   |     7 |   4200 |    1
- develop   |     9 |   4500 |    2
- develop   |    11 |   5200 |    3
- develop   |    10 |   5200 |    3
  develop   |     8 |   6000 |    5
- personnel |     5 |   3500 |    1
+ develop   |     9 |   4500 |    2
+ develop   |    10 |   5200 |    3
+ develop   |    11 |   5200 |    3
  personnel |     2 |   3900 |    2
+ personnel |     5 |   3500 |    1
+ sales     |     1 |   5000 |    3
  sales     |     3 |   4800 |    1
  sales     |     4 |   4800 |    1
- sales     |     1 |   5000 |    3
 (10 rows)
 
 -- with GROUP BY
@@ -75,38 +75,38 @@ GROUP BY four, ten ORDER BY four, ten;
     3 |   9 | 7500 |     9.0000000000000000
 (20 rows)
 
-SELECT depname, empno, salary, sum(salary) OVER w FROM empsalary WINDOW w AS (PARTITION BY depname);
+SELECT depname, empno, salary, sum(salary) OVER w FROM empsalary WINDOW w AS (PARTITION BY depname) ORDER BY empno,salary;
   depname  | empno | salary |  sum  
 -----------+-------+--------+-------
- develop   |    11 |   5200 | 25100
- develop   |     7 |   4200 | 25100
- develop   |     9 |   4500 | 25100
- develop   |     8 |   6000 | 25100
- develop   |    10 |   5200 | 25100
- personnel |     5 |   3500 |  7400
+ sales     |     1 |   5000 | 14600
  personnel |     2 |   3900 |  7400
  sales     |     3 |   4800 | 14600
- sales     |     1 |   5000 | 14600
  sales     |     4 |   4800 | 14600
+ personnel |     5 |   3500 |  7400
+ develop   |     7 |   4200 | 25100
+ develop   |     8 |   6000 | 25100
+ develop   |     9 |   4500 | 25100
+ develop   |    10 |   5200 | 25100
+ develop   |    11 |   5200 | 25100
 (10 rows)
 
-SELECT depname, empno, salary, rank() OVER w FROM empsalary WINDOW w AS (PARTITION BY depname ORDER BY salary) ORDER BY rank() OVER w;
+SELECT depname, empno, salary, rank() OVER w FROM empsalary WINDOW w AS (PARTITION BY depname ORDER BY salary) ORDER BY rank() OVER w,empno;
   depname  | empno | salary | rank 
 -----------+-------+--------+------
- develop   |     7 |   4200 |    1
- personnel |     5 |   3500 |    1
  sales     |     3 |   4800 |    1
  sales     |     4 |   4800 |    1
+ personnel |     5 |   3500 |    1
+ develop   |     7 |   4200 |    1
  personnel |     2 |   3900 |    2
  develop   |     9 |   4500 |    2
  sales     |     1 |   5000 |    3
- develop   |    11 |   5200 |    3
  develop   |    10 |   5200 |    3
+ develop   |    11 |   5200 |    3
  develop   |     8 |   6000 |    5
 (10 rows)
 
 -- empty window specification
-SELECT COUNT(*) OVER () FROM tenk1 WHERE unique2 < 10;
+SELECT COUNT(*) OVER () FROM tenk1 WHERE unique2 < 10 ORDER BY 1;
  count 
 -------
     10
@@ -121,7 +121,7 @@ SELECT COUNT(*) OVER () FROM tenk1 WHERE unique2 < 10;
     10
 (10 rows)
 
-SELECT COUNT(*) OVER w FROM tenk1 WHERE unique2 < 10 WINDOW w AS ();
+SELECT COUNT(*) OVER w FROM tenk1 WHERE unique2 < 10 WINDOW w AS () ORDER BY 1;
  count 
 -------
     10
@@ -143,22 +143,22 @@ SELECT four FROM tenk1 WHERE FALSE WINDOW w AS (PARTITION BY ten);
 (0 rows)
 
 -- cumulative aggregate
-SELECT sum(four) OVER (PARTITION BY ten ORDER BY unique2) AS sum_1, ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT sum(four) OVER (PARTITION BY ten ORDER BY unique2) AS sum_1, ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  sum_1 | ten | four 
 -------+-----+------
      0 |   0 |    0
      0 |   0 |    0
-     2 |   0 |    2
-     3 |   1 |    3
-     4 |   1 |    1
-     5 |   1 |    1
-     3 |   3 |    3
      0 |   4 |    0
      1 |   7 |    1
      1 |   9 |    1
+     2 |   0 |    2
+     3 |   1 |    3
+     3 |   3 |    3
+     4 |   1 |    1
+     5 |   1 |    1
 (10 rows)
 
-SELECT row_number() OVER (ORDER BY unique2) FROM tenk1 WHERE unique2 < 10;
+SELECT row_number() OVER (ORDER BY unique2) FROM tenk1 WHERE unique2 < 10 ORDER BY 1;
  row_number 
 ------------
           1
@@ -173,67 +173,67 @@ SELECT row_number() OVER (ORDER BY unique2) FROM tenk1 WHERE unique2 < 10;
          10
 (10 rows)
 
-SELECT rank() OVER (PARTITION BY four ORDER BY ten) AS rank_1, ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT rank() OVER (PARTITION BY four ORDER BY ten) AS rank_1, ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  rank_1 | ten | four 
 --------+-----+------
       1 |   0 |    0
       1 |   0 |    0
-      3 |   4 |    0
-      1 |   1 |    1
-      1 |   1 |    1
-      3 |   7 |    1
-      4 |   9 |    1
       1 |   0 |    2
+      1 |   1 |    1
+      1 |   1 |    1
       1 |   1 |    3
       2 |   3 |    3
+      3 |   4 |    0
+      3 |   7 |    1
+      4 |   9 |    1
 (10 rows)
 
-SELECT dense_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT dense_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  dense_rank | ten | four 
 ------------+-----+------
           1 |   0 |    0
           1 |   0 |    0
-          2 |   4 |    0
-          1 |   1 |    1
-          1 |   1 |    1
-          2 |   7 |    1
-          3 |   9 |    1
           1 |   0 |    2
+          1 |   1 |    1
+          1 |   1 |    1
           1 |   1 |    3
           2 |   3 |    3
+          2 |   4 |    0
+          2 |   7 |    1
+          3 |   9 |    1
 (10 rows)
 
-SELECT percent_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT percent_rank() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
    percent_rank    | ten | four 
 -------------------+-----+------
                  0 |   0 |    0
                  0 |   0 |    0
-                 1 |   4 |    0
-                 0 |   1 |    1
-                 0 |   1 |    1
- 0.666666666666667 |   7 |    1
-                 1 |   9 |    1
                  0 |   0 |    2
+                 0 |   1 |    1
+                 0 |   1 |    1
                  0 |   1 |    3
+ 0.666666666666667 |   7 |    1
                  1 |   3 |    3
+                 1 |   4 |    0
+                 1 |   9 |    1
 (10 rows)
 
-SELECT cume_dist() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT cume_dist() OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
      cume_dist     | ten | four 
 -------------------+-----+------
- 0.666666666666667 |   0 |    0
- 0.666666666666667 |   0 |    0
-                 1 |   4 |    0
                0.5 |   1 |    1
                0.5 |   1 |    1
-              0.75 |   7 |    1
-                 1 |   9 |    1
-                 1 |   0 |    2
                0.5 |   1 |    3
+ 0.666666666666667 |   0 |    0
+ 0.666666666666667 |   0 |    0
+              0.75 |   7 |    1
+                 1 |   0 |    2
                  1 |   3 |    3
+                 1 |   4 |    0
+                 1 |   9 |    1
 (10 rows)
 
-SELECT ntile(3) OVER (ORDER BY ten, four), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT ntile(3) OVER (ORDER BY ten, four), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  ntile | ten | four 
 -------+-----+------
      1 |   0 |    0
@@ -255,125 +255,125 @@ SELECT ntile(NULL) OVER (ORDER BY ten, four), ten, four FROM tenk1 LIMIT 2;
        |   0 |    0
 (2 rows)
 
-SELECT lag(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lag(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  lag | ten | four 
 -----+-----+------
-     |   0 |    0
    0 |   0 |    0
    0 |   4 |    0
-     |   1 |    1
    1 |   1 |    1
+   1 |   3 |    3
    1 |   7 |    1
    7 |   9 |    1
+     |   0 |    0
      |   0 |    2
+     |   1 |    1
      |   1 |    3
-   1 |   3 |    3
 (10 rows)
 
-SELECT lag(ten, four) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lag(ten, four) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  lag | ten | four 
 -----+-----+------
    0 |   0 |    0
    0 |   0 |    0
-   4 |   4 |    0
-     |   1 |    1
    1 |   1 |    1
    1 |   7 |    1
+   4 |   4 |    0
    7 |   9 |    1
      |   0 |    2
+     |   1 |    1
      |   1 |    3
      |   3 |    3
 (10 rows)
 
-SELECT lag(ten, four, 0) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lag(ten, four, 0) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  lag | ten | four 
 -----+-----+------
    0 |   0 |    0
    0 |   0 |    0
-   4 |   4 |    0
-   0 |   1 |    1
-   1 |   1 |    1
-   1 |   7 |    1
-   7 |   9 |    1
    0 |   0 |    2
+   0 |   1 |    1
    0 |   1 |    3
    0 |   3 |    3
+   1 |   1 |    1
+   1 |   7 |    1
+   4 |   4 |    0
+   7 |   9 |    1
 (10 rows)
 
-SELECT lead(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lead(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  lead | ten | four 
 ------+-----+------
     0 |   0 |    0
-    4 |   0 |    0
-      |   4 |    0
     1 |   1 |    1
+    3 |   1 |    3
+    4 |   0 |    0
     7 |   1 |    1
     9 |   7 |    1
-      |   9 |    1
       |   0 |    2
-    3 |   1 |    3
       |   3 |    3
-(10 rows)
-
-SELECT lead(ten * 2, 1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
- lead | ten | four 
-------+-----+------
-    0 |   0 |    0
-    8 |   0 |    0
       |   4 |    0
-    2 |   1 |    1
-   14 |   1 |    1
-   18 |   7 |    1
       |   9 |    1
-      |   0 |    2
-    6 |   1 |    3
-      |   3 |    3
 (10 rows)
 
-SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lead(ten * 2, 1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  lead | ten | four 
 ------+-----+------
     0 |   0 |    0
-    8 |   0 |    0
-   -1 |   4 |    0
     2 |   1 |    1
+    6 |   1 |    3
+    8 |   0 |    0
    14 |   1 |    1
    18 |   7 |    1
-   -1 |   9 |    1
-   -1 |   0 |    2
-    6 |   1 |    3
-   -1 |   3 |    3
+      |   0 |    2
+      |   3 |    3
+      |   4 |    0
+      |   9 |    1
 (10 rows)
 
-SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT lead(ten * 2, 1, -1) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
+ lead | ten | four 
+------+-----+------
+   -1 |   0 |    2
+   -1 |   3 |    3
+   -1 |   4 |    0
+   -1 |   9 |    1
+    0 |   0 |    0
+    2 |   1 |    1
+    6 |   1 |    3
+    8 |   0 |    0
+   14 |   1 |    1
+   18 |   7 |    1
+(10 rows)
+
+SELECT first_value(ten) OVER (PARTITION BY four ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  first_value | ten | four 
 -------------+-----+------
            0 |   0 |    0
            0 |   0 |    0
+           0 |   0 |    2
            0 |   4 |    0
            1 |   1 |    1
            1 |   1 |    1
-           1 |   7 |    1
-           1 |   9 |    1
-           0 |   0 |    2
            1 |   1 |    3
            1 |   3 |    3
+           1 |   7 |    1
+           1 |   9 |    1
 (10 rows)
 
 -- last_value returns the last row of the frame, which is CURRENT ROW in ORDER BY window.
-SELECT last_value(four) OVER (ORDER BY ten), ten, four FROM tenk1 WHERE unique2 < 10;
+SELECT last_value(four) OVER (ORDER BY ten, four), ten, four FROM tenk1 WHERE unique2 < 10 ORDER BY 1, 2, 3;
  last_value | ten | four 
 ------------+-----+------
           0 |   0 |    0
-          0 |   0 |    2
           0 |   0 |    0
-          1 |   1 |    1
-          1 |   1 |    3
-          1 |   1 |    1
-          3 |   3 |    3
           0 |   4 |    0
+          1 |   1 |    1
+          1 |   1 |    1
           1 |   7 |    1
           1 |   9 |    1
+          2 |   0 |    2
+          3 |   1 |    3
+          3 |   3 |    3
 (10 rows)
 
 SELECT last_value(ten) OVER (PARTITION BY four), ten, four FROM
@@ -394,7 +394,8 @@ SELECT last_value(ten) OVER (PARTITION BY four), ten, four FROM
 (10 rows)
 
 SELECT nth_value(ten, four + 1) OVER (PARTITION BY four), ten, four
-	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s;
+	FROM (SELECT * FROM tenk1 WHERE unique2 < 10 ORDER BY four, ten)s
+	ORDER BY four, ten;
  nth_value | ten | four 
 -----------+-----+------
          0 |   0 |    0
@@ -409,48 +410,49 @@ SELECT nth_value(ten, four + 1) OVER (PARTITION BY four), ten, four
            |   3 |    3
 (10 rows)
 
-SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER (PARTITION BY two ORDER BY ten) AS wsum
-FROM tenk1 GROUP BY ten, two;
+SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER (PARTITION BY two ORDER BY ten) AS wsum 
+FROM tenk1 GROUP BY ten, two
+ORDER BY ten, two;
  ten | two | gsum  |  wsum  
 -----+-----+-------+--------
    0 |   0 | 45000 |  45000
-   2 |   0 | 47000 |  92000
-   4 |   0 | 49000 | 141000
-   6 |   0 | 51000 | 192000
-   8 |   0 | 53000 | 245000
    1 |   1 | 46000 |  46000
+   2 |   0 | 47000 |  92000
    3 |   1 | 48000 |  94000
+   4 |   0 | 49000 | 141000
    5 |   1 | 50000 | 144000
+   6 |   0 | 51000 | 192000
    7 |   1 | 52000 | 196000
+   8 |   0 | 53000 | 245000
    9 |   1 | 54000 | 250000
 (10 rows)
 
-SELECT count(*) OVER (PARTITION BY four), four FROM (SELECT * FROM tenk1 WHERE two = 1)s WHERE unique2 < 10;
+SELECT count(*) OVER (PARTITION BY four), four FROM (SELECT * FROM tenk1 WHERE two = 1)s WHERE unique2 < 10 ORDER BY 1, 2;
  count | four 
 -------+------
-     4 |    1
-     4 |    1
-     4 |    1
-     4 |    1
      2 |    3
      2 |    3
+     4 |    1
+     4 |    1
+     4 |    1
+     4 |    1
 (6 rows)
 
-SELECT (count(*) OVER (PARTITION BY four ORDER BY ten) +
-  sum(hundred) OVER (PARTITION BY four ORDER BY ten))::varchar AS cntsum
-  FROM tenk1 WHERE unique2 < 10;
+SELECT (count(*) OVER (PARTITION BY four ORDER BY ten) + 
+  sum(hundred) OVER (PARTITION BY four ORDER BY ten))::varchar AS cntsum 
+  FROM tenk1 WHERE unique2 < 10 ORDER BY 1;
  cntsum 
 --------
- 22
- 22
- 87
- 24
- 24
- 82
- 92
- 51
- 92
  136
+ 22
+ 22
+ 24
+ 24
+ 51
+ 82
+ 87
+ 92
+ 92
 (10 rows)
 
 -- opexpr with different windows evaluation.
@@ -466,7 +468,7 @@ WHERE total <> fourcount + twosum;
 -------+-----------+--------
 (0 rows)
 
-SELECT avg(four) OVER (PARTITION BY four ORDER BY thousand / 100) FROM tenk1 WHERE unique2 < 10;
+SELECT avg(four) OVER (PARTITION BY four ORDER BY thousand / 100) FROM tenk1 WHERE unique2 < 10 ORDER BY 1;
           avg           
 ------------------------
  0.00000000000000000000
@@ -481,19 +483,19 @@ SELECT avg(four) OVER (PARTITION BY four ORDER BY thousand / 100) FROM tenk1 WHE
      3.0000000000000000
 (10 rows)
 
-SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER win AS wsum
-FROM tenk1 GROUP BY ten, two WINDOW win AS (PARTITION BY two ORDER BY ten);
+SELECT ten, two, sum(hundred) AS gsum, sum(sum(hundred)) OVER win AS wsum 
+FROM tenk1 GROUP BY ten, two WINDOW win AS (PARTITION BY two ORDER BY ten) ORDER BY 1, 2, 3, 4;
  ten | two | gsum  |  wsum  
 -----+-----+-------+--------
    0 |   0 | 45000 |  45000
-   2 |   0 | 47000 |  92000
-   4 |   0 | 49000 | 141000
-   6 |   0 | 51000 | 192000
-   8 |   0 | 53000 | 245000
    1 |   1 | 46000 |  46000
+   2 |   0 | 47000 |  92000
    3 |   1 | 48000 |  94000
+   4 |   0 | 49000 | 141000
    5 |   1 | 50000 | 144000
+   6 |   0 | 51000 | 192000
    7 |   1 | 52000 | 196000
+   8 |   0 | 53000 | 245000
    9 |   1 | 54000 | 250000
 (10 rows)
 
@@ -511,7 +513,7 @@ FROM empsalary GROUP BY depname;
 
 -- identical windows with different names
 SELECT sum(salary) OVER w1, count(*) OVER w2
-FROM empsalary WINDOW w1 AS (ORDER BY salary), w2 AS (ORDER BY salary);
+FROM empsalary WINDOW w1 AS (ORDER BY salary), w2 AS (ORDER BY salary) ORDER BY 1, 2;
   sum  | count 
 -------+-------
   3500 |     1
@@ -528,18 +530,18 @@ FROM empsalary WINDOW w1 AS (ORDER BY salary), w2 AS (ORDER BY salary);
 
 -- subplan
 SELECT lead(ten, (SELECT two FROM tenk1 WHERE s.unique2 = unique2)) OVER (PARTITION BY four ORDER BY ten)
-FROM tenk1 s WHERE unique2 < 10;
+FROM tenk1 s WHERE unique2 < 10 ORDER BY 1;
  lead 
 ------
     0
     0
-    4
+    0
     1
+    3
+    4
     7
     9
      
-    0
-    3
      
 (10 rows)
 
@@ -550,19 +552,19 @@ SELECT count(*) OVER (PARTITION BY four) FROM (SELECT * FROM tenk1 WHERE FALSE)s
 (0 rows)
 
 -- mixture of agg/wfunc in the same window
-SELECT sum(salary) OVER w, rank() OVER w FROM empsalary WINDOW w AS (PARTITION BY depname ORDER BY salary DESC);
+SELECT sum(salary) OVER w, rank() OVER w FROM empsalary WINDOW w AS (PARTITION BY depname ORDER BY salary DESC) ORDER BY 1, 2;
   sum  | rank 
 -------+------
+  3900 |    1
+  5000 |    1
   6000 |    1
+  7400 |    2
+ 14600 |    2
+ 14600 |    2
  16400 |    2
  16400 |    2
  20900 |    4
  25100 |    5
-  3900 |    1
-  7400 |    2
-  5000 |    1
- 14600 |    2
- 14600 |    2
 (10 rows)
 
 -- strict aggs
@@ -572,7 +574,7 @@ SELECT empno, depname, salary, bonus, depadj, MIN(bonus) OVER (ORDER BY empno), 
 		CASE WHEN
 			AVG(salary) OVER (PARTITION BY depname) < salary
 		THEN 200 END AS depadj FROM empsalary
-)s;
+)s ORDER BY empno;
  empno |  depname  | salary | bonus | depadj | min  | max 
 -------+-----------+--------+-------+--------+------+-----
      1 | sales     |   5000 |  1000 |    200 | 1000 | 200
@@ -615,22 +617,22 @@ group by ten order by ten;
 (10 rows)
 
 -- window and aggregate with GROUP BY expression (9.2 bug)
-explain (costs off)
+explain (costs off, nodes off)
 select first_value(max(x)) over (), y
   from (select unique1 as x, ten+four as y from tenk1) ss
   group by y;
-          QUERY PLAN           
--------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  WindowAgg
    ->  HashAggregate
-         ->  Seq Scan on tenk1
+         ->  Data Node Scan on tenk1 "_REMOTE_TABLE_QUERY_"
 (3 rows)
 
 -- test non-default frame specifications
 SELECT four, ten,
 	sum(ten) over (partition by four order by ten),
 	last_value(ten) over (partition by four order by ten)
-FROM (select distinct ten, four from tenk1) ss;
+FROM (select distinct ten, four from tenk1) ss ORDER BY 1, 2, 3, 4;
  four | ten | sum | last_value 
 ------+-----+-----+------------
     0 |   0 |   0 |          0
@@ -658,7 +660,7 @@ FROM (select distinct ten, four from tenk1) ss;
 SELECT four, ten,
 	sum(ten) over (partition by four order by ten range between unbounded preceding and current row),
 	last_value(ten) over (partition by four order by ten range between unbounded preceding and current row)
-FROM (select distinct ten, four from tenk1) ss;
+FROM (select distinct ten, four from tenk1) ss ORDER BY 1, 2, 3, 4;
  four | ten | sum | last_value 
 ------+-----+-----+------------
     0 |   0 |   0 |          0
@@ -686,7 +688,7 @@ FROM (select distinct ten, four from tenk1) ss;
 SELECT four, ten,
 	sum(ten) over (partition by four order by ten range between unbounded preceding and unbounded following),
 	last_value(ten) over (partition by four order by ten range between unbounded preceding and unbounded following)
-FROM (select distinct ten, four from tenk1) ss;
+FROM (select distinct ten, four from tenk1) ss ORDER BY 1, 2, 3, 4;
  four | ten | sum | last_value 
 ------+-----+-----+------------
     0 |   0 |  20 |          8
@@ -714,7 +716,7 @@ FROM (select distinct ten, four from tenk1) ss;
 SELECT four, ten/4 as two,
 	sum(ten/4) over (partition by four order by ten/4 range between unbounded preceding and current row),
 	last_value(ten/4) over (partition by four order by ten/4 range between unbounded preceding and current row)
-FROM (select distinct ten, four from tenk1) ss;
+FROM (select distinct ten, four from tenk1) ss ORDER BY 1, 2, 3, 4;
  four | two | sum | last_value 
 ------+-----+-----+------------
     0 |   0 |   0 |          0
@@ -742,7 +744,7 @@ FROM (select distinct ten, four from tenk1) ss;
 SELECT four, ten/4 as two,
 	sum(ten/4) over (partition by four order by ten/4 rows between unbounded preceding and current row),
 	last_value(ten/4) over (partition by four order by ten/4 rows between unbounded preceding and current row)
-FROM (select distinct ten, four from tenk1) ss;
+FROM (select distinct ten, four from tenk1) ss ORDER BY 1, 2, 3, 4;
  four | two | sum | last_value 
 ------+-----+-----+------------
     0 |   0 |   0 |          0
@@ -767,156 +769,156 @@ FROM (select distinct ten, four from tenk1) ss;
     3 |   2 |   4 |          2
 (20 rows)
 
-SELECT sum(unique1) over (order by four range between current row and unbounded following),
+SELECT sum(unique1) over (order by four, unique1 range between current row and unbounded following),
 	unique1, four
 FROM tenk1 WHERE unique1 < 10;
  sum | unique1 | four 
 -----+---------+------
   45 |       0 |    0
-  45 |       8 |    0
   45 |       4 |    0
-  33 |       5 |    1
-  33 |       9 |    1
+  41 |       8 |    0
   33 |       1 |    1
-  18 |       6 |    2
+  32 |       5 |    1
+  27 |       9 |    1
   18 |       2 |    2
+  16 |       6 |    2
   10 |       3 |    3
-  10 |       7 |    3
+   7 |       7 |    3
 (10 rows)
 
 SELECT sum(unique1) over (rows between current row and unbounded following),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10;
+FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
  sum | unique1 | four 
 -----+---------+------
-  45 |       4 |    0
-  41 |       2 |    2
-  39 |       1 |    1
-  38 |       6 |    2
-  32 |       9 |    1
-  23 |       8 |    0
-  15 |       5 |    1
-  10 |       3 |    3
-   7 |       7 |    3
-   0 |       0 |    0
+  45 |       0 |    0
+  45 |       1 |    1
+  44 |       2 |    2
+  42 |       3 |    3
+  39 |       4 |    0
+  35 |       5 |    1
+  30 |       6 |    2
+  24 |       7 |    3
+  17 |       8 |    0
+   9 |       9 |    1
 (10 rows)
 
 SELECT sum(unique1) over (rows between 2 preceding and 2 following),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10;
+FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
  sum | unique1 | four 
 -----+---------+------
-   7 |       4 |    0
-  13 |       2 |    2
-  22 |       1 |    1
-  26 |       6 |    2
-  29 |       9 |    1
-  31 |       8 |    0
-  32 |       5 |    1
-  23 |       3 |    3
-  15 |       7 |    3
-  10 |       0 |    0
+   3 |       0 |    0
+   6 |       1 |    1
+  10 |       2 |    2
+  15 |       3 |    3
+  20 |       4 |    0
+  25 |       5 |    1
+  30 |       6 |    2
+  35 |       7 |    3
+  30 |       8 |    0
+  24 |       9 |    1
 (10 rows)
 
 SELECT sum(unique1) over (rows between 2 preceding and 1 preceding),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10;
+FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
  sum | unique1 | four 
 -----+---------+------
-     |       4 |    0
-   4 |       2 |    2
-   6 |       1 |    1
-   3 |       6 |    2
-   7 |       9 |    1
-  15 |       8 |    0
-  17 |       5 |    1
-  13 |       3 |    3
-   8 |       7 |    3
-  10 |       0 |    0
+     |       0 |    0
+   0 |       1 |    1
+   1 |       2 |    2
+   3 |       3 |    3
+   5 |       4 |    0
+   7 |       5 |    1
+   9 |       6 |    2
+  11 |       7 |    3
+  13 |       8 |    0
+  15 |       9 |    1
 (10 rows)
 
 SELECT sum(unique1) over (rows between 1 following and 3 following),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10;
+FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
  sum | unique1 | four 
 -----+---------+------
-   9 |       4 |    0
-  16 |       2 |    2
-  23 |       1 |    1
-  22 |       6 |    2
-  16 |       9 |    1
-  15 |       8 |    0
-  10 |       5 |    1
-   7 |       3 |    3
-   0 |       7 |    3
-     |       0 |    0
+   6 |       0 |    0
+   9 |       1 |    1
+  12 |       2 |    2
+  15 |       3 |    3
+  18 |       4 |    0
+  21 |       5 |    1
+  24 |       6 |    2
+  17 |       7 |    3
+   9 |       8 |    0
+     |       9 |    1
 (10 rows)
 
 SELECT sum(unique1) over (rows between unbounded preceding and 1 following),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10;
+FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
  sum | unique1 | four 
 -----+---------+------
-   6 |       4 |    0
-   7 |       2 |    2
-  13 |       1 |    1
-  22 |       6 |    2
-  30 |       9 |    1
-  35 |       8 |    0
-  38 |       5 |    1
-  45 |       3 |    3
-  45 |       7 |    3
-  45 |       0 |    0
+   1 |       0 |    0
+   3 |       1 |    1
+   6 |       2 |    2
+  10 |       3 |    3
+  15 |       4 |    0
+  21 |       5 |    1
+  28 |       6 |    2
+  36 |       7 |    3
+  45 |       8 |    0
+  45 |       9 |    1
 (10 rows)
 
 SELECT sum(unique1) over (w range between current row and unbounded following),
 	unique1, four
-FROM tenk1 WHERE unique1 < 10 WINDOW w AS (order by four);
+FROM tenk1 WHERE unique1 < 10 WINDOW w AS (order by four, unique1);
  sum | unique1 | four 
 -----+---------+------
   45 |       0 |    0
-  45 |       8 |    0
   45 |       4 |    0
-  33 |       5 |    1
-  33 |       9 |    1
+  41 |       8 |    0
   33 |       1 |    1
-  18 |       6 |    2
+  32 |       5 |    1
+  27 |       9 |    1
   18 |       2 |    2
+  16 |       6 |    2
   10 |       3 |    3
-  10 |       7 |    3
+   7 |       7 |    3
 (10 rows)
 
 -- fail: not implemented yet
-SELECT sum(unique1) over (order by four range between 2::int8 preceding and 1::int2 preceding),
+SELECT sum(unique1) over (order by four, ten, unique1 range between 2::int8 preceding and 1::int2 preceding),
 	unique1, four
 FROM tenk1 WHERE unique1 < 10;
 ERROR:  RANGE PRECEDING is only supported with UNBOUNDED
-LINE 1: SELECT sum(unique1) over (order by four range between 2::int...
-                                                ^
+LINE 1: ...CT sum(unique1) over (order by four, ten, unique1 range betw...
+                                                             ^
 SELECT first_value(unique1) over w,
 	nth_value(unique1, 2) over w AS nth_2,
 	last_value(unique1) over w, unique1, four
 FROM tenk1 WHERE unique1 < 10
-WINDOW w AS (order by four range between current row and unbounded following);
+WINDOW w AS (order by four, ten, unique1 range between current row and unbounded following);
  first_value | nth_2 | last_value | unique1 | four 
 -------------+-------+------------+---------+------
-           0 |     8 |          7 |       0 |    0
-           0 |     8 |          7 |       8 |    0
-           0 |     8 |          7 |       4 |    0
+           0 |     4 |          7 |       0 |    0
+           4 |     8 |          7 |       4 |    0
+           8 |     1 |          7 |       8 |    0
+           1 |     5 |          7 |       1 |    1
            5 |     9 |          7 |       5 |    1
-           5 |     9 |          7 |       9 |    1
-           5 |     9 |          7 |       1 |    1
-           6 |     2 |          7 |       6 |    2
-           6 |     2 |          7 |       2 |    2
+           9 |     2 |          7 |       9 |    1
+           2 |     6 |          7 |       2 |    2
+           6 |     3 |          7 |       6 |    2
            3 |     7 |          7 |       3 |    3
-           3 |     7 |          7 |       7 |    3
+           7 |       |          7 |       7 |    3
 (10 rows)
 
 SELECT sum(unique1) over
 	(order by unique1
 	 rows (SELECT unique1 FROM tenk1 ORDER BY unique1 LIMIT 1) + 1 PRECEDING),
 	unique1
-FROM tenk1 WHERE unique1 < 10;
+FROM (SELECT unique1, four FROM tenk1 WHERE unique1 < 10 ORDER BY 1, 2) stenk1;
  sum | unique1 
 -----+---------
    0 |       0

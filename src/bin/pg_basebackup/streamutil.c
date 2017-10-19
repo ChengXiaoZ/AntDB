@@ -117,7 +117,10 @@ GetConnection(void)
 	while (true)
 	{
 		if (password)
+		{
 			free(password);
+			password = NULL;
+		}
 
 		if (dbpassword)
 		{

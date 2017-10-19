@@ -104,7 +104,11 @@ ExecSort(SortState *node)
 
 			if (TupIsNull(slot))
 				break;
-
+#ifdef PGXC
+			if (plannode->srt_start_merge)
+				tuplesort_puttupleslotontape(tuplesortstate, slot);
+			else
+#endif /* PGXC */
 			tuplesort_puttupleslot(tuplesortstate, slot);
 		}
 

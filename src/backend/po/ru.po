@@ -1246,18 +1246,18 @@ msgstr "не удалось создать отсутствующий катал
 msgid "removing transaction log backup history file \"%s\""
 msgstr "удаляется файл истории копирования журнала: \"%s\""
 
-#: access/transam/xlog.c:3302
+#: access/transam/xlog.c:3292
 #, c-format
 msgid "unexpected timeline ID %u in log segment %s, offset %u"
 msgstr "неожиданный ID линии времени %u в сегменте журнала %s, смещение %u"
 
-#: access/transam/xlog.c:3424
+#: access/transam/xlog.c:3414
 #, c-format
 msgid "new timeline %u is not a child of database system timeline %u"
 msgstr ""
 "новая линия времени %u не является ответвлением линии времени системы БД %u"
 
-#: access/transam/xlog.c:3438
+#: access/transam/xlog.c:3428
 #, c-format
 msgid ""
 "new timeline %u forked off current database system timeline %u before "
@@ -1266,12 +1266,12 @@ msgstr ""
 "новая линия времени %u ответвилась от текущей линии времени базы данных %u "
 "до текущей точки восстановления %X/%X"
 
-#: access/transam/xlog.c:3457
+#: access/transam/xlog.c:3447
 #, c-format
 msgid "new target timeline is %u"
 msgstr "новая целевая линия времени %u"
 
-#: access/transam/xlog.c:3536
+#: access/transam/xlog.c:3526
 #, c-format
 msgid "could not create control file \"%s\": %m"
 msgstr "не удалось создать файл \"%s\": %m"
@@ -1296,7 +1296,7 @@ msgstr "не удалось закрыть файл pg_control: %m"
 msgid "could not open control file \"%s\": %m"
 msgstr "не удалось открыть файл \"%s\": %m"
 
-#: access/transam/xlog.c:3582
+#: access/transam/xlog.c:3572
 #, c-format
 msgid "could not read from control file: %m"
 msgstr "не удалось прочитать файл pg_control: %m"
@@ -1311,11 +1311,12 @@ msgstr "не удалось прочитать файл pg_control: %m"
 #: access/transam/xlog.c:3714 access/transam/xlog.c:3721
 #: access/transam/xlog.c:3730 access/transam/xlog.c:3737
 #: utils/init/miscinit.c:1284
+>>>>>>> REL9_3_13
 #, c-format
 msgid "database files are incompatible with server"
 msgstr "файлы базы данных не совместимы с сервером"
 
-#: access/transam/xlog.c:3596
+#: access/transam/xlog.c:3586
 #, c-format
 msgid ""
 "The database cluster was initialized with PG_CONTROL_VERSION %d (0x%08x), "
@@ -1324,7 +1325,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с PG_CONTROL_VERSION %d (0x%08x), но "
 "сервер скомпилирован с PG_CONTROL_VERSION %d (0x%08x)."
 
-#: access/transam/xlog.c:3600
+#: access/transam/xlog.c:3590
 #, c-format
 msgid ""
 "This could be a problem of mismatched byte ordering.  It looks like you need "
@@ -1333,7 +1334,7 @@ msgstr ""
 "Возможно, проблема вызвана разным порядком байт. Кажется, вам надо выполнить "
 "initdb."
 
-#: access/transam/xlog.c:3605
+#: access/transam/xlog.c:3595
 #, c-format
 msgid ""
 "The database cluster was initialized with PG_CONTROL_VERSION %d, but the "
@@ -1342,18 +1343,18 @@ msgstr ""
 "Кластер баз данных был инициализирован с PG_CONTROL_VERSION %d, но сервер "
 "скомпилирован с PG_CONTROL_VERSION %d."
 
-#: access/transam/xlog.c:3608 access/transam/xlog.c:3632
-#: access/transam/xlog.c:3639 access/transam/xlog.c:3644
+#: access/transam/xlog.c:3598 access/transam/xlog.c:3622
+#: access/transam/xlog.c:3629 access/transam/xlog.c:3634
 #, c-format
 msgid "It looks like you need to initdb."
 msgstr "Кажется, вам надо выполнить initdb."
 
-#: access/transam/xlog.c:3619
+#: access/transam/xlog.c:3609
 #, c-format
 msgid "incorrect checksum in control file"
 msgstr "ошибка контрольной суммы в файле pg_control"
 
-#: access/transam/xlog.c:3629
+#: access/transam/xlog.c:3619
 #, c-format
 msgid ""
 "The database cluster was initialized with CATALOG_VERSION_NO %d, but the "
@@ -1362,7 +1363,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с CATALOG_VERSION_NO %d, но сервер "
 "скомпилирован с CATALOG_VERSION_NO %d."
 
-#: access/transam/xlog.c:3636
+#: access/transam/xlog.c:3626
 #, c-format
 msgid ""
 "The database cluster was initialized with MAXALIGN %d, but the server was "
@@ -1371,7 +1372,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с MAXALIGN %d, но сервер "
 "скомпилирован с MAXALIGN %d."
 
-#: access/transam/xlog.c:3643
+#: access/transam/xlog.c:3633
 #, c-format
 msgid ""
 "The database cluster appears to use a different floating-point number format "
@@ -1380,7 +1381,7 @@ msgstr ""
 "Кажется, в кластере баз данных и в программе сервера используются разные "
 "форматы чисел с плавающей точкой."
 
-#: access/transam/xlog.c:3648
+#: access/transam/xlog.c:3638
 #, c-format
 msgid ""
 "The database cluster was initialized with BLCKSZ %d, but the server was "
@@ -1389,18 +1390,18 @@ msgstr ""
 "Кластер баз данных был инициализирован с BLCKSZ %d, но сервер скомпилирован "
 "с BLCKSZ %d."
 
-#: access/transam/xlog.c:3651 access/transam/xlog.c:3658
-#: access/transam/xlog.c:3665 access/transam/xlog.c:3672
-#: access/transam/xlog.c:3679 access/transam/xlog.c:3686
-#: access/transam/xlog.c:3693 access/transam/xlog.c:3701
-#: access/transam/xlog.c:3708 access/transam/xlog.c:3717
-#: access/transam/xlog.c:3724 access/transam/xlog.c:3733
-#: access/transam/xlog.c:3740
+#: access/transam/xlog.c:3641 access/transam/xlog.c:3648
+#: access/transam/xlog.c:3655 access/transam/xlog.c:3662
+#: access/transam/xlog.c:3669 access/transam/xlog.c:3676
+#: access/transam/xlog.c:3683 access/transam/xlog.c:3691
+#: access/transam/xlog.c:3698 access/transam/xlog.c:3707
+#: access/transam/xlog.c:3714 access/transam/xlog.c:3723
+#: access/transam/xlog.c:3730
 #, c-format
 msgid "It looks like you need to recompile or initdb."
 msgstr "Кажется, вам надо перекомпилировать сервер или выполнить initdb."
 
-#: access/transam/xlog.c:3655
+#: access/transam/xlog.c:3645
 #, c-format
 msgid ""
 "The database cluster was initialized with RELSEG_SIZE %d, but the server was "
@@ -1409,7 +1410,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с RELSEG_SIZE %d, но сервер "
 "скомпилирован с RELSEG_SIZE %d."
 
-#: access/transam/xlog.c:3662
+#: access/transam/xlog.c:3652
 #, c-format
 msgid ""
 "The database cluster was initialized with XLOG_BLCKSZ %d, but the server was "
@@ -1418,7 +1419,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с XLOG_BLCKSZ %d, но сервер "
 "скомпилирован с XLOG_BLCKSZ %d."
 
-#: access/transam/xlog.c:3669
+#: access/transam/xlog.c:3659
 #, c-format
 msgid ""
 "The database cluster was initialized with XLOG_SEG_SIZE %d, but the server "
@@ -1427,7 +1428,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с XLOG_SEG_SIZE %d, но сервер "
 "скомпилирован с XLOG_SEG_SIZE %d."
 
-#: access/transam/xlog.c:3676
+#: access/transam/xlog.c:3666
 #, c-format
 msgid ""
 "The database cluster was initialized with NAMEDATALEN %d, but the server was "
@@ -1436,7 +1437,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с NAMEDATALEN %d, но сервер "
 "скомпилирован с NAMEDATALEN %d."
 
-#: access/transam/xlog.c:3683
+#: access/transam/xlog.c:3673
 #, c-format
 msgid ""
 "The database cluster was initialized with INDEX_MAX_KEYS %d, but the server "
@@ -1445,7 +1446,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с INDEX_MAX_KEYS %d, но сервер "
 "скомпилирован с INDEX_MAX_KEYS %d."
 
-#: access/transam/xlog.c:3690
+#: access/transam/xlog.c:3680
 #, c-format
 msgid ""
 "The database cluster was initialized with TOAST_MAX_CHUNK_SIZE %d, but the "
@@ -1454,7 +1455,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с TOAST_MAX_CHUNK_SIZE %d, но сервер "
 "скомпилирован с TOAST_MAX_CHUNK_SIZE %d."
 
-#: access/transam/xlog.c:3699
+#: access/transam/xlog.c:3689
 #, c-format
 msgid ""
 "The database cluster was initialized without HAVE_INT64_TIMESTAMP but the "
@@ -1463,7 +1464,7 @@ msgstr ""
 "Кластер баз данных был инициализирован без HAVE_INT64_TIMESTAMP, но сервер "
 "скомпилирован с HAVE_INT64_TIMESTAMP."
 
-#: access/transam/xlog.c:3706
+#: access/transam/xlog.c:3696
 #, c-format
 msgid ""
 "The database cluster was initialized with HAVE_INT64_TIMESTAMP but the "
@@ -1472,7 +1473,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с HAVE_INT64_TIMESTAMP, но сервер "
 "скомпилирован без HAVE_INT64_TIMESTAMP."
 
-#: access/transam/xlog.c:3715
+#: access/transam/xlog.c:3705
 #, c-format
 msgid ""
 "The database cluster was initialized without USE_FLOAT4_BYVAL but the server "
@@ -1481,7 +1482,7 @@ msgstr ""
 "Кластер баз данных был инициализирован без USE_FLOAT4_BYVAL, но сервер "
 "скомпилирован с USE_FLOAT4_BYVAL."
 
-#: access/transam/xlog.c:3722
+#: access/transam/xlog.c:3712
 #, c-format
 msgid ""
 "The database cluster was initialized with USE_FLOAT4_BYVAL but the server "
@@ -1490,7 +1491,7 @@ msgstr ""
 "Кластер баз данных был инициализирован с USE_FLOAT4_BYVAL, но сервер "
 "скомпилирован без USE_FLOAT4_BYVAL."
 
-#: access/transam/xlog.c:3731
+#: access/transam/xlog.c:3721
 #, c-format
 msgid ""
 "The database cluster was initialized without USE_FLOAT8_BYVAL but the server "
@@ -1499,7 +1500,7 @@ msgstr ""
 "Кластер баз данных был инициализирован без USE_FLOAT8_BYVAL, но сервер "
 "скомпилирован с USE_FLOAT8_BYVAL."
 
-#: access/transam/xlog.c:3738
+#: access/transam/xlog.c:3728
 #, c-format
 msgid ""
 "The database cluster was initialized with USE_FLOAT8_BYVAL but the server "
@@ -6171,7 +6172,7 @@ msgstr "язык \"%s\" не существует"
 msgid "Use CREATE LANGUAGE to load the language into the database."
 msgstr "Выполните CREATE LANGUAGE, чтобы загрузить язык в базу данных."
 
-#: commands/functioncmds.c:887 commands/functioncmds.c:1110
+#: commands/functioncmds.c:887 commands/functioncmds.c:1109
 #, c-format
 msgid "only superuser can define a leakproof function"
 msgstr ""
@@ -21829,7 +21830,7 @@ msgstr ""
 msgid "configuration file \"%s\" contains errors; no changes were applied"
 msgstr "файл конфигурации \"%s\" содержит ошибки; изменения не были применены"
 
-#: guc-file.l:425
+#: guc-file.l:426
 #, c-format
 msgid ""
 "could not open configuration file \"%s\": maximum nesting depth exceeded"

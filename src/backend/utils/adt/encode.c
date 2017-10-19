@@ -214,7 +214,11 @@ static const int8 b64lookup[128] = {
 	41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1,
 };
 
+#ifdef ADB
+unsigned
+#else
 static unsigned
+#endif
 b64_encode(const char *src, unsigned len, char *dst)
 {
 	char	   *p,
@@ -261,7 +265,11 @@ b64_encode(const char *src, unsigned len, char *dst)
 	return p - dst;
 }
 
+#ifdef ADB
+unsigned
+#else
 static unsigned
+#endif
 b64_decode(const char *src, unsigned len, char *dst)
 {
 	const char *srcend = src + len,

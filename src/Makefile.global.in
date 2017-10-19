@@ -251,10 +251,11 @@ ld_R_works = @ld_R_works@
 # meaning this has to be done first and elsewhere we must only do LDFLAGS +=
 # something.
 ifdef PGXS
-  LDFLAGS = -L$(libdir)
+  LDFLAGS = -L$(libdir) -lpthread
 else
   LDFLAGS = -L$(top_builddir)/src/port -L$(top_builddir)/src/common
 endif
+# PGXC_END
 LDFLAGS += @LDFLAGS@
 
 LDFLAGS_EX = @LDFLAGS_EX@

@@ -19,7 +19,11 @@
 #ifndef PG_OPFAMILY_H
 #define PG_OPFAMILY_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_opfamily definition. cpp turns this into

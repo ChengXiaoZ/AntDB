@@ -9,6 +9,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/nodes/primnodes.h
  *
@@ -98,6 +99,10 @@ typedef struct IntoClause
 	char	   *tableSpaceName; /* table space to use, or NULL */
 	Node	   *viewQuery;		/* materialized view's SELECT query */
 	bool		skipData;		/* true for WITH NO DATA */
+#ifdef PGXC
+	struct DistributeBy *distributeby;  /* distribution to use, or NULL */
+	struct PGXCSubCluster *subcluster;	/* subcluster node members */
+#endif
 } IntoClause;
 
 
@@ -244,6 +249,10 @@ typedef struct Aggref
 	Oid			aggtype;		/* type Oid of result of the aggregate */
 	Oid			aggcollid;		/* OID of collation of result */
 	Oid			inputcollid;	/* OID of collation that function should use */
+#ifdef PGXC
+	Oid			aggtrantype;	/* type Oid of transition results */
+	bool		agghas_collectfn;	/* is collection function available */
+#endif /* PGXC */
 	List	   *args;			/* arguments and sort expressions */
 	List	   *aggorder;		/* ORDER BY (list of SortGroupClause) */
 	List	   *aggdistinct;	/* DISTINCT (list of SortGroupClause) */
@@ -798,6 +807,9 @@ typedef struct CaseExpr
 	List	   *args;			/* the arguments (list of WHEN clauses) */
 	Expr	   *defresult;		/* the default result (ELSE clause) */
 	int			location;		/* token location, or -1 if unknown */
+#ifdef ADB
+	bool		isdecode;		/* mark if is decode function */
+#endif
 } CaseExpr;
 
 /*
@@ -1283,5 +1295,63 @@ typedef struct FromExpr
 	List	   *fromlist;		/* List of join subtrees */
 	Node	   *quals;			/* qualifiers on join, if any */
 } FromExpr;
+
+#ifdef PGXC
+/*----------
+ * DistributionType - how to distribute the data
+ *
+ *----------
+ */
+typedef enum DistributionType
+{
+	DISTTYPE_REPLICATION,			/* Replicated */
+	DISTTYPE_HASH,				/* Hash partitioned */
+	DISTTYPE_ROUNDROBIN,			/* Round Robin */
+	DISTTYPE_MODULO				/* Modulo partitioned */
+#ifdef ADB
+	,DISTTYPE_USER_DEFINED		/* User-defined function partitioned */
+#endif
+} DistributionType;
+
+/*----------
+ * DistributeBy - represents a DISTRIBUTE BY clause in a CREATE TABLE statement
+ *
+ *----------
+ */
+typedef struct DistributeBy
+{
+	NodeTag		type;
+	DistributionType disttype;		/* Distribution type */
+	char	   	*colname;		/* Distribution column name */
+#ifdef ADB
+	List		*funcname;		/* User-defined distribute function name */
+	List		*funcargs;		/* User-defined distribute function arguments */
+#endif
+} DistributeBy;
+
+/*----------
+ * SubClusterType - type of subcluster used
+ *
+ *----------
+ */
+typedef enum PGXCSubClusterType
+{
+	SUBCLUSTER_NONE,
+	SUBCLUSTER_NODE,
+	SUBCLUSTER_GROUP
+} PGXCSubClusterType;
+
+/*----------
+ * PGXCSubCluster - Subcluster on which a table can be created
+ *
+ *----------
+ */
+typedef struct PGXCSubCluster
+{
+	NodeTag				type;
+	PGXCSubClusterType	clustertype;	/* Subcluster type */
+	List				*members;		/* List of nodes or groups */
+} PGXCSubCluster;
+#endif
 
 #endif   /* PRIMNODES_H */

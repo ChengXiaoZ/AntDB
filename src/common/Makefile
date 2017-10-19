@@ -21,15 +21,20 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -DFRONTEND $(CPPFLAGS)
+
 LIBS += $(PTHREAD_LIBS)
 
-OBJS_COMMON = relpath.o string.o
+OBJS_COMMON = relpath.o string.o psprintf.o
 
 OBJS_FRONTEND = $(OBJS_COMMON) fe_memutils.o
 
 OBJS_SRV = $(OBJS_COMMON:%.o=%_srv.o)
 
-all: libpgcommon.a libpgcommon_srv.a
+OBJS_MGR = $(OBJS_COMMON:%.o=%_mgr.o)
+
+OBJS_AGTM = $(OBJS_COMMON:%.o=%_agtm.o)
+
+all: libpgcommon.a libpgcommon_srv.a libpgcommon_mgr.a libpgcommon_agtm.a
 
 # libpgcommon is needed by some contrib
 install: all installdirs
@@ -53,6 +58,14 @@ libpgcommon_srv.a: $(OBJS_SRV)
 	rm -f $@
 	$(AR) $(AROPT) $@ $^
 
+libpgcommon_mgr.a: $(OBJS_MGR)
+	rm -f $@
+	$(AR) $(AROPT) $@ $^
+
+libpgcommon_agtm.a: $(OBJS_AGTM)
+	rm -f $@
+	$(AR) $(AROPT) $@ $^
+
 # Because this uses its own compilation rule, it doesn't use the
 # dependency tracking logic from Makefile.global.  To make sure that
 # dependency tracking works anyway for the *_srv.o files, depend on
@@ -62,7 +75,13 @@ libpgcommon_srv.a: $(OBJS_SRV)
 %_srv.o: %.c %.o
 	$(CC) $(CFLAGS) $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
 
-$(OBJS_SRV): | submake-errcodes
+%_mgr.o: %.c %.o
+	$(CC) $(subst -DPGXC,,$(subst -DADB,, $(CFLAGS))) -DADBMGRD $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
+
+%_agtm.o: %.c %.o
+	$(CC) $(subst -DPGXC,,$(subst -DADB,, $(CFLAGS))) -DAGTM $(subst -DFRONTEND,, $(CPPFLAGS)) -c $< -o $@
+
+$(OBJS_SRV) $(OBJS_MGR) $(OBJS_AGTM): | submake-errcodes
 
 .PHONY: submake-errcodes
 
@@ -70,4 +89,4 @@ submake-errcodes:
 	$(MAKE) -C ../backend submake-errcodes
 
 clean distclean maintainer-clean:
-	rm -f libpgcommon.a libpgcommon_srv.a $(OBJS_FRONTEND) $(OBJS_SRV)
+	rm -f libpgcommon.a libpgcommon_srv.a libpgcommon_mgr.a libpgcommon_agtm.a $(OBJS_FRONTEND) $(OBJS_SRV) $(OBJS_MGR) $(OBJS_AGTM)

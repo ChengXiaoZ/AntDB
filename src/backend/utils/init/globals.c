@@ -33,6 +33,9 @@ volatile bool ImmediateInterruptOK = false;
 volatile uint32 InterruptHoldoffCount = 0;
 volatile uint32 QueryCancelHoldoffCount = 0;
 volatile uint32 CritSectionCount = 0;
+#ifdef ADB
+volatile uint32 FatalSectionCount = 0;
+#endif
 
 int			MyProcPid;
 pg_time_t	MyStartTime;
@@ -126,3 +129,6 @@ int			VacuumCostBalance = 0;		/* working state for vacuum */
 bool		VacuumCostActive = false;
 
 int			GinFuzzySearchLimit = 0;
+#ifdef PGXC
+bool useLocalXid = false;
+#endif

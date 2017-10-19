@@ -311,7 +311,11 @@ abstimeout(PG_FUNCTION_ARGS)
 			break;
 		default:
 			abstime2tm(time, &tz, tm, &tzn);
+#ifdef ADB
+			EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf, false);
+#else
 			EncodeDateTime(tm, fsec, true, tz, tzn, DateStyle, buf);
+#endif
 			break;
 	}
 

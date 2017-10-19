@@ -30,6 +30,10 @@ typedef struct ScanKeyword
 
 extern PGDLLIMPORT const ScanKeyword ScanKeywords[];
 extern PGDLLIMPORT const int NumScanKeywords;
+#ifdef ADBMGRD
+extern PGDLLIMPORT const ScanKeyword ManagerKeywords[];
+extern PGDLLEXPORT const int NumManagerKeywords;
+#endif /* ADBMGRD */
 
 extern const ScanKeyword *ScanKeywordLookup(const char *text,
 				  const ScanKeyword *keywords,

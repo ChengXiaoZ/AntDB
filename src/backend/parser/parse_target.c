@@ -32,6 +32,9 @@
 #include "utils/rel.h"
 #include "utils/typcache.h"
 
+#ifdef ADB
+#include "oraschema/oracoerce.h"
+#endif
 
 static void markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 					 Var *var, int levelsup);
@@ -342,6 +345,11 @@ markTargetListOrigin(ParseState *pstate, TargetEntry *tle,
 				tle->resorigcol = ste->resorigcol;
 			}
 			break;
+#ifdef PGXC
+		case RTE_REMOTE_DUMMY:
+			elog(ERROR, "Invalid RTE found");
+			break;
+#endif /* PGXC */
 	}
 }
 
@@ -405,6 +413,14 @@ transformAssignedExpr(ParseState *pstate,
 	attrtype = attnumTypeId(rd, attrno);
 	attrtypmod = rd->rd_att->attrs[attrno - 1]->atttypmod;
 	attrcollation = rd->rd_att->attrs[attrno - 1]->attcollation;
+
+#ifdef ADB
+	if (IsOracleParseGram(pstate) &&
+		exprKind == EXPR_KIND_INSERT_TARGET &&
+		IsA(expr, Const) &&
+		((Const *)expr)->constisnull)
+		expr = (Expr *)makeNullConst(attrtype, attrtypmod, attrcollation);
+#endif
 
 	/*
 	 * If the expression is a DEFAULT placeholder, insert the attribute's
@@ -490,7 +506,30 @@ transformAssignedExpr(ParseState *pstate,
 		 * coercion.
 		 */
 		Node	   *orig_expr = (Node *) expr;
+#ifdef ADB
+		if (IsOracleParseGram(pstate) &&
+			exprKind == EXPR_KIND_INSERT_TARGET)
+		{
+			OraCoerceKind sv_coerce_kind = current_coerce_kind;
+			current_coerce_kind = ORA_COERCE_COMMON_FUNCTION;
 
+			PG_TRY();
+			{
+				expr = (Expr *)
+					coerce_to_target_type(pstate,
+										  orig_expr, type_id,
+										  attrtype, attrtypmod,
+										  COERCION_ASSIGNMENT,
+										  COERCE_EXPLICIT_CAST,
+										  -1);
+			} PG_CATCH();
+			{
+				current_coerce_kind = sv_coerce_kind;
+				PG_RE_THROW();
+			} PG_END_TRY();
+			current_coerce_kind = sv_coerce_kind;			
+		} else
+#endif
 		expr = (Expr *)
 			coerce_to_target_type(pstate,
 								  orig_expr, type_id,
@@ -1143,10 +1182,12 @@ static List *
 ExpandAllTables(ParseState *pstate, int location)
 {
 	List	   *target = NIL;
+	List	   *namespace;
 	bool		found_table = false;
 	ListCell   *l;
 
-	foreach(l, pstate->p_namespace)
+	namespace = pstate->p_save_namespace ? pstate->p_save_namespace : pstate->p_namespace;
+	foreach(l, namespace)
 	{
 		ParseNamespaceItem *nsitem = (ParseNamespaceItem *) lfirst(l);
 		RangeTblEntry *rte = nsitem->p_rte;
@@ -1515,6 +1556,11 @@ expandRecordVariable(ParseState *pstate, Var *var, int levelsup)
 				/* else fall through to inspect the expression */
 			}
 			break;
+#ifdef PGXC
+		case RTE_REMOTE_DUMMY:
+			elog(ERROR, "Invalid RTE found");
+			break;
+#endif /* PGXC */
 	}
 
 	/*
@@ -1763,6 +1809,9 @@ FigureColnameInternal(Node *node, char **name)
 			break;
 		case T_XmlSerialize:
 			*name = "xmlserialize";
+			return 2;
+		case T_RownumExpr:
+			*name = "rownum";
 			return 2;
 		default:
 			break;

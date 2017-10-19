@@ -664,6 +664,13 @@ main(int argc, char **argv)
 	if (!xlogreader_state)
 		fatal_error("out of memory");
 
+#ifdef ADB
+	/* fix: Access to field 'ReadRecPtr' results in a dereference of
+	 * a null pointer (loaded from variable 'xlogreader_state')
+	 */
+	AssertArg(xlogreader_state);
+#endif
+
 	/* first find a valid recptr to start from */
 	first_record = XLogFindNextRecord(xlogreader_state, private.startptr);
 

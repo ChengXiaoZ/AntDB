@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * IDENTIFICATION
  *	  src/backend/bootstrap/bootstrap.c
@@ -45,6 +46,11 @@
 #include "utils/rel.h"
 #include "utils/relmapper.h"
 #include "utils/tqual.h"
+
+#ifdef PGXC
+#include "nodes/nodes.h"
+#include "pgxc/poolmgr.h"
+#endif
 
 extern int	optind;
 extern char *optarg;
@@ -313,6 +319,11 @@ AuxiliaryProcessMain(int argc, char *argv[])
 
 		switch (MyAuxProcType)
 		{
+#ifdef PGXC /* PGXC_COORD */
+			case PoolerProcess:
+				statmsg = "pooler process";
+				break;
+#endif
 			case StartupProcess:
 				statmsg = "startup process";
 				break;
@@ -370,6 +381,12 @@ AuxiliaryProcessMain(int argc, char *argv[])
 	 */
 	if (IsUnderPostmaster)
 	{
+#ifdef PGXC
+		/* Initialize pooler flag before creating PGPROC structure */
+		if (MyAuxProcType == PoolerProcess)
+				PGXCPoolerProcessIam();			
+#endif
+
 		/*
 		 * Create a PGPROC so we can use LWLocks.  In the EXEC_BACKEND case,
 		 * this was already done by SubPostmasterMain().
@@ -405,6 +422,13 @@ AuxiliaryProcessMain(int argc, char *argv[])
 
 	switch (MyAuxProcType)
 	{
+#ifdef PGXC /* PGXC_COORD */
+		case PoolerProcess:
+			/* don't set signals, pool manager has its own agenda */
+			PoolManagerInit();
+			proc_exit(1);		/* should never return */
+#endif
+
 		case CheckerProcess:
 			/* don't set signals, they're useless here */
 			CheckerModeMain();

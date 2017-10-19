@@ -17,7 +17,11 @@
 #ifndef PG_FOREIGN_TABLE_H
 #define PG_FOREIGN_TABLE_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_foreign_table definition.  cpp turns this into

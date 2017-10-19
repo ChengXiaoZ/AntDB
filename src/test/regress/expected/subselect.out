@@ -86,22 +86,22 @@ INSERT INTO SUBSELECT_TBL VALUES (2, 2, 2);
 INSERT INTO SUBSELECT_TBL VALUES (3, 3, 3);
 INSERT INTO SUBSELECT_TBL VALUES (6, 7, 8);
 INSERT INTO SUBSELECT_TBL VALUES (8, 9, NULL);
-SELECT '' AS eight, * FROM SUBSELECT_TBL;
+SELECT '' AS eight, * FROM SUBSELECT_TBL ORDER BY f1, f2, f3;
  eight | f1 | f2 | f3 
 -------+----+----+----
-       |  1 |  2 |  3
-       |  2 |  3 |  4
-       |  3 |  4 |  5
        |  1 |  1 |  1
+       |  1 |  2 |  3
        |  2 |  2 |  2
+       |  2 |  3 |  4
        |  3 |  3 |  3
+       |  3 |  4 |  5
        |  6 |  7 |  8
        |  8 |  9 |   
 (8 rows)
 
 -- Uncorrelated subselects
 SELECT '' AS two, f1 AS "Constant Select" FROM SUBSELECT_TBL
-  WHERE f1 IN (SELECT 1);
+  WHERE f1 IN (SELECT 1) ORDER BY 2;
  two | Constant Select 
 -----+-----------------
      |               1
@@ -109,34 +109,37 @@ SELECT '' AS two, f1 AS "Constant Select" FROM SUBSELECT_TBL
 (2 rows)
 
 SELECT '' AS six, f1 AS "Uncorrelated Field" FROM SUBSELECT_TBL
-  WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL);
+  WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL) 
+  ORDER BY 2;
  six | Uncorrelated Field 
 -----+--------------------
      |                  1
-     |                  2
-     |                  3
      |                  1
      |                  2
+     |                  2
+     |                  3
      |                  3
 (6 rows)
 
 SELECT '' AS six, f1 AS "Uncorrelated Field" FROM SUBSELECT_TBL
   WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL WHERE
-    f2 IN (SELECT f1 FROM SUBSELECT_TBL));
+    f2 IN (SELECT f1 FROM SUBSELECT_TBL)) 
+    ORDER BY 2;
  six | Uncorrelated Field 
 -----+--------------------
      |                  1
-     |                  2
-     |                  3
      |                  1
      |                  2
+     |                  2
+     |                  3
      |                  3
 (6 rows)
 
 SELECT '' AS three, f1, f2
   FROM SUBSELECT_TBL
   WHERE (f1, f2) NOT IN (SELECT f2, CAST(f3 AS int4) FROM SUBSELECT_TBL
-                         WHERE f3 IS NOT NULL);
+                         WHERE f3 IS NOT NULL) 
+                         ORDER BY f1, f2;
  three | f1 | f2 
 -------+----+----
        |  1 |  2
@@ -147,34 +150,37 @@ SELECT '' AS three, f1, f2
 -- Correlated subselects
 SELECT '' AS six, f1 AS "Correlated Field", f2 AS "Second Field"
   FROM SUBSELECT_TBL upper
-  WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL WHERE f1 = upper.f1);
+  WHERE f1 IN (SELECT f2 FROM SUBSELECT_TBL WHERE f1 = upper.f1) 
+  ORDER BY f1, f2;
  six | Correlated Field | Second Field 
 -----+------------------+--------------
-     |                1 |            2
-     |                2 |            3
-     |                3 |            4
      |                1 |            1
+     |                1 |            2
      |                2 |            2
+     |                2 |            3
      |                3 |            3
+     |                3 |            4
 (6 rows)
 
 SELECT '' AS six, f1 AS "Correlated Field", f3 AS "Second Field"
   FROM SUBSELECT_TBL upper
   WHERE f1 IN
-    (SELECT f2 FROM SUBSELECT_TBL WHERE CAST(upper.f2 AS float) = f3);
+    (SELECT f2 FROM SUBSELECT_TBL WHERE CAST(upper.f2 AS float) = f3)
+    ORDER BY 2, 3;
  six | Correlated Field | Second Field 
 -----+------------------+--------------
-     |                2 |            4
-     |                3 |            5
      |                1 |            1
      |                2 |            2
+     |                2 |            4
      |                3 |            3
+     |                3 |            5
 (5 rows)
 
 SELECT '' AS six, f1 AS "Correlated Field", f3 AS "Second Field"
   FROM SUBSELECT_TBL upper
   WHERE f3 IN (SELECT upper.f1 + f2 FROM SUBSELECT_TBL
-               WHERE f2 = CAST(f3 AS integer));
+               WHERE f2 = CAST(f3 AS integer)) 
+               ORDER BY 2, 3;
  six | Correlated Field | Second Field 
 -----+------------------+--------------
      |                1 |            3
@@ -186,13 +192,14 @@ SELECT '' AS six, f1 AS "Correlated Field", f3 AS "Second Field"
 SELECT '' AS five, f1 AS "Correlated Field"
   FROM SUBSELECT_TBL
   WHERE (f1, f2) IN (SELECT f2, CAST(f3 AS int4) FROM SUBSELECT_TBL
-                     WHERE f3 IS NOT NULL);
+                     WHERE f3 IS NOT NULL) 
+                     ORDER BY 2;
  five | Correlated Field 
 ------+------------------
-      |                2
-      |                3
       |                1
       |                2
+      |                2
+      |                3
       |                3
 (5 rows)
 
@@ -202,13 +209,14 @@ SELECT '' AS five, f1 AS "Correlated Field"
 SELECT '' AS eight, ss.f1 AS "Correlated Field", ss.f3 AS "Second Field"
   FROM SUBSELECT_TBL ss
   WHERE f1 NOT IN (SELECT f1+1 FROM INT4_TBL
-                   WHERE f1 != ss.f1 AND f1 < 2147483647);
+                   WHERE f1 != ss.f1 AND f1 < 2147483647) 
+                   ORDER BY 2, 3;
  eight | Correlated Field | Second Field 
 -------+------------------+--------------
-       |                2 |            4
-       |                3 |            5
        |                2 |            2
+       |                2 |            4
        |                3 |            3
+       |                3 |            5
        |                6 |            8
        |                8 |             
 (6 rows)
@@ -370,20 +378,21 @@ END) AS "Status",
 	END)
 END) AS "Status_OK"
 FROM orderstest ord;
-SELECT * FROM orders_view;
+SELECT * FROM orders_view 
+ORDER BY approver_ref, po_ref, ordercanceled;
  approver_ref | po_ref | ordercanceled | Approved |  Status  | Status_OK 
 --------------+--------+---------------+----------+----------+-----------
             1 |      1 | f             | ---      | ---      | ---
+            1 |      1 | f             | ---      | ---      | ---
+            1 |      1 | f             | ---      | ---      | ---
+           66 |      1 | f             | Approved | Approved | Approved
+           66 |      1 | f             | Approved | Approved | Approved
+           66 |      1 | t             | Approved | Canceled | Canceled
            66 |      5 | f             | Approved | PO       | PO
            66 |      6 | f             | Approved | PO       | PO
            66 |      7 | f             | Approved | PO       | PO
-           66 |      1 | t             | Approved | Canceled | Canceled
            66 |      8 | f             | Approved | PO       | PO
-           66 |      1 | f             | Approved | Approved | Approved
            77 |      1 | f             | Approved | Approved | Approved
-            1 |      1 | f             | ---      | ---      | ---
-           66 |      1 | f             | Approved | Approved | Approved
-            1 |      1 | f             | ---      | ---      | ---
 (11 rows)
 
 DROP TABLE orderstest cascade;
@@ -430,14 +439,15 @@ select * from shipped_view;
 
 select f1, ss1 as relabel from
     (select *, (select sum(f1) from int4_tbl b where f1 >= a.f1) as ss1
-     from int4_tbl a) ss;
+     from int4_tbl a) ss 
+     ORDER BY f1, relabel;
      f1      |  relabel   
 -------------+------------
+ -2147483647 |          0
+     -123456 | 2147483647
            0 | 2147607103
       123456 | 2147607103
-     -123456 | 2147483647
   2147483647 | 2147483647
- -2147483647 |          0
 (5 rows)
 
 --
@@ -475,7 +485,8 @@ insert into numeric_table values (1), (1.000000000000000000001), (2), (3);
 create temp table float_table (float_col float8);
 insert into float_table values (1), (2), (3);
 select * from float_table
-  where float_col in (select num_col from numeric_table);
+  where float_col in (select num_col from numeric_table) 
+  ORDER BY float_col;
  float_col 
 -----------
          1
@@ -484,7 +495,8 @@ select * from float_table
 (3 rows)
 
 select * from numeric_table
-  where num_col in (select float_col from float_table);
+  where num_col in (select float_col from float_table) 
+  ORDER BY num_col;
          num_col         
 -------------------------
                        1
@@ -510,7 +522,8 @@ insert into tc values(2,2);
 select
   ( select min(tb.id) from tb
     where tb.aval = (select ta.val from ta where ta.id = tc.aid) ) as min_tb_id
-from tc;
+from tc 
+ORDER BY min_tb_id;
  min_tb_id 
 -----------
          1
@@ -639,7 +652,7 @@ where a.thousand = b.thousand
 --
 -- Check that nested sub-selects are not pulled up if they contain volatiles
 --
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
   select x, x from
     (select (select now()) as x from (values(1),(2)) v(y)) ss;
         QUERY PLAN         
@@ -654,7 +667,7 @@ explain (verbose, costs off)
            Output: now()
 (8 rows)
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
   select x, x from
     (select (select random()) as x from (values(1),(2)) v(y)) ss;
             QUERY PLAN            
@@ -668,7 +681,7 @@ explain (verbose, costs off)
                  Output: random()
 (7 rows)
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
   select x, x from
     (select (select now() where y=y) as x from (values(1),(2)) v(y)) ss;
                               QUERY PLAN                              
@@ -685,7 +698,7 @@ explain (verbose, costs off)
            One-Time Filter: ("*VALUES*".column1 = "*VALUES*".column1)
 (10 rows)
 
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
   select x, x from
     (select (select random() where y=y) as x from (values(1),(2)) v(y)) ss;
                                  QUERY PLAN                                 
@@ -713,23 +726,28 @@ select exists(select * from nocolumns);
 --
 -- Check sane behavior with nested IN SubLinks
 --
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select * from int4_tbl where
   (case when f1 in (select unique1 from tenk1 a) then f1 else null end) in
   (select ten from tenk1 b);
-                                                                                      QUERY PLAN                                                                                       
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Nested Loop Semi Join
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Hash Semi Join
    Output: int4_tbl.f1
-   Join Filter: (CASE WHEN (hashed SubPlan 1) THEN int4_tbl.f1 ELSE NULL::integer END = b.ten)
-   ->  Seq Scan on public.int4_tbl
+   Hash Cond: (CASE WHEN (hashed SubPlan 1) THEN int4_tbl.f1 ELSE NULL::integer END = b.ten)
+   ->  Data Node Scan on int4_tbl "_REMOTE_TABLE_QUERY_"
          Output: int4_tbl.f1
-   ->  Seq Scan on public.tenk1 b
-         Output: b.unique1, b.unique2, b.two, b.four, b.ten, b.twenty, b.hundred, b.thousand, b.twothousand, b.fivethous, b.tenthous, b.odd, b.even, b.stringu1, b.stringu2, b.string4
+         Remote query: SELECT f1 FROM ONLY public.int4_tbl WHERE true
+   ->  Hash
+         Output: b.ten
+         ->  Data Node Scan on tenk1 "_REMOTE_TABLE_QUERY__1"
+               Output: b.ten
+               Remote query: SELECT ten FROM ONLY public.tenk1 b WHERE true
    SubPlan 1
-     ->  Index Only Scan using tenk1_unique1 on public.tenk1 a
+     ->  Data Node Scan on tenk1 "_REMOTE_TABLE_QUERY__2"
            Output: a.unique1
-(10 rows)
+           Remote query: SELECT unique1 FROM ONLY public.tenk1 a WHERE true
+(15 rows)
 
 select * from int4_tbl where
   (case when f1 in (select unique1 from tenk1 a) then f1 else null end) in
@@ -742,16 +760,17 @@ select * from int4_tbl where
 --
 -- Check for incorrect optimization when IN subquery contains a SRF
 --
-explain (verbose, costs off)
+explain (verbose, costs off, nodes off, num_nodes off)
 select * from int4_tbl o where (f1, f1) in
   (select f1, generate_series(1,2) / 10 g from int4_tbl i group by f1);
-                              QUERY PLAN                              
-----------------------------------------------------------------------
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
  Hash Join
-   Output: o.f1
-   Hash Cond: (o.f1 = "ANY_subquery".f1)
-   ->  Seq Scan on public.int4_tbl o
-         Output: o.f1
+   Output: f1
+   Hash Cond: (f1 = "ANY_subquery".f1)
+   ->  Data Node Scan on int4_tbl "_REMOTE_TABLE_QUERY_"
+         Output: f1
+         Remote query: SELECT f1 FROM ONLY public.int4_tbl o WHERE true
    ->  Hash
          Output: "ANY_subquery".f1, "ANY_subquery".g
          ->  HashAggregate
@@ -759,10 +778,9 @@ select * from int4_tbl o where (f1, f1) in
                ->  Subquery Scan on "ANY_subquery"
                      Output: "ANY_subquery".f1, "ANY_subquery".g
                      Filter: ("ANY_subquery".f1 = "ANY_subquery".g)
-                     ->  HashAggregate
-                           Output: i.f1, (generate_series(1, 2) / 10)
-                           ->  Seq Scan on public.int4_tbl i
-                                 Output: i.f1
+                     ->  Data Node Scan on "__REMOTE_GROUP_QUERY__"
+                           Output: f1, (generate_series(1, 2) / 10)
+                           Remote query: SELECT f1 FROM ONLY public.int4_tbl i WHERE true GROUP BY 1
 (16 rows)
 
 select * from int4_tbl o where (f1, f1) in
@@ -780,13 +798,13 @@ select (select q from
           union all
           select 4,5,6.0 where f1 <= 0
          ) q )
-from int4_tbl;
+from int4_tbl ORDER BY 1;
      q     
 -----------
- (4,5,6.0)
+ (1,2,3)
  (1,2,3)
  (4,5,6.0)
- (1,2,3)
+ (4,5,6.0)
  (4,5,6.0)
 (5 rows)
 

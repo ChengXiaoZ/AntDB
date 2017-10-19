@@ -22,8 +22,12 @@
 #ifndef PG_OPERATOR_H
 #define PG_OPERATOR_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
 #include "nodes/pg_list.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_operator definition.  cpp turns this into
@@ -1737,7 +1741,23 @@ DESCR("get value from json with path elements");
 DATA(insert OID = 3967 (  "#>>"    PGNSP PGUID b f f 114 1009 25 0 0 json_extract_path_text_op - - ));
 DESCR("get value from json as text with path elements");
 
-
+#ifdef ADB
+/* rid "=" and "<>" */
+DATA(insert OID = 4043 (  "="	   PGNSP PGUID b t f 86 86 16 4043 4044 rowid_eq eqsel eqjoinsel ));
+DESCR("equal");
+#define RIDEqualOperator 4043
+DATA(insert OID = 4044 (  "<>"	   PGNSP PGUID b f f 86 86 16 4044 4043 rowid_ne neqsel neqjoinsel ));
+DESCR("not equal");
+DATA(insert OID = 4045 (  "<"	   PGNSP PGUID b f f 86 86 16 4046 4048 rowid_lt scalarltsel scalarltjoinsel ));
+DESCR("less then");
+#define RIDLessOperator 4045
+DATA(insert OID = 4046 (  ">"	   PGNSP PGUID b f f 86 86 16 4045 4047 rowid_gt scalargtsel scalargtjoinsel ));
+DESCR("greater then");
+DATA(insert OID = 4047 (  "<="	   PGNSP PGUID b f f 86 86 16 4048 4046 rowid_le scalarltsel scalarltjoinsel ));
+DESCR("less then or equal");
+DATA(insert OID = 4048 (  ">="	   PGNSP PGUID b f f 86 86 16 4047 4045 rowid_ge scalargtsel scalargtjoinsel ));
+DESCR("greater then or equal");
+#endif
 
 /*
  * function prototypes

@@ -311,7 +311,12 @@ CustomizableCleanupPriorWALFiles(void)
 			fprintf(stderr, "%s: could not open archive location \"%s\": %s\n",
 					progname, archiveLocation, strerror(errno));
 
+#ifdef ADB
+		/* fix: Null pointer passed as an argument to a 'nonnull' parameter */
+		if (xldir && closedir(xldir))
+#else
 		if (closedir(xldir))
+#endif
 			fprintf(stderr, "%s: could not close archive location \"%s\": %s\n",
 					progname, archiveLocation, strerror(errno));
 
@@ -358,7 +363,7 @@ SetWALFileNameForCleanup(void)
 	if (keepfiles > 0)
 	{
 		sscanf(nextWALFileName, "%08X%08X%08X", &tli, &log, &seg);
-		if (tli > 0 && log >= 0 && seg > 0)
+		if (tli > 0 /*&& log >= 0*/ && seg > 0)
 		{
 			log_diff = keepfiles / MaxSegmentsPerLogFile;
 			seg_diff = keepfiles % MaxSegmentsPerLogFile;

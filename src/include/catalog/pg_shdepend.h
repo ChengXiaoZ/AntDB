@@ -19,7 +19,11 @@
 #ifndef PG_SHDEPEND_H
 #define PG_SHDEPEND_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_shdepend definition.  cpp turns this into

@@ -19,7 +19,11 @@
 #ifndef PG_NAMESPACE_H
 #define PG_NAMESPACE_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------------------------------------------------------
  *		pg_namespace definition.
@@ -75,6 +79,16 @@ DESCR("reserved schema for TOAST tables");
 DATA(insert OID = 2200 ( "public" PGUID _null_ ));
 DESCR("standard public schema");
 #define PG_PUBLIC_NAMESPACE 2200
+#ifdef ADB
+DATA(insert OID = 3199 ( "oracle" PGUID _null_ ));
+DESCR("compatible oracle schema");
+#define PG_ORACLE_NAMESPACE 3199
+#endif /* ADB */
+#ifdef ADBMGRD
+DATA(insert OID = 3198 ( "adbmgr" PGUID _null_ ));
+DESCR("ADB manager schema");
+#define PG_MANAGER_NAMESPACE 3198
+#endif /* ADBMGRD */
 
 
 /*

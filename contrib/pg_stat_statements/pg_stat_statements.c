@@ -241,7 +241,11 @@ static void pgss_ExecutorFinish(QueryDesc *queryDesc);
 static void pgss_ExecutorEnd(QueryDesc *queryDesc);
 static void pgss_ProcessUtility(Node *parsetree, const char *queryString,
 					ProcessUtilityContext context, ParamListInfo params,
-					DestReceiver *dest, char *completionTag);
+					DestReceiver *dest,
+#ifdef PGXC
+					bool sentToRemote,
+#endif /* PGXC */
+					char *completionTag);
 static uint32 pgss_hash_fn(const void *key, Size keysize);
 static int	pgss_match_fn(const void *key1, const void *key2, Size keysize);
 static uint32 pgss_hash_string(const char *str);
@@ -612,7 +616,11 @@ pgss_post_parse_analyze(ParseState *pstate, Query *query)
 
 	if (prev_post_parse_analyze_hook)
 		prev_post_parse_analyze_hook(pstate, query);
-
+#ifdef ADB
+	Assert(query);
+	if (query->queryId != 0)
+		return ;
+#endif
 	/* Assert we didn't do this already */
 	Assert(query->queryId == 0);
 
@@ -785,7 +793,11 @@ pgss_ExecutorEnd(QueryDesc *queryDesc)
 static void
 pgss_ProcessUtility(Node *parsetree, const char *queryString,
 					ProcessUtilityContext context, ParamListInfo params,
-					DestReceiver *dest, char *completionTag)
+					DestReceiver *dest,
+#ifdef PGXC
+					bool sentToRemote,
+#endif /* PGXC */
+					char *completionTag)
 {
 	/*
 	 * If it's an EXECUTE statement, we don't track it and don't increment the
@@ -819,11 +831,19 @@ pgss_ProcessUtility(Node *parsetree, const char *queryString,
 			if (prev_ProcessUtility)
 				prev_ProcessUtility(parsetree, queryString,
 									context, params,
-									dest, completionTag);
+									dest,
+#ifdef PGXC
+									sentToRemote,
+#endif /* PGXC */
+									completionTag);
 			else
 				standard_ProcessUtility(parsetree, queryString,
 										context, params,
-										dest, completionTag);
+										dest, 
+#ifdef PGXC
+										sentToRemote,
+#endif /* PGXC */
+										completionTag);
 			nested_level--;
 		}
 		PG_CATCH();
@@ -890,11 +910,19 @@ pgss_ProcessUtility(Node *parsetree, const char *queryString,
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(parsetree, queryString,
 								context, params,
-								dest, completionTag);
+								dest,
+#ifdef PGXC
+								sentToRemote,
+#endif /* PGXC */
+								completionTag);
 		else
 			standard_ProcessUtility(parsetree, queryString,
 									context, params,
-									dest, completionTag);
+									dest,
+#ifdef PGXC
+									sentToRemote,
+#endif /* PGXC */
+									completionTag);
 	}
 }
 
@@ -1788,6 +1816,9 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				APP_JUMB(ce->cursor_param);
 			}
 			break;
+		case T_RownumExpr:
+			RecordConstLocation(jstate, ((RownumExpr*)node)->location);
+			break;
 		case T_TargetEntry:
 			{
 				TargetEntry *tle = (TargetEntry *) node;
@@ -1870,6 +1901,9 @@ JumbleExpr(pgssJumbleState *jstate, Node *node)
 				JumbleExpr(jstate, setop->larg);
 				JumbleExpr(jstate, setop->rarg);
 			}
+			break;
+		case T_ColumnRefJoin:
+			JumbleExpr(jstate, (Node*)(((ColumnRefJoin*)node)->var));
 			break;
 		default:
 			/* Only a warning, since we can stumble along anyway */

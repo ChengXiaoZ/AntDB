@@ -19,7 +19,11 @@
 #ifndef PG_TYPE_H
 #define PG_TYPE_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_type definition.  cpp turns this into
@@ -66,9 +70,9 @@ CATALOG(pg_type,1247) BKI_BOOTSTRAP BKI_ROWTYPE_OID(71) BKI_SCHEMA_MACRO
 	 *
 	 * If typtype is 'c', typrelid is the OID of the class' entry in pg_class.
 	 */
-	char		typtype;
+        char typtype;
 
-	/*
+        /*
 	 * typcategory and typispreferred help the parser distinguish preferred
 	 * and non-preferred coercions.  The category can be any single ASCII
 	 * character (but not \0).  The categories used for built-in types are
@@ -350,6 +354,13 @@ DATA(insert OID = 71 (	pg_type			PGNSP PGUID -1 f c C f t \054 1247 0 0 record_i
 DATA(insert OID = 75 (	pg_attribute	PGNSP PGUID -1 f c C f t \054 1249 0 0 record_in record_out record_recv record_send - - - d x f 0 -1 0 0 _null_ _null_ _null_ ));
 DATA(insert OID = 81 (	pg_proc			PGNSP PGUID -1 f c C f t \054 1255 0 0 record_in record_out record_recv record_send - - - d x f 0 -1 0 0 _null_ _null_ _null_ ));
 DATA(insert OID = 83 (	pg_class		PGNSP PGUID -1 f c C f t \054 1259 0 0 record_in record_out record_recv record_send - - - d x f 0 -1 0 0 _null_ _null_ _null_ ));
+#ifdef ADB
+DATA(insert OID = 86 (	rid			PGNSP PGUID 10 f b U f t \054 0 0 87 rowid_in rowid_out rowid_recv rowid_send - - - s p f 0 -1 0 0 _null_ _null_ _null_ ));
+DESCR("physical location of tuple, like oracle's rowid");
+#define RIDOID		86
+DATA(insert OID = 87 ( _rid			PGNSP PGUID -1 f b A f t \054 0 86 0 array_in array_out array_recv array_send - - array_typanalyze i x f 0 -1 0 0 _null_ _null_ _null_ ));
+#define RIDARRAYOID	87
+#endif /* ADB */
 
 /* OIDS 100 - 199 */
 DATA(insert OID = 114 ( json		   PGNSP PGUID -1 f b U f t \054 0 0 199 json_in json_out json_recv json_send - - - i x f 0 -1 0 0 _null_ _null_ _null_ ));
@@ -672,6 +683,36 @@ DATA(insert OID = 3115 ( fdw_handler	PGNSP PGUID  4 t p P f t \054 0 0 0 fdw_han
 DATA(insert OID = 3831 ( anyrange		PGNSP PGUID  -1 f p P f t \054 0 0 0 anyrange_in anyrange_out - - - - - d x f 0 -1 0 0 _null_ _null_ _null_ ));
 #define ANYRANGEOID		3831
 
+#ifdef ADB
+
+/* varchar2 */
+DATA(insert OID = 3968 ( varchar2       PGNSP PGUID -1 f b S f t \054 0 0 3971 varchar2in varchar2out varchar2recv varcharsend varchartypmodin varchartypmodout - i x f 0 -1 0 100 _null_ _null_ _null_ ));
+DESCR("oracle varchar2(length)");
+#define VARCHAR2OID		3968
+
+/* nvarchar2 */
+DATA(insert OID = 3969 ( nvarchar2      PGNSP PGUID -1 f b S f t \054 0 0 3972 nvarchar2in nvarchar2out nvarchar2recv varcharsend varchartypmodin varchartypmodout - i x f 0 -1 0 100 _null_ _null_ _null_ ));
+DESCR("oracle nvarchar2(length)");
+#define NVARCHAR2OID	3969
+
+/* oracle.date */
+DATA(insert OID = 3970 ( date           ORANSP PGUID 8 FLOAT8PASSBYVAL d D f t \054 0	0 3973 domain_in ora_date_out domain_recv timestamp_send - - - d p f 1114 0 0 0 _null_ _null_ _null_ ));
+DESCR("oracle's date");
+#define ORADATEOID		3970
+
+/* varchar2 array */
+DATA(insert OID = 3971 ( _varchar2      ORANSP PGUID -1 f b A f t \054 0 3968 0 array_in array_out array_recv array_send varchartypmodin varchartypmodout array_typanalyze i x f 0 -1 0 100 _null_ _null_ _null_ ));
+#define VARCHAR2ARRAYOID	3971
+
+/* nvarchar2 array */
+DATA(insert OID = 3972 ( _nvarchar2     ORANSP PGUID -1 f b A f t \054 0 3969 0 array_in array_out array_recv array_send varchartypmodin varchartypmodout array_typanalyze i x f 0 -1 0 100 _null_ _null_ _null_ ));
+#define NVARCHAR2ARRAYOID	3972
+
+/* oracle.date array */
+DATA(insert OID = 3973 ( _date          ORANSP PGUID -1 f b A f t \054 0 3970 0 array_in array_out array_recv array_send - - array_typanalyze i x f 0 -1 0 0 _null_ _null_ _null_ ));
+#define ORADATEARRAYOID		3973
+
+#endif
 
 /*
  * macros

@@ -214,6 +214,15 @@ add_paths_to_joinrel(PlannerInfo *root,
 							 restrictlist, jointype,
 							 sjinfo, &semifactors,
 							 param_source_rels);
+#ifdef PGXC
+	/*
+	 * If the inner and outer relations have RemoteQuery paths, check if this
+	 * JOIN can be pushed to the data-nodes. If so, create a RemoteQuery path
+	 * corresponding to the this JOIN.
+	 */
+	create_joinrel_rqpath(root, joinrel, outerrel, innerrel, restrictlist,
+								jointype, sjinfo, param_source_rels);
+#endif /* PGXC */
 }
 
 /*
@@ -283,9 +292,29 @@ try_nestloop_path(PlannerInfo *root,
 							outer_path->parent->relids,
 							PATH_REQ_OUTER(inner_path))))
 	{
-		/* Waste no memory when we reject a path here */
-		bms_free(required_outer);
-		return;
+		/*
+		 * We override the param_source_rels heuristic to accept nestloop
+		 * paths in which the outer rel satisfies some but not all of the
+		 * inner path's parameterization.  This is necessary to get good plans
+		 * for star-schema scenarios, in which a parameterized path for a
+		 * large table may require parameters from multiple small tables that
+		 * will not get joined directly to each other.  We can handle that by
+		 * stacking nestloops that have the small tables on the outside; but
+		 * this breaks the rule the param_source_rels heuristic is based on,
+		 * namely that parameters should not be passed down across joins
+		 * unless there's a join-order-constraint-based reason to do so.  So
+		 * ignore the param_source_rels restriction when this case applies.
+		 */
+		Relids		outerrelids = outer_path->parent->relids;
+		Relids		innerparams = PATH_REQ_OUTER(inner_path);
+
+		if (!(bms_overlap(innerparams, outerrelids) &&
+			  bms_nonempty_difference(innerparams, outerrelids)))
+		{
+			/* Waste no memory when we reject a path here */
+			bms_free(required_outer);
+			return;
+		}
 	}
 
 	/*
@@ -1422,3 +1451,4 @@ select_mergejoin_clauses(PlannerInfo *root,
 
 	return result_list;
 }
+

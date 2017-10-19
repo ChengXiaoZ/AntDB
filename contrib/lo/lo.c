@@ -4,7 +4,6 @@
  *	contrib/lo/lo.c
  *
  */
-
 #include "postgres.h"
 
 #include "commands/trigger.h"
@@ -40,12 +39,26 @@ lo_manage(PG_FUNCTION_ARGS)
 	HeapTuple	trigtuple;		/* The original value of tuple	*/
 
 	if (!CALLED_AS_TRIGGER(fcinfo))		/* internal error */
+#ifdef ADB
+		/* fix: Access to field 'tg_trigger' results in a dereference
+		 * of a null pointer (loaded from variable 'trigdata')
+		 */
+		elog(ERROR, "not fired by trigger manager");
+#else
 		elog(ERROR, "%s: not fired by trigger manager",
 			 trigdata->tg_trigger->tgname);
+#endif
 
 	if (!TRIGGER_FIRED_FOR_ROW(trigdata->tg_event))		/* internal error */
+#ifdef ADB
+		/* fix: Access to field 'tg_trigger' results in a dereference
+		 * of a null pointer (loaded from variable 'trigdata')
+		 */
+		elog(ERROR, "not fired by trigger manager");
+#else
 		elog(ERROR, "%s: must be fired for row",
 			 trigdata->tg_trigger->tgname);
+#endif
 
 	/*
 	 * Fetch some values from trigdata

@@ -1492,6 +1492,10 @@ make_inh_translation_list(Relation oldrelation, Relation newrelation,
 			for (new_attno = 0; new_attno < newnatts; new_attno++)
 			{
 				att = new_tupdesc->attrs[new_attno];
+#ifdef ADB
+				/* fix: Dereference of null pointer */
+				AssertArg(att);
+#endif
 				if (!att->attisdropped && att->attinhcount != 0 &&
 					strcmp(attname, NameStr(att->attname)) == 0)
 					break;

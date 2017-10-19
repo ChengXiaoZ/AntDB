@@ -19,7 +19,11 @@
 #ifndef PG_LARGEOBJECT_METADATA_H
 #define PG_LARGEOBJECT_METADATA_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_largeobject_metadata definition. cpp turns this into

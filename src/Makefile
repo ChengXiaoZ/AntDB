@@ -16,11 +16,12 @@ SUBDIRS = \
 	common \
 	port \
 	timezone \
-	backend \
+	interfaces \
+	pgxc \
+	backend adbmgrd agtm\
 	backend/utils/mb/conversion_procs \
 	backend/snowball \
 	include \
-	interfaces \
 	backend/replication/libpqwalreceiver \
 	bin \
 	pl \
@@ -69,6 +70,7 @@ distclean maintainer-clean:
 
 coverage:
 	$(MAKE) -C timezone $@
+	$(MAKE) -C gtm $@
 	$(MAKE) -C backend $@
 	$(MAKE) -C backend/utils/mb/conversion_procs $@
 	$(MAKE) -C backend/snowball $@

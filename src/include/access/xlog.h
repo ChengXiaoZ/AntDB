@@ -174,6 +174,10 @@ typedef enum
 	RECOVERY_TARGET_XID,
 	RECOVERY_TARGET_TIME,
 	RECOVERY_TARGET_NAME
+#ifdef PGXC
+	,
+	RECOVERY_TARGET_BARRIER
+#endif
 } RecoveryTargetType;
 
 extern XLogRecPtr XactLastRecEnd;

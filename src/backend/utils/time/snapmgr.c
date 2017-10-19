@@ -51,7 +51,9 @@
 #include "utils/resowner_private.h"
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
-
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
 
 /*
  * CurrentSnapshot points to the only snapshot taken in transaction-snapshot
@@ -181,8 +183,38 @@ GetTransactionSnapshot(void)
 		return CurrentSnapshot;
 	}
 
+#ifdef AGTM
+	return CurrentSnapshot;
+#endif
+
 	if (IsolationUsesXactSnapshot())
+	{
+#ifdef PGXC
+		/*
+		 * Consider this test case taken from portals.sql
+		 *
+		 * CREATE TABLE cursor (a int, b int) distribute by replication;
+		 * INSERT INTO cursor VALUES (10);
+		 * BEGIN;
+		 * SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+		 * DECLARE c1 NO SCROLL CURSOR FOR SELECT * FROM cursor FOR UPDATE;
+		 * INSERT INTO cursor VALUES (2);
+		 * FETCH ALL FROM c1;
+		 * would result in
+		 * ERROR:  attempted to lock invisible tuple
+		 * because FETCH would be sent as a select to the remote nodes
+		 * with command id 0, whereas the command id would be 2
+		 * in the current snapshot.
+		 * (1 sent by Coordinator due to declare cursor &
+		 *  2 because of the insert inside the transaction)
+		 * The command id should therefore be updated in the
+		 * current snapshot.
+		 */
+		if (IsConnFromCoord())
+			SnapshotSetCommandId(GetCurrentCommandId(false));
+#endif
 		return CurrentSnapshot;
+	}
 
 	CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData);
 
@@ -474,6 +506,14 @@ PopActiveSnapshot(void)
 Snapshot
 GetActiveSnapshot(void)
 {
+#ifdef PGXC
+	/*
+	 * Check if topmost snapshot is null or not,
+	 * if it is, a new one will be taken from GTM.
+	 */
+	if (!ActiveSnapshot && IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		return NULL;
+#endif
 	Assert(ActiveSnapshot != NULL);
 
 	return ActiveSnapshot->as_snap;

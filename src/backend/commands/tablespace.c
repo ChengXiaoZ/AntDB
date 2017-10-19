@@ -76,6 +76,11 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/tqual.h"
+#ifdef PGXC
+#include "pgxc/execRemote.h"
+#include "pgxc/nodemgr.h"
+#include "pgxc/pgxc.h"
+#endif
 
 
 /* GUC variables */
@@ -86,6 +91,9 @@ char	   *temp_tablespaces = NULL;
 static void create_tablespace_directories(const char *location,
 							  const Oid tablespaceoid);
 static bool destroy_tablespace_directories(Oid tablespaceoid, bool redo);
+#ifdef PGXC
+static void createtbspc_abort_callback(bool isCommit, void *arg);
+#endif /* PGXC */
 
 
 /*
@@ -275,6 +283,14 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	 * whole path, but mkdir() uses the first two parts.
 	 */
 	if (strlen(location) + 1 + strlen(TABLESPACE_VERSION_DIRECTORY) + 1 +
+#ifdef PGXC
+		/*
+		 * In Postgres-XC, node name is added in the tablespace folder name to
+		 * insure unique names for nodes sharing the same server.
+		 * So real format is PG_XXX_<nodename>/<dboid>/<relid>.<nnn>''
+		 */
+		strlen(PGXCNodeName) + 1 +
+#endif
 		OIDCHARS + 1 + OIDCHARS + 1 + OIDCHARS > MAXPGPATH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
@@ -334,6 +350,15 @@ CreateTableSpace(CreateTableSpaceStmt *stmt)
 	InvokeObjectPostCreateHook(TableSpaceRelationId, tablespaceoid, 0);
 
 	create_tablespace_directories(location, tablespaceoid);
+
+#ifdef PGXC
+	/*
+	 * Even if we have succeeded, the transaction can be aborted because of
+	 * failure on other nodes. So register for cleanup.
+	 */
+	set_dbcleanup_callback(createtbspc_abort_callback,
+	                      &tablespaceoid, sizeof(tablespaceoid));
+#endif
 
 	/* Record the filesystem change in XLOG */
 	{
@@ -543,13 +568,30 @@ static void
 create_tablespace_directories(const char *location, const Oid tablespaceoid)
 {
 	char	   *linkloc = palloc(OIDCHARS + OIDCHARS + 1);
+#ifdef PGXC
+	char	   *location_with_version_dir = palloc(strlen(location) + 1 +
+								   strlen(TABLESPACE_VERSION_DIRECTORY) + 1 +
+												   PGXC_NODENAME_LENGTH + 1);
+#else
 	char	   *location_with_version_dir = palloc(strlen(location) + 1 +
 								   strlen(TABLESPACE_VERSION_DIRECTORY) + 1);
+#endif
 	struct stat st;
 
 	sprintf(linkloc, "pg_tblspc/%u", tablespaceoid);
+#ifdef PGXC
+	/*
+	 * In Postgres-XC a suffix based on node name is added at the end
+	 * of TABLESPACE_VERSION_DIRECTORY. Node name unicity in Postgres-XC
+	 * cluster insures unicity of tablespace.
+	 */
+	sprintf(location_with_version_dir, "%s/%s_%s", location,
+			TABLESPACE_VERSION_DIRECTORY,
+			PGXCNodeName);
+#else
 	sprintf(location_with_version_dir, "%s/%s", location,
 			TABLESPACE_VERSION_DIRECTORY);
+#endif
 
 	/*
 	 * Attempt to coerce target directory to safe permissions.  If this fails,
@@ -646,6 +688,75 @@ create_tablespace_directories(const char *location, const Oid tablespaceoid)
 	pfree(location_with_version_dir);
 }
 
+#ifdef PGXC
+
+/*
+ * createtbspc_abort_callback: Error cleanup callback for create-tablespace.
+ * This function should be executed only on successful creation of tablespace
+ * directory structure. This way we are sure that the directory and the symlink
+ * that we are removing are created by the same transaction, and are not
+ * pre-existing. Otherwise, we might delete any pre-existing directories.
+ */
+static void
+createtbspc_abort_callback(bool isCommit, void *arg)
+{
+	Oid tablespaceoid = *(Oid *) arg;
+	char	   *linkloc_with_version_dir;
+	char	   *linkloc;
+	struct stat st;
+
+	if (isCommit)
+		return;
+
+	linkloc_with_version_dir = palloc(9 + 1 + OIDCHARS + 1 +
+									  strlen(PGXCNodeName) + 1 +
+									  strlen(TABLESPACE_VERSION_DIRECTORY));
+	sprintf(linkloc_with_version_dir, "pg_tblspc/%u/%s_%s", tablespaceoid,
+			TABLESPACE_VERSION_DIRECTORY,
+			PGXCNodeName);
+
+	/* First, remove version directory */
+	if (rmdir(linkloc_with_version_dir) < 0)
+	{
+		ereport(WARNING,
+				(errcode_for_file_access(),
+				 errmsg("could not remove directory \"%s\": %m",
+						linkloc_with_version_dir)));
+		pfree(linkloc_with_version_dir);
+		return;
+	}
+
+	/*
+	 * Now remove the symlink.
+	 * This has been borrowed from destroy_tablespace_directories().
+	 */
+	linkloc = pstrdup(linkloc_with_version_dir);
+	get_parent_directory(linkloc);
+	if (lstat(linkloc, &st) == 0 && S_ISDIR(st.st_mode))
+	{
+		/*
+		 * We are here possibly because this is Windows, and lstat has identified
+		 * the junction point as a directory.
+		 */
+		if (rmdir(linkloc) < 0)
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("could not remove directory \"%s\": %m",
+							linkloc)));
+	}
+	else
+	{
+		if (unlink(linkloc) < 0)
+			ereport(WARNING,
+					(errcode_for_file_access(),
+					 errmsg("could not remove symbolic link \"%s\": %m",
+							linkloc)));
+	}
+
+	pfree(linkloc_with_version_dir);
+	pfree(linkloc);
+}
+#endif
 
 /*
  * destroy_tablespace_directories
@@ -670,10 +781,19 @@ destroy_tablespace_directories(Oid tablespaceoid, bool redo)
 	char	   *subfile;
 	struct stat st;
 
+#ifdef PGXC
+	linkloc_with_version_dir = palloc(9 + 1 + OIDCHARS + 1 +
+									  strlen(PGXCNodeName) + 1 +
+									  strlen(TABLESPACE_VERSION_DIRECTORY));
+	sprintf(linkloc_with_version_dir, "pg_tblspc/%u/%s_%s", tablespaceoid,
+			TABLESPACE_VERSION_DIRECTORY,
+			PGXCNodeName);
+#else
 	linkloc_with_version_dir = palloc(9 + 1 + OIDCHARS + 1 +
 									  strlen(TABLESPACE_VERSION_DIRECTORY));
 	sprintf(linkloc_with_version_dir, "pg_tblspc/%u/%s", tablespaceoid,
 			TABLESPACE_VERSION_DIRECTORY);
+#endif
 
 	/*
 	 * Check if the tablespace still contains any files.  We try to rmdir each

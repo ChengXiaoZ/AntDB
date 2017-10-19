@@ -17,6 +17,7 @@
 
 #include <math.h>
 
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_class.h"
 #include "foreign/fdwapi.h"
 #include "nodes/nodeFuncs.h"
@@ -426,6 +427,7 @@ set_plain_rel_size(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	}
 }
 
+
 /*
  * set_plain_rel_pathlist
  *	  Build access paths for a plain relation (no subquery, no inheritance)
@@ -441,6 +443,10 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	 * its tlist.
 	 */
 	required_outer = rel->lateral_relids;
+#ifdef PGXC
+	if (!create_plainrel_rqpath(root, rel, rte, required_outer))
+	{
+#endif
 
 	/* Consider sequential scan */
 	add_path(rel, create_seqscan_path(root, rel, required_outer));
@@ -450,6 +456,9 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 
 	/* Consider TID scans */
 	create_tidscan_paths(root, rel);
+#ifdef PGXC
+	}
+#endif
 
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(rel);
@@ -1929,6 +1938,11 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 	/* Refuse subselects (point 1) */
 	if (contain_subplans(qual))
 		return false;
+
+#ifdef ADB
+	if(contain_rownum(qual))
+		return false;
+#endif /* ADB */
 
 	/*
 	 * It would be unsafe to push down window function calls, but at least for

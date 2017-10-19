@@ -532,6 +532,11 @@ memcpyDatum(void *target, SpGistTypeDesc *att, Datum datum)
 {
 	unsigned int size;
 
+#ifdef ADB
+	/* fix: Null pointer passed as an argument to a 'nonnull' parameter */
+	if (target == NULL)
+		return ;
+#endif
 	if (att->attbyval)
 	{
 		memcpy(target, &datum, sizeof(Datum));

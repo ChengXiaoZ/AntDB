@@ -74,6 +74,10 @@
 #include "storage/predicate.h"
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
+#ifdef PGXC
+#include "utils/lsyscache.h"
+#include "pgxc/pgxc.h"
+#endif
 
 
 /* ----------------------------------------------------------------

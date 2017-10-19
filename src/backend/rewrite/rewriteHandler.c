@@ -30,6 +30,19 @@
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
 
+#ifdef PGXC
+#include "pgxc/locator.h"
+#include "pgxc/nodemgr.h"
+#include "pgxc/pgxc.h"
+#include "nodes/nodes.h"
+#include "optimizer/planner.h"
+#include "optimizer/var.h"
+#include "tcop/tcopprot.h"
+#include "tcop/utility.h"
+#include "utils/syscache.h"
+#include "access/htup_details.h"
+#endif
+
 
 /* We use a list of these to detect recursion in RewriteQuery */
 typedef struct rewrite_event
@@ -69,6 +82,16 @@ static List *matchLocks(CmdType event, RuleLock *rulelocks,
 static Query *fireRIRrules(Query *parsetree, List *activeRIRs,
 			 bool forUpdatePushedDown);
 
+#ifdef PGXC
+typedef struct pull_qual_vars_context
+{
+	List *varlist;
+	int sublevels_up;
+	int resultRelation;
+} pull_qual_vars_context;
+static List * pull_qual_vars(Node *node, int varno);
+static bool pull_qual_vars_walker(Node *node, pull_qual_vars_context *context);
+#endif
 
 /*
  * AcquireRewriteLocks -
@@ -1174,6 +1197,68 @@ rewriteValuesRTE(RangeTblEntry *rte, Relation target_relation, List *attrnos)
 }
 
 
+#ifdef PGXC
+/*
+ * pull_qual_vars(Node *node, int varno)
+ * Extract vars from quals belonging to resultRelation. This function is mainly
+ * taken from pull_qual_vars_clause(), but since the later does not peek into
+ * subquery, we need to write this walker.
+ */
+static List *
+pull_qual_vars(Node *node, int varno)
+{
+	pull_qual_vars_context context;
+	context.varlist = NIL;
+	context.sublevels_up = 0;
+	context.resultRelation = varno;
+
+	query_or_expression_tree_walker(node,
+									pull_qual_vars_walker,
+									(void *) &context,
+									0);
+	return context.varlist;
+}
+
+static bool
+pull_qual_vars_walker(Node *node, pull_qual_vars_context *context)
+{
+	if (node == NULL)
+		return false;
+	if (IsA(node, Var))
+	{
+		Var *var = (Var *) node;
+
+		/*
+		 * Add only if this var belongs to the resultRelation and refers to the table
+		 * from the same query.
+		 */
+		if (var->varno == context->resultRelation &&
+		    var->varlevelsup == context->sublevels_up)
+		{
+			Var *newvar = palloc(sizeof(Var));
+			*newvar = *var;
+			newvar->varlevelsup = 0;
+			context->varlist = lappend(context->varlist, newvar);
+		}
+		return false;
+	}
+	if (IsA(node, Query))
+	{
+		/* Recurse into RTE subquery or not-yet-planned sublink subquery */
+		bool		result;
+
+		context->sublevels_up++;
+		result = query_tree_walker((Query *) node, pull_qual_vars_walker,
+								   (void *) context, 0);
+		context->sublevels_up--;
+		return result;
+	}
+	return expression_tree_walker(node, pull_qual_vars_walker,
+								  (void *) context);
+}
+
+#endif /* PGXC */
+
 /*
  * rewriteTargetListUD - rewrite UPDATE/DELETE targetlist as needed
  *
@@ -1194,6 +1279,128 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 	Var		   *var;
 	const char *attrname;
 	TargetEntry *tle;
+
+#ifdef PGXC
+	List *var_list = NIL;
+	ListCell *elt;
+	bool can_use_pk_for_rep_change = false;
+	int16 *indexed_col_numbers = NULL;
+	int index_col_count = 0;
+
+	/*
+	 * In Postgres-XC, we need to evaluate quals of the parse tree and determine
+	 * if they are Coordinator quals. If they are, their attribute need to be
+	 * added to target list for evaluation. In case some are found, add them as
+	 * junks in the target list. The junk status will be used by remote UPDATE
+	 * planning to associate correct element to a clause.
+	 * For DELETE, having such columns in target list helps to evaluate Quals
+	 * correctly on Coordinator.
+	 * PGXCTODO: This list could be reduced to keep only in target list the
+	 * vars using Coordinator Quals.
+	 */
+	if (IS_PGXC_COORDINATOR && parsetree->jointree)
+		var_list = pull_qual_vars((Node *) parsetree->jointree, parsetree->resultRelation);
+
+	foreach(elt, var_list)
+	{
+		Form_pg_attribute att_tup;
+		int numattrs = RelationGetNumberOfAttributes(target_relation);
+
+		var = (Var *) lfirst(elt);
+		/* Bypass in case of extra target items like ctid */
+		if (var->varattno < 1 || var->varattno > numattrs)
+			continue;
+
+
+		att_tup = target_relation->rd_att->attrs[var->varattno - 1];
+		tle = makeTargetEntry((Expr *) var,
+							  list_length(parsetree->targetList) + 1,
+							  pstrdup(NameStr(att_tup->attname)),
+							  true);
+
+		parsetree->targetList = lappend(parsetree->targetList, tle);
+	}
+
+	if (IS_PGXC_COORDINATOR && RelationGetLocInfo(target_relation) != NULL
+		&& target_relation->rd_rel->relkind == RELKIND_RELATION)
+	{
+		can_use_pk_for_rep_change = IsRelationReplicated(RelationGetLocInfo(
+															target_relation));
+		if (can_use_pk_for_rep_change)
+		{
+			index_col_count = pgxc_find_unique_index(target_relation->rd_id,
+													&indexed_col_numbers);
+			if (index_col_count <= 0)
+				can_use_pk_for_rep_change = false;
+
+			if (can_use_pk_for_rep_change)
+			{
+				if (is_pk_being_changed(parsetree, indexed_col_numbers,
+										index_col_count))
+				{
+					can_use_pk_for_rep_change = false;
+				}
+			}
+		}
+
+		if (can_use_pk_for_rep_change)
+		{
+			int i;
+
+			for (i = 0; i < index_col_count; i++)
+			{
+				int			pkattno = indexed_col_numbers[i];
+				bool		found = false;
+				TargetEntry	*qtle;
+				char		*pkattname = get_attname(target_rte->relid, pkattno);
+
+				/*
+				 * Is it so that the primary key is already in the target list?
+				 */
+				foreach(elt, parsetree->targetList)
+				{
+					qtle = lfirst(elt);
+
+					if (qtle->resname == NULL)
+						continue;
+
+					if (!strcmp(qtle->resname, pkattname))
+					{
+						found = true;
+						break;
+					}
+				}
+
+				/*
+				 * Add all the primary key columns to the target list of the
+				 * query if one is not already there.
+				 */
+				if (!found)
+				{
+					TargetEntry		*tle;
+					Var				*var;
+					Oid				var_type;
+					int32			var_typmod;
+					Oid				var_collid;
+
+					get_rte_attribute_type(target_rte, pkattno, &var_type,
+							&var_typmod, &var_collid);
+
+					var = makeVar(parsetree->resultRelation, pkattno, var_type,
+									var_typmod, var_collid, 0);
+
+					tle = makeTargetEntry((Expr *) var,
+										list_length(parsetree->targetList) + 1,
+										pkattname, true);
+
+					parsetree->targetList = lappend(parsetree->targetList, tle);
+				}
+			}
+		}
+	}
+	if (indexed_col_numbers != NULL)
+		pfree(indexed_col_numbers);
+#endif
 
 	if (target_relation->rd_rel->relkind == RELKIND_RELATION ||
 		target_relation->rd_rel->relkind == RELKIND_MATVIEW)
@@ -1245,6 +1452,51 @@ rewriteTargetListUD(Query *parsetree, RangeTblEntry *target_rte,
 						  true);
 
 	parsetree->targetList = lappend(parsetree->targetList, tle);
+
+#ifdef PGXC
+	/* Add further attributes required for Coordinator */
+
+	if (IS_PGXC_COORDINATOR && RelationGetLocInfo(target_relation) != NULL
+		&& target_relation->rd_rel->relkind == RELKIND_RELATION)
+	{
+		/*
+		 * If relation is non-replicated, we need also to identify the Datanode
+		 * from where tuple is fetched.
+		 */
+		if (!IsRelationReplicated(RelationGetLocInfo(target_relation)))
+		{
+			var = makeVar(parsetree->resultRelation,
+						  XC_NodeIdAttributeNumber,
+						  INT4OID,
+						  -1,
+						  InvalidOid,
+						  0);
+
+			tle = makeTargetEntry((Expr *) var,
+								  list_length(parsetree->targetList) + 1,
+								  pstrdup("xc_node_id"),
+								  true);
+
+			parsetree->targetList = lappend(parsetree->targetList, tle);
+		}
+
+		/* For non-shippable triggers, we need OLD row. */
+		if (pgxc_trig_oldrow_reqd(target_relation,
+								  parsetree->commandType))
+		{
+			var = makeWholeRowVar(target_rte,
+								  parsetree->resultRelation,
+								  0,
+								  false);
+
+			tle = makeTargetEntry((Expr *) var,
+				  list_length(parsetree->targetList) + 1,
+				  pstrdup("wholerow"),
+				  true);
+			parsetree->targetList = lappend(parsetree->targetList, tle);
+		}
+	}
+#endif
 }
 
 
@@ -2765,6 +3017,10 @@ RewriteQuery(Query *parsetree, List *rewrite_events)
 		locks = matchLocks(event, rt_entry_relation->rd_rules,
 						   result_relation, parsetree);
 
+#ifdef PGXC
+		product_queries = NIL;
+		if (IS_PGXC_COORDINATOR)
+#endif
 		product_queries = fireRules(parsetree,
 									result_relation,
 									event,
@@ -3033,7 +3289,9 @@ QueryRewrite(Query *parsetree)
 		if (query->querySource == QSRC_ORIGINAL)
 		{
 			Assert(query->canSetTag);
+#ifndef PGXC
 			Assert(!foundOriginalQuery);
+#endif
 			foundOriginalQuery = true;
 #ifndef USE_ASSERT_CHECKING
 			break;
@@ -3054,3 +3312,300 @@ QueryRewrite(Query *parsetree)
 
 	return results;
 }
+
+#ifdef PGXC
+/*
+ * Rewrite the CREATE TABLE AS and SELECT INTO queries as a
+ * INSERT INTO .. SELECT query. The target table must be created first using
+ * utility command processing. This takes care of creating the target table on
+ * all the Coordinators and the Datanodes.
+ * This function is not used for CTAS statements for materialized views.
+ */
+List *
+QueryRewriteCTAS(Query *parsetree)
+{
+	RangeVar *relation;
+	CreateStmt *create_stmt;
+	List *tableElts = NIL;
+	StringInfoData cquery;
+	ListCell *col;
+	Query *cparsetree;
+	List *raw_parsetree_list, *tlist;
+	char *selectstr;
+	CreateTableAsStmt *stmt;
+	IntoClause *into;
+	ListCell *lc;
+
+	if (parsetree->commandType != CMD_UTILITY ||
+		!IsA(parsetree->utilityStmt, CreateTableAsStmt))
+		elog(ERROR, "Unexpected commandType or intoClause is not set properly");
+
+	/* Get the target table */
+	stmt = (CreateTableAsStmt *) parsetree->utilityStmt;
+	relation = stmt->into->rel;
+
+	/* Start building a CreateStmt for creating the target table */
+	create_stmt = makeNode(CreateStmt);
+	create_stmt->relation = relation;
+	into = stmt->into;
+
+	/* Obtain the target list of new table */
+	Assert(IsA(stmt->query, Query));
+	cparsetree = (Query *) stmt->query;
+	tlist = cparsetree->targetList;
+
+	/*
+	 * Based on the targetList, populate the column information for the target
+	 * table. If a column name list was specified in CREATE TABLE AS, override
+	 * the column names derived from the query. (Too few column names are OK, too
+	 * many are not.).
+	 */
+	lc = list_head(into->colNames);
+	foreach(col, tlist)
+	{
+		TargetEntry *tle = (TargetEntry *)lfirst(col);
+		ColumnDef   *coldef;
+		TypeName    *typename;
+
+		/* Ignore junk columns from the targetlist */
+		if (tle->resjunk)
+			continue;
+
+		coldef = makeNode(ColumnDef);
+		typename = makeNode(TypeName);
+
+		/* Take the column name specified if any */
+		if (lc)
+		{
+			coldef->colname = strVal(lfirst(lc));
+			lc = lnext(lc);
+		}
+		else
+			coldef->colname = pstrdup(tle->resname);
+
+		coldef->inhcount = 0;
+		coldef->is_local = true;
+		coldef->is_not_null = false;
+		coldef->raw_default = NULL;
+		coldef->cooked_default = NULL;
+		coldef->constraints = NIL;
+
+		/*
+		 * Set typeOid and typemod. The name of the type is derived while
+		 * generating query
+		 */
+		typename->typeOid = exprType((Node *)tle->expr);
+		typename->typemod = exprTypmod((Node *)tle->expr);
+
+		coldef->typeName = typename;
+
+		tableElts = lappend(tableElts, coldef);
+	}
+
+	if (lc != NULL)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("CREATE TABLE AS specifies too many column names")));
+
+	/*
+	 * Set column information and the distribution mechanism (which will be
+	 * NULL for SELECT INTO and the default mechanism will be picked)
+	 */
+	create_stmt->tableElts = tableElts;
+	create_stmt->distributeby = stmt->into->distributeby;
+	create_stmt->subcluster = stmt->into->subcluster;
+
+	create_stmt->tablespacename = stmt->into->tableSpaceName;
+	create_stmt->oncommit = stmt->into->onCommit;
+	create_stmt->options = stmt->into->options;
+
+	/*
+	 * Check consistency of arguments
+	 */
+	if (create_stmt->oncommit != ONCOMMIT_NOOP
+			&& create_stmt->relation->relpersistence != RELPERSISTENCE_TEMP)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				 errmsg("ON COMMIT can only be used on temporary tables")));
+
+	/* Get a copy of the parsetree which we can freely modify  */
+	cparsetree = copyObject(parsetree);
+
+	/*
+	 * Now build a utility statement in order to run the CREATE TABLE DDL on
+	 * the local and remote nodes. We keep others fields as it is since they
+	 * are ignored anyways by deparse_query.
+	 */
+	cparsetree->commandType = CMD_UTILITY;
+	cparsetree->utilityStmt = (Node *) create_stmt;
+
+	initStringInfo(&cquery);
+	deparse_query(cparsetree, &cquery, NIL, false, false);
+
+	/* Finally, fire off the query to run the DDL */
+	ProcessUtility(cparsetree->utilityStmt, cquery.data, PROCESS_UTILITY_TOPLEVEL, NULL, NULL,  /* Tentative fix.  Nedd a review.  K.Suzuki */
+					false,
+					NULL);
+
+	/*
+	 * Now fold the CTAS statement into an INSERT INTO statement. The
+	 * utility is no more required.
+	 */
+	parsetree->utilityStmt = NULL;
+
+	/* Get the SELECT query string */
+	initStringInfo(&cquery);
+	deparse_query((Query *)stmt->query, &cquery, NIL, true, false);
+	selectstr = pstrdup(cquery.data);
+
+	/* Now, finally build the INSERT INTO statement */
+	initStringInfo(&cquery);
+
+	if (relation->schemaname)
+		appendStringInfo(&cquery, "INSERT INTO %s.%s",
+				relation->schemaname, relation->relname);
+	else
+		appendStringInfo(&cquery, "INSERT INTO %s", relation->relname);
+
+	appendStringInfo(&cquery, " %s", selectstr);
+
+	raw_parsetree_list = pg_parse_query(cquery.data);
+	return pg_analyze_and_rewrite(linitial(raw_parsetree_list), cquery.data,
+			NULL, 0);
+}
+
+/*
+ * pgxc_find_unique_index finds either primary key or unique index
+ * defined for the passed relation.
+ * Returns the number of columns in the primary key or unique index
+ * ZERO means no primary key or unique index is defined.
+ * The column attributes of the primary key or unique index are returned
+ * in the passed indexed_col_numbers.
+ * The function allocates space for indexed_col_numbers, the caller is
+ * supposed to free it after use.
+ */
+int
+pgxc_find_unique_index(Oid relid, int16 **indexed_col_numbers)
+{
+	HeapTuple		indexTuple = NULL;
+	HeapTuple		indexUnique = NULL;
+	Form_pg_index	indexStruct;
+	ListCell		*item;
+	int				i;
+
+	/* Get necessary information about relation */
+	Relation rel = relation_open(relid, AccessShareLock);
+
+	foreach(item, RelationGetIndexList(rel))
+	{
+		Oid			indexoid = lfirst_oid(item);
+
+		indexTuple = SearchSysCache1(INDEXRELID,
+									ObjectIdGetDatum(indexoid));
+		if (!HeapTupleIsValid(indexTuple))
+			elog(ERROR, "cache lookup failed for index %u", indexoid);
+
+		indexStruct = (Form_pg_index) GETSTRUCT(indexTuple);
+
+		if (indexStruct->indisprimary)
+		{
+			indexUnique = indexTuple;
+			ReleaseSysCache(indexTuple);
+			break;
+		}
+
+		/* In case we do not have a primary key, use a unique index */
+		if (indexStruct->indisunique)
+		{
+			indexUnique = indexTuple;
+		}
+
+		ReleaseSysCache(indexTuple);
+	}
+	relation_close(rel, AccessShareLock);
+
+	if (!indexUnique)
+		return 0;
+
+	indexStruct = (Form_pg_index) GETSTRUCT(indexUnique);
+
+	*indexed_col_numbers = palloc0(indexStruct->indnatts * sizeof(int16));
+
+	/*
+	 * Now get the list of PK attributes from the indkey definition (we
+	 * assume a primary key cannot have expressional elements)
+	 */
+	for (i = 0; i < indexStruct->indnatts; i++)
+	{
+		(*indexed_col_numbers)[i] = indexStruct->indkey.values[i];
+	}
+	return indexStruct->indnatts;
+}
+
+/*
+ * is_pk_being_changed determines whether the query is changing primary key
+ * or unique index.
+ * The attributes of the primary key / unique index and their count is
+ * passed to the function along with the query
+ * Returns true if the query is changing the primary key / unique index
+ * The function takes care of the fact that just having the primary key
+ * in set caluse does not mean that it is being changed unless the RHS
+ * is different that the LHS of the set caluse i.e. set pk = pk
+ * is taken as no change to the column
+ */
+bool
+is_pk_being_changed(const Query *query, int16 *indexed_col_numbers, int count)
+{
+	ListCell *lc;
+	int i;
+
+	if (query == NULL || query->rtable == NULL || indexed_col_numbers == NULL)
+		return false;
+
+	if (query->commandType != CMD_UPDATE)
+		return false;
+
+	for (i = 0; i < count; i++)
+	{
+		foreach(lc, query->targetList)
+		{
+			TargetEntry *tle = (TargetEntry *) lfirst(lc);
+
+			/* Nothing to do for a junk entry */
+			if (tle->resjunk)
+				continue;
+
+			/*
+			 * The TargetEntry::resno is the same as the attribute number
+			 * of the column being updated, if the attribute number of the
+			 * column being updated and the attribute of the primary key of
+			 * the table is same means this set clause entry is updating the
+			 * primary key column of the target table.
+			 */
+			if (indexed_col_numbers[i] == tle->resno)
+			{
+				Var *v;
+				/*
+				 * Although the set caluse contains pk column, but if it is
+				 * not being modified, we can use pk for updating the row
+				 */
+				if (!IsA(tle->expr, Var))
+					return true;
+
+				v = (Var *)tle->expr;
+				if (v->varno == query->resultRelation &&
+					v->varattno == tle->resno)
+				{
+					return false;
+				}
+				else
+				{
+					return true;
+				}
+			}
+		}
+	}
+	return false;
+}
+
+#endif

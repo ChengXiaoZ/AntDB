@@ -168,6 +168,11 @@ TidQualFromExpr(Node *expr, int varno)
 	List	   *rlst = NIL;
 	ListCell   *l;
 
+#ifdef ADB
+	/* fix: Dereference of null pointer */
+	AssertArg(expr);
+#endif
+
 	if (is_opclause(expr))
 	{
 		/* base case: check for tideq opclause */

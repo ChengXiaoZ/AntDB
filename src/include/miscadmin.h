@@ -86,6 +86,9 @@ extern volatile bool ImmediateInterruptOK;
 extern PGDLLIMPORT volatile uint32 InterruptHoldoffCount;
 extern PGDLLIMPORT volatile uint32 QueryCancelHoldoffCount;
 extern PGDLLIMPORT volatile uint32 CritSectionCount;
+#ifdef ADB
+extern PGDLLIMPORT volatile uint32 FatalSectionCount;
+#endif
 
 /* in tcop/postgres.c */
 extern void ProcessInterrupts(void);
@@ -133,6 +136,15 @@ do { \
 	CritSectionCount--; \
 } while(0)
 
+#ifdef ADB
+#define START_FATAL_SECTION()  (FatalSectionCount++)
+
+#define END_FATAL_SECTION() \
+do { \
+	Assert(FatalSectionCount > 0); \
+	FatalSectionCount--; \
+} while(0)
+#endif
 
 /*****************************************************************************
  *	  globals.h --															 *
@@ -257,6 +269,10 @@ extern int	VacuumPageDirty;
 
 extern int	VacuumCostBalance;
 extern bool VacuumCostActive;
+
+#ifdef PGXC
+extern bool useLocalXid;
+#endif
 
 
 /* in tcop/postgres.c */
@@ -387,6 +403,9 @@ typedef enum
 	CheckpointerProcess,
 	WalWriterProcess,
 	WalReceiverProcess,
+#ifdef PGXC
+	PoolerProcess,
+#endif
 
 	NUM_AUXPROCTYPES			/* Must be last! */
 } AuxProcType;
@@ -459,5 +478,9 @@ extern bool has_rolreplication(Oid roleid);
 /* in access/transam/xlog.c */
 extern bool BackupInProgress(void);
 extern void CancelBackup(void);
+
+#ifdef PGXC
+void PGXC_init_lock_files(void);
+#endif
 
 #endif   /* MISCADMIN_H */

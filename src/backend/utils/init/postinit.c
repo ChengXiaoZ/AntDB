@@ -59,7 +59,6 @@
 #include "utils/timeout.h"
 #include "utils/tqual.h"
 
-
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
 static void PerformAuthentication(Port *port);

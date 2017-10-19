@@ -566,10 +566,10 @@
 #define MEMSET_LOOP_LIMIT 1024
 
 /* Define to the address where bug reports for this package should be sent. */
-#define PACKAGE_BUGREPORT "pgsql-bugs@postgresql.org"
+#define PACKAGE_BUGREPORT "postgres-xc-bugs@lists.sourceforge.net"
 
 /* Define to the full name of this package. */
-#define PACKAGE_NAME "PostgreSQL"
+#define PACKAGE_NAME "Postgres-XC"
 
 /* Define to the full name and version of this package. */
 #define PACKAGE_STRING "PostgreSQL 9.3.13"
@@ -587,7 +587,13 @@
 #define PG_VERSION_NUM 90313
 
 /* Define to the one symbol short name of this package. */
-#define PACKAGE_TARNAME "postgresql"
+#define PACKAGE_TARNAME "postgres-xc"
+
+/* Postgres-XC version as a string */
+#define PGXC_VERSION "1.1devel"
+
+/* Postgres-XC version as a number */
+#define PGXC_VERSION_NUM 10100
 
 /* Define to the name of the default PostgreSQL service principal in Kerberos.
    (--with-krb-srvnam=NAME) */
@@ -595,6 +601,9 @@
 
 /* A string containing the version number, platform, and C compiler */
 #define PG_VERSION_STR "Uninitialized version string (win32)"
+
+/* A string containing the version number, platform, and C compiler */
+#define PGXC_VERSION_STR "Uninitialized version string (win32)"
 
 /* Define to the necessary symbol if this constant uses a non-standard name on
    your system. */

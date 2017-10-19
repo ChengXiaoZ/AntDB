@@ -4,6 +4,7 @@
  *	  postgres OID & XID variables support routines
  *
  * Copyright (c) 2000-2013, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2013 Postgres-XC Development Group
  *
  * IDENTIFICATION
  *	  src/backend/access/transam/varsup.c
@@ -24,13 +25,11 @@
 #include "storage/proc.h"
 #include "utils/syscache.h"
 
-
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
 
 /* pointer to "variable cache" in shared memory (set up by shmem.c) */
 VariableCache ShmemVariableCache = NULL;
-
 
 /*
  * Allocate the next XID for a new transaction or subtransaction.
@@ -107,26 +106,26 @@ GetNewTransactionId(bool isSubXact)
 			TransactionIdFollowsOrEquals(xid, xidStopLimit))
 		{
 			char	   *oldest_datname = get_database_name(oldest_datoid);
-
 			/* complain even if that DB has disappeared */
 			if (oldest_datname)
 				ereport(ERROR,
-						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("database is not accepting commands to avoid wraparound data loss in database \"%s\"",
-								oldest_datname),
-						 errhint("Stop the postmaster and use a standalone backend to vacuum that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("database is not accepting commands to avoid wraparound data loss in database \"%s\"",
+							oldest_datname),
+					 errhint("Stop the postmaster and use a standalone backend to vacuum that database.\n"
+							 "You might also need to commit or roll back old prepared transactions.")));
 			else
 				ereport(ERROR,
-						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-						 errmsg("database is not accepting commands to avoid wraparound data loss in database with OID %u",
-								oldest_datoid),
-						 errhint("Stop the postmaster and use a standalone backend to vacuum that database.\n"
-								 "You might also need to commit or roll back old prepared transactions.")));
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("database is not accepting commands to avoid wraparound data loss in database with OID %u",
+							oldest_datoid),
+					 errhint("Stop the postmaster and use a standalone backend to vacuum that database.\n"
+							 "You might also need to commit or roll back old prepared transactions.")));
 		}
 		else if (TransactionIdFollowsOrEquals(xid, xidWarnLimit))
 		{
-			char	   *oldest_datname = get_database_name(oldest_datoid);
+			char  *oldest_datname = (OidIsValid(MyDatabaseId) ?
+			           get_database_name(oldest_datoid): NULL);
 
 			/* complain even if that DB has disappeared */
 			if (oldest_datname)
@@ -147,9 +146,15 @@ GetNewTransactionId(bool isSubXact)
 
 		/* Re-acquire lock and start over */
 		LWLockAcquire(XidGenLock, LW_EXCLUSIVE);
+
+		/*
+		 * In the case of Postgres-XC, transaction ID is managed globally at GTM level,
+		 * so updating the GXID here based on the cache that might have been changed
+		 * by another session when checking for wraparound errors at this local node
+		 * level breaks transaction ID consistency of cluster.
+		 */
 		xid = ShmemVariableCache->nextXid;
 	}
-
 	/*
 	 * If we are allocating the first XID of a new page of the commit log,
 	 * zero out that commit-log page before returning. We must do this while
@@ -229,7 +234,6 @@ GetNewTransactionId(bool isSubXact)
 	}
 
 	LWLockRelease(XidGenLock);
-
 	return xid;
 }
 

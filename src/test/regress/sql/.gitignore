@@ -6,3 +6,5 @@
 /misc.sql
 /security_label.sql
 /tablespace.sql
+/xc_copy.sql
+/xc_notrans_block.sql

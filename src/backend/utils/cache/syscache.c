@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -22,6 +23,9 @@
 
 #include "access/htup_details.h"
 #include "access/sysattr.h"
+#ifdef ADB
+#include "catalog/adb_ha_sync_log.h"
+#endif
 #include "catalog/indexing.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_amop.h"
@@ -56,6 +60,17 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#ifdef PGXC
+#include "catalog/pgxc_class.h"
+#include "catalog/pgxc_node.h"
+#include "catalog/pgxc_group.h"
+#endif /* PGXC */
+#ifdef ADBMGRD
+#include "catalog/mgr_host.h"
+#include "catalog/mgr_gtm.h"
+#include "catalog/mgr_parm.h"
+#include "catalog/mgr_cndnnode.h"
+#endif /* ADBMGRD */
 #include "utils/rel.h"
 #include "utils/catcache.h"
 #include "utils/syscache.h"
@@ -558,6 +573,87 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
+#ifdef PGXC
+	{PgxcClassRelationId,	/* PGXCCLASSRELID */
+		PgxcClassPgxcRelIdIndexId,
+		1,
+		{
+			Anum_pgxc_class_pcrelid,
+			0,
+			0,
+			0
+		},
+		1024
+	},
+	{PgxcGroupRelationId,	/* PGXCGROUPNAME */
+		PgxcGroupGroupNameIndexId,
+		1,
+		{
+			Anum_pgxc_group_name,
+			0,
+			0,
+			0
+		},
+		256
+	},
+	{PgxcGroupRelationId,	/* PGXCGROUPOID */
+		PgxcGroupOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		256
+	},
+	{PgxcNodeRelationId,	/* PGXCNODENAME */
+		PgxcNodeNodeNameIndexId,
+		1,
+		{
+			Anum_pgxc_node_name,
+			0,
+			0,
+			0
+		},
+		256
+	},
+	{PgxcNodeRelationId,	/* PGXCNODEOID */
+		PgxcNodeOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		256
+	},
+	{PgxcNodeRelationId,	/* PGXCNODEIDENTIFIER */
+		PgxcNodeNodeIdIndexId,
+		1,
+		{
+			Anum_pgxc_node_id,
+			0,
+			0,
+			0
+		},
+		256
+	},
+#endif
+#ifdef ADB
+	{AdbHaSyncLogRelationId,	/* ADBHASYNCLOGOID */
+		AdbHaSyncLogOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		256
+	},
+#endif
 	{ProcedureRelationId,		/* PROCNAMEARGSNSP */
 		ProcedureNameArgsNspIndexId,
 		3,
@@ -789,6 +885,74 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		128
 	}
+#ifdef ADBMGRD
+	,{HostRelationId,		/* HOSTHOSTNAME */
+		HostHostnameIndexId,
+		1,
+		{
+			Anum_mgr_host_hostname,
+			0,
+			0,
+			0
+		},
+		32
+	}
+	,{HostRelationId,		/* HOSTHOSTOID */
+		HostOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		32
+	}
+	,{GtmRelationId,		/* GTMGTMNAME */
+		GtmGtmNameIndexId,
+		1,
+		{
+			Anum_mgr_gtm_gtmname,
+			0,
+			0,
+			0
+		},
+		32
+	}
+	,{ParmRelationId,		/* PARMPARMNODE */
+		ParmParmkeyIndexId,
+		2,
+		{
+			Anum_mgr_parm_parmkey,
+			Anum_mgr_parm_parmnode,
+			0,
+			0
+		},
+		32
+	}
+	,{NodeRelationId,		/* NODENAME */
+		NodeNodeNameTypeIndexId,
+		2,
+		{
+			Anum_mgr_node_nodename,
+			Anum_mgr_node_nodetype,
+			0,
+			0
+		},
+		32
+	}
+	,{NodeRelationId,		/* NODENAMEOID */
+		NodeOidIndexId,
+		1,
+		{
+			ObjectIdAttributeNumber,
+			0,
+			0,
+			0
+		},
+		32
+	}
+#endif /* ADBMGRD */
 };
 
 #define SysCacheSize	((int) lengthof(cacheinfo))

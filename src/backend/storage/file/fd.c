@@ -77,7 +77,9 @@
 #include "storage/ipc.h"
 #include "utils/guc.h"
 #include "utils/resowner_private.h"
-
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
 
 /* Define PG_FLUSH_DATA_WORKS if we have an implementation for pg_flush_data */
 #if defined(HAVE_SYNC_FILE_RANGE)
@@ -1229,8 +1231,14 @@ OpenTemporaryFileInTablespace(Oid tblspcOid, bool rejectError)
 	else
 	{
 		/* All other tablespaces are accessed via symlinks */
+#ifdef PGXC
+		/* Postgres-XC tablespaces include node name in path */
+		snprintf(tempdirpath, sizeof(tempdirpath), "pg_tblspc/%u/%s_%s/%s",
+				 tblspcOid, TABLESPACE_VERSION_DIRECTORY, PGXCNodeName, PG_TEMP_FILES_DIR);
+#else
 		snprintf(tempdirpath, sizeof(tempdirpath), "pg_tblspc/%u/%s/%s",
 				 tblspcOid, TABLESPACE_VERSION_DIRECTORY, PG_TEMP_FILES_DIR);
+#endif
 	}
 
 	/*
@@ -2405,12 +2413,24 @@ RemovePgTempFiles(void)
 			strcmp(spc_de->d_name, "..") == 0)
 			continue;
 
+#ifdef PGXC
+		/* Postgres-XC tablespaces include node name in path */
+		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s_%s/%s",
+				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY, PGXCNodeName, PG_TEMP_FILES_DIR);
+#else
 		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s/%s",
-			spc_de->d_name, TABLESPACE_VERSION_DIRECTORY, PG_TEMP_FILES_DIR);
+				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY, PG_TEMP_FILES_DIR);
+#endif
 		RemovePgTempFilesInDir(temp_path);
 
+#ifdef PGXC
+		/* Postgres-XC tablespaces include node name in path */
+		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s_%s",
+				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY, PGXCNodeName);
+#else
 		snprintf(temp_path, sizeof(temp_path), "pg_tblspc/%s/%s",
 				 spc_de->d_name, TABLESPACE_VERSION_DIRECTORY);
+#endif
 		RemovePgTempRelationFiles(temp_path);
 	}
 

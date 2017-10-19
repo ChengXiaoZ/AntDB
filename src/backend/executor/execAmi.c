@@ -51,6 +51,9 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
+#ifdef PGXC
+#include "pgxc/execRemote.h"
+#endif
 
 
 static bool TargetListSupportsBackwardScan(List *targetlist);
@@ -67,6 +70,7 @@ static bool IndexSupportsBackwardScan(Oid indexid);
 void
 ExecReScan(PlanState *node)
 {
+	node->rownum = 0;
 	/* If collecting timing stats, update them */
 	if (node->instrument)
 		InstrEndLoop(node->instrument);
@@ -197,6 +201,11 @@ ExecReScan(PlanState *node)
 			ExecReScanForeignScan((ForeignScanState *) node);
 			break;
 
+#ifdef PGXC
+		case T_RemoteQueryState:
+			ExecRemoteQueryReScan((RemoteQueryState *) node, node->ps_ExprContext);
+			break;
+#endif
 		case T_NestLoopState:
 			ExecReScanNestLoop((NestLoopState *) node);
 			break;
@@ -269,6 +278,7 @@ ExecReScan(PlanState *node)
 void
 ExecMarkPos(PlanState *node)
 {
+	node->rownum_marked = node->rownum;
 	switch (nodeTag(node))
 	{
 		case T_SeqScanState:
@@ -326,6 +336,7 @@ ExecMarkPos(PlanState *node)
 void
 ExecRestrPos(PlanState *node)
 {
+	node->rownum = node->rownum_marked;
 	switch (nodeTag(node))
 	{
 		case T_SeqScanState:

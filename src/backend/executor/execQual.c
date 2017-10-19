@@ -182,6 +182,8 @@ static Datum ExecEvalArrayCoerceExpr(ArrayCoerceExprState *astate,
 						bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalCurrentOfExpr(ExprState *exprstate, ExprContext *econtext,
 					  bool *isNull, ExprDoneCond *isDone);
+static Datum ExecEvalRownum(ExprState *exprstate,  ExprContext *econtext,
+					  bool *isNull, ExprDoneCond *isDone);
 
 
 /* ----------------------------------------------------------------
@@ -1230,6 +1232,9 @@ GetAttributeByNum(HeapTupleHeader tuple,
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(tuple);
 	ItemPointerSetInvalid(&(tmptup.t_self));
 	tmptup.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tmptup.t_xc_node_id = 0;
+#endif
 	tmptup.t_data = tuple;
 
 	result = heap_getattr(&tmptup,
@@ -1291,6 +1296,9 @@ GetAttributeByName(HeapTupleHeader tuple, const char *attname, bool *isNull)
 	tmptup.t_len = HeapTupleHeaderGetDatumLength(tuple);
 	ItemPointerSetInvalid(&(tmptup.t_self));
 	tmptup.t_tableOid = InvalidOid;
+#ifdef PGXC
+	tmptup.t_xc_node_id = 0;
+#endif
 	tmptup.t_data = tuple;
 
 	result = heap_getattr(&tmptup,
@@ -4138,6 +4146,9 @@ ExecEvalFieldStore(FieldStoreState *fstate,
 		tmptup.t_len = HeapTupleHeaderGetDatumLength(tuphdr);
 		ItemPointerSetInvalid(&(tmptup.t_self));
 		tmptup.t_tableOid = InvalidOid;
+#ifdef PGXC
+		tmptup.t_xc_node_id = 0;
+#endif
 		tmptup.t_data = tuphdr;
 
 		heap_deform_tuple(&tmptup, tupDesc, values, isnull);
@@ -4336,6 +4347,17 @@ ExecEvalCurrentOfExpr(ExprState *exprstate, ExprContext *econtext,
 	return 0;					/* keep compiler quiet */
 }
 
+static Datum ExecEvalRownum(ExprState *exprstate,  ExprContext *econtext,
+					  bool *isNull, ExprDoneCond *isDone)
+{
+	RownumExprState *rstate = (RownumExprState*)exprstate;
+	Assert(rstate && IsA(rstate, RownumExprState));
+	if(isDone)
+		*isDone = ExprSingleResult;
+	*isNull = false;
+	Assert(rstate->parent && rstate->parent->rownum > 0);
+	return Int64GetDatum(rstate->parent->rownum);
+}
 
 /*
  * ExecEvalExprSwitchContext
@@ -5055,6 +5077,14 @@ ExecInitExpr(Expr *node, PlanState *parent)
 		case T_CurrentOfExpr:
 			state = (ExprState *) makeNode(ExprState);
 			state->evalfunc = ExecEvalCurrentOfExpr;
+			break;
+		case T_RownumExpr:
+			{
+				RownumExprState *rstate = makeNode(RownumExprState);
+				state = &(rstate->xprstate);
+				state->evalfunc = ExecEvalRownum;
+				rstate->parent = parent;
+			}
 			break;
 		case T_TargetEntry:
 			{

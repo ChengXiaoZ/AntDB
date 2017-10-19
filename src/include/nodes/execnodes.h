@@ -282,6 +282,18 @@ typedef struct JunkFilter
 	AttrNumber *jf_cleanMap;
 	TupleTableSlot *jf_resultSlot;
 	AttrNumber	jf_junkAttNo;
+#ifdef PGXC
+	/*
+	 * Similar to jf_junkAttNo that is used for ctid, we also need xc_node_id
+	 * and wholerow junk attribute numbers to be saved here. In XC, we need
+	 * multiple junk attributes at the same time, so just jf_junkAttNo is not
+	 * enough. In PG, jf_junkAttNo is used either for ctid or for wholerow,
+	 * it does not need both of them at the same time; ctid is used for physical
+	 * relations while wholerow is used for views.
+	 */
+	AttrNumber	jf_xc_node_id;
+	AttrNumber	jf_xc_wholerow;
+#endif
 } JunkFilter;
 
 /* ----------------
@@ -353,6 +365,9 @@ typedef struct EState
 	ResultRelInfo *es_result_relations; /* array of ResultRelInfos */
 	int			es_num_result_relations;		/* length of array */
 	ResultRelInfo *es_result_relation_info;		/* currently active array elt */
+#ifdef PGXC	
+	struct PlanState	*es_result_remoterel;			/* currently active remote rel */
+#endif	
 
 	/* Stuff used for firing triggers: */
 	List	   *es_trig_target_relations;		/* trigger-only ResultRelInfos */
@@ -938,6 +953,12 @@ typedef struct CoerceToDomainState
 	List	   *constraints;	/* list of DomainConstraintState nodes */
 } CoerceToDomainState;
 
+typedef struct RownumExprState
+{
+	ExprState	xprstate;
+	struct PlanState *parent;
+}RownumExprState;
+
 /*
  * DomainConstraintState - one item to check during CoerceToDomain
  *
@@ -1011,6 +1032,8 @@ typedef struct PlanState
 	TupleTableSlot *ps_ResultTupleSlot; /* slot for my result tuples */
 	ExprContext *ps_ExprContext;	/* node's expression-evaluation context */
 	ProjectionInfo *ps_ProjInfo;	/* info for doing tuple projection */
+	int64			rownum;
+	int64			rownum_marked;
 	bool		ps_TupFromTlist;/* state flag for processing set-valued
 								 * functions in targetlist */
 } PlanState;
@@ -1076,6 +1099,9 @@ typedef struct ModifyTableState
 	bool		canSetTag;		/* do we set the command tag/es_processed? */
 	bool		mt_done;		/* are we done? */
 	PlanState **mt_plans;		/* subplans (one per target rel) */
+#ifdef PGXC	
+	PlanState **mt_remoterels;	/* per-target remote query node */
+#endif	
 	int			mt_nplans;		/* number of plans in the array */
 	int			mt_whichplan;	/* which one is being executed (0..n-1) */
 	ResultRelInfo *resultRelInfo;		/* per-subplan target relations */
@@ -1703,6 +1729,9 @@ typedef struct AggState
 	List	   *hash_needed;	/* list of columns needed in hash table */
 	bool		table_filled;	/* hash table filled yet? */
 	TupleHashIterator hashiter; /* for iterating through hash table */
+#ifdef PGXC
+	bool		skip_trans;		/* skip the transition step for aggregates */
+#endif /* PGXC */
 } AggState;
 
 /* ----------------

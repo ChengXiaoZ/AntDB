@@ -2881,7 +2881,11 @@ PQoidStatus(const PGresult *res)
 
 	size_t		len;
 
+#ifdef ADB
+#else /* ADB */
+	if (!res || strncmp(res->cmdStatus, "INSERT ", 7) != 0)
 	if (!res || !res->cmdStatus || strncmp(res->cmdStatus, "INSERT ", 7) != 0)
+#endif /* ADB */
 		return "";
 
 	len = strspn(res->cmdStatus + 7, "0123456789");
@@ -2905,7 +2909,9 @@ PQoidValue(const PGresult *res)
 	unsigned long result;
 
 	if (!res ||
+#ifndef ADB
 		!res->cmdStatus ||
+#endif /* ADB */
 		strncmp(res->cmdStatus, "INSERT ", 7) != 0 ||
 		res->cmdStatus[7] < '0' ||
 		res->cmdStatus[7] > '9')
@@ -3679,4 +3685,45 @@ PQunescapeBytea(const unsigned char *strtext, size_t *retbuflen)
 
 	*retbuflen = buflen;
 	return tmpbuf;
+}
+
+
+PGresult *pqSendAgtmListenPort(PGconn *conn, int port)
+{
+	if (!PQexecStart(conn) || !PQsendQueryStart(conn))
+		return NULL;
+
+	/* send 'L' message */
+	if(pqPutMsgStart('L', false, conn) < 0
+		|| pqPutInt(port, sizeof(int), conn) < 0
+		|| pqPutMsgEnd(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return NULL;
+	}
+
+	/* remember we are using simple query protocol */
+	conn->queryclass = PGQUERY_SIMPLE;
+
+	/* and free last query text */
+	if (conn->last_query)
+	{
+		free(conn->last_query);
+		conn->last_query = NULL;
+	}
+
+	/*
+	 * Give the data a push.  In nonblock mode, don't complain if we're unable
+	 * to send it all; PQgetResult() will do any additional flushing needed.
+	 */
+	if (pqFlush(conn) < 0)
+	{
+		pqHandleSendFailure(conn);
+		return NULL;
+	}
+
+	/* OK, it's launched! */
+	conn->asyncStatus = PGASYNC_BUSY;
+
+	return PQexecFinish(conn);
 }

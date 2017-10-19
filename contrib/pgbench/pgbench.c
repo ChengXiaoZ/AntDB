@@ -155,6 +155,9 @@ char	   *index_tablespace = NULL;
 #define ntellers	10
 #define naccounts	100000
 
+#ifdef PGXC
+bool		use_branch = false;	/* use branch id in DDL and DML */
+#endif
 /*
  * The scale factor at/beyond which 32bit integers are incapable of storing
  * 64bit values.
@@ -281,6 +284,14 @@ static int	num_files;			/* number of script files */
 static int	num_commands = 0;	/* total number of Command structs */
 static int	debug = 0;			/* debug flag */
 
+#ifdef ADB
+//check thread is need to abort
+bool is_abort = true;
+int sleep_time = 1;
+#include "libpq-int.h"
+#endif
+
+
 /* default scenario */
 static char *tpc_b = {
 	"\\set nbranches " CppAsString2(nbranches) " * :scale\n"
@@ -299,6 +310,26 @@ static char *tpc_b = {
 	"END;\n"
 };
 
+#ifdef PGXC
+static char *tpc_b_bid = {
+	"\\set nbranches " CppAsString2(nbranches) " * :scale\n"
+	"\\set ntellers " CppAsString2(ntellers) " * :scale\n"
+	"\\set naccounts " CppAsString2(naccounts) " * :scale\n"
+	"\\setrandom aid 1 :naccounts\n"
+	"\\setrandom bid 1 :nbranches\n"
+	"\\setrandom tid 1 :ntellers\n"
+	"\\setrandom delta -5000 5000\n"
+	"BEGIN;\n"
+	"UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+	"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
+	"UPDATE pgbench_tellers SET tbalance = tbalance + :delta WHERE tid = :tid;\n"
+	"UPDATE pgbench_branches SET bbalance = bbalance + :delta WHERE bid = :bid;\n"
+	"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+	"END;\n"
+};
+#endif
+
+
 /* -N case */
 static char *simple_update = {
 	"\\set nbranches " CppAsString2(nbranches) " * :scale\n"
@@ -314,6 +345,23 @@ static char *simple_update = {
 	"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
 	"END;\n"
 };
+
+#ifdef PGXC
+static char *simple_update_bid = {
+	"\\set nbranches " CppAsString2(nbranches) " * :scale\n"
+	"\\set ntellers " CppAsString2(ntellers) " * :scale\n"
+	"\\set naccounts " CppAsString2(naccounts) " * :scale\n"
+	"\\setrandom aid 1 :naccounts\n"
+	"\\setrandom bid 1 :nbranches\n"
+	"\\setrandom tid 1 :ntellers\n"
+	"\\setrandom delta -5000 5000\n"
+	"BEGIN;\n"
+	"UPDATE pgbench_accounts SET abalance = abalance + :delta WHERE aid = :aid;\n"
+	"SELECT abalance FROM pgbench_accounts WHERE aid = :aid;\n"
+	"INSERT INTO pgbench_history (tid, bid, aid, delta, mtime) VALUES (:tid, :bid, :aid, :delta, CURRENT_TIMESTAMP);\n"
+	"END;\n"
+};
+#endif
 
 /* -S case */
 static char *select_only = {
@@ -335,6 +383,9 @@ usage(void)
 		   "\nInitialization options:\n"
 		   "  -i           invokes initialization mode\n"
 		   "  -F NUM       fill factor\n"
+#ifdef PGXC
+		   "  -k           distribute each table by primary key\n"
+#endif
 		   "  -n           do not run VACUUM after initialization\n"
 		   "  -q           quiet logging (one message each 5 seconds)\n"
 		   "  -s NUM       scaling factor\n"
@@ -352,6 +403,9 @@ usage(void)
 		   "  -D VARNAME=VALUE\n"
 		   "               define variable for use by custom script\n"
 		   "  -f FILENAME  read transaction script from FILENAME\n"
+#ifdef PGXC
+		   "  -k           query with primary key that is used for distribution\n"
+#endif
 		   "  -j NUM       number of threads (default: 1)\n"
 		   "  -l           write transaction times to log file\n"
 		   "  -M simple|extended|prepared\n"
@@ -902,6 +956,9 @@ doCustom(TState *thread, CState *st, instr_time *conn_time, FILE *logfile, AggVa
 {
 	PGresult   *res;
 	Command   **commands;
+	#ifdef ADB
+	int trytimes = 0;
+	#endif 
 
 top:
 	commands = sql_files[st->use_file];
@@ -924,7 +981,34 @@ top:
 			if (debug)
 				fprintf(stderr, "client %d receiving\n", st->id);
 			if (!PQconsumeInput(st->con))
-			{					/* there's something wrong */
+			{	
+				#ifdef ADB
+				if (!is_abort)
+				{
+					trytimes = 0;
+					while (trytimes < 3)
+					{
+						trytimes++;
+						if ((st->con = doConnect()) == NULL)
+						{							
+							//sleep 1 s
+							sleep(sleep_time);
+						}
+						else
+						{
+							break;
+						}
+					}
+					if (trytimes >= 3)
+					{
+						printf("ERROR : Client %d aborted in establishing connection.\n", st->id);
+						//never return false,even over three times.only return true
+					//	return clientDone(st, false);
+					}
+					return true;
+				}
+				#endif
+				/* there's something wrong */
 				fprintf(stderr, "Client %d aborted in state %d. Probably the backend died while processing.\n", st->id, st->state);
 				return clientDone(st, false);
 			}
@@ -1072,8 +1156,61 @@ top:
 				default:
 					fprintf(stderr, "Client %d aborted in state %d: %s",
 							st->id, st->state, PQerrorMessage(st->con));
+					#ifndef ADB
 					PQclear(res);
+					#endif
+							
+					#ifdef ADB
+					if (!is_abort)
+					{
+						//avoid abort error
+					//	discard_response(st);
+						//excute commad from begin
+					//	st->state = 0;
+					//	st->listen = 0;
+					//	st->con->asyncStatus = PGASYNC_READY;
+	
+					//	goto top;
+						//return true;
+						int tmpState = st->state;
+						int tmpListen = st->listen;
+						
+						PQfinish(st->con);
+						st->con = NULL;
+						
+						trytimes = 0;
+						while (trytimes < 3)
+						{
+							trytimes++;
+							if ((st->con = doConnect()) == NULL)
+							{
+								//sleep 1 s
+								sleep(sleep_time);
+							}
+							else
+							{
+								printf("info:reconnect to database");
+								break;
+							}
+						}
+						if (trytimes >= 3)
+						{
+							printf("ERROR : Client %d aborted in establishing connection.\n", st->id);
+							//never return false,even over three times.only return true
+							return clientDone(st, false);
+						}	
+
+						st->state = tmpState;
+						st->listen = tmpListen;
+						
+					}	
+					break;
+					#endif
+					
+					#ifndef ADB
 					return clientDone(st, false);
+					#endif
+
 			}
 			PQclear(res);
 			discard_response(st);
@@ -1111,7 +1248,35 @@ top:
 		if ((st->con = doConnect()) == NULL)
 		{
 			fprintf(stderr, "Client %d aborted in establishing connection.\n", st->id);
-			return clientDone(st, false);
+			#ifdef ADB
+			if (!is_abort)
+			{
+				//retry three times
+				trytimes = 0;
+				while (trytimes < 3)
+				{
+					trytimes++;
+					if ((st->con = doConnect()) == NULL)
+					{
+						//sleep 1 s
+						sleep(sleep_time);
+					}
+					else
+					{
+						break;
+					}
+				}
+				if (trytimes >= 3)
+				{
+					printf("ERROR : Client %d aborted in establishing connection.\n", st->id);
+					//never return false,even over three times.only return true
+				//	return clientDone(st, false);
+				}	
+				return true;
+			}
+			#endif
+			
+			return clientDone(st, false);			
 		}
 		INSTR_TIME_SET_CURRENT(end);
 		INSTR_TIME_ACCUM_DIFF(*conn_time, end, start);
@@ -1501,6 +1666,9 @@ init(bool is_no_vacuum)
 		const char *smcols;		/* column decls if accountIDs are 32 bits */
 		const char *bigcols;	/* column decls if accountIDs are 64 bits */
 		int			declare_fillfactor;
+#ifdef PGXC
+		char	   *distribute_by;
+#endif
 	};
 	static const struct ddlinfo DDLs[] = {
 		{
@@ -1508,24 +1676,36 @@ init(bool is_no_vacuum)
 			"tid int,bid int,aid    int,delta int,mtime timestamp,filler char(22)",
 			"tid int,bid int,aid bigint,delta int,mtime timestamp,filler char(22)",
 			0
+#ifdef PGXC
+			, "distribute by hash (bid)"
+#endif
 		},
 		{
 			"pgbench_tellers",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			"tid int not null,bid int,tbalance int,filler char(84)",
 			1
+#ifdef PGXC
+			, "distribute by hash (bid)"
+#endif
 		},
 		{
 			"pgbench_accounts",
 			"aid    int not null,bid int,abalance int,filler char(84)",
 			"aid bigint not null,bid int,abalance int,filler char(84)",
 			1
+#ifdef PGXC
+			, "distribute by hash (bid)"
+#endif
 		},
 		{
 			"pgbench_branches",
 			"bid int not null,bbalance int,filler char(88)",
 			"bid int not null,bbalance int,filler char(88)",
 			1
+#ifdef PGXC
+			, "distribute by hash (bid)"
+#endif
 		}
 	};
 	static const char *const DDLINDEXes[] = {
@@ -1540,6 +1720,14 @@ init(bool is_no_vacuum)
 		"alter table pgbench_history add foreign key (tid) references pgbench_tellers",
 		"alter table pgbench_history add foreign key (aid) references pgbench_accounts"
 	};
+
+#ifdef PGXC
+	static char *DDLAFTERs_bid[] = {
+		"alter table pgbench_branches add primary key (bid)",
+		"alter table pgbench_tellers add primary key (tid)",
+		"alter table pgbench_accounts add primary key (aid)"
+	};
+#endif
 
 	PGconn	   *con;
 	PGresult   *res;
@@ -1586,6 +1774,14 @@ init(bool is_no_vacuum)
 
 		cols = (scale >= SCALE_32BIT_THRESHOLD) ? ddl->bigcols : ddl->smcols;
 
+#ifdef PGXC
+		/* Add distribution columns if necessary */
+		if (use_branch)
+			snprintf(buffer, 256, "create%s table %s(%s)%s %s",
+					 unlogged_tables ? " unlogged" : "",
+					 ddl->table, cols, opts, ddl->distribute_by);
+		else
+#endif
 		snprintf(buffer, sizeof(buffer), "create%s table %s(%s)%s",
 				 unlogged_tables ? " unlogged" : "",
 				 ddl->table, cols, opts);
@@ -1709,6 +1905,35 @@ init(bool is_no_vacuum)
 	 * create indexes
 	 */
 	fprintf(stderr, "set primary keys...\n");
+#ifdef PGXC
+	/*
+	 * If all the tables are distributed according to bid, create an index on it
+	 * instead.
+	 */
+	if (use_branch)
+	{
+		for (i = 0; i < lengthof(DDLAFTERs_bid); i++)
+		{
+			char		buffer[256];
+
+			strncpy(buffer, DDLAFTERs_bid[i], 256);
+
+			if (index_tablespace != NULL)
+			{
+				char	   *escape_tablespace;
+
+				escape_tablespace = PQescapeIdentifier(con, index_tablespace,
+												   strlen(index_tablespace));
+				snprintf(buffer + strlen(buffer), 256 - strlen(buffer),
+						 " using index tablespace %s", escape_tablespace);
+				PQfreemem(escape_tablespace);
+			}
+
+			executeStatement(con, buffer);
+		}
+	}
+	else
+#endif
 	for (i = 0; i < lengthof(DDLINDEXes); i++)
 	{
 		char		buffer[256];
@@ -2202,6 +2427,11 @@ main(int argc, char **argv)
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
 			usage();
+
+			#ifdef ADB
+			printf(_("  -K, no input parameter, the pargrom will keep thread live until timeout \n"));
+			#endif
+			
 			exit(0);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
@@ -2226,13 +2456,32 @@ main(int argc, char **argv)
 	state = (CState *) pg_malloc(sizeof(CState));
 	memset(state, 0, sizeof(CState));
 
+#ifdef PGXC
+	#ifdef ADB
+	while ((c = getopt_long(argc, argv, "ih:Kknvp:dSNc:j:Crs:t:T:U:lf:D:F:M:", long_options, &optindex)) != -1)
+	#endif
+	#ifndef ADB
+	while ((c = getopt_long(argc, argv, "ih:knvp:dSNc:j:Crs:t:T:U:lf:D:F:M:", long_options, &optindex)) != -1)
+	#endif
+#else
+	#ifdef ADB
+	while ((c = getopt_long(argc, argv, "ih:Knvp:dqSNc:j:Crs:t:T:U:lf:D:F:M:", long_options, &optindex)) != -1)
+	#endif
+	#ifndef ADB
 	while ((c = getopt_long(argc, argv, "ih:nvp:dqSNc:j:Crs:t:T:U:lf:D:F:M:", long_options, &optindex)) != -1)
+	#endif
+#endif
 	{
 		switch (c)
 		{
 			case 'i':
 				is_init_mode++;
 				break;
+#ifdef PGXC
+			case 'k':
+				use_branch = true;
+				break;
+#endif
 			case 'h':
 				pghost = pg_strdup(optarg);
 				break;
@@ -2381,6 +2630,13 @@ main(int argc, char **argv)
 					exit(1);
 				}
 				break;
+				
+			#ifdef ADB
+			case 'K':
+				is_abort = false;
+				break;
+			#endif
+			
 			case 0:
 				/* This covers long options which take no argument. */
 				break;
@@ -2614,6 +2870,11 @@ main(int argc, char **argv)
 	switch (ttype)
 	{
 		case 0:
+#ifdef PGXC
+			if (use_branch)
+				sql_files[0] = process_builtin(tpc_b_bid);
+			else
+#endif
 			sql_files[0] = process_builtin(tpc_b);
 			num_files = 1;
 			break;
@@ -2624,6 +2885,11 @@ main(int argc, char **argv)
 			break;
 
 		case 2:
+#ifdef PGXC
+			if (use_branch)
+				sql_files[0] = process_builtin(simple_update_bid);
+			else
+#endif
 			sql_files[0] = process_builtin(simple_update);
 			num_files = 1;
 			break;
@@ -2764,6 +3030,9 @@ threadRun(void *arg)
 		if (logfile == NULL)
 		{
 			fprintf(stderr, "Couldn't open logfile \"%s\": %s", logpath, strerror(errno));
+			#ifdef ADB
+			printf("ERROR : Couldn't open logfile \"%s\": %s", logpath, strerror(errno));
+			#endif
 			goto done;
 		}
 	}
@@ -2774,7 +3043,41 @@ threadRun(void *arg)
 		for (i = 0; i < nstate; i++)
 		{
 			if ((state[i].con = doConnect()) == NULL)
-				goto done;
+				{
+					#ifdef ADB
+					//retry three times
+					if (!is_abort)
+					{
+						int trytimes = 0;
+						while (trytimes < 3)
+						{
+							trytimes++;
+							if ((state[i].con = doConnect()) == NULL)
+							{								
+								//sleep 1 s
+								sleep(sleep_time);
+							}
+							else
+							{
+								break;
+							}
+						}
+						if (trytimes >= 3)
+						{
+							printf("ERROR : make connections to the database, try three times \n");
+							goto done;
+						}
+					}
+					else
+					{
+						goto done;
+					}
+					#endif
+
+					#ifndef ADB
+					goto done;
+					#endif
+				}
 		}
 	}
 
@@ -2851,7 +3154,43 @@ threadRun(void *arg)
 			if (sock < 0)
 			{
 				fprintf(stderr, "bad socket: %s", PQerrorMessage(st->con));
+
+				#ifdef ADB
+				if (!is_abort)
+				{
+					//reconnect three times
+					int trytimes = 0;
+					while (trytimes < 3 )
+					{	
+						trytimes++;
+						if ((st->con = doConnect()) == NULL || (sock = PQsocket(st->con)) < 0)
+						{							
+							//sleep 1 s
+							sleep(sleep_time);
+						}
+						else
+						{
+							break;
+						}
+				    }
+
+					if (trytimes >= 3)
+					{
+						fprintf(stderr, "connection error, try three times ,bad socket: %s\n", strerror(errno));
+						printf("ERROR : connection error, try three times ,bad socket: %s\n", strerror(errno));
+						goto done;
+					}	
+				}
+				else
+				{
+					fprintf(stderr, "connection error, try three times ,bad socket: %s\n", strerror(errno));
+					goto done;
+				}
+				#endif
+
+				#ifndef ADB
 				goto done;
+				#endif				
 			}
 
 			FD_SET(sock, &input_mask);
@@ -2871,15 +3210,30 @@ threadRun(void *arg)
 				timeout.tv_sec = min_usec / 1000000;
 				timeout.tv_usec = min_usec % 1000000;
 				nsocks = select(maxsock + 1, &input_mask, NULL, NULL, &timeout);
+
 			}
 			else
+			{
+				#ifdef ADB
+				struct timeval timeout;
+				timeout.tv_sec = 1;
+				timeout.tv_usec = 0;
+				nsocks = select(maxsock + 1, &input_mask, NULL, NULL, &timeout);
+				#endif
+				
+				#ifndef ADB
 				nsocks = select(maxsock + 1, &input_mask, NULL, NULL, NULL);
+				#endif
+			}
 			if (nsocks < 0)
 			{
 				if (errno == EINTR)
 					continue;
 				/* must be something wrong */
 				fprintf(stderr, "select failed: %s\n", strerror(errno));
+				#ifdef ADB
+				printf("ERROR : select failed: %s\n", strerror(errno));
+				#endif
 				goto done;
 			}
 		}

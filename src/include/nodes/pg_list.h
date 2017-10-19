@@ -227,6 +227,10 @@ extern List *list_union_ptr(const List *list1, const List *list2);
 extern List *list_union_int(const List *list1, const List *list2);
 extern List *list_union_oid(const List *list1, const List *list2);
 
+#ifdef PGXC
+/* Well... this is used by Postgres-XC */
+extern List *list_intersection_int(const List *list1, const List *list2);
+#endif
 extern List *list_intersection(const List *list1, const List *list2);
 
 /* currently, there's no need for list_intersection_int etc */

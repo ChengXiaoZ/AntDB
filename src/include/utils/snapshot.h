@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/utils/snapshot.h
  *
@@ -18,6 +19,11 @@
 
 
 typedef struct SnapshotData *Snapshot;
+#if defined(ADB) || defined(AGTM)
+typedef struct SnapshotData *GlobalSnapshot;
+
+#define InvalidGlobalSnapshot	((GlobalSnapshot) NULL)
+#endif /* defined(ADB) || defined(AGTM) */
 
 #define InvalidSnapshot		((Snapshot) NULL)
 
@@ -48,6 +54,7 @@ typedef struct SnapshotData
 	TransactionId xmax;			/* all XID >= xmax are invisible to me */
 	TransactionId *xip;			/* array of xact IDs in progress */
 	uint32		xcnt;			/* # of xact ids in xip[] */
+
 	/* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
 	int32		subxcnt;		/* # of xact ids in subxip[] */
 	TransactionId *subxip;		/* array of subxact IDs in progress */

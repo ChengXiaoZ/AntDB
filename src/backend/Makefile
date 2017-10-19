@@ -17,9 +17,13 @@ subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
+ifneq ($(PORTNAME), win32)
+override CFLAGS += $(PTHREAD_CFLAGS)
+endif
+
 SUBDIRS = access bootstrap catalog parser commands executor foreign lib libpq \
-	main nodes optimizer port postmaster regex replication rewrite \
-	storage tcop tsearch utils $(top_builddir)/src/timezone
+	pgxc main nodes optimizer oraschema port postmaster regex replication rewrite \
+	storage tcop tsearch utils libagtm $(top_builddir)/src/timezone $(top_builddir)/src/interfaces/libpq
 
 include $(srcdir)/common.mk
 
@@ -36,7 +40,9 @@ endif
 endif
 
 OBJS = $(SUBDIROBJS) $(LOCALOBJS) $(top_builddir)/src/port/libpgport_srv.a \
-       $(top_builddir)/src/common/libpgcommon_srv.a
+	   $(top_builddir)/src/common/libpgcommon_srv.a \
+       $(top_builddir)/src/interfaces/libpq/libpq.a
+
 
 # We put libpgport and libpgcommon into OBJS, so remove it from LIBS; also add
 # libldap
@@ -45,6 +51,8 @@ LIBS := $(filter-out -lpgport -lpgcommon, $(LIBS)) $(LDAP_LIBS_BE)
 # The backend doesn't need everything that's in LIBS, however
 LIBS := $(filter-out -lz -lreadline -ledit -ltermcap -lncurses -lcurses, $(LIBS))
 
+# LIBS := $(LIBS) -lpqcomm
+# LDFLAGS += -L$(top_builddir)/src/gtm/libpg
 ##########################################################################
 
 all: submake-libpgport submake-schemapg postgres $(POSTGRES_IMP)
@@ -116,7 +124,7 @@ endif
 endif # aix
 
 # Update the commonly used headers before building the subdirectories
-$(SUBDIRS:%=%-recursive): $(top_builddir)/src/include/parser/gram.h $(top_builddir)/src/include/catalog/schemapg.h $(top_builddir)/src/include/utils/fmgroids.h $(top_builddir)/src/include/utils/errcodes.h $(top_builddir)/src/include/utils/probes.h
+$(SUBDIRS:%=%-recursive): $(top_builddir)/src/include/parser/gram.h $(top_builddir)/src/include/catalog/schemapg.h $(top_builddir)/src/include/utils/fmgroids.h $(top_builddir)/src/include/utils/errcodes.h $(top_builddir)/src/include/utils/probes.h $(top_builddir)/src/include/parser/ora_gram.h
 
 # run this unconditionally to avoid needing to know its dependencies here:
 submake-schemapg:
@@ -131,6 +139,9 @@ catalog/schemapg.h: | submake-schemapg
 
 $(top_builddir)/src/port/libpgport_srv.a: | submake-libpgport
 
+# Those are rules to create dependent GTM libraries automatically
+$(top_builddir)/src/interfaces/libpq/libpq.a:
+	$(MAKE) -C $(top_builddir)/src/interfaces/libpq libpq.a
 
 # The postgres.o target is needed by the rule in Makefile.global that
 # creates the exports file when MAKE_EXPORTS = true.
@@ -144,6 +155,9 @@ postgres.o: $(OBJS)
 
 parser/gram.h: parser/gram.y
 	$(MAKE) -C parser gram.h
+
+parser/ora_gram.h: parser/ora_gram.y
+	$(MAKE) -C parser ora_gram.h
 
 utils/fmgroids.h: utils/Gen_fmgrtab.pl catalog/Catalog.pm $(top_srcdir)/src/include/catalog/pg_proc.h
 	$(MAKE) -C utils fmgroids.h
@@ -166,6 +180,11 @@ utils/probes.h: utils/probes.d
 # For headers generated during regular builds, we prefer a relative symlink.
 
 $(top_builddir)/src/include/parser/gram.h: parser/gram.h
+	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
+	  cd '$(dir $@)' && rm -f $(notdir $@) && \
+	  $(LN_S) "$$prereqdir/$(notdir $<)" .
+
+$(top_builddir)/src/include/parser/ora_gram.h: parser/ora_gram.h
 	prereqdir=`cd '$(dir $<)' >/dev/null && pwd` && \
 	  cd '$(dir $@)' && rm -f $(notdir $@) && \
 	  $(LN_S) "$$prereqdir/$(notdir $<)" .
@@ -198,7 +217,7 @@ utils/probes.o: utils/probes.d $(SUBDIROBJS)
 
 # Be sure that these files get removed by the maintainer-clean target
 distprep:
-	$(MAKE) -C parser	gram.c gram.h scan.c
+	$(MAKE) -C parser	gram.c gram.h scan.c ora_gram.c ora_gram.h
 	$(MAKE) -C bootstrap	bootparse.c bootscanner.c
 	$(MAKE) -C catalog	schemapg.h postgres.bki postgres.description postgres.shdescription
 	$(MAKE) -C replication	repl_gram.c repl_scanner.c
@@ -226,6 +245,7 @@ endif
 	$(INSTALL_DATA) $(srcdir)/libpq/pg_ident.conf.sample '$(DESTDIR)$(datadir)/pg_ident.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/utils/misc/postgresql.conf.sample '$(DESTDIR)$(datadir)/postgresql.conf.sample'
 	$(INSTALL_DATA) $(srcdir)/access/transam/recovery.conf.sample '$(DESTDIR)$(datadir)/recovery.conf.sample'
+	$(INSTALL_DATA) $(top_builddir)/$(subdir)/oraschema/oracle_schema.sql '$(DESTDIR)$(datadir)/oracle_schema.sql'
 
 install-bin: postgres $(POSTGRES_IMP) installdirs
 	$(INSTALL_PROGRAM) postgres$(X) '$(DESTDIR)$(bindir)/postgres$(X)'
@@ -282,8 +302,9 @@ endif
 	$(MAKE) -C tsearch uninstall-data
 	rm -f '$(DESTDIR)$(datadir)/pg_hba.conf.sample' \
 	      '$(DESTDIR)$(datadir)/pg_ident.conf.sample' \
-              '$(DESTDIR)$(datadir)/postgresql.conf.sample' \
-	      '$(DESTDIR)$(datadir)/recovery.conf.sample'
+	      '$(DESTDIR)$(datadir)/postgresql.conf.sample' \
+	      '$(DESTDIR)$(datadir)/recovery.conf.sample' \
+	      '$(DESTDIR)$(datadir)/oracle_schema.sql'
 
 
 ##########################################################################
@@ -291,6 +312,7 @@ endif
 clean:
 	rm -f $(LOCALOBJS) postgres$(X) $(POSTGRES_IMP) \
 		$(top_builddir)/src/include/parser/gram.h \
+		$(top_builddir)/src/include/parser/ora_gram.h \
 		$(top_builddir)/src/include/catalog/schemapg.h \
 		$(top_builddir)/src/include/utils/fmgroids.h \
 		$(top_builddir)/src/include/utils/probes.h
@@ -310,6 +332,8 @@ maintainer-clean: distclean
 	      bootstrap/bootscanner.c \
 	      parser/gram.c \
 	      parser/gram.h \
+	      parser/ora_gram.c \
+	      parser/ora_gram.h \
 	      parser/scan.c \
 	      catalog/schemapg.h \
 	      catalog/postgres.bki \

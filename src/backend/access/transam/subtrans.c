@@ -21,6 +21,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/backend/access/transam/subtrans.c
  *
@@ -34,6 +35,10 @@
 #include "pg_trace.h"
 #include "utils/snapmgr.h"
 
+#ifdef PGXC 
+/* Check if there is about a 1 billion XID difference for XID wraparound */
+#define SUBTRANS_WRAP_CHECK_DELTA (2^30 / SUBTRANS_XACTS_PER_PAGE)
+#endif
 
 /*
  * Defines for SubTrans page sizes.  A page is the same BLCKSZ as is used
@@ -298,7 +303,6 @@ CheckPointSUBTRANS(void)
 	TRACE_POSTGRESQL_SUBTRANS_CHECKPOINT_DONE(true);
 }
 
-
 /*
  * Make sure that SUBTRANS has room for a newly-allocated XID.
  *
@@ -316,13 +320,50 @@ ExtendSUBTRANS(TransactionId newestXact)
 	 * No work except at first XID of a page.  But beware: just after
 	 * wraparound, the first XID of page zero is FirstNormalTransactionId.
 	 */
+#ifdef PGXC  /* PGXC_COORD || PGXC_DATANODE */
+	/* 
+	 * In PGXC, it may be that a node is not involved in a transaction,
+	 * and therefore will be skipped, so we need to detect this by using
+	 * the latest_page_number instead of the pg index.
+	 *
+	 * Also, there is a special case of when transactions wrap-around that
+	 * we need to detect.
+	 */
+	pageno = TransactionIdToPage(newestXact);
+
+	/* 
+	 * The first condition makes sure we did not wrap around 
+	 * The second checks if we are still using the same page.
+	 * Note that this value can change and we are not holding a lock, 
+	 * so we repeat the check below. We do it this way instead of 
+	 * grabbing the lock to avoid lock contention.
+	 */
+	if (SubTransCtl->shared->latest_page_number - pageno <= SUBTRANS_WRAP_CHECK_DELTA 
+			&& pageno <= SubTransCtl->shared->latest_page_number)
+		return;
+#else
 	if (TransactionIdToEntry(newestXact) != 0 &&
 		!TransactionIdEquals(newestXact, FirstNormalTransactionId))
 		return;
 
 	pageno = TransactionIdToPage(newestXact);
+#endif
 
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
+
+#ifdef PGXC
+	/*
+	 * We repeat the check.  Another process may have written 
+	 * out the page already and advanced the latest_page_number
+	 * while we were waiting for the lock.
+	 */
+	if (SubTransCtl->shared->latest_page_number - pageno <= SUBTRANS_WRAP_CHECK_DELTA 
+			&& pageno <= SubTransCtl->shared->latest_page_number)
+	{
+		LWLockRelease(SubtransControlLock);
+		return;
+	}
+#endif
 
 	/* Zero the page */
 	ZeroSUBTRANSPage(pageno);

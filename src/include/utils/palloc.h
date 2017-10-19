@@ -103,4 +103,12 @@ extern char *MemoryContextStrdup(MemoryContext context, const char *string);
 extern char *pstrdup(const char *in);
 extern char *pnstrdup(const char *in, Size len);
 
+/* sprintf into a palloc'd buffer --- these are in psprintf.c */
+extern char *
+psprintf(const char *fmt,...)
+__attribute__((format(PG_PRINTF_ATTRIBUTE, 1, 2)));
+extern size_t
+pvsnprintf(char *buf, size_t len, const char *fmt, va_list args)
+__attribute__((format(PG_PRINTF_ATTRIBUTE, 3, 0)));
+
 #endif   /* PALLOC_H */

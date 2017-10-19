@@ -72,7 +72,8 @@ SELECT sum2(q1,q2) FROM int8_tbl;
 -- this should work
 select ten, sum(distinct four) from onek a
 group by ten
-having exists (select 1 from onek b where sum(distinct a.four) = b.four);
+having exists (select 1 from onek b where sum(distinct a.four) = b.four) 
+order by ten;
 
 -- this should fail because subquery has an agg of its own in WHERE
 select ten, sum(distinct four) from onek a
@@ -89,6 +90,7 @@ from tenk1 o;
 --
 -- test for bitwise integer aggregates
 --
+
 CREATE TEMPORARY TABLE bitwise_test(
   i2 INT2,
   i4 INT4,
@@ -207,54 +209,57 @@ FROM bool_test;
 --
 -- Test cases that should be optimized into indexscans instead of
 -- the generic aggregate implementation.
+-- In Postgres-XC, plans printed by explain are the ones created on the
+-- coordinator. Coordinator does not generate index scan plans.
 --
 
 -- Basic cases
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select min(unique1) from tenk1;
 select min(unique1) from tenk1;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique1) from tenk1;
 select max(unique1) from tenk1;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique1) from tenk1 where unique1 < 42;
 select max(unique1) from tenk1 where unique1 < 42;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique1) from tenk1 where unique1 > 42;
 select max(unique1) from tenk1 where unique1 > 42;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique1) from tenk1 where unique1 > 42000;
 select max(unique1) from tenk1 where unique1 > 42000;
 
 -- multi-column index (uses tenk1_thous_tenthous)
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(tenthous) from tenk1 where thousand = 33;
 select max(tenthous) from tenk1 where thousand = 33;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select min(tenthous) from tenk1 where thousand = 33;
 select min(tenthous) from tenk1 where thousand = 33;
 
 -- check parameter propagation into an indexscan subquery
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
     from int4_tbl;
 select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
-  from int4_tbl;
+from int4_tbl 
+order by f1;
 
 -- check some cases that were handled incorrectly in 8.3.0
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select distinct max(unique2) from tenk1;
 select distinct max(unique2) from tenk1;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique2) from tenk1 order by 1;
 select max(unique2) from tenk1 order by 1;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique2) from tenk1 order by max(unique2);
 select max(unique2) from tenk1 order by max(unique2);
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique2) from tenk1 order by max(unique2)+1;
 select max(unique2) from tenk1 order by max(unique2)+1;
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
 select max(unique2), generate_series(1,3) as g from tenk1 order by g desc;
 
@@ -273,12 +278,12 @@ insert into minmaxtest1 values(13), (14);
 insert into minmaxtest2 values(15), (16);
 insert into minmaxtest3 values(17), (18);
 
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select min(f1), max(f1) from minmaxtest;
 select min(f1), max(f1) from minmaxtest;
 
 -- DISTINCT doesn't do anything useful here, but it shouldn't fail
-explain (costs off)
+explain (costs off, nodes off, num_nodes off, nodes off)
   select distinct min(f1), max(f1) from minmaxtest;
 select distinct min(f1), max(f1) from minmaxtest;
 
@@ -428,16 +433,16 @@ select string_agg(distinct f1::text, ',' order by f1::text) from varchar_tbl;  -
 -- string_agg bytea tests
 create table bytea_test_table(v bytea);
 
-select string_agg(v, '') from bytea_test_table;
+select string_agg(v, '' order by v) from bytea_test_table;
 
 insert into bytea_test_table values(decode('ff','hex'));
 
-select string_agg(v, '') from bytea_test_table;
+select string_agg(v, '' order by v) from bytea_test_table;
 
 insert into bytea_test_table values(decode('aa','hex'));
 
-select string_agg(v, '') from bytea_test_table;
-select string_agg(v, NULL) from bytea_test_table;
-select string_agg(v, decode('ee', 'hex')) from bytea_test_table;
+select string_agg(v, '' order by v) from bytea_test_table;
+select string_agg(v, NULL order by v) from bytea_test_table;
+select string_agg(v, decode('ee', 'hex') order by v) from bytea_test_table;
 
 drop table bytea_test_table;

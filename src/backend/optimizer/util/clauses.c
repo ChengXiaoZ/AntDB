@@ -91,6 +91,9 @@ static bool count_agg_clauses_walker(Node *node,
 static bool find_window_functions_walker(Node *node, WindowFuncLists *lists);
 static bool expression_returns_set_rows_walker(Node *node, double *count);
 static bool contain_subplans_walker(Node *node, void *context);
+#ifdef ADB
+static bool contain_rownum_walker(Node *node, void *context);
+#endif /* ADB */
 static bool contain_mutable_functions_walker(Node *node, void *context);
 static bool contain_volatile_functions_walker(Node *node, void *context);
 static bool contain_nonstrict_functions_walker(Node *node, void *context);
@@ -808,6 +811,21 @@ contain_subplans_walker(Node *node, void *context)
 	return expression_tree_walker(node, contain_subplans_walker, context);
 }
 
+#ifdef ADB
+bool contain_rownum(Node *clause)
+{
+	return contain_rownum_walker(clause, NULL);
+}
+
+static bool contain_rownum_walker(Node *node, void *context)
+{
+	if(node == NULL)
+		return false;
+	if(IsA(node, RownumExpr))
+		return true;
+	return expression_tree_walker(node, contain_rownum_walker, context);
+}
+#endif /* ADB */
 
 /*****************************************************************************
  *		Check clauses for mutable functions
@@ -1049,6 +1067,10 @@ contain_volatile_functions_walker(Node *node, void *context)
 				return true;
 		}
 		/* else fall through to check args */
+	}
+	else if (IsA(node, RownumExpr))
+	{
+		return true;
 	}
 	else if (IsA(node, Query))
 	{
@@ -3005,6 +3027,9 @@ eval_const_expressions_mutator(Node *node,
 				newcase->args = newargs;
 				newcase->defresult = (Expr *) defresult;
 				newcase->location = caseexpr->location;
+#ifdef ADB
+				newcase->isdecode = caseexpr->isdecode;
+#endif
 				return (Node *) newcase;
 			}
 		case T_CaseTestExpr:

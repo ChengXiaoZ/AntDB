@@ -95,6 +95,14 @@ crc32_sz(char *buf, int size)
 {
 	unsigned int crc = ~((unsigned int) 0);
 	char	   *p;
+#ifdef ADB
+	/* fix: Value stored to 'len' is never read */
+	int nr;
+
+	nr = size;
+	for (p = buf; nr--; ++p)
+		_CRC32_(crc, *p);
+#else
 	int			len,
 				nr;
 
@@ -102,5 +110,7 @@ crc32_sz(char *buf, int size)
 	nr = size;
 	for (len += nr, p = buf; nr--; ++p)
 		_CRC32_(crc, *p);
+#endif
+
 	return ~crc;
 }

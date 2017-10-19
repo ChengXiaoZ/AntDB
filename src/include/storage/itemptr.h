@@ -143,4 +143,8 @@ typedef ItemPointerData *ItemPointer;
 extern bool ItemPointerEquals(ItemPointer pointer1, ItemPointer pointer2);
 extern int32 ItemPointerCompare(ItemPointer arg1, ItemPointer arg2);
 
+#ifdef ADB
+/* in rowid.c */
+extern Datum rowid_make(uint32 node_id, ItemPointer const tid);
+#endif /* ADB */
 #endif   /* ITEMPTR_H */

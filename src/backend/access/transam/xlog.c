@@ -36,6 +36,9 @@
 #include "catalog/pg_control.h"
 #include "catalog/pg_database.h"
 #include "miscadmin.h"
+#ifdef PGXC
+#include "pgxc/barrier.h"
+#endif
 #include "pgstat.h"
 #include "postmaster/bgwriter.h"
 #include "postmaster/startup.h"
@@ -59,6 +62,10 @@
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
 #include "pg_trace.h"
+
+#ifdef ADB
+#include "access/remote_xact.h"
+#endif
 
 extern uint32 bootstrap_data_checksum_version;
 
@@ -215,6 +222,9 @@ static bool recoveryTargetInclusive = true;
 static bool recoveryPauseAtTarget = true;
 static TransactionId recoveryTargetXid;
 static TimestampTz recoveryTargetTime;
+#ifdef PGXC
+static char *recoveryTargetBarrierId;
+#endif /* PGXC */
 static char *recoveryTargetName;
 
 /* options taken from recovery.conf for XLOG streaming */
@@ -4266,6 +4276,13 @@ readRecoveryCommandFile(void)
 					(errmsg_internal("recovery_target_time = '%s'",
 								   timestamptz_to_str(recoveryTargetTime))));
 		}
+#ifdef PGXC
+		else if (strcmp(item->name, "recovery_target_barrier") == 0)
+		{
+			recoveryTarget = RECOVERY_TARGET_BARRIER;
+			recoveryTargetBarrierId = pstrdup(item->value);
+		}
+#endif
 		else if (strcmp(item->name, "recovery_target_name") == 0)
 		{
 			/*
@@ -4547,15 +4564,35 @@ static bool
 recoveryStopsHere(XLogRecord *record, bool *includeThis)
 {
 	bool		stopsHere;
+#ifdef PGXC
+	bool		stopsAtThisBarrier = false;
+	char		*recordBarrierId = NULL;
+#endif
 	uint8		record_info;
+#ifdef PGXC
+	TimestampTz recordXtime = 0;
+#else
 	TimestampTz recordXtime;
+#endif
 	TransactionId recordXid;
 	char		recordRPName[MAXFNAMELEN];
 
+#ifdef PGXC
+	/* We only consider stoppping at COMMIT, ABORT or BARRIER records */
+	if (record->xl_rmid != RM_XACT_ID &&
+		record->xl_rmid != RM_BARRIER_ID &&
+		record->xl_rmid != RM_XLOG_ID)
+#else
 	/* We only consider stopping at COMMIT, ABORT or RESTORE POINT records */
 	if (record->xl_rmid != RM_XACT_ID && record->xl_rmid != RM_XLOG_ID)
+#endif
 		return false;
+
 	record_info = record->xl_info & ~XLR_INFO_MASK;
+#ifdef PGXC
+	if (record->xl_rmid == RM_XACT_ID)
+	{
+#endif
 	if (record->xl_rmid == RM_XACT_ID && record_info == XLOG_XACT_COMMIT_COMPACT)
 	{
 		xl_xact_commit_compact *recordXactCommitData;
@@ -4596,6 +4633,22 @@ recoveryStopsHere(XLogRecord *record, bool *includeThis)
 		recordXtime = recordXactAbortData->arec.xact_time;
 		recordXid = recordXactAbortData->xid;
 	}
+#ifdef PGXC
+	} /* end if (record->xl_rmid == RM_XACT_ID) */
+	else if (record->xl_rmid == RM_BARRIER_ID)
+	{
+		if (record_info == XLOG_BARRIER_CREATE)
+		{
+			recordBarrierId = (char *) XLogRecGetData(record);
+			ereport(DEBUG2,
+					(errmsg("processing barrier xlog record for %s", recordBarrierId)));
+		}
+#ifdef ADB
+		/* fix: The left operand of '==' is a garbage value @ line:4703 */
+		recordXid = InvalidTransactionId;
+#endif
+	}
+#endif
 	else if (record->xl_rmid == RM_XLOG_ID && record_info == XLOG_RESTORE_POINT)
 	{
 		xl_restore_point *recordRestorePointData;
@@ -4635,6 +4688,21 @@ recoveryStopsHere(XLogRecord *record, bool *includeThis)
 		if (stopsHere)
 			*includeThis = recoveryTargetInclusive;
 	}
+#ifdef PGXC
+	else if (recoveryTarget == RECOVERY_TARGET_BARRIER)
+	{
+		stopsHere = false;
+		if ((record->xl_rmid == RM_BARRIER_ID) &&
+			(record_info == XLOG_BARRIER_CREATE))
+		{
+			ereport(DEBUG2,
+					(errmsg("checking if barrier record matches the target "
+							"barrier")));
+			if (strcmp(recoveryTargetBarrierId, recordBarrierId) == 0)
+				stopsAtThisBarrier = true;
+		}
+	}
+#endif
 	else if (recoveryTarget == RECOVERY_TARGET_NAME)
 	{
 		/*
@@ -4717,6 +4785,17 @@ recoveryStopsHere(XLogRecord *record, bool *includeThis)
 		if (record->xl_rmid == RM_XACT_ID && recoveryStopAfter)
 			SetLatestXTime(recordXtime);
 	}
+#ifdef PGXC
+	else if (stopsAtThisBarrier)
+	{
+		recoveryStopTime = recordXtime;
+		ereport(LOG,
+				(errmsg("recovery stopping at barrier %s, time %s",
+						recoveryTargetBarrierId,
+						timestamptz_to_str(recoveryStopTime))));
+		return true;
+	}
+#endif
 	else if (record->xl_rmid == RM_XACT_ID)
 		SetLatestXTime(recordXtime);
 
@@ -5063,6 +5142,12 @@ StartupXLOG(void)
 			ereport(LOG,
 					(errmsg("starting point-in-time recovery to %s",
 							timestamptz_to_str(recoveryTargetTime))));
+#ifdef PGXC
+		else if (recoveryTarget == RECOVERY_TARGET_BARRIER)
+			ereport(LOG,
+					(errmsg("starting point-in-time recovery to barrier %s",
+							(recoveryTargetBarrierId))));
+#endif
 		else if (recoveryTarget == RECOVERY_TARGET_NAME)
 			ereport(LOG,
 					(errmsg("starting point-in-time recovery to \"%s\"",
@@ -5543,6 +5628,11 @@ StartupXLOG(void)
 			if (RmgrTable[rmid].rm_startup != NULL)
 				RmgrTable[rmid].rm_startup();
 		}
+
+#ifdef ADB
+		/* Here is we actually do remote xact redo */
+		ReplayRemoteXact();
+#endif
 
 		/*
 		 * Initialize shared variables for tracking progress of WAL replay,

@@ -25,4 +25,11 @@ extern void AcquireRewriteLocks(Query *parsetree,
 extern Node *build_column_default(Relation rel, int attrno);
 extern int	relation_is_updatable(Oid reloid, bool include_triggers);
 
+#ifdef PGXC
+extern List *QueryRewriteCTAS(Query *parsetree);
+extern int pgxc_find_unique_index(Oid relid, int16 **indexed_col_numbers);
+extern bool is_pk_being_changed(const Query *query, int16 *indexed_col_numbers,
+								int count);
+#endif
+
 #endif   /* REWRITEHANDLER_H */

@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -72,6 +73,24 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#ifdef PGXC
+#include "catalog/pgxc_class.h"
+#include "catalog/pgxc_node.h"
+#include "pgxc/locator.h"
+#include "pgxc/nodemgr.h"
+#include "pgxc/pgxc.h"
+#include "pgxc/pgxcnode.h"
+#endif
+
+#ifdef ADB
+#include "catalog/adb_ha_sync_log.h"
+#include "catalog/namespace.h"
+#include "commands/dbcommands.h"
+#include "nodes/makefuncs.h"
+#include "parser/parse_func.h"
+#endif
+
+
 
 /* Potentially set by contrib/pg_upgrade_support functions */
 Oid			binary_upgrade_next_heap_pg_class_oid = InvalidOid;
@@ -108,6 +127,20 @@ static Node *cookConstraint(ParseState *pstate,
 			   char *relname);
 static List *insert_ordered_unique_oid(List *list, Oid datum);
 
+#ifdef ADB
+static List *GetUserDefinedFuncArgVars(Oid relid,
+				DistributeBy *distributeby,
+				TupleDesc descriptor);
+static bool IsReturnTypeDistributable(Oid retype);
+static Oid lookup_distribute_function(List *funcname,
+				List *funcargs);
+static void GetUserDefinedDistribution(Oid relid,
+				DistributeBy *distributeby,
+				TupleDesc descriptor,
+				Oid *funcid,
+				int *numatts,
+				int16 **attnums);
+#endif
 
 /* ----------------------------------------------------------------
  *				XXX UGLY HARD CODED BADNESS FOLLOWS XXX
@@ -179,7 +212,33 @@ static FormData_pg_attribute a7 = {
 	true, 'p', 'i', true, false, false, true, 0
 };
 
+#ifdef PGXC
+/*
+ * In XC we need some sort of node identification for each tuple
+ * We are adding another system column that would serve as node identifier.
+ * This is not only required by WHERE CURRENT OF but it can be used any
+ * where we want to know the originating Datanode of a tuple received
+ * at the Coordinator
+ */
+static FormData_pg_attribute a8 = {
+	0, {"xc_node_id"}, INT4OID, 0, sizeof(int32),
+	XC_NodeIdAttributeNumber, 0, -1, -1,
+	true, 'p', 'i', true, false, false, true, 0
+};
+
+#ifdef ADB
+static FormData_pg_attribute a9 = {
+	0, {"rowid"}, RIDOID, 0, 10,
+	ADB_RowIdAttributeNumber, 0, -1, -1,
+	false, 'p', 'i', true, false, false, true, 0
+};
+static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8, &a9};
+#else /* ADB */
+static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7, &a8};
+#endif /* ADB */
+#else
 static const Form_pg_attribute SysAtt[] = {&a1, &a2, &a3, &a4, &a5, &a6, &a7};
+#endif
 
 /*
  * This function returns a Form_pg_attribute pointer for a system attribute.
@@ -917,6 +976,775 @@ AddNewRelationTuple(Relation pg_class_desc,
 					   relacl, reloptions);
 }
 
+#ifdef PGXC
+
+/* --------------------------------
+ *		cmp_nodes
+ *
+ *		Compare the Oids of two XC nodes
+ *		to sort them in ascending order by their names
+ * --------------------------------
+ */
+static int
+cmp_nodes(const void *p1, const void *p2)
+{
+	Oid n1 = *((Oid *)p1);
+	Oid n2 = *((Oid *)p2);
+
+	if (strcmp(get_pgxc_nodename(n1), get_pgxc_nodename(n2)) < 0)
+		return -1;
+
+	if (strcmp(get_pgxc_nodename(n1), get_pgxc_nodename(n2)) == 0)
+		return 0;
+
+	return 1;
+}
+
+#ifdef ADB
+static List *
+GetUserDefinedFuncArgVars(Oid relid,
+						  DistributeBy *distributeby,
+						  TupleDesc descriptor)
+{
+	List	*funcargs = NIL;
+	List	*func_var_args = NIL;
+	ListCell	*cell = NULL;
+	ColumnRef	*cref = NULL;
+	char	*cref_nspname = NULL;
+	char	*cref_relname = NULL;
+	char	*cref_colname = NULL;
+	AttrNumber local_attnum = 0;
+	Var		*local_var = NULL;
+	bool	invalid_col = false;
+
+	Assert(OidIsValid(relid));
+	Assert(distributeby && descriptor);
+	Assert(distributeby->disttype == DISTTYPE_USER_DEFINED);
+
+	funcargs = distributeby->funcargs;
+
+	foreach (cell, funcargs)
+	{
+		if (!IsA(lfirst(cell), ColumnRef))
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("Invalid distribution column specified"),
+				errhint("Only column(s) of the relation can be specified")));
+		}
+
+		cref = (ColumnRef *)lfirst(cell);
+		switch (list_length(cref->fields))
+		{
+			case 1:
+				{
+					Node *field1 = (Node *)linitial(cref->fields);
+
+					Assert(IsA(field1, String));
+					cref_colname = strVal(field1);
+
+					local_attnum = get_attnum(relid, cref_colname);
+					if (local_attnum <= 0 && local_attnum >= -(int) lengthof(SysAtt))
+					{
+						invalid_col = true;
+						break;
+					}
+				}
+				break;
+			case 2:
+				{
+					Node *field1 = (Node *)linitial(cref->fields);
+					Node *field2 = (Node *)lsecond(cref->fields);
+
+					Assert(IsA(field1, String));
+					cref_relname = strVal(field1);
+					Assert(IsA(field2, String));
+					cref_colname = strVal(field2);
+
+					if (strcmp(get_rel_name(relid), cref_relname) != 0)
+					{
+						invalid_col = true;
+						break;
+					}
+
+					local_attnum = get_attnum(relid, cref_colname);
+					if (local_attnum <= 0 && local_attnum >= -(int) lengthof(SysAtt))
+					{
+						invalid_col = true;
+						break;
+					}
+				}
+				break;
+			case 3:
+				{
+					Node *field1 = (Node *)linitial(cref->fields);
+					Node *field2 = (Node *)lsecond(cref->fields);
+					Node *field3 = (Node *)lthird(cref->fields);
+
+					Assert(IsA(field1, String));
+					cref_nspname = strVal(field1);
+					Assert(IsA(field2, String));
+					cref_relname = strVal(field2);
+					Assert(IsA(field3, String));
+					cref_colname = strVal(field3);
+
+					if (get_rel_namespace(relid) != get_namespace_oid(cref_nspname, true) ||
+						strcmp(get_rel_name(relid), cref_relname) != 0)
+					{
+						invalid_col = true;
+						break;
+					}
+
+					local_attnum = get_attnum(relid, cref_colname);
+					if (local_attnum <= 0 && local_attnum >= -(int) lengthof(SysAtt))
+					{
+						invalid_col = true;
+						break;
+					}					
+				}
+				break;
+			case 4:
+				{
+					Node *field1 = (Node *) linitial(cref->fields);
+					Node *field2 = (Node *) lsecond(cref->fields);
+					Node *field3 = (Node *) lthird(cref->fields);
+					Node *field4 = (Node *) lfourth(cref->fields);
+					char *cref_catname;
+
+					Assert(IsA(field1, String));
+					cref_catname = strVal(field1);
+					Assert(IsA(field2, String));
+					cref_nspname = strVal(field2);
+					Assert(IsA(field3, String));
+					cref_relname = strVal(field3);
+					Assert(IsA(field4, String));
+					cref_colname = strVal(field4);
+
+					if (strcmp(cref_catname, get_database_name(MyDatabaseId)) != 0 ||
+						get_rel_namespace(relid) != get_namespace_oid(cref_nspname, true) ||
+						strcmp(cref_relname, get_rel_name(relid)) != 0)
+					{
+						invalid_col = true;
+						break;
+					}
+
+					local_attnum = get_attnum(relid, cref_colname);
+					if (local_attnum <= 0 && local_attnum >= -(int) lengthof(SysAtt))
+					{
+						invalid_col = true;
+						break;
+					}
+				}
+			default:
+				invalid_col = true;
+				break;
+		}
+
+		if (invalid_col)
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("Invalid distribution column specified: %s",
+				NameListToString(cref->fields)),
+				errhint("Only column(s) of the relation can be specified")));
+		} else
+		{
+			local_var = makeVar(1,
+								local_attnum,
+								descriptor->attrs[local_attnum - 1]->atttypid,
+								descriptor->attrs[local_attnum - 1]->atttypmod,
+								descriptor->attrs[local_attnum - 1]->attcollation,
+								0);
+			local_var->location = cref->location;										
+			func_var_args = lappend(func_var_args, local_var);
+		}
+	}
+
+	return func_var_args;
+}
+
+static bool
+IsReturnTypeDistributable(Oid retype)
+{
+	bool res = false;
+
+	switch (retype)
+	{
+		case INT2OID:
+		case INT4OID:
+		case INT8OID:
+			res = true;
+			break;
+		default:
+			res = false;
+			break;
+	}
+	return res;
+}
+
+static Oid
+lookup_distribute_function(List *funcname, List *funcargs)
+{
+	ListCell 		*l;
+	ListCell 		*nextl;
+	Oid				actual_arg_types[FUNC_MAX_ARGS] = {0};
+	Oid				*declared_arg_types;
+	List			*argdefaults;
+	Oid				rettype;
+	bool			retset;
+	int				nvargs;
+	int 			nargs;
+	FuncDetailCode 	fdresult;
+	Oid				funcid;
+
+	if (list_length(funcargs) > FUNC_MAX_ARGS)
+		ereport(ERROR,
+				(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
+				errmsg("cannot pass more than %d argument to a function: %s",
+				FUNC_MAX_ARGS, NameListToString(funcname))));
+
+	/*
+	 * Extract arg type info in preparation for function lookup.
+	 */
+	nargs = 0;
+	for (l = list_head(funcargs); l != NULL; l = nextl)
+	{
+		Node	   *arg = lfirst(l);
+		Oid			argtype = exprType(arg);
+
+		nextl = lnext(l);
+
+		if (argtype == VOIDOID && IsA(arg, Param))
+		{
+			funcargs = list_delete_ptr(funcargs, arg);
+			continue;
+		}
+
+		actual_arg_types[nargs++] = argtype;
+	}
+
+	/*
+	 * Try to look up function
+	 */
+	fdresult = func_get_detail(funcname,
+							   funcargs,
+							   NIL,
+							   nargs,
+							   actual_arg_types,
+							   true,
+							   true,
+							   &funcid,
+							   &rettype,
+							   &retset,
+							   &nvargs,
+							   &declared_arg_types,
+							   &argdefaults);
+
+	if (fdresult == FUNCDETAIL_NORMAL ||
+		fdresult == FUNCDETAIL_AGGREGATE ||
+		fdresult == FUNCDETAIL_WINDOWFUNC)
+	{
+		if (IsReturnTypeDistributable(rettype))
+			return funcid;
+		else
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
+				errmsg("Return type of user-defined partition function "
+				"must be an integer")));
+	} else
+	if (fdresult == FUNCDETAIL_MULTIPLE)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_AMBIGUOUS_FUNCTION),
+			errmsg("function %s is not unique",
+				func_signature_string(funcname, nargs, NIL, actual_arg_types)),
+				errhint("Could not choose a best candidate function. "
+				"You might need to add explicit type casts.")));
+	} else
+	if (fdresult == FUNCDETAIL_NOTFOUND ||
+		fdresult == FUNCDETAIL_COERCION)
+	{
+		ereport(ERROR,
+			(errcode(ERRCODE_UNDEFINED_FUNCTION),
+			errmsg("function %s does not exist",
+				func_signature_string(funcname, nargs, NIL, actual_arg_types)),
+			errhint("No function matches the given name and argument types. "
+					"You might need to add explicit type casts.")));
+	}
+
+	return InvalidOid;
+}
+
+static void
+GetUserDefinedDistribution(Oid relid,
+						   DistributeBy *distributeby,
+						   TupleDesc descriptor,
+						   Oid *funcid,
+						   int *numatts,
+						   int16 **attnums)
+{
+	List 	*funcargs;
+	Oid 	fnoid;
+	int 	nargs;
+	int		i;
+	ListCell *l;
+
+	Assert(OidIsValid(relid));
+	Assert(distributeby && descriptor);
+	Assert(distributeby->disttype == DISTTYPE_USER_DEFINED);
+
+	/*
+	 * Step 1:
+	 * 
+	 * Parse each ColumnRef argument of the function, get a var consists of
+	 * attnum, atttypid, atttypmod and attcollation.
+	 */
+	funcargs = GetUserDefinedFuncArgVars(relid, distributeby, descriptor);
+
+	/*
+	 * Step 2:
+	 * 
+	 * Analyze and get distribute function infomation.
+	 */
+	fnoid = lookup_distribute_function(distributeby->funcname, funcargs);
+
+	/*
+	 * Step 3:
+	 * 
+	 * Get column information of distribute function
+	 */
+	nargs = list_length(funcargs);
+	if (funcid)
+		*funcid = fnoid;
+	if (numatts)
+		*numatts = nargs;
+	if (attnums)
+	{
+		*attnums = (int16 *)palloc0(sizeof(int16) * nargs);
+		i = 0;
+		foreach (l, funcargs)
+			(*attnums)[i++] = ((Var *)lfirst(l))->varattno;
+	}
+	pfree(funcargs);
+}
+#endif
+
+
+/* --------------------------------
+ *		AddRelationDistribution
+ *
+ *		Add to pgxc_class table
+ * --------------------------------
+ */
+void
+AddRelationDistribution(Oid relid,
+				DistributeBy *distributeby,
+				PGXCSubCluster *subcluster,
+				List 		 *parentOids,
+				TupleDesc	 descriptor)
+{
+	char locatortype 	= '\0';
+	int hashalgorithm 	= 0;
+	int hashbuckets 	= 0;
+	AttrNumber attnum 	= 0;
+	ObjectAddress myself, referenced;
+	int	numnodes;
+	Oid	*nodeoids;
+#ifdef ADB
+	Oid funcid = InvalidOid;
+	int numatts = 0;
+	int16 *attnums = NULL;
+#endif
+
+	/* Obtain details of nodes and classify them */
+	nodeoids = GetRelationDistributionNodes(subcluster, &numnodes);
+
+	/* Obtain details of distribution information */
+	GetRelationDistributionItems(relid,
+							 distributeby,
+							 descriptor,
+							 &locatortype,
+							 &hashalgorithm,
+							 &hashbuckets,
+							 &attnum
+#ifdef ADB
+							 , &funcid
+							 , &numatts
+							 , &attnums
+#endif
+							 );
+
+	/* Now OK to insert data in catalog */
+	PgxcClassCreate(relid, locatortype, attnum, hashalgorithm,
+					hashbuckets, numnodes, nodeoids
+#ifdef ADB
+					, funcid
+					, numatts
+					, attnums
+#endif
+					);
+
+	/* Make dependency entries */
+	myself.classId = PgxcClassRelationId;
+	myself.objectId = relid;
+	myself.objectSubId = 0;
+
+	/* Dependency on relation */
+	referenced.classId = RelationRelationId;
+	referenced.objectId = relid;
+	referenced.objectSubId = 0;
+	recordDependencyOn(&myself, &referenced, DEPENDENCY_INTERNAL);
+
+#ifdef ADB
+	/*
+	 * Dependency on function while distribute
+	 * by user-defined function
+	 */
+	CreatePgxcClassFuncDepend(locatortype, relid, funcid);
+#endif
+}
+
+#ifdef ADB
+/*
+ * Record the dependency of the specified relation
+ * on the specified function by Datanode while
+ * the relation is distributed by user-defined function.
+ */
+void
+AddPgxcRelationDependFunction(Oid relid,
+							  DistributeBy *distributeby,
+							  PGXCSubCluster *subcluster,
+							  List *parentOids,
+							  TupleDesc descriptor)
+{
+	char locatortype	= '\0';
+	int hashalgorithm	= 0;
+	int hashbuckets 	= 0;
+	AttrNumber attnum	= 0;
+	Oid funcid 			= InvalidOid;
+	int numatts 		= 0;
+	int16 *attnums 		= NULL;
+
+	/* Obtain details of distribution information */
+	GetRelationDistributionItems(relid,
+								 distributeby,
+								 descriptor,
+								 &locatortype,
+								 &hashalgorithm,
+								 &hashbuckets,
+								 &attnum,
+								 &funcid,
+								 &numatts,
+								 &attnums);
+
+	/*
+	 * Dependency on function while distribute
+	 * by user-defined function
+	 */
+	CreatePgxcClassFuncDepend(locatortype, relid, funcid);
+}
+#endif
+
+/*
+ * GetRelationDistributionItems
+ * Obtain distribution type and related items based on deparsed information
+ * of clause DISTRIBUTE BY.
+ * Depending on the column types given a fallback to a safe distribution can be done.
+ */
+void
+GetRelationDistributionItems(Oid relid,
+							 DistributeBy *distributeby,
+							 TupleDesc descriptor,
+							 char *locatortype,
+							 int *hashalgorithm,
+							 int *hashbuckets,
+							 AttrNumber *attnum
+#ifdef ADB
+							 , Oid *funcid
+							 , int *numatts
+							 , int16 **attnums 
+#endif
+							 )
+{
+	int local_hashalgorithm = 0;
+	int local_hashbuckets = 0;
+	char local_locatortype = '\0';
+	AttrNumber local_attnum = 0;
+
+	if (!distributeby)
+	{
+		/*
+		 * If no distribution was specified, and we have not chosen
+		 * one based on primary key or foreign key, use first column with
+		 * a supported data type.
+		 */
+		Form_pg_attribute attr;
+		int i;
+
+		local_locatortype = LOCATOR_TYPE_HASH;
+
+		for (i = 0; i < descriptor->natts; i++)
+		{
+			attr = descriptor->attrs[i];
+			if (IsTypeDistributable(attr->atttypid))
+			{
+				/* distribute on this column */
+				local_attnum = i + 1;
+				break;
+			}
+		}
+
+		/* If we did not find a usable type, fall back to round robin */
+		if (local_attnum == 0)
+			local_locatortype = LOCATOR_TYPE_RROBIN;
+	}
+	else
+	{
+		/*
+		 * User specified distribution type
+		 */
+		switch (distributeby->disttype)
+		{
+			case DISTTYPE_HASH:
+				/*
+				 * Validate user-specified hash column.
+				 * System columns cannot be used.
+				 */
+				local_attnum = get_attnum(relid, distributeby->colname);
+				if (local_attnum <= 0 && local_attnum >= -(int) lengthof(SysAtt))
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Invalid distribution column specified")));
+				}
+
+				if (!IsTypeDistributable(descriptor->attrs[local_attnum - 1]->atttypid))
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("Column %s is not a hash distributable data type",
+							distributeby->colname)));
+				}
+				local_locatortype = LOCATOR_TYPE_HASH;
+				break;
+
+			case DISTTYPE_MODULO:
+				/*
+				 * Validate user specified modulo column.
+				 * System columns cannot be used.
+				 */
+				local_attnum = get_attnum(relid, distributeby->colname);
+				if (local_attnum <= 0 && local_attnum >= -(int) lengthof(SysAtt))
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+						 errmsg("Invalid distribution column specified")));
+				}
+
+				if (!IsTypeDistributable(descriptor->attrs[local_attnum - 1]->atttypid))
+				{
+					ereport(ERROR,
+						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						 errmsg("Column %s is not modulo distributable data type",
+							distributeby->colname)));
+				}
+				local_locatortype = LOCATOR_TYPE_MODULO;
+				break;
+
+			case DISTTYPE_REPLICATION:
+				local_locatortype = LOCATOR_TYPE_REPLICATED;
+				break;
+
+			case DISTTYPE_ROUNDROBIN:
+				local_locatortype = LOCATOR_TYPE_RROBIN;
+				break;
+
+#ifdef ADB
+			case DISTTYPE_USER_DEFINED:
+				{
+					local_locatortype = LOCATOR_TYPE_USER_DEFINED;
+					if (funcid || numatts || attnums)
+						GetUserDefinedDistribution(relid,
+												   distributeby,
+												   descriptor,
+												   funcid,
+												   numatts,
+												   attnums);
+				}
+				break;
+#endif
+			default:
+				ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("Invalid distribution type")));
+		}
+	}
+
+	/* Use default hash values */
+	if (local_locatortype == LOCATOR_TYPE_HASH)
+	{
+		local_hashalgorithm = 1;
+		local_hashbuckets = HASH_SIZE;
+	}
+
+	/* Save results */
+	if (attnum)
+		*attnum = local_attnum;
+	if (hashalgorithm)
+		*hashalgorithm = local_hashalgorithm;
+	if (hashbuckets)
+		*hashbuckets = local_hashbuckets;
+	if (locatortype)
+		*locatortype = local_locatortype;
+}
+
+
+/*
+ * BuildRelationDistributionNodes
+ * Build an unsorted node Oid array based on a node name list.
+ */
+Oid *
+BuildRelationDistributionNodes(List *nodes, int *numnodes)
+{
+	Oid *nodeoids;
+	ListCell *item;
+	*numnodes = 0;
+
+	/* Allocate once enough space for OID array */	  
+	nodeoids = (Oid *) palloc0(list_length(nodes) * sizeof(Oid));
+
+	/* Do process for each node name */
+	foreach(item, nodes)
+	{
+		char   *node_name = strVal(lfirst(item));
+		Oid		noid = get_pgxc_nodeoid(node_name);
+
+		/* Check existence of node */
+		if (!OidIsValid(noid))
+			ereport(ERROR,
+					(errcode(ERRCODE_DUPLICATE_OBJECT),
+					 errmsg("PGXC Node %s: object not defined",
+							node_name)));
+
+		if (get_pgxc_nodetype(noid) != PGXC_NODE_DATANODE)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("PGXC node %s: not a Datanode",
+							node_name)));
+
+		/* Can be added if necessary */
+		if (*numnodes != 0)
+		{
+			bool	is_listed = false;
+			int		i;
+
+			/* Id Oid already listed? */
+			for (i = 0; i < *numnodes; i++)
+			{
+				if (nodeoids[i] == noid)
+				{
+					is_listed = true;
+					break;
+				}
+			}
+
+			if (!is_listed)
+			{
+				(*numnodes)++;
+				nodeoids[*numnodes - 1] = noid;
+			}
+		}
+		else
+		{
+			(*numnodes)++;
+			nodeoids[*numnodes - 1] = noid;
+		}
+	}
+
+	return nodeoids;
+}
+
+
+/*
+ * GetRelationDistributionNodes
+ * Transform subcluster information generated by query deparsing of TO NODE or
+ * TO GROUP clause into a sorted array of nodes OIDs.
+ */
+Oid *
+GetRelationDistributionNodes(PGXCSubCluster *subcluster, int *numnodes)
+{
+	ListCell *lc;
+	Oid *nodes = NULL;
+
+	*numnodes = 0;
+
+	if (!subcluster)
+	{
+		int i;
+		/*
+		 * If no subcluster is defined, all the Datanodes are associated to the
+		 * table. So obtain list of node Oids currenly known to the session.
+		 * There could be a difference between the content of pgxc_node catalog
+		 * table and current session, because someone may change nodes and not
+		 * yet update session data.
+		 */
+		*numnodes = NumDataNodes;
+
+		/* No nodes found ?? */
+		if (*numnodes == 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("No Datanode defined in cluster")));
+
+		nodes = (Oid *) palloc(NumDataNodes * sizeof(Oid));
+		for (i = 0; i < NumDataNodes; i++)
+			nodes[i] = PGXCNodeGetNodeOid(i, PGXC_NODE_DATANODE);
+	}
+
+	/* Build list of nodes from given group */
+	if (!nodes && subcluster->clustertype == SUBCLUSTER_GROUP)
+	{
+		Assert(list_length(subcluster->members) == 1);
+
+		foreach(lc, subcluster->members)
+		{
+			const char	*group_name = strVal(lfirst(lc));
+			Oid		group_oid = get_pgxc_groupoid(group_name);
+
+			if (!OidIsValid(group_oid))
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("PGXC Group %s: group not defined",
+								group_name)));
+
+			*numnodes = get_pgxc_groupmembers(group_oid, &nodes);
+		}
+	}
+	else if (!nodes)
+	{
+		/*
+		 * This is the case of a list of nodes names.
+		 * Here the result is a sorted array of node Oids
+		 */
+		nodes = BuildRelationDistributionNodes(subcluster->members, numnodes);
+	}
+
+	/* Return a sorted array of node OIDs */
+	return SortRelationDistributionNodes(nodes, *numnodes);
+}
+
+/*
+ * SortRelationDistributionNodes
+ * Sort elements in a node array.
+ */
+Oid *
+SortRelationDistributionNodes(Oid *nodeoids, int numnodes)
+{
+	qsort(nodeoids, numnodes, sizeof(Oid), cmp_nodes);
+	return nodeoids;
+}
+#endif
+
 
 /* --------------------------------
  *		AddNewRelationType -
@@ -1132,6 +1960,13 @@ heap_create_with_catalog(const char *relname,
 	else
 		relacl = NULL;
 
+#ifdef ADB
+	if (IsBootstrapProcessingMode() && relid == AdbHaSyncLogRelationId)
+	{
+		Form_pg_attribute *attrs = tupdesc->attrs;
+		attrs[Anum_adb_ha_sync_log_finish_time - 1]->attnotnull = false;
+	}
+#endif
 	/*
 	 * Create the relcache entry (mostly dummy at this point) and the physical
 	 * disk file.  (If we fail further down, it's the smgr's responsibility to

@@ -57,9 +57,16 @@
 
 #include "postgres.h"
 
+#ifdef PGXC
+/* for htons and htonl */
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include "funcapi.h"
+#endif
 #include "access/sysattr.h"
 #include "access/tuptoaster.h"
 #include "executor/tuptable.h"
+#include "lib/stringinfo.h"
 
 
 /* Does att's datatype allow packing into the 1-byte-header varlena format? */
@@ -286,6 +293,12 @@ heap_attisnull(HeapTuple tup, int attnum)
 		case MinCommandIdAttributeNumber:
 		case MaxTransactionIdAttributeNumber:
 		case MaxCommandIdAttributeNumber:
+#ifdef PGXC
+		case XC_NodeIdAttributeNumber:
+#ifdef ADB
+		case ADB_RowIdAttributeNumber:
+#endif /* ADB */
+#endif
 			/* these are never null */
 			break;
 
@@ -558,6 +571,16 @@ heap_getsysattr(HeapTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 		case TableOidAttributeNumber:
 			result = ObjectIdGetDatum(tup->t_tableOid);
 			break;
+#ifdef PGXC
+		case XC_NodeIdAttributeNumber:
+			result = UInt32GetDatum(tup->t_xc_node_id);
+			break;
+#ifdef ADB
+		case ADB_RowIdAttributeNumber:
+			result = rowid_make(tup->t_xc_node_id, &tup->t_self);
+			break;
+#endif /* ADB */
+#endif
 		default:
 			elog(ERROR, "invalid attnum: %d", attnum);
 			result = 0;			/* keep compiler quiet */
@@ -587,6 +610,9 @@ heap_copytuple(HeapTuple tuple)
 	newTuple->t_len = tuple->t_len;
 	newTuple->t_self = tuple->t_self;
 	newTuple->t_tableOid = tuple->t_tableOid;
+#ifdef PGXC
+	newTuple->t_xc_node_id = tuple->t_xc_node_id;
+#endif
 	newTuple->t_data = (HeapTupleHeader) ((char *) newTuple + HEAPTUPLESIZE);
 	memcpy((char *) newTuple->t_data, (char *) tuple->t_data, tuple->t_len);
 	return newTuple;
@@ -613,6 +639,9 @@ heap_copytuple_with_tuple(HeapTuple src, HeapTuple dest)
 	dest->t_len = src->t_len;
 	dest->t_self = src->t_self;
 	dest->t_tableOid = src->t_tableOid;
+#ifdef PGXC
+	dest->t_xc_node_id = src->t_xc_node_id;
+#endif
 	dest->t_data = (HeapTupleHeader) palloc(src->t_len);
 	memcpy((char *) dest->t_data, (char *) src->t_data, src->t_len);
 }
@@ -723,6 +752,9 @@ heap_form_tuple(TupleDesc tupleDescriptor,
 	tuple->t_len = len;
 	ItemPointerSetInvalid(&(tuple->t_self));
 	tuple->t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple->t_xc_node_id = 0;
+#endif
 
 	HeapTupleHeaderSetDatumLength(td, len);
 	HeapTupleHeaderSetTypeId(td, tupleDescriptor->tdtypeid);
@@ -842,6 +874,9 @@ heap_modify_tuple(HeapTuple tuple,
 	newTuple->t_data->t_ctid = tuple->t_data->t_ctid;
 	newTuple->t_self = tuple->t_self;
 	newTuple->t_tableOid = tuple->t_tableOid;
+#ifdef PGXC
+	newTuple->t_xc_node_id = tuple->t_xc_node_id;
+#endif
 	if (tupleDesc->tdhasoid)
 		HeapTupleSetOid(newTuple, HeapTupleGetOid(tuple));
 
@@ -1139,6 +1174,93 @@ slot_deform_tuple(TupleTableSlot *slot, int natts)
 	slot->tts_slow = slow;
 }
 
+#ifdef PGXC
+/*
+ * slot_deform_datarow
+ * 		Extract data from the DataRow message into Datum/isnull arrays.
+ * 		We always extract all atributes, as specified in tts_tupleDescriptor,
+ * 		because there is no easy way to find random attribute in the DataRow.
+ */
+static void
+slot_deform_datarow(TupleTableSlot *slot)
+{
+	int attnum;
+	int i;
+	int 		col_count;
+	char	   *cur = slot->tts_dataRow;
+	StringInfo  buffer;
+	uint16		n16;
+	uint32		n32;
+	MemoryContext oldcontext;
+
+	if (slot->tts_tupleDescriptor == NULL || slot->tts_dataRow == NULL)
+		return;
+
+	attnum = slot->tts_tupleDescriptor->natts;
+
+	/* fastpath: exit if values already extracted */
+	if (slot->tts_nvalid == attnum)
+		return;
+
+	Assert(slot->tts_dataRow);
+
+	memcpy(&n16, cur, 2);
+	cur += 2;
+	col_count = ntohs(n16);
+
+	if (col_count != attnum)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg("Tuple does not match the descriptor")));
+
+	/*
+	 * Ensure info about input functions is available as long as slot lives
+	 * as well as deformed values
+	 */
+	oldcontext = MemoryContextSwitchTo(slot->tts_mcxt);
+
+	if (slot->tts_attinmeta == NULL)
+		slot->tts_attinmeta = TupleDescGetAttInMetadata(slot->tts_tupleDescriptor);
+
+	buffer = makeStringInfo();
+	for (i = 0; i < attnum; i++)
+	{
+		int len;
+
+		/* get size */
+		memcpy(&n32, cur, 4);
+		cur += 4;
+		len = ntohl(n32);
+
+		/* get data */
+		if (len == -1)
+		{
+			slot->tts_values[i] = (Datum) 0;
+			slot->tts_isnull[i] = true;
+		}
+		else
+		{
+			appendBinaryStringInfo(buffer, cur, len);
+			cur += len;
+
+			slot->tts_values[i] = InputFunctionCall(slot->tts_attinmeta->attinfuncs + i,
+													buffer->data,
+													slot->tts_attinmeta->attioparams[i],
+													slot->tts_attinmeta->atttypmods[i]);
+			slot->tts_isnull[i] = false;
+
+			resetStringInfo(buffer);
+		}
+	}
+	pfree(buffer->data);
+	pfree(buffer);
+
+	slot->tts_nvalid = attnum;
+
+	MemoryContextSwitchTo(oldcontext);
+}
+#endif
+
 /*
  * slot_getattr
  *		This function fetches an attribute of the slot's current tuple.
@@ -1187,6 +1309,16 @@ slot_getattr(TupleTableSlot *slot, int attnum, bool *isnull)
 		*isnull = true;
 		return (Datum) 0;
 	}
+
+#ifdef PGXC
+	/* If it is a data row tuple extract all and return requested */
+	if (slot->tts_dataRow)
+	{
+		slot_deform_datarow(slot);
+		*isnull = slot->tts_isnull[attnum - 1];
+		return slot->tts_values[attnum - 1];
+	}
+#endif
 
 	/*
 	 * otherwise we had better have a physical tuple (tts_nvalid should equal
@@ -1258,6 +1390,15 @@ slot_getallattrs(TupleTableSlot *slot)
 	if (slot->tts_nvalid == tdesc_natts)
 		return;
 
+#ifdef PGXC
+	/* Handle the DataRow tuple case */
+	if (slot->tts_dataRow)
+	{
+		slot_deform_datarow(slot);
+		return;
+	}
+#endif
+
 	/*
 	 * otherwise we had better have a physical tuple (tts_nvalid should equal
 	 * natts in all virtual-tuple cases)
@@ -1300,6 +1441,15 @@ slot_getsomeattrs(TupleTableSlot *slot, int attnum)
 	/* Quick out if we have 'em all already */
 	if (slot->tts_nvalid >= attnum)
 		return;
+
+#ifdef PGXC
+	/* Handle the DataRow tuple case */
+	if (slot->tts_dataRow)
+	{
+		slot_deform_datarow(slot);
+		return;
+	}
+#endif
 
 	/* Check for caller error */
 	if (attnum <= 0 || attnum > slot->tts_tupleDescriptor->natts)
@@ -1367,6 +1517,15 @@ slot_attisnull(TupleTableSlot *slot, int attnum)
 	 */
 	if (attnum > tupleDesc->natts)
 		return true;
+
+#ifdef PGXC
+	/* If it is a data row tuple extract all and return requested */
+	if (slot->tts_dataRow)
+	{
+		slot_deform_datarow(slot);
+		return slot->tts_isnull[attnum - 1];
+	}
+#endif
 
 	/*
 	 * otherwise we had better have a physical tuple (tts_nvalid should equal
@@ -1518,6 +1677,9 @@ heap_tuple_from_minimal_tuple(MinimalTuple mtup)
 	result->t_len = len;
 	ItemPointerSetInvalid(&(result->t_self));
 	result->t_tableOid = InvalidOid;
+#ifdef PGXC
+	result->t_xc_node_id = 0;
+#endif
 	result->t_data = (HeapTupleHeader) ((char *) result + HEAPTUPLESIZE);
 	memcpy((char *) result->t_data + MINIMAL_TUPLE_OFFSET, mtup, mtup->t_len);
 	memset(result->t_data, 0, offsetof(HeapTupleHeaderData, t_infomask2));

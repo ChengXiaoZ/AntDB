@@ -33,7 +33,13 @@
 #include "utils/builtins.h"
 #include "utils/snapmgr.h"
 #include "utils/timestamp.h"
-
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "nodes/nodes.h"
+#include "pgxc/nodemgr.h"
+#include "pgxc/execRemote.h"
+#include "catalog/pgxc_node.h"
+#endif
 
 /*
  * The hash table in which prepared queries are stored. This is
@@ -42,6 +48,14 @@
  * (statement names); the entries are PreparedStatement structs.
  */
 static HTAB *prepared_queries = NULL;
+#ifdef PGXC
+/*
+ * The hash table where Datanode prepared statements are stored.
+ * The keys are statement names referenced from cached RemoteQuery nodes; the
+ * entries are DatanodeStatement structs
+ */
+static HTAB *datanode_queries = NULL;
+#endif
 
 static void InitQueryHashTable(void);
 static ParamListInfo EvaluateParams(PreparedStatement *pstmt, List *params,
@@ -75,6 +89,9 @@ PrepareQuery(PrepareStmt *stmt, const char *queryString)
 	 * to see the unmodified raw parse tree.
 	 */
 	plansource = CreateCachedPlan(stmt->query, queryString,
+#ifdef PGXC
+								  stmt->name,
+#endif
 								  CreateCommandTag(stmt->query));
 
 	/* Transform list of TypeNames to array of type OIDs */
@@ -225,6 +242,9 @@ ExecuteQuery(ExecuteStmt *stmt, IntoClause *intoClause,
 	portal = CreateNewPortal();
 	/* Don't display the portal in pg_cursors, it is for internal use only */
 	portal->visible = false;
+#ifdef ADB
+	portal->grammar = entry->plansource->grammar;
+#endif
 
 	/* Copy the plan's saved query string into the portal's memory */
 	query_string = MemoryContextStrdup(PortalGetHeapMemory(portal),
@@ -431,7 +451,117 @@ InitQueryHashTable(void)
 								   32,
 								   &hash_ctl,
 								   HASH_ELEM);
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR)
+	{
+		MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+
+		hash_ctl.keysize = NAMEDATALEN;
+		hash_ctl.entrysize = sizeof(DatanodeStatement) + NumDataNodes * sizeof(int);
+
+		datanode_queries = hash_create("Datanode Queries",
+									   64,
+									   &hash_ctl,
+									   HASH_ELEM);
+	}
+#endif
 }
+
+#ifdef PGXC
+/*
+ * Assign the statement name for all the RemoteQueries in the plan tree, so
+ * they use Datanode statements
+ */
+int
+SetRemoteStatementName(Plan *plan, const char *stmt_name, int num_params,
+						Oid *param_types, int n)
+{
+	/* If no plan simply return */
+	if (!plan)
+		return 0;
+
+	/* Leave if no parameters */
+	if (num_params == 0 || !param_types)
+		return 0;
+
+	if (IsA(plan, RemoteQuery))
+	{
+		RemoteQuery *remotequery = (RemoteQuery *) plan;
+		DatanodeStatement *entry;
+		bool exists;
+		char name[NAMEDATALEN];
+
+		/* Nothing to do if parameters are already set for this query */
+		if (remotequery->rq_num_params != 0)
+			return 0;
+
+		if (stmt_name)
+		{
+				strcpy(name, stmt_name);
+				/*
+				 * Append modifier. If resulting string is going to be truncated,
+				 * truncate better the base string, otherwise we may enter endless
+				 * loop
+				 */
+				if (n)
+				{
+					char modifier[NAMEDATALEN];
+					sprintf(modifier, "__%d", n);
+					/*
+					 * if position NAMEDATALEN - strlen(modifier) - 1 is beyond the
+					 * base string this is effectively noop, otherwise it truncates
+					 * the base string
+					 */
+					name[NAMEDATALEN - strlen(modifier) - 1] = '\0';
+					strcat(name, modifier);
+				}
+				n++;
+				hash_search(datanode_queries, name, HASH_FIND, &exists);
+
+			/* If it already exists, that means this plan has just been revalidated. */
+			if (!exists)
+			{
+				entry = (DatanodeStatement *) hash_search(datanode_queries,
+												  name,
+												  HASH_ENTER,
+												  NULL);
+				entry->number_of_nodes = 0;
+			}
+
+			remotequery->statement = pstrdup(name);
+		}
+		else if (remotequery->statement)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("Passing parameters in PREPARE statement is not supported")));
+
+		remotequery->rq_num_params = num_params;
+		remotequery->rq_param_types = param_types;
+	}
+	else if (IsA(plan, ModifyTable))
+	{
+		ModifyTable	*mt_plan = (ModifyTable *)plan;
+		/* For ModifyTable plan recurse into each of the plans underneath */
+		ListCell	*l;
+		foreach(l, mt_plan->plans)
+		{
+			Plan *plan = lfirst(l);
+			n = SetRemoteStatementName(plan, stmt_name, num_params,
+										param_types, n);
+		}
+	}
+
+	if (innerPlan(plan))
+		n = SetRemoteStatementName(innerPlan(plan), stmt_name, num_params,
+									param_types, n);
+
+	if (outerPlan(plan))
+		n = SetRemoteStatementName(outerPlan(plan), stmt_name, num_params,
+									param_types, n);
+
+	return n;
+}
+#endif
 
 /*
  * Store all the data pertaining to a query in the hash table using
@@ -793,3 +923,111 @@ build_regtype_array(Oid *param_types, int num_params)
 	result = construct_array(tmp_ary, num_params, REGTYPEOID, 4, true, 'i');
 	return PointerGetDatum(result);
 }
+
+
+#ifdef PGXC
+DatanodeStatement *
+FetchDatanodeStatement(const char *stmt_name, bool throwError)
+{
+	DatanodeStatement *entry;
+
+	/*
+	 * If the hash table hasn't been initialized, it can't be storing
+	 * anything, therefore it couldn't possibly store our plan.
+	 */
+	if (datanode_queries)
+		entry = (DatanodeStatement *) hash_search(datanode_queries, stmt_name, HASH_FIND, NULL);
+	else
+		entry = NULL;
+
+	/* Report error if entry is not found */
+	if (!entry && throwError)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_PSTATEMENT),
+				 errmsg("datanode statement \"%s\" does not exist",
+						stmt_name)));
+
+	return entry;
+}
+
+/*
+ * Drop Datanode statement and close it on nodes if active
+ */
+void
+DropDatanodeStatement(const char *stmt_name)
+{
+	DatanodeStatement *entry;
+
+	entry = FetchDatanodeStatement(stmt_name, false);
+	if (entry)
+	{
+		int i;
+		List *nodelist = NIL;
+
+		/* make a List of integers from node numbers */
+		for (i = 0; i < entry->number_of_nodes; i++)
+			nodelist = lappend_int(nodelist, entry->dns_node_indices[i]);
+		entry->number_of_nodes = 0;
+
+		ExecCloseRemoteStatement(stmt_name, nodelist);
+
+		hash_search(datanode_queries, entry->stmt_name, HASH_REMOVE, NULL);
+	}
+}
+
+
+/*
+ * Return true if there is at least one active Datanode statement, so acquired
+ * Datanode connections should not be released
+ */
+bool
+HaveActiveDatanodeStatements(void)
+{
+	HASH_SEQ_STATUS seq;
+	DatanodeStatement *entry;
+
+	/* nothing cached */
+	if (!datanode_queries)
+		return false;
+
+	/* walk over cache */
+	hash_seq_init(&seq, datanode_queries);
+	while ((entry = hash_seq_search(&seq)) != NULL)
+	{
+		/* Stop walking and return true */
+		if (entry->number_of_nodes > 0)
+		{
+			hash_seq_term(&seq);
+			return true;
+		}
+	}
+	/* nothing found */
+	return false;
+}
+
+
+/*
+ * Mark Datanode statement as active on specified node
+ * Return true if statement has already been active on the node and can be used
+ * Returns false if statement has not been active on the node and should be
+ * prepared on the node
+ */
+bool
+ActivateDatanodeStatementOnNode(const char *stmt_name, int noid)
+{
+	DatanodeStatement *entry;
+	int i;
+
+	/* find the statement in cache */
+	entry = FetchDatanodeStatement(stmt_name, true);
+
+	/* see if statement already active on the node */
+	for (i = 0; i < entry->number_of_nodes; i++)
+		if (entry->dns_node_indices[i] == noid)
+			return true;
+
+	/* statement is not active on the specified node append item to the list */
+	entry->dns_node_indices[entry->number_of_nodes++] = noid;
+	return false;
+}
+#endif

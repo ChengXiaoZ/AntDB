@@ -312,6 +312,10 @@ check_required_directory(char **dirpath, char **configpath,
 				   "Please use the %s command-line option or the %s environment variable.\n",
 				   description, cmdLineOption, envVarName);
 	}
+#ifdef ADB
+	/* fix: Null pointer passed as an argument to a 'nonnull' parameter */
+	AssertArg(*dirpath);
+#endif
 
 	/*
 	 * Trim off any trailing path separators because we construct paths by

@@ -176,6 +176,9 @@ typedef struct ModifyTable
 	List	   *fdwPrivLists;	/* per-target-table FDW private data lists */
 	List	   *rowMarks;		/* PlanRowMarks (non-locking only) */
 	int			epqParam;		/* ID of Param for EvalPlanQual re-eval */
+#ifdef PGXC	
+	List	   *remote_plans;	/* per-target-table remote node */
+#endif	
 } ModifyTable;
 
 /* ----------------
@@ -588,6 +591,12 @@ typedef struct Sort
 	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
 	Oid		   *collations;		/* OIDs of collations */
 	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
+#ifdef PGXC
+	bool		srt_start_merge;/* No need to create the sorted runs. The
+								 * underlying plan provides those runs. Merge
+								 * them.
+								 */
+#endif /* PGXC */
 } Sort;
 
 /* ---------------
@@ -633,6 +642,11 @@ typedef struct Agg
 	AttrNumber *grpColIdx;		/* their indexes in the target list */
 	Oid		   *grpOperators;	/* equality operators to compare with */
 	long		numGroups;		/* estimated number of groups in input */
+#ifdef PGXC
+	bool		skip_trans;		/* apply collection directly on the data received
+								 * from remote Datanodes
+								 */
+#endif /* PGXC */
 } Agg;
 
 /* ----------------

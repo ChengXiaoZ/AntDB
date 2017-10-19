@@ -135,15 +135,35 @@ static bool DoingCopyOut;		/* in old-protocol COPY OUT processing */
 
 
 /* Internal functions */
-static void pq_close(int code, Datum arg);
+static void socket_comm_reset(void);
+static void socket_close(int code, Datum arg);
+static void socket_set_nonblocking(bool nonblocking);
+static int	socket_flush_if_writable(void);
+static int	socket_putmessage(char msgtype, const char *s, size_t len);
+static void socket_putmessage_noblock(char msgtype, const char *s, size_t len);
+static void socket_startcopyout(void);
+static void socket_endcopyout(bool errorAbort);
 static int	internal_putbytes(const char *s, size_t len);
 static int	internal_flush(void);
-static void pq_set_nonblocking(bool nonblocking);
 
 #ifdef HAVE_UNIX_SOCKETS
 static int	Lock_AF_UNIX(char *unixSocketDir, char *unixSocketPath);
 static int	Setup_AF_UNIX(char *sock_path);
 #endif   /* HAVE_UNIX_SOCKETS */
+
+static PQcommMethods PqCommSocketMethods = {
+	socket_comm_reset,
+	socket_flush,
+	socket_flush_if_writable,
+	socket_is_send_pending,
+	socket_putmessage,
+	socket_putmessage_noblock,
+	socket_startcopyout,
+	socket_endcopyout
+};
+
+PQcommMethods *PqCommMethods = &PqCommSocketMethods;
+
 
 
 /* --------------------------------
@@ -159,11 +179,11 @@ pq_init(void)
 	PqCommBusy = false;
 	PqCommReadingMsg = false;
 	DoingCopyOut = false;
-	on_proc_exit(pq_close, 0);
+	on_proc_exit(socket_close, 0);
 }
 
 /* --------------------------------
- *		pq_comm_reset - reset libpq during error recovery
+ *		socket_comm_reset - reset libpq during error recovery
  *
  * This is called from error recovery at the outer idle loop.  It's
  * just to get us out of trouble if we somehow manage to elog() from
@@ -171,7 +191,7 @@ pq_init(void)
  * --------------------------------
  */
 void
-pq_comm_reset(void)
+socket_comm_reset(void)
 {
 	/* Do not throw away pending data, but do reset the busy flag */
 	PqCommBusy = false;
@@ -188,7 +208,7 @@ pq_comm_reset(void)
  * --------------------------------
  */
 static void
-pq_close(int code, Datum arg)
+socket_close(int code, Datum arg)
 {
 	/* Nothing to do in a standalone backend, where MyProcPort is NULL. */
 	if (MyProcPort != NULL)
@@ -791,14 +811,14 @@ RemoveSocketFiles(void)
  */
 
 /* --------------------------------
- *			  pq_set_nonblocking - set socket blocking/non-blocking
+ *			  socket_set_nonblocking - set socket blocking/non-blocking
  *
  * Sets the socket non-blocking if nonblocking is TRUE, or sets it
  * blocking otherwise.
  * --------------------------------
  */
 static void
-pq_set_nonblocking(bool nonblocking)
+socket_set_nonblocking(bool nonblocking)
 {
 	if (MyProcPort->noblock == nonblocking)
 		return;
@@ -834,7 +854,7 @@ pq_set_nonblocking(bool nonblocking)
  *		returns 0 if OK, EOF if trouble
  * --------------------------------
  */
-static int
+int
 pq_recvbuf(void)
 {
 	if (PqRecvPointer > 0)
@@ -852,7 +872,7 @@ pq_recvbuf(void)
 	}
 
 	/* Ensure that we're in blocking mode */
-	pq_set_nonblocking(false);
+	socket_set_nonblocking(false);
 
 	/* Can fill buffer from PqRecvLength and upwards */
 	for (;;)
@@ -926,6 +946,25 @@ pq_peekbyte(void)
 }
 
 /* --------------------------------
+ *		pq_peek_bytes	- peek at next bytes from connection
+ *
+ *	 Same as recv(..., MSG_PEEK).
+ * --------------------------------
+ */
+int	pq_getmessage_noblock(StringInfo s, int maxlen)
+{
+	int amount;
+	if(PqRecvPointer >= PqRecvLength)
+		return 0;
+	amount = PqRecvLength - PqRecvPointer;
+	if(maxlen > amount)
+		maxlen = amount;
+	appendBinaryStringInfo(s, &(PqRecvBuffer[PqRecvPointer]), maxlen);
+	PqRecvPointer += maxlen;
+	return maxlen;
+}
+
+/* --------------------------------
  *		pq_getbyte_if_available - get a single byte from connection,
  *			if available
  *
@@ -947,7 +986,7 @@ pq_getbyte_if_available(unsigned char *c)
 	}
 
 	/* Put the socket into non-blocking mode */
-	pq_set_nonblocking(true);
+	socket_set_nonblocking(true);
 
 	r = secure_read(MyProcPort, c, 1);
 	if (r < 0)
@@ -1272,7 +1311,7 @@ internal_putbytes(const char *s, size_t len)
 		/* If buffer is full, then flush it out */
 		if (PqSendPointer >= PqSendBufferSize)
 		{
-			pq_set_nonblocking(false);
+			socket_set_nonblocking(false);
 			if (internal_flush())
 				return EOF;
 		}
@@ -1288,13 +1327,13 @@ internal_putbytes(const char *s, size_t len)
 }
 
 /* --------------------------------
- *		pq_flush		- flush pending output
+ *		socket_flush		- flush pending output
  *
  *		returns 0 if OK, EOF if trouble
  * --------------------------------
  */
 int
-pq_flush(void)
+socket_flush(void)
 {
 	int			res;
 
@@ -1302,7 +1341,7 @@ pq_flush(void)
 	if (PqCommBusy)
 		return 0;
 	PqCommBusy = true;
-	pq_set_nonblocking(false);
+	socket_set_nonblocking(false);
 	res = internal_flush();
 	PqCommBusy = false;
 	return res;
@@ -1368,7 +1407,9 @@ internal_flush(void)
 			 * the connection.
 			 */
 			PqSendStart = PqSendPointer = 0;
+#ifndef AGTM
 			ClientConnectionLost = 1;
+#endif /* AGTM */
 			InterruptPending = 1;
 			return EOF;
 		}
@@ -1383,13 +1424,13 @@ internal_flush(void)
 }
 
 /* --------------------------------
- *		pq_flush_if_writable - flush pending output if writable without blocking
+ *		socket_flush_if_writable- flush pending output if writable without blocking
  *
  * Returns 0 if OK, or EOF if trouble.
  * --------------------------------
  */
-int
-pq_flush_if_writable(void)
+static int
+socket_flush_if_writable(void)
 {
 	int			res;
 
@@ -1402,7 +1443,7 @@ pq_flush_if_writable(void)
 		return 0;
 
 	/* Temporarily put the socket into non-blocking mode */
-	pq_set_nonblocking(true);
+	socket_set_nonblocking(true);
 
 	PqCommBusy = true;
 	res = internal_flush();
@@ -1411,11 +1452,11 @@ pq_flush_if_writable(void)
 }
 
 /* --------------------------------
- *		pq_is_send_pending	- is there any pending data in the output buffer?
+ *		socket_is_send_pending- is there any pending data in the output buffer?
  * --------------------------------
  */
 bool
-pq_is_send_pending(void)
+socket_is_send_pending(void)
 {
 	return (PqSendStart < PqSendPointer);
 }
@@ -1453,8 +1494,8 @@ pq_is_send_pending(void)
  *		returns 0 if OK, EOF if trouble
  * --------------------------------
  */
-int
-pq_putmessage(char msgtype, const char *s, size_t len)
+static int
+socket_putmessage(char msgtype, const char *s, size_t len)
 {
 	if (DoingCopyOut || PqCommBusy)
 		return 0;
@@ -1481,13 +1522,13 @@ fail:
 }
 
 /* --------------------------------
- *		pq_putmessage_noblock	- like pq_putmessage, but never blocks
+ *		socket_putmessage_noblock	- like pq_putmessage, but never blocks
  *
  *		If the output buffer is too small to hold the message, the buffer
  *		is enlarged.
  */
-void
-pq_putmessage_noblock(char msgtype, const char *s, size_t len)
+static void
+socket_putmessage_noblock(char msgtype, const char *s, size_t len)
 {
 	int res		PG_USED_FOR_ASSERTS_ONLY;
 	int			required;
@@ -1509,18 +1550,18 @@ pq_putmessage_noblock(char msgtype, const char *s, size_t len)
 
 
 /* --------------------------------
- *		pq_startcopyout - inform libpq that an old-style COPY OUT transfer
+ *		socket_startcopyout- inform libpq that an old-style COPY OUT transfer
  *			is beginning
  * --------------------------------
  */
-void
-pq_startcopyout(void)
+static void
+socket_startcopyout(void)
 {
 	DoingCopyOut = true;
 }
 
 /* --------------------------------
- *		pq_endcopyout	- end an old-style COPY OUT transfer
+ *		socket_endcopyout- end an old-style COPY OUT transfer
  *
  *		If errorAbort is indicated, we are aborting a COPY OUT due to an error,
  *		and must send a terminator line.  Since a partial data line might have
@@ -1529,8 +1570,8 @@ pq_startcopyout(void)
  *		not allow binary transfers, so a textual terminator is always correct.
  * --------------------------------
  */
-void
-pq_endcopyout(bool errorAbort)
+static void
+socket_endcopyout(bool errorAbort)
 {
 	if (!DoingCopyOut)
 		return;
@@ -1840,4 +1881,9 @@ pq_setkeepalivescount(int count, Port *port)
 #endif
 
 	return STATUS_OK;
+}
+
+void pq_switch_to_socket(void)
+{
+	PqCommMethods = &PqCommSocketMethods;
 }

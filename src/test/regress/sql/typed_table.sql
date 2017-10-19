@@ -52,7 +52,6 @@ DROP TABLE stuff;
 
 
 -- implicit casting
-
 CREATE TYPE person_type AS (id int, name text);
 CREATE TABLE persons OF person_type;
 INSERT INTO persons VALUES (1, 'test');

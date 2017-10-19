@@ -9,6 +9,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/postgres.h
  *
@@ -649,5 +650,8 @@ extern PGDLLIMPORT bool assert_enabled;
 extern void ExceptionalCondition(const char *conditionName,
 					 const char *errorType,
 			 const char *fileName, int lineNumber) __attribute__((noreturn));
+
+//#define PGXC_COORD  // for PGXC coordinator compiling
+//#define PGXC_DATANODE // for PGXC data node compiling
 
 #endif   /* POSTGRES_H */

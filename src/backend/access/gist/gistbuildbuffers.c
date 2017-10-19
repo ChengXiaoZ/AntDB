@@ -362,6 +362,13 @@ gistPushItupToNodeBuffer(GISTBuildBuffers *gfbb, GISTNodeBuffer *nodeBuffer,
 	if (!nodeBuffer->pageBuffer)
 		gistLoadNodeBuffer(gfbb, nodeBuffer);
 
+#ifdef ADB
+	/* fix: Access to field 'freespace' results in a dereference of a null
+	 * pointer (loaded from field 'pageBuffer')
+	 */
+	AssertArg(nodeBuffer->pageBuffer);
+#endif
+
 	/*
 	 * Check if there is enough space on the last page for the tuple.
 	 */

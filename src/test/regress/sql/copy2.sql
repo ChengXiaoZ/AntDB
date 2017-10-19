@@ -96,7 +96,7 @@ COPY x from stdin WITH DELIMITER AS ':' NULL AS E'\\X' ENCODING 'sql_ascii';
 \.
 
 -- check results of copy in
-SELECT * FROM x;
+SELECT * FROM x ORDER BY a, b;
 
 -- COPY w/ oids on a table w/o oids should fail
 CREATE TABLE no_oids (
@@ -112,9 +112,9 @@ COPY no_oids FROM stdin WITH OIDS;
 COPY no_oids TO stdout WITH OIDS;
 
 -- check copy out
-COPY x TO stdout;
-COPY x (c, e) TO stdout;
-COPY x (b, e) TO stdout WITH NULL 'I''m null';
+COPY (select * from x order by 1,2,3,4,5) TO stdout;
+COPY (select c,e from x order by 1,2) TO stdout;
+COPY (select b,e from x order by 1,2) TO stdout WITH NULL 'I''m null';
 
 CREATE TEMP TABLE y (
 	col1 text,
@@ -162,22 +162,25 @@ c\.d
 "\."
 \.
 
-COPY testeoc TO stdout CSV;
+COPY (select * from testeoc order by a using ~<~) TO stdout CSV;
 
 -- test handling of nonstandard null marker that violates escaping rules
 
 CREATE TEMP TABLE testnull(a int, b text);
 INSERT INTO testnull VALUES (1, E'\\0'), (NULL, NULL);
 
-COPY testnull TO stdout WITH NULL AS E'\\0';
+COPY (select * from testnull order by 1,2) TO stdout WITH NULL AS E'\\0';
 
 COPY testnull FROM stdin WITH NULL AS E'\\0';
 42	\\0
 \0	\0
 \.
 
-SELECT * FROM testnull;
+SELECT * FROM testnull ORDER BY 1,2;
 
+-- The following block fails in Postgres-XC because it does not suport
+-- Savepoint yet.
+-- Leave the test as is.
 BEGIN;
 CREATE TABLE vistest (LIKE testeoc);
 COPY vistest FROM stdin CSV;
@@ -185,23 +188,23 @@ a0
 b
 \.
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 BEGIN;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV;
 a1
 b
 \.
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 SAVEPOINT s1;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV;
 d1
 e
 \.
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 
 BEGIN;
 TRUNCATE vistest;
@@ -209,16 +212,16 @@ COPY vistest FROM stdin CSV FREEZE;
 a2
 b
 \.
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 SAVEPOINT s1;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV FREEZE;
 d2
 e
 \.
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 
 BEGIN;
 TRUNCATE vistest;
@@ -226,7 +229,7 @@ COPY vistest FROM stdin CSV FREEZE;
 x
 y
 \.
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 COMMIT;
 TRUNCATE vistest;
 COPY vistest FROM stdin CSV FREEZE;
@@ -267,9 +270,9 @@ COPY vistest FROM stdin CSV FREEZE;
 d4
 e
 \.
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 COMMIT;
-SELECT * FROM vistest;
+SELECT * FROM vistest ORDER BY 1;
 
 -- test case with whole-row Var in a check constraint
 create table check_con_tbl (f1 int);
@@ -291,6 +294,9 @@ select * from check_con_tbl;
 
 DROP TABLE vistest;
 DROP FUNCTION truncate_in_subxact();
+--
+-- End of unsupported savepoint block
+--
 DROP TABLE x, y;
 DROP FUNCTION fn_x_before();
 DROP FUNCTION fn_x_after();

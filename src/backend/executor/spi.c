@@ -52,6 +52,10 @@ static Portal SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 static void _SPI_prepare_plan(const char *src, SPIPlanPtr plan);
 
 static void _SPI_prepare_oneshot_plan(const char *src, SPIPlanPtr plan);
+#ifdef PGXC
+static void _SPI_pgxc_prepare_plan(const char *src, List *src_parsetree,
+								   SPIPlanPtr plan);
+#endif
 
 static int _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 				  Snapshot snapshot, Snapshot crosscheck_snapshot,
@@ -362,6 +366,53 @@ SPI_restore_connection(void)
 	Assert(_SPI_connected >= 0);
 	_SPI_curid = _SPI_connected - 1;
 }
+
+#ifdef PGXC
+/* SPI_execute_direct:
+ * Runs the 'remote_sql' query string on the node 'nodename'
+ * Create the ExecDirectStmt parse tree node using remote_sql, and then prepare
+ * and execute it using SPI interface.
+ * This function is essentially used for making internal exec-direct operations;
+ * and this should not require super-user privileges. We cannot run EXEC-DIRECT
+ * query because it is meant only for superusers. So this function needs to
+ * bypass the parse stage. This is achieved here by calling
+ * _SPI_pgxc_prepare_plan which accepts a parse tree.
+ */
+int
+SPI_execute_direct(const char *remote_sql, char *nodename)
+{
+	_SPI_plan	plan;
+	int			res;
+	ExecDirectStmt *stmt = makeNode(ExecDirectStmt);
+	StringInfoData execdirect;
+
+	initStringInfo(&execdirect);
+
+	/* This string is never used. It is just passed to fill up spierrcontext.arg */
+	appendStringInfo(&execdirect, "EXECUTE DIRECT ON (%s) '%s'",
+	                               nodename, remote_sql);
+
+	stmt->node_names = list_make1(makeString(nodename));
+	stmt->query = strdup(remote_sql);
+
+	res = _SPI_begin_call(true);
+	if (res < 0)
+		return res;
+
+	memset(&plan, 0, sizeof(_SPI_plan));
+	plan.magic = _SPI_PLAN_MAGIC;
+	plan.cursor_options = 0;
+
+	/* Now pass the ExecDirectStmt parsetree node */
+	_SPI_pgxc_prepare_plan(execdirect.data, list_make1(stmt), &plan);
+
+	res = _SPI_execute_plan(&plan, NULL,
+							InvalidSnapshot, InvalidSnapshot, false, true, 0);
+
+	_SPI_end_call(true);
+	return res;
+}
+#endif
 
 /* Parse, plan, and execute a query string */
 int
@@ -801,6 +852,10 @@ SPI_modifytuple(Relation rel, HeapTuple tuple, int natts, int *attnum,
 		mtuple->t_data->t_ctid = tuple->t_data->t_ctid;
 		mtuple->t_self = tuple->t_self;
 		mtuple->t_tableOid = tuple->t_tableOid;
+#ifdef PGXC
+		mtuple->t_xc_node_id = tuple->t_xc_node_id;
+#endif
+
 		if (rel->rd_att->tdhasoid)
 			HeapTupleSetOid(mtuple, HeapTupleGetOid(tuple));
 	}
@@ -1225,11 +1280,18 @@ SPI_cursor_open_internal(const char *name, SPIPlanPtr plan,
 	{
 		/* Use a random nonconflicting name */
 		portal = CreateNewPortal();
+#ifdef ADB
+		portal->grammar = plansource->grammar;
+#endif
 	}
 	else
 	{
 		/* In this path, error if portal of same name already exists */
+#ifdef ADB
+		portal = CreatePortal(name, false, false, plansource->grammar);
+#else
 		portal = CreatePortal(name, false, false);
+#endif
 	}
 
 	/* Copy the plan's query string into the portal */
@@ -1796,6 +1858,20 @@ spi_printtup(TupleTableSlot *slot, DestReceiver *self)
 static void
 _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 {
+#ifdef PGXC
+	_SPI_pgxc_prepare_plan(src, NULL, plan);
+}
+
+/*
+ * _SPI_pgxc_prepare_plan: Optionally accepts a parsetree which allows it to
+ * bypass the parse phase, and directly analyse, rewrite and plan. Meant to be
+ * called for internally executed execute-direct statements that are
+ * transparent to the user.
+ */
+static void
+_SPI_pgxc_prepare_plan(const char *src, List *src_parsetree, SPIPlanPtr plan)
+{
+#endif
 	List	   *raw_parsetree_list;
 	List	   *plancache_list;
 	ListCell   *list_item;
@@ -1812,8 +1888,13 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 	/*
 	 * Parse the request string into a list of raw parse trees.
 	 */
-	raw_parsetree_list = pg_parse_query(src);
-
+#ifdef PGXC
+	/* Parse it only if there isn't an already parsed tree passed */
+	if (src_parsetree)
+		raw_parsetree_list = src_parsetree;
+	else
+#endif
+		raw_parsetree_list = pg_parse_query(src);
 	/*
 	 * Do parse analysis and rule rewrite for each raw parsetree, storing the
 	 * results into unsaved plancache entries.
@@ -1832,6 +1913,9 @@ _SPI_prepare_plan(const char *src, SPIPlanPtr plan)
 		 */
 		plansource = CreateCachedPlan(parsetree,
 									  src,
+#ifdef PGXC
+									  NULL,
+#endif
 									  CreateCommandTag(parsetree));
 
 		/*
@@ -2165,6 +2249,9 @@ _SPI_execute_plan(SPIPlanPtr plan, ParamListInfo paramLI,
 							   PROCESS_UTILITY_QUERY,
 							   paramLI,
 							   dest,
+#ifdef PGXC
+							   false,
+#endif /* PGXC */
 							   completionTag);
 
 				/* Update "processed" if stmt returned tuples */

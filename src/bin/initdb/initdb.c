@@ -39,6 +39,7 @@
  * This code is released under the terms of the PostgreSQL License.
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2013 Postgres-XC Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/bin/initdb/initdb.c
@@ -130,7 +131,10 @@ static bool sync_only = false;
 static bool show_setting = false;
 static bool data_checksums = false;
 static char *xlog_dir = "";
-
+#ifdef PGXC
+/* Name of the PGXC node initialized */
+static char *nodename = NULL;
+#endif
 
 /* internal vars */
 static const char *progname;
@@ -144,6 +148,10 @@ static char *conf_file;
 static char *conversion_file;
 static char *dictionary_file;
 static char *info_schema_file;
+#ifdef ADB
+static char *oracle_schema_file;
+static char *adb_views_file;
+#endif
 static char *features_file;
 static char *system_views_file;
 static bool made_new_pgdata = false;
@@ -155,6 +163,9 @@ static bool caught_signal = false;
 static bool output_failed = false;
 static int	output_errno = 0;
 static char *pgdata_native;
+#ifdef INITMGR
+static char *manager_create_file;
+#endif
 
 /* defaults */
 static int	n_connections = 10;
@@ -181,7 +192,11 @@ static char *authwarning = NULL;
  * (no quoting to worry about).
  */
 static const char *boot_options = "-F";
-static const char *backend_options = "--single -F -O -c search_path=pg_catalog -c exit_on_error=true";
+static const char *backend_options = "--single "
+#ifdef PGXC
+	                                 "--localxid "
+#endif
+	                                 "-F -O -c search_path=pg_catalog -c exit_on_error=true";
 
 #ifdef WIN32
 char	   *restrict_env;
@@ -240,6 +255,9 @@ static void setup_auth(void);
 static void get_set_pwd(void);
 static void setup_depend(void);
 static void setup_sysviews(void);
+#ifdef PGXC
+static void setup_nodeself(void);
+#endif
 static void setup_description(void);
 static void setup_collation(void);
 static void setup_conversion(void);
@@ -247,6 +265,10 @@ static void setup_dictionary(void);
 static void setup_privileges(void);
 static void set_info_version(void);
 static void setup_schema(void);
+#ifdef ADB
+static void setup_oracle_schema(void);
+static void setup_adb_views(void);
+#endif
 static void load_plpgsql(void);
 static void vacuum_db(void);
 static void make_template0(void);
@@ -272,7 +294,9 @@ void		create_data_directory(void);
 void		create_xlog_or_symlink(void);
 void		warn_on_mount_point(int error);
 void		initialize_data_directory(void);
-
+#ifdef INITMGR
+static void setup_manager_file(void);
+#endif
 
 #ifdef WIN32
 static int	CreateRestrictedProcess(char *cmd, PROCESS_INFORMATION *processInfo);
@@ -1246,6 +1270,13 @@ setup_config(void)
 	conflines = replace_token(conflines,
 						 "#default_text_search_config = 'pg_catalog.simple'",
 							  repltok);
+#ifdef PGXC
+	/* Add Postgres-XC node name to configuration file */
+	snprintf(repltok, sizeof(repltok),
+			 "pgxc_node_name = '%s'",
+			 escape_quotes(nodename));
+	conflines = replace_token(conflines, "#pgxc_node_name = ''", repltok);
+#endif
 
 	default_timezone = select_default_timezone(share_path);
 	if (default_timezone)
@@ -1641,6 +1672,14 @@ setup_depend(void)
 		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
 		" FROM pg_namespace "
 		"    WHERE nspname LIKE 'pg%';\n",
+#ifdef ADB
+		/*
+		 * restriction here to avoid dropping the oracle namespace
+		 */
+		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
+		" FROM pg_namespace "
+		"	 WHERE nspname = 'oracle';\n",
+#endif
 
 		"INSERT INTO pg_depend SELECT 0,0,0, tableoid,oid,0, 'p' "
 		" FROM pg_ts_parser;\n",
@@ -1712,6 +1751,35 @@ setup_sysviews(void)
 
 	check_ok();
 }
+
+#ifdef PGXC
+/*
+ * set up Postgres-XC cluster node catalog data with node self
+ * which is the node currently initialized.
+ */
+static void
+setup_nodeself(void)
+{
+	PG_CMD_DECL;
+
+	fputs(_("creating cluster information ... "), stdout);
+	fflush(stdout);
+
+	snprintf(cmd, sizeof(cmd),
+			 "\"%s\" %s template1 >%s",
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+
+	PG_CMD_PRINTF1("CREATE NODE %s WITH (type = 'coordinator');\n",
+				   nodename);
+
+	PG_CMD_CLOSE;
+
+	check_ok();
+}
+#endif
 
 /*
  * load description data
@@ -2162,6 +2230,113 @@ setup_schema(void)
 	check_ok();
 }
 
+#ifdef ADB
+/*
+ * load oracle schema
+ */
+static void
+setup_oracle_schema(void)
+{
+	PG_CMD_DECL;
+	char	  **line;
+	char	  **lines;
+
+	fputs(_("creating oracle schema ... "), stdout);
+	fflush(stdout);
+
+	lines = readfile(oracle_schema_file);
+
+	/*
+	 * We use -j here to avoid backslashing stuff in oracle_schema.sql
+	 */
+	snprintf(cmd, sizeof(cmd),
+			 SYSTEMQUOTE "\"%s\" %s -j template1 >%s" SYSTEMQUOTE,
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+
+	for (line = lines; *line != NULL; line++)
+	{
+		PG_CMD_PUTS(*line);
+		free(*line);
+	}
+
+	PG_CMD_CLOSE;
+
+	free(lines);
+
+	check_ok();
+}
+
+/*
+ * load PL/pgsql server-side language
+ */
+static void
+setup_adb_views(void)
+{
+	PG_CMD_DECL;
+	char	  **line;
+	char	  **lines;
+
+	fputs(_("creating ADB views ... "), stdout);
+	fflush(stdout);
+
+	lines = readfile(adb_views_file);
+
+	snprintf(cmd, sizeof(cmd),
+			 SYSTEMQUOTE "\"%s\" %s -j template1 >%s" SYSTEMQUOTE,
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+
+	for (line = lines; *line != NULL; line++)
+	{
+		PG_CMD_PUTS(*line);
+		free(*line);
+	}
+
+	PG_CMD_CLOSE;
+
+	free(lines);
+
+	check_ok();
+}
+#endif
+
+#ifdef INITMGR
+static void setup_manager_file(void)
+{
+	PG_CMD_DECL;
+	char	  **line;
+	char	  **lines;
+
+	fputs(_("creating adb manager views ... "), stdout);
+	fflush(stdout);
+
+	lines = readfile(manager_create_file);
+
+	snprintf(cmd, sizeof(cmd),
+			 SYSTEMQUOTE "\"%s\" %s -j template1 >%s" SYSTEMQUOTE,
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+
+	for (line = lines; *line != NULL; line++)
+	{
+		PG_CMD_PUTS(*line);
+		free(*line);
+	}
+
+	PG_CMD_CLOSE;
+
+	free(lines);
+
+	check_ok();
+}
+#endif /* INITMGR */
 /*
  * load PL/pgsql server-side language
  */
@@ -2186,6 +2361,36 @@ load_plpgsql(void)
 
 	check_ok();
 }
+
+#ifdef PGXC
+/*
+ * Vacuum Freeze given database. This is required to prevent xid wraparound
+ * issues when a node is brought up with xids out-of-sync w.r.t. gtm xids.
+ */
+static void
+vacuumfreeze(char *dbname)
+{
+	PG_CMD_DECL;
+	char msg[MAXPGPATH];
+	snprintf(msg, sizeof(msg), "freezing database %s ... ", dbname);
+
+	fputs(_(msg), stdout);
+	fflush(stdout);
+
+	snprintf(cmd, sizeof(cmd),
+			 "\"%s\" %s %s >%s",
+			 backend_exec, backend_options, dbname,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+
+	PG_CMD_PUTS("VACUUM FREEZE;\n");
+
+	PG_CMD_CLOSE;
+
+	check_ok();
+}
+#endif /* PGXC */
 
 /*
  * clean everything up in template1
@@ -2768,6 +2973,9 @@ usage(const char *progname)
 	printf(_("      --auth-host=METHOD    default authentication method for local TCP/IP connections\n"));
 	printf(_("      --auth-local=METHOD   default authentication method for local-socket connections\n"));
 	printf(_(" [-D, --pgdata=]DATADIR     location for this database cluster\n"));
+#ifdef PGXC
+	printf(_("      --nodename=NODENAME   name of Postgres-XC node initialized\n"));
+#endif
 	printf(_("  -E, --encoding=ENCODING   set default encoding for new databases\n"));
 	printf(_("      --locale=LOCALE       set default locale for new databases\n"));
 	printf(_("      --lc-collate=, --lc-ctype=, --lc-messages=LOCALE\n"
@@ -2941,7 +3149,13 @@ setup_bin_paths(const char *argv0)
 {
 	int			ret;
 
+#ifdef INITMGR
+	if ((ret = find_other_exec(argv0, "adbmgrd", PG_BACKEND_VERSIONSTR,
+#elif defined(INITAGTM)
+	if ((ret = find_other_exec(argv0, "agtm", PG_BACKEND_VERSIONSTR,
+#else
 	if ((ret = find_other_exec(argv0, "postgres", PG_BACKEND_VERSIONSTR,
+#endif
 							   backend_exec)) < 0)
 	{
 		char		full_path[MAXPGPATH];
@@ -2949,6 +3163,35 @@ setup_bin_paths(const char *argv0)
 		if (find_my_exec(argv0, full_path) < 0)
 			strlcpy(full_path, progname, sizeof(full_path));
 
+#ifdef INITMGR
+		if (ret == -1)
+			fprintf(stderr,
+					_("The program \"adbmgrd\" is needed by %s "
+					  "but was not found in the\n"
+					  "same directory as \"%s\".\n"
+					  "Check your installation.\n"),
+					progname, full_path);
+		else
+			fprintf(stderr,
+					_("The program \"adbmgrd\" was found by \"%s\"\n"
+					  "but was not the same version as %s.\n"
+					  "Check your installation.\n"),
+					full_path, progname);
+#elif defined(INITAGTM)
+		if (ret == -1)
+			fprintf(stderr,
+					_("The program \"agtm\" is needed by %s "
+					  "but was not found in the\n"
+					  "same directory as \"%s\".\n"
+					  "Check your installation.\n"),
+					progname, full_path);
+		else
+			fprintf(stderr,
+					_("The program \"agtm\" was found by \"%s\"\n"
+					  "but was not the same version as %s.\n"
+					  "Check your installation.\n"),
+					full_path, progname);
+#else /* INITMGR */
 		if (ret == -1)
 			fprintf(stderr,
 					_("The program \"postgres\" is needed by %s "
@@ -2962,6 +3205,7 @@ setup_bin_paths(const char *argv0)
 					  "but was not the same version as %s.\n"
 					  "Check your installation.\n"),
 					full_path, progname);
+#endif /* INITMGR */
 		exit(1);
 	}
 
@@ -3076,17 +3320,44 @@ setup_locale_encoding(void)
 void
 setup_data_file_paths(void)
 {
+#ifdef INITMGR
+	set_input(&bki_file, "adbmgrd.bki");
+	set_input(&desc_file, "adbmgrd.description");
+	set_input(&shdesc_file, "adbmgrd.shdescription");
+#elif defined(INITAGTM)
+	set_input(&bki_file, "agtm.bki");
+	set_input(&desc_file, "agtm.description");
+	set_input(&shdesc_file, "agtm.shdescription");
+#else /* INITMGR */
 	set_input(&bki_file, "postgres.bki");
 	set_input(&desc_file, "postgres.description");
 	set_input(&shdesc_file, "postgres.shdescription");
+#endif /* INITMGR */
 	set_input(&hba_file, "pg_hba.conf.sample");
 	set_input(&ident_file, "pg_ident.conf.sample");
+#ifdef INITMGR
+	set_input(&conf_file, "adbmgrd.conf.sample");
+#elif defined(INITAGTM)
+	set_input(&conf_file, "agtm.conf.sample");
+#else
 	set_input(&conf_file, "postgresql.conf.sample");
+#endif
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&dictionary_file, "snowball_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
+#ifdef ADB
+	set_input(&oracle_schema_file, "oracle_schema.sql");
+	set_input(&adb_views_file, "adb_views.sql");
+#endif
 	set_input(&features_file, "sql_features.txt");
+#ifdef INITMGR
+	set_input(&system_views_file, "adbmgrd_views.sql");
+	set_input(&manager_create_file, "adbmgr_init.sql");
+#elif defined(INITAGTM)
+	set_input(&system_views_file, "agtm_views.sql");
+#else
 	set_input(&system_views_file, "system_views.sql");
+#endif
 
 	if (show_setting || debug)
 	{
@@ -3116,6 +3387,9 @@ setup_data_file_paths(void)
 	check_input(conversion_file);
 	check_input(dictionary_file);
 	check_input(info_schema_file);
+#ifdef ADB
+	check_input(oracle_schema_file);
+#endif
 	check_input(features_file);
 	check_input(system_views_file);
 }
@@ -3444,6 +3718,11 @@ initialize_data_directory(void)
 
 	setup_sysviews();
 
+#ifdef PGXC
+	/* Initialize catalog information about the node self */
+	setup_nodeself();
+#endif
+
 	setup_description();
 
 	setup_collation();
@@ -3457,6 +3736,15 @@ initialize_data_directory(void)
 	setup_schema();
 
 	load_plpgsql();
+
+#ifdef ADB
+	setup_oracle_schema();
+	setup_adb_views();
+#endif
+
+#ifdef INITMGR
+	setup_manager_file();
+#endif
 
 	vacuum_db();
 
@@ -3496,6 +3784,9 @@ main(int argc, char *argv[])
 		{"sync-only", no_argument, NULL, 'S'},
 		{"xlogdir", required_argument, NULL, 'X'},
 		{"data-checksums", no_argument, NULL, 'k'},
+#ifdef PGXC
+		{"nodename", required_argument, NULL, 12},
+#endif
 		{NULL, 0, NULL, 0}
 	};
 
@@ -3529,7 +3820,13 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
+#ifdef INITMGR
+			puts("initmgr (PostgreSQL) " PG_VERSION);
+#elif defined(INITAGTM)
+			puts("initagtm (PostgreSQL) " PG_VERSION);
+#else
 			puts("initdb (PostgreSQL) " PG_VERSION);
+#endif
 			exit(0);
 		}
 	}
@@ -3627,6 +3924,11 @@ main(int argc, char *argv[])
 			case 'X':
 				xlog_dir = pg_strdup(optarg);
 				break;
+#ifdef PGXC
+			case 12:
+				nodename = pg_strdup(optarg);
+				break;
+#endif
 			default:
 				/* getopt_long already emitted a complaint */
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
@@ -3678,6 +3980,16 @@ main(int argc, char *argv[])
 		exit(1);
 	}
 
+#ifdef PGXC
+	if (!nodename)
+	{
+		fprintf(stderr, _("%s: Postgres-XC node name is mandatory\n"), progname);
+		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
+				progname);
+		exit(1);
+	}
+#endif
+
 	check_authmethod_unspecified(&authmethodlocal);
 	check_authmethod_unspecified(&authmethodhost);
 
@@ -3725,6 +4037,12 @@ main(int argc, char *argv[])
 	else
 		printf(_("\nSync to disk skipped.\nThe data directory might become corrupt if the operating system crashes.\n"));
 
+#ifdef PGXC
+	vacuumfreeze("template0");
+	vacuumfreeze("template1");
+	vacuumfreeze("postgres");
+#endif
+
 	if (authwarning != NULL)
 		fprintf(stderr, "%s", authwarning);
 
@@ -3732,14 +4050,52 @@ main(int argc, char *argv[])
 	strlcpy(bin_dir, argv[0], sizeof(bin_dir));
 	get_parent_directory(bin_dir);
 
-	printf(_("\nSuccess. You can now start the database server using:\n\n"
-			 "    %s%s%spostgres%s -D %s%s%s\n"
+
+#ifdef PGXC
+	printf(_("\nSuccess.\n You can now start the database server of the Postgres-XC coordinator using:\n\n"
+			 "    %s%s%spostgres%s --coordinator -D %s%s%s\n"
 			 "or\n"
-			 "    %s%s%spg_ctl%s -D %s%s%s -l logfile start\n\n"),
+			 "    %s%s%spg_ctl%s start -D %s%s%s -Z coordinator -l logfile\n\n"
+			 " You can now start the database server of the Postgres-XC datanode using:\n\n"
+			 "    %s%s%spostgres%s --datanode -D %s%s%s\n"
+			 "or \n"
+			 "    %s%s%spg_ctl%s start -D %s%s%s -Z datanode -l logfile\n\n"),
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH,
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH,
 	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
 		   QUOTE_PATH, pgdata_native, QUOTE_PATH,
 	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
 		   QUOTE_PATH, pgdata_native, QUOTE_PATH);
+#elif defined(INITMGR)
+	printf(_("\nSuccess. You can now start the database server of datanode using:\n\n"
+             "    %s%s%sadbmgrd%s -D %s%s%s\n"
+             "or\n"
+             "    %s%s%smgr_ctl%s -D %s%s%s -l logfile start\n\n"),
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH,
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH);
+#elif defined(INITAGTM)
+	printf(_("\nSuccess. You can now start the database server of datanode using:\n\n"
+             "    %s%s%sagtm%s -D %s%s%s\n"
+             "or\n"
+             "    %s%s%sagtm_ctl%s -D %s%s%s -l logfile start\n\n"),
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH,
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH);
+#else
+	printf(_("\nSuccess. You can now start the database server of datanode using:\n\n"
+             "    %s%s%spostgres%s -D %s%s%s\n"
+             "or\n"
+             "    %s%s%spg_ctl%s -D %s%s%s -l logfile start\n\n"),
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH,
+	   QUOTE_PATH, bin_dir, (strlen(bin_dir) > 0) ? DIR_SEP : "", QUOTE_PATH,
+		   QUOTE_PATH, pgdata_native, QUOTE_PATH);
+#endif
 
 	return 0;
 }

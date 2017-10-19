@@ -117,6 +117,13 @@ bool		enable_nestloop = true;
 bool		enable_material = true;
 bool		enable_mergejoin = true;
 bool		enable_hashjoin = true;
+#ifdef PGXC
+bool		enable_fast_query_shipping = true;
+bool		enable_remotejoin = true;
+bool		enable_remotegroup = true;
+bool		enable_remotesort = true;
+bool		enable_remotelimit = true;
+#endif
 
 typedef struct
 {
@@ -2914,6 +2921,22 @@ cost_rescan(PlannerInfo *root, Path *path,
 	}
 }
 
+#ifdef PGXC
+/*
+ * cost_remotequery
+ * As of now the function just sets the costs to 0 to make this path the
+ * cheapest.
+ * PGXC_TODO: Ideally, we should estimate the costs of network transfer from
+ * datanodes and any datanode costs involved.
+ */
+void
+cost_remotequery(RemoteQueryPath *rqpath, PlannerInfo *root, RelOptInfo *rel)
+{
+	rqpath->path.startup_cost = 0;
+	rqpath->path.total_cost = 0;
+	rqpath->path.rows = rel->rows;
+}
+#endif /* PGXC */
 
 /*
  * cost_qual_eval

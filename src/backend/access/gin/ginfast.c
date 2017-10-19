@@ -594,6 +594,7 @@ shiftList(Relation index, Buffer metabuffer, BlockNumber newHead,
 			for (i = 0; i < data.ndeleted; i++)
 			{
 				page = BufferGetPage(buffers[i]);
+				Assert(page);
 				PageSetLSN(page, recptr);
 			}
 		}

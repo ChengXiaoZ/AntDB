@@ -899,7 +899,10 @@ tzparse(const char *name, struct state * sp, int lastditch)
 			 * Initially we're assumed to be in standard time.
 			 */
 			isdst = FALSE;
+#ifndef ADB
+			/* static analyze of "Value stored to 'theiroffset' is never read" */
 			theiroffset = theirstdoffset;
+#endif /* ADB */
 
 			/*
 			 * Now juggle transition times and types tracking offsets as you

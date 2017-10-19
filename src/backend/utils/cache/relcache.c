@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -62,6 +63,10 @@
 #include "optimizer/planmain.h"
 #include "optimizer/prep.h"
 #include "optimizer/var.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "postmaster/autovacuum.h"
+#endif
 #include "rewrite/rewriteDefine.h"
 #include "storage/lmgr.h"
 #include "storage/smgr.h"
@@ -925,6 +930,12 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	else
 		relation->trigdesc = NULL;
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR &&
+		relation->rd_id >= FirstNormalObjectId &&
+		!IsAutoVacuumWorkerProcess())
+		RelationBuildLocator(relation);
+#endif
 	/*
 	 * if it's an index, initialize index-related information
 	 */
@@ -3057,7 +3068,6 @@ RelationCacheInitializePhase3(void)
 							TriggerRelationId);
 
 #define NUM_CRITICAL_LOCAL_INDEXES	7	/* fix if you change list above */
-
 		criticalRelcachesBuilt = true;
 	}
 
@@ -4870,8 +4880,14 @@ RelationCacheInitFileRemove(void)
 		if (strspn(de->d_name, "0123456789") == strlen(de->d_name))
 		{
 			/* Scan the tablespace dir for per-database dirs */
+#ifdef PGXC
+			/* Postgres-XC tablespaces include node name in path */
+			snprintf(path, sizeof(path), "%s/%s/%s_%s",
+					 tblspcdir, de->d_name, TABLESPACE_VERSION_DIRECTORY, PGXCNodeName);
+#else
 			snprintf(path, sizeof(path), "%s/%s/%s",
 					 tblspcdir, de->d_name, TABLESPACE_VERSION_DIRECTORY);
+#endif
 			RelationCacheInitFileRemoveInDir(path);
 		}
 	}

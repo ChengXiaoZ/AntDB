@@ -600,6 +600,11 @@ print_aligned_text(const printTableContent *cont, FILE *fout)
 	extra_output_lines += extra_row_output_lines;
 	extra_row_output_lines = 0;
 
+#ifdef ADB
+	/* fix:Division by zero */
+	Assert(col_count > 0);
+#endif
+
 	/* scan all cells, find maximum width, compute cell_count */
 	for (i = 0, ptr = cont->cells; *ptr; ptr++, i++, cell_count++)
 	{
@@ -1236,6 +1241,9 @@ print_aligned_vertical(const printTableContent *cont, FILE *fout)
 			fprintf(fout, "%s\n", cont->title);
 	}
 
+#ifdef ADB
+	Assert(cont->ncolumns > 0);
+#endif
 	/* print records */
 	for (i = 0, ptr = cont->cells; *ptr; i++, ptr++)
 	{
@@ -1253,7 +1261,6 @@ print_aligned_vertical(const printTableContent *cont, FILE *fout)
 			pos = PRINT_RULE_BOTTOM;
 		else
 			pos = PRINT_RULE_MIDDLE;
-
 		if (i % cont->ncolumns == 0)
 		{
 			if (!opt_tuples_only)
@@ -1665,6 +1672,9 @@ print_latex_text(const printTableContent *cont, FILE *fout)
 		}
 	}
 
+#ifdef ADB
+	Assert(cont->ncolumns > 0);
+#endif
 	/* print cells */
 	for (i = 0, ptr = cont->cells; *ptr; i++, ptr++)
 	{
@@ -1840,6 +1850,9 @@ print_latex_longtable_text(const printTableContent *cont, FILE *fout)
 		}
 	}
 
+#ifdef ADB
+	Assert(cont->ncolumns > 0);
+#endif
 	/* print cells */
 	for (i = 0, ptr = cont->cells; *ptr; i++, ptr++)
 	{
@@ -2027,7 +2040,9 @@ print_troff_ms_text(const printTableContent *cont, FILE *fout)
 			fputs("\n_\n", fout);
 		}
 	}
-
+#ifdef ADB
+	Assert(cont->ncolumns > 0);
+#endif
 	/* print cells */
 	for (i = 0, ptr = cont->cells; *ptr; i++, ptr++)
 	{

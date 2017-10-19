@@ -310,6 +310,11 @@ ConnectDatabase(Archive *AHX,
 	/* check for version mismatch */
 	_check_database_version(AH);
 
+#ifdef ADB
+	/* set grammar to postgres, and ignore result */
+	PQclear(PQexec(AH->connection, "set grammar=postgres"));
+#endif /* ADB */
+
 	PQsetNoticeProcessor(AH->connection, notice_processor, NULL);
 }
 

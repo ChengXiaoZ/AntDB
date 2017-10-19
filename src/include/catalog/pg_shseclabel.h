@@ -11,7 +11,11 @@
 #ifndef PG_SHSECLABEL_H
 #define PG_SHSECLABEL_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_shseclabel definition. cpp turns this into

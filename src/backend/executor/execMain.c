@@ -57,7 +57,10 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
-
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "commands/copy.h"
+#endif
 
 /* Hooks for plugins to get control in ExecutorStart/Run/Finish/End */
 ExecutorStart_hook_type ExecutorStart_hook = NULL;
@@ -779,6 +782,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_num_result_relations = numResultRelations;
 		/* es_result_relation_info is NULL except when within ModifyTable */
 		estate->es_result_relation_info = NULL;
+#ifdef PGXC
+		estate->es_result_remoterel = NULL;
+#endif
 	}
 	else
 	{
@@ -788,6 +794,9 @@ InitPlan(QueryDesc *queryDesc, int eflags)
 		estate->es_result_relations = NULL;
 		estate->es_num_result_relations = 0;
 		estate->es_result_relation_info = NULL;
+#ifdef PGXC
+		estate->es_result_remoterel = NULL;
+#endif
 	}
 
 	/*
@@ -2342,6 +2351,9 @@ EvalPlanQualFetchRowMarks(EPQState *epqstate)
 			/* relation might be a foreign table, if so provide tableoid */
 			tuple.t_tableOid = getrelid(erm->rti,
 										epqstate->estate->es_range_table);
+#ifdef PGXC
+			tuple.t_xc_node_id = 0;
+#endif
 			tuple.t_data = td;
 
 			/* copy and store tuple */
@@ -2469,6 +2481,10 @@ EvalPlanQualStart(EPQState *epqstate, EState *parentestate, Plan *planTree)
 		estate->es_result_relations = resultRelInfos;
 		estate->es_num_result_relations = numResultRelations;
 	}
+#ifdef PGXC
+	/* XXX Check if this is OK */
+	estate->es_result_remoterel = parentestate->es_result_remoterel;
+#endif
 	/* es_result_relation_info must NOT be copied */
 	/* es_trig_target_relations must NOT be copied */
 	estate->es_rowMarks = parentestate->es_rowMarks;

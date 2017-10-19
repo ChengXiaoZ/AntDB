@@ -1092,11 +1092,13 @@ msgid "removing transaction log backup history file \"%s\""
 msgstr "suppression du fichier historique des journaux de transaction « %s »"
 
 #: access/transam/xlog.c:3284
+>>>>>>> REL9_3_13
 #, c-format
 msgid "unexpected timeline ID %u in log segment %s, offset %u"
 msgstr "identifiant timeline %u inattendu dans le journal de transactions %s, décalage %u"
 
 #: access/transam/xlog.c:3406
+>>>>>>> REL9_3_13
 #, c-format
 msgid "new timeline %u is not a child of database system timeline %u"
 msgstr ""
@@ -1104,6 +1106,7 @@ msgstr ""
 "de données"
 
 #: access/transam/xlog.c:3420
+>>>>>>> REL9_3_13
 #, c-format
 msgid "new timeline %u forked off current database system timeline %u before current recovery point %X/%X"
 msgstr ""
@@ -1111,11 +1114,13 @@ msgstr ""
 "avant le point de restauration courant %X/%X"
 
 #: access/transam/xlog.c:3439
+>>>>>>> REL9_3_13
 #, c-format
 msgid "new target timeline is %u"
 msgstr "la nouvelle timeline cible est %u"
 
 #: access/transam/xlog.c:3518
+>>>>>>> REL9_3_13
 #, c-format
 msgid "could not create control file \"%s\": %m"
 msgstr "n'a pas pu créer le fichier de contrôle « %s » : %m"
@@ -1141,6 +1146,7 @@ msgid "could not open control file \"%s\": %m"
 msgstr "n'a pas pu ouvrir le fichier de contrôle « %s » : %m"
 
 #: access/transam/xlog.c:3564
+>>>>>>> REL9_3_13
 #, c-format
 msgid "could not read from control file: %m"
 msgstr "n'a pas pu lire le fichier de contrôle : %m"
@@ -1152,6 +1158,7 @@ msgid "database files are incompatible with server"
 msgstr "les fichiers de la base de données sont incompatibles avec le serveur"
 
 #: access/transam/xlog.c:3578
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with PG_CONTROL_VERSION %d (0x%08x), but the server was compiled with PG_CONTROL_VERSION %d (0x%08x)."
 msgstr ""
@@ -1160,6 +1167,7 @@ msgstr ""
 "%d (0x%08x)."
 
 #: access/transam/xlog.c:3582
+>>>>>>> REL9_3_13
 #, c-format
 msgid "This could be a problem of mismatched byte ordering.  It looks like you need to initdb."
 msgstr ""
@@ -1167,6 +1175,7 @@ msgstr ""
 "Il se peut que vous ayez besoin d'initdb."
 
 #: access/transam/xlog.c:3587
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with PG_CONTROL_VERSION %d, but the server was compiled with PG_CONTROL_VERSION %d."
 msgstr ""
@@ -1179,11 +1188,13 @@ msgid "It looks like you need to initdb."
 msgstr "Il semble que vous avez besoin d'initdb."
 
 #: access/transam/xlog.c:3601
+>>>>>>> REL9_3_13
 #, c-format
 msgid "incorrect checksum in control file"
 msgstr "somme de contrôle incorrecte dans le fichier de contrôle"
 
 #: access/transam/xlog.c:3611
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with CATALOG_VERSION_NO %d, but the server was compiled with CATALOG_VERSION_NO %d."
 msgstr ""
@@ -1191,6 +1202,7 @@ msgstr ""
 "%d alors que le serveur a été compilé avec un CATALOG_VERSION_NO à %d."
 
 #: access/transam/xlog.c:3618
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with MAXALIGN %d, but the server was compiled with MAXALIGN %d."
 msgstr ""
@@ -1198,6 +1210,7 @@ msgstr ""
 "que le serveur a été compilé avec un MAXALIGN à %d."
 
 #: access/transam/xlog.c:3625
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster appears to use a different floating-point number format than the server executable."
 msgstr ""
@@ -1205,6 +1218,7 @@ msgstr ""
 "nombres à virgule flottante de celui de l'exécutable serveur."
 
 #: access/transam/xlog.c:3630
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with BLCKSZ %d, but the server was compiled with BLCKSZ %d."
 msgstr ""
@@ -1217,6 +1231,7 @@ msgid "It looks like you need to recompile or initdb."
 msgstr "Il semble que vous avez besoin de recompiler ou de relancer initdb."
 
 #: access/transam/xlog.c:3637
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with RELSEG_SIZE %d, but the server was compiled with RELSEG_SIZE %d."
 msgstr ""
@@ -1224,6 +1239,7 @@ msgstr ""
 "alors que le serveur a été compilé avec un RELSEG_SIZE à %d."
 
 #: access/transam/xlog.c:3644
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with XLOG_BLCKSZ %d, but the server was compiled with XLOG_BLCKSZ %d."
 msgstr ""
@@ -1231,6 +1247,7 @@ msgstr ""
 "alors que le serveur a été compilé avec un XLOG_BLCKSZ à %d."
 
 #: access/transam/xlog.c:3651
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with XLOG_SEG_SIZE %d, but the server was compiled with XLOG_SEG_SIZE %d."
 msgstr ""
@@ -1238,6 +1255,7 @@ msgstr ""
 "alors que le serveur a été compilé avec un XLOG_SEG_SIZE à %d."
 
 #: access/transam/xlog.c:3658
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with NAMEDATALEN %d, but the server was compiled with NAMEDATALEN %d."
 msgstr ""
@@ -1245,6 +1263,7 @@ msgstr ""
 "alors que le serveur a été compilé avec un NAMEDATALEN à %d."
 
 #: access/transam/xlog.c:3665
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with INDEX_MAX_KEYS %d, but the server was compiled with INDEX_MAX_KEYS %d."
 msgstr ""
@@ -1252,6 +1271,7 @@ msgstr ""
 "alors que le serveur a été compilé avec un INDEX_MAX_KEYS à %d."
 
 #: access/transam/xlog.c:3672
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with TOAST_MAX_CHUNK_SIZE %d, but the server was compiled with TOAST_MAX_CHUNK_SIZE %d."
 msgstr ""
@@ -1259,11 +1279,13 @@ msgstr ""
 "à %d alors que le serveur a été compilé avec un TOAST_MAX_CHUNK_SIZE à %d."
 
 #: access/transam/xlog.c:3681
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized without HAVE_INT64_TIMESTAMP but the server was compiled with HAVE_INT64_TIMESTAMP."
 msgstr "Le cluster de bases de données a été initialisé sans HAVE_INT64_TIMESTAMPalors que le serveur a été compilé avec."
 
 #: access/transam/xlog.c:3688
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with HAVE_INT64_TIMESTAMP but the server was compiled without HAVE_INT64_TIMESTAMP."
 msgstr ""
@@ -1271,6 +1293,7 @@ msgstr ""
 "alors que le serveur a été compilé sans."
 
 #: access/transam/xlog.c:3697
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized without USE_FLOAT4_BYVAL but the server was compiled with USE_FLOAT4_BYVAL."
 msgstr ""
@@ -1278,6 +1301,7 @@ msgstr ""
 "alors que le serveur a été compilé avec USE_FLOAT4_BYVAL."
 
 #: access/transam/xlog.c:3704
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with USE_FLOAT4_BYVAL but the server was compiled without USE_FLOAT4_BYVAL."
 msgstr ""
@@ -1285,6 +1309,7 @@ msgstr ""
 "alors que le serveur a été compilé sans USE_FLOAT4_BYVAL."
 
 #: access/transam/xlog.c:3713
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized without USE_FLOAT8_BYVAL but the server was compiled with USE_FLOAT8_BYVAL."
 msgstr ""
@@ -1292,6 +1317,7 @@ msgstr ""
 "alors que le serveur a été compilé avec USE_FLOAT8_BYVAL."
 
 #: access/transam/xlog.c:3720
+>>>>>>> REL9_3_13
 #, c-format
 msgid "The database cluster was initialized with USE_FLOAT8_BYVAL but the server was compiled without USE_FLOAT8_BYVAL."
 msgstr ""
@@ -5643,7 +5669,7 @@ msgstr "le langage « %s » n'existe pas"
 msgid "Use CREATE LANGUAGE to load the language into the database."
 msgstr "Utiliser CREATE LANGUAGE pour charger le langage dans la base de données."
 
-#: commands/functioncmds.c:887 commands/functioncmds.c:1110
+#: commands/functioncmds.c:887 commands/functioncmds.c:1109
 #, c-format
 msgid "only superuser can define a leakproof function"
 msgstr "seul un superutilisateur peut définir une fonction leakproof"

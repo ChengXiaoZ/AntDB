@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -45,6 +46,9 @@
 #include "catalog/pg_type.h"
 #include "commands/async.h"
 #include "commands/prepare.h"
+#ifdef PGXC
+#include "commands/trigger.h"
+#endif
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "libpq/pqsignal.h"
@@ -55,6 +59,9 @@
 #include "pg_trace.h"
 #include "parser/analyze.h"
 #include "parser/parser.h"
+#ifdef PGXC
+#include "parser/parse_type.h"
+#endif /* PGXC */
 #include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
 #include "replication/walsender.h"
@@ -76,6 +83,35 @@
 #include "utils/timestamp.h"
 #include "mb/pg_wchar.h"
 
+#ifdef PGXC
+#include "storage/procarray.h"
+#include "pgxc/pgxc.h"
+/* PGXC_COORD */
+#include "pgxc/execRemote.h"
+#include "pgxc/barrier.h"
+#include "optimizer/pgxcplan.h"
+#include "nodes/nodes.h"
+#include "pgxc/poolmgr.h"
+#include "pgxc/pgxcnode.h"
+#include "commands/copy.h"
+/* PGXC_DATANODE */
+#include "access/transam.h"
+#endif
+#ifdef ADB
+#include "nodes/nodeFuncs.h"
+#include "catalog/adb_ha_sync_log.h"
+#include "agtm/agtm.h"
+#include "agtm/agtm_client.h"
+#endif /* ADB */
+#ifdef ADBMGRD
+#	include "mgr/mgr_agent.h"
+#endif /* ADBMGRD */
+
+#ifdef AGTM
+#include "agtm/agtm.h"
+#endif
+
+extern int	optind;
 
 extern char *optarg;
 extern int	optind;
@@ -104,8 +140,6 @@ int			max_stack_depth = 100;
 
 /* wait N seconds to allow attach from a debugger */
 int			PostAuthDelay = 0;
-
-
 
 /* ----------------
  *		private variables
@@ -184,13 +218,25 @@ static bool RecoveryConflictPending = false;
 static bool RecoveryConflictRetryable = true;
 static ProcSignalReason RecoveryConflictReason;
 
+#ifdef ADB
+int parse_grammar = PARSE_GRAM_POSTGRES;
+int current_grammar = PARSE_GRAM_POSTGRES;
+#endif
+extern bool Debug_print_grammar;
+
+#ifdef ADBMGRD
+int mgr_cmd_mode = CMD_MODE_MGR;
+#endif
+
 /* ----------------------------------------------------------------
  *		decls for routines only used in this file
  * ----------------------------------------------------------------
  */
 static int	InteractiveBackend(StringInfo inBuf);
 static int	interactive_getc(void);
+#ifndef AGTM
 static int	SocketBackend(StringInfo inBuf);
+#endif /* AGTM */
 static int	ReadCommand(StringInfo inBuf);
 static void forbidden_in_wal_sender(char firstchar);
 static List *pg_rewrite_query(Query *query);
@@ -207,7 +253,31 @@ static bool IsTransactionStmtList(List *parseTrees);
 static void drop_unnamed_stmt(void);
 static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
+#ifdef ADB
+static List *segment_query_string(const char *query_string,
+								  List *parsetree_list);
+#endif
+#ifdef AGTM
+#include "agtm.c"
+#endif /* AGTM */
 
+
+#ifdef PGXC /* PGXC_DATANODE */
+/* ----------------------------------------------------------------
+ *		PG-XC routines
+ * ----------------------------------------------------------------
+ */
+
+/*
+ * Called when the backend is ending.
+ */
+static void
+DataNodeShutdown (int code, Datum arg)
+{
+	/* Close connection with AGTM, if active */
+	agtm_Close();
+}
+#endif
 
 /* ----------------------------------------------------------------
  *		routines to obtain user input
@@ -333,6 +403,7 @@ interactive_getc(void)
  *	EOF is returned if the connection is lost.
  * ----------------
  */
+#ifndef AGTM
 static int
 SocketBackend(StringInfo inBuf)
 {
@@ -377,6 +448,7 @@ SocketBackend(StringInfo inBuf)
 	switch (qtype)
 	{
 		case 'Q':				/* simple query */
+		case 'q':
 			doing_extended_query_message = false;
 			if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
 			{
@@ -472,6 +544,19 @@ SocketBackend(StringInfo inBuf)
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 						 errmsg("invalid frontend message type %d", qtype)));
 			break;
+#ifdef PGXC /* PGXC_DATANODE */
+		case 'M':				/* Command ID */
+		case 'b':				/* Barrier */
+			break;
+#endif /* PGXC */
+#ifdef ADB
+		case 'L':				/* agtm backend listen port */
+			break;
+#endif /* ADB */
+#ifdef AGTM
+		case 'A':				/* agtm command */
+			break;
+#endif /* AGTM */
 
 		default:
 
@@ -502,6 +587,7 @@ SocketBackend(StringInfo inBuf)
 
 	return qtype;
 }
+#endif /* AGTM */
 
 /* ----------------
  *		ReadCommand reads a command from either the frontend or
@@ -516,9 +602,14 @@ ReadCommand(StringInfo inBuf)
 	int			result;
 
 	if (whereToSendOutput == DestRemote)
+#ifdef AGTM
+		result = agtm_ReadCommand(inBuf);
+#else /* AGTM */
 		result = SocketBackend(inBuf);
+#endif /* AGTM */
 	else
 		result = InteractiveBackend(inBuf);
+
 	return result;
 }
 
@@ -566,6 +657,80 @@ client_read_ended(void)
 	}
 }
 
+#ifdef ADB
+List *parse_query_auto_gram(const char *query_string, ParseGrammar *gram)
+{
+	static const struct
+	{
+		const char *token;
+		int token_len;
+		ParseGrammar gram;
+	}token_gram[]={
+		 {"pg",2,PARSE_GRAM_POSTGRES}
+		,{"postgres", 8, PARSE_GRAM_POSTGRES}
+		,{"oracle", 6, PARSE_GRAM_ORACLE}
+		,{"ora", 3, PARSE_GRAM_ORACLE}
+	};
+	const char *str;
+	ParseGrammar grammer;
+	size_t i;
+
+	/* skip space */
+	Assert(query_string);
+	for(str = query_string;*str;++str)
+	{
+		if(!isspace(*str))
+			break;
+	}
+
+	grammer = parse_grammar;
+	if(str[0] == '-' && str[1] == '-')
+	{
+		str += 2;
+		for(i=0;i<lengthof(token_gram);++i)
+		{
+			/* test "token\s" */
+			if(strncmp(str, token_gram[i].token, token_gram[i].token_len) == 0
+				&& isspace(str[token_gram[i].token_len]))
+			{
+				grammer = token_gram[i].gram;
+				break;
+			}
+		}
+	}else if(str[0] == '/' && str[1] == '*')
+	{
+		str += 2;
+		for(i=0;i<lengthof(token_gram);++i)
+		{
+			// test "token(\s|\*/)"
+			if(strncmp(str, token_gram[i].token, token_gram[i].token_len) == 0
+				&& (isspace(str[token_gram[i].token_len]) || 
+					(str[token_gram[i].token_len] == '*' && str[token_gram[i].token_len+1] == '/')
+				))
+			{
+				grammer = token_gram[i].gram;
+				break;
+			}
+		}
+	}
+
+	if(gram)
+		*gram = grammer;
+	switch(grammer)
+	{
+	case PARSE_GRAM_POSTGRES:
+		return pg_parse_query(query_string);
+	case PARSE_GRAM_ORACLE:
+		return ora_parse_query(query_string);
+	default:
+		ereport(ERROR, (errmsg("Unknown grammar %d", grammer)
+				, errcode(ERRCODE_INTERNAL_ERROR)
+				, errhint("Use SQL:\"set grammar=postgres|oracle\" to change grammar")));
+		break;
+	}
+	return NIL;
+}
+#endif
 
 /*
  * Do raw parsing (only).
@@ -613,6 +778,40 @@ pg_parse_query(const char *query_string)
 	return raw_parsetree_list;
 }
 
+#ifdef ADB
+List *ora_parse_query(const char *query_string)
+{
+	List	   *raw_parsetree_list;
+
+	TRACE_POSTGRESQL_QUERY_PARSE_START(query_string);
+
+	if (log_parser_stats)
+		ResetUsage();
+
+	raw_parsetree_list = ora_raw_parser(query_string);
+
+	if (log_parser_stats)
+		ShowUsage("PARSER STATISTICS");
+
+#ifdef COPY_PARSE_PLAN_TREES
+	/* Optional debugging check: pass raw parsetrees through copyObject() */
+	{
+		List	   *new_list = (List *) copyObject(raw_parsetree_list);
+
+		/* This checks both copyObject() and the equal() routines... */
+		if (!equal(new_list, raw_parsetree_list))
+			elog(WARNING, "copyObject() failed to produce an equal raw parse tree");
+		else
+			raw_parsetree_list = new_list;
+	}
+#endif
+
+	TRACE_POSTGRESQL_QUERY_PARSE_DONE(query_string);
+
+	return raw_parsetree_list;
+}
+#endif
+
 /*
  * Given a raw parsetree (gram.y output), and optionally information about
  * types of parameter symbols ($n), perform parse analysis and rule rewriting.
@@ -626,6 +825,16 @@ List *
 pg_analyze_and_rewrite(Node *parsetree, const char *query_string,
 					   Oid *paramTypes, int numParams)
 {
+#ifdef ADB
+	return pg_analyze_and_rewrite_for_gram(parsetree, query_string
+		, paramTypes, numParams, PARSE_GRAM_POSTGRES);
+}
+
+List *
+pg_analyze_and_rewrite_for_gram(Node *parsetree, const char *query_string,
+					   Oid *paramTypes, int numParams, ParseGrammar grammar)
+{
+#endif
 	Query	   *query;
 	List	   *querytree_list;
 
@@ -637,7 +846,11 @@ pg_analyze_and_rewrite(Node *parsetree, const char *query_string,
 	if (log_parser_stats)
 		ResetUsage();
 
+#ifdef ADB
+	query = parse_analyze_for_gram(parsetree, query_string, paramTypes, numParams, grammar);
+#else
 	query = parse_analyze(parsetree, query_string, paramTypes, numParams);
+#endif
 
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
@@ -646,6 +859,21 @@ pg_analyze_and_rewrite(Node *parsetree, const char *query_string,
 	 * (2) Rewrite the queries, as necessary
 	 */
 	querytree_list = pg_rewrite_query(query);
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		ListCell   *lc;
+
+		foreach(lc, querytree_list)
+		{
+			Query *query = (Query *) lfirst(lc);
+
+			if (query->sql_statement == NULL)
+				query->sql_statement = pstrdup(query_string);
+		}
+	}
+#endif
 
 	TRACE_POSTGRESQL_QUERY_REWRITE_DONE(query_string);
 
@@ -719,6 +947,21 @@ pg_rewrite_query(Query *query)
 	if (log_parser_stats)
 		ResetUsage();
 
+#ifdef PGXC
+	if (query->commandType == CMD_UTILITY &&
+		IsA(query->utilityStmt, CreateTableAsStmt) &&
+		((CreateTableAsStmt *)query->utilityStmt)->relkind != OBJECT_MATVIEW)
+	{
+		/*
+		 * CREATE TABLE AS SELECT and SELECT INTO are rewritten so that the
+		 * target table is created first. The SELECT query is then transformed
+		 * into an INSERT INTO statement. This step is not carried out for
+		 * materialized views.
+		 */
+			querytree_list = QueryRewriteCTAS(query);
+	}
+	else
+#endif
 	if (query->commandType == CMD_UTILITY)
 	{
 		/* don't rewrite utilities, just dump 'em into result list */
@@ -845,6 +1088,57 @@ pg_plan_queries(List *querytrees, int cursorOptions, ParamListInfo boundParams)
 	return stmt_list;
 }
 
+#ifdef ADB
+static List *
+segment_query_string(const char *query_string, List *parsetree_list)
+{
+	ListCell	*parsetree_item;
+	Node		*parsetree;
+	List		*sql_list = NIL;
+	char		*sql_item;
+	char		*query_str;
+	int			 save_endpos;
+	int			 curr_endpos;
+
+	if (!query_string || !parsetree_list)
+		return NIL;
+
+	query_str = pstrdup(query_string);
+
+	save_endpos = 0;
+	foreach (parsetree_item, parsetree_list)
+	{
+		parsetree = (Node *)lfirst(parsetree_item);
+		Assert(IsBaseStmt(parsetree));
+		curr_endpos = ((BaseStmt *)parsetree)->endpos;
+
+		/*
+		 * trim space character from the head of current sql
+		 */
+		while (query_str[save_endpos] && isspace(query_str[save_endpos]))
+			save_endpos++;
+
+		if (curr_endpos != 0)
+		{
+			Assert(curr_endpos >= save_endpos);
+			sql_item = pnstrdup(query_str + save_endpos,
+								curr_endpos - save_endpos + 1);
+			save_endpos = curr_endpos + 1;
+		} else
+		{
+			Assert(lnext(parsetree_item) == NULL);
+			sql_item = pstrdup(query_str + save_endpos);
+		}
+		sql_list = lappend(sql_list, sql_item);
+	}
+
+	pfree(query_str);
+
+	Assert(list_length(sql_list) == list_length(parsetree_list));
+
+	return sql_list;
+}
+#endif
 
 /*
  * exec_simple_query
@@ -852,17 +1146,27 @@ pg_plan_queries(List *querytrees, int cursorOptions, ParamListInfo boundParams)
  * Execute a "simple Query" protocol message.
  */
 static void
+#ifdef ADB
+exec_simple_query(const char *query_string, Node *query_node)
+#else
 exec_simple_query(const char *query_string)
+#endif
 {
 	CommandDest dest = whereToSendOutput;
 	MemoryContext oldcontext;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
+#ifdef ADB
+	List	   *sql_list;
+	ListCell   *sql_item;
+	ParseGrammar grammar;
+#endif
 	bool		save_log_statement_stats = log_statement_stats;
 	bool		was_logged = false;
 	bool		isTopLevel;
 	char		msec_str[32];
 
+	elog(DEBUG1, "Query is: %s", query_string);
 
 	/*
 	 * Report query to various monitoring facilities.
@@ -906,7 +1210,40 @@ exec_simple_query(const char *query_string)
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
 	 */
+#ifdef ADB
+	if(query_node)
+	{
+		parsetree_list = IsA(query_node, List) ? (List*)query_node : list_make1(query_node);
+		if(get_parse_node_grammar(query_node, &grammar) == false)
+			grammar = PARSE_GRAM_POSTGRES;
+	}else
+	{
+		parsetree_list = parse_query_auto_gram(query_string, &grammar);
+	}
+#elif defined(ADBMGRD)
+	if(IsUnderPostmaster)
+	{
+		if(mgr_cmd_mode == CMD_MODE_MGR)
+			parsetree_list = mgr_parse_query(query_string);
+		else if(mgr_cmd_mode == CMD_MODE_SQL)
+			parsetree_list = pg_parse_query(query_string);
+		else
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("unknown command mode %d", mgr_cmd_mode)));
+	}else
+	{
+		parsetree_list = pg_parse_query(query_string);
+	}
+#else
 	parsetree_list = pg_parse_query(query_string);
+#endif
+
+#ifdef ADB
+	sql_list = segment_query_string(query_string, parsetree_list);
+#endif
+
+	if(Debug_print_grammar)
+		elog_node_display(LOG, "grammar tree", parsetree_list, true);
 
 	/* Log immediately if dictated by log_statement */
 	if (check_log_statement(parsetree_list))
@@ -935,7 +1272,11 @@ exec_simple_query(const char *query_string)
 	/*
 	 * Run through the raw parsetree(s) and process each one.
 	 */
+#ifdef ADB
+	forboth(parsetree_item, parsetree_list, sql_item, sql_list)
+#else
 	foreach(parsetree_item, parsetree_list)
+#endif
 	{
 		Node	   *parsetree = (Node *) lfirst(parsetree_item);
 		bool		snapshot_set = false;
@@ -946,6 +1287,9 @@ exec_simple_query(const char *query_string)
 		Portal		portal;
 		DestReceiver *receiver;
 		int16		format;
+#ifdef ADB
+		const char *query_sql = (const char *)lfirst(sql_item);
+#endif 
 
 		/*
 		 * Get the command name for use in status display (it also becomes the
@@ -998,8 +1342,13 @@ exec_simple_query(const char *query_string)
 		 */
 		oldcontext = MemoryContextSwitchTo(MessageContext);
 
+#ifdef ADB
+		querytree_list = pg_analyze_and_rewrite_for_gram(parsetree
+							, query_string, NULL, 0, grammar);
+#else
 		querytree_list = pg_analyze_and_rewrite(parsetree, query_string,
 												NULL, 0);
+#endif
 
 		plantree_list = pg_plan_queries(querytree_list, 0, NULL);
 
@@ -1014,7 +1363,11 @@ exec_simple_query(const char *query_string)
 		 * Create unnamed portal to run the query or queries in. If there
 		 * already is one, silently drop it.
 		 */
+#ifdef ADB
+		portal = CreatePortal("", true, true, grammar);
+#else
 		portal = CreatePortal("", true, true);
+#endif
 		/* Don't display the portal in pg_cursors */
 		portal->visible = false;
 
@@ -1080,6 +1433,17 @@ exec_simple_query(const char *query_string)
 						 completionTag);
 
 		(*receiver->rDestroy) (receiver);
+
+#ifdef ADB
+		if (AdbHaSyncLogWalkerPortal(portal))
+		{
+			AddAdbHaSyncLog(portal->creation_time,
+							portal->grammar,
+							ADB_SQL_KIND_SIMPLE,
+							query_sql,
+							portal->portalParams);
+		}
+#endif
 
 		PortalDrop(portal, false);
 
@@ -1165,11 +1529,14 @@ exec_simple_query(const char *query_string)
  * exec_parse_message
  *
  * Execute a "Parse" protocol message.
+ * If paramTypeNames is specified, paraTypes is filled with corresponding OIDs.
+ * The caller is expected to allocate space for the paramTypes.
  */
 static void
 exec_parse_message(const char *query_string,	/* string to execute */
 				   const char *stmt_name,		/* name for prepared stmt */
 				   Oid *paramTypes,		/* parameter types */
+				   char **paramTypeNames,	/* parameter type names */
 				   int numParams)		/* number of parameters */
 {
 	MemoryContext unnamed_stmt_context = NULL;
@@ -1179,6 +1546,9 @@ exec_parse_message(const char *query_string,	/* string to execute */
 	const char *commandTag;
 	List	   *querytree_list;
 	CachedPlanSource *psrc;
+#ifdef ADB
+	ParseGrammar grammar;
+#endif
 	bool		is_named;
 	bool		save_log_statement_stats = log_statement_stats;
 	char		msec_str[32];
@@ -1240,11 +1610,40 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		oldcontext = MemoryContextSwitchTo(unnamed_stmt_context);
 	}
 
+#ifdef PGXC
+	/*
+	 * if we have the parameter types passed, which happens only in case of
+	 * connection from Coordinators, fill paramTypes with their OIDs for
+	 * subsequent use. We have to do name to OID conversion, in a transaction
+	 * context.
+	 */
+	if (IsConnFromCoord() && paramTypeNames)
+	{
+		int cnt_param;
+		/* we don't expect type mod */
+		for (cnt_param = 0; cnt_param < numParams; cnt_param++)
+			parseTypeString(paramTypeNames[cnt_param], &paramTypes[cnt_param],
+							NULL);
+	}
+#endif /* PGXC */
+
 	/*
 	 * Do basic parsing of the query or queries (this should be safe even if
 	 * we are in aborted transaction state!)
 	 */
+#ifdef ADB
+	parsetree_list = parse_query_auto_gram(query_string, &grammar);
+#elif defined(ADBMGRD)
+	if(mgr_cmd_mode == CMD_MODE_MGR)
+		parsetree_list = mgr_parse_query(query_string);
+	else if(mgr_cmd_mode == CMD_MODE_SQL)
 	parsetree_list = pg_parse_query(query_string);
+	else
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
+			,errmsg("unknown command mode %d", mgr_cmd_mode)));
+#else
+	parsetree_list = pg_parse_query(query_string);
+#endif
 
 	/*
 	 * We only allow a single user statement in a prepared statement. This is
@@ -1289,7 +1688,11 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		 * Create the CachedPlanSource before we do parse analysis, since it
 		 * needs to see the unmodified raw parse tree.
 		 */
+#ifdef PGXC
+		psrc = CreateCachedPlan(raw_parse_tree, query_string, stmt_name, commandTag);
+#else
 		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
+#endif
 
 		/*
 		 * Set up a snapshot if parse analysis will need one.
@@ -1308,10 +1711,18 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		if (log_parser_stats)
 			ResetUsage();
 
+#ifdef ADB
+		query = parse_analyze_varparams_for_gram(raw_parse_tree,
+												 query_string,
+												 &paramTypes,
+												 &numParams,
+												 grammar);
+#else
 		query = parse_analyze_varparams(raw_parse_tree,
 										query_string,
 										&paramTypes,
 										&numParams);
+#endif
 
 		/*
 		 * Check all parameter types got determined.
@@ -1331,6 +1742,20 @@ exec_parse_message(const char *query_string,	/* string to execute */
 			ShowUsage("PARSE ANALYSIS STATISTICS");
 
 		querytree_list = pg_rewrite_query(query);
+#ifdef PGXC
+		if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		{
+			ListCell   *lc;
+
+			foreach(lc, querytree_list)
+			{
+				Query *query = (Query *) lfirst(lc);
+
+				if (query->sql_statement == NULL)
+					query->sql_statement = pstrdup(query_string);
+			}
+		}
+#endif
 
 		/* Done with the snapshot used for parsing */
 		if (snapshot_set)
@@ -1341,9 +1766,17 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		/* Empty input string.  This is legal. */
 		raw_parse_tree = NULL;
 		commandTag = NULL;
+#ifdef PGXC
+		psrc = CreateCachedPlan(raw_parse_tree, query_string, stmt_name, commandTag);
+#else
 		psrc = CreateCachedPlan(raw_parse_tree, query_string, commandTag);
+#endif
 		querytree_list = NIL;
 	}
+
+#ifdef ADB
+	psrc->grammar = grammar;
+#endif
 
 	/*
 	 * CachedPlanSource must be a direct child of MessageContext before we
@@ -1548,9 +1981,17 @@ exec_bind_message(StringInfo input_message)
 	 * if the unnamed portal is specified.
 	 */
 	if (portal_name[0] == '\0')
+#ifdef ADB
+		portal = CreatePortal(portal_name, true, true, psrc->grammar);
+#else
 		portal = CreatePortal(portal_name, true, true);
+#endif
 	else
+#ifdef ADB
+		portal = CreatePortal(portal_name, false, false, psrc->grammar);
+#else
 		portal = CreatePortal(portal_name, false, false);
+#endif
 
 	/*
 	 * Prepare to copy stuff into the portal's memory context.  We do all this
@@ -1965,6 +2406,17 @@ exec_execute_message(const char *portal_name, long max_rows)
 						  completionTag);
 
 	(*receiver->rDestroy) (receiver);
+
+#ifdef ADB
+	if (AdbHaSyncLogWalkerPortal(portal))
+	{
+		AddAdbHaSyncLog(portal->creation_time,
+						portal->grammar,
+						ADB_SQL_KIND_EXECUTE,
+						portal->sourceText,
+						portal->portalParams);
+	}
+#endif
 
 	if (completed)
 	{
@@ -2634,6 +3086,7 @@ die(SIGNAL_ARGS)
 	errno = save_errno;
 }
 
+
 /*
  * Query-cancel signal from postmaster: abort current transaction
  * at soonest convenient time
@@ -2832,7 +3285,11 @@ void
 ProcessInterrupts(void)
 {
 	/* OK to accept any interrupts now? */
+#ifdef ADB
+	if (InterruptHoldoffCount != 0 || CritSectionCount != 0 || FatalSectionCount != 0)
+#else
 	if (InterruptHoldoffCount != 0 || CritSectionCount != 0)
+#endif
 		return;
 	InterruptPending = false;
 
@@ -3321,6 +3778,9 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 	int			errs = 0;
 	GucSource	gucsource;
 	int			flag;
+#ifdef PGXC
+	bool		singleuser = false;
+#endif
 
 	if (secure)
 	{
@@ -3331,6 +3791,9 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 		{
 			argv++;
 			argc--;
+#ifdef PGXC
+			singleuser = true;
+#endif
 		}
 	}
 	else
@@ -3500,6 +3963,27 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 							   *value;
 
 					ParseLongOption(optarg, &name, &value);
+#ifdef PGXC
+					/* A Coordinator is being activated */
+					if (strcmp(name, "coordinator") == 0 &&
+						!value)
+						isPGXCCoordinator = true;
+					/* A Datanode is being activated */
+					else if (strcmp(name, "datanode") == 0 &&
+							 !value)
+						isPGXCDataNode = true;
+					else if (strcmp(name, "localxid") == 0 &&
+							 !value)
+					{
+						if (!singleuser)
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("local xids can be used only in single user mode")));
+						useLocalXid = true;
+					}
+					else /* default case */
+					{
+#endif /* PGXC */
 					if (!value)
 					{
 						if (flag == '-')
@@ -3514,6 +3998,9 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 											optarg)));
 					}
 					SetConfigOption(name, value, ctx, gucsource);
+#ifdef PGXC
+					}
+#endif
 					free(name);
 					if (value)
 						free(value);
@@ -3528,6 +4015,24 @@ process_postgres_switches(int argc, char *argv[], GucContext ctx,
 		if (errs)
 			break;
 	}
+
+#ifdef PGXC
+	/*
+	 * Make sure we specified the mode if Coordinator or Datanode.
+	 * Allow for the exception of initdb by checking config option
+	 */
+	if (!IS_PGXC_COORDINATOR && !IS_PGXC_DATANODE && IsUnderPostmaster)
+	{
+		ereport(FATAL,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("Postgres-XC: must start as either a Coordinator (--coordinator) or Datanode (-datanode)\n")));
+	}
+	if (!IsPostmasterEnvironment)
+	{
+		/* Treat it as a Datanode for initdb to work properly */
+		isPGXCDataNode = true;
+	}
+#endif
 
 	/*
 	 * Optional database name should be there only if *dbname is NULL.
@@ -3585,6 +4090,12 @@ PostgresMain(int argc, char *argv[],
 	StringInfoData input_message;
 	sigjmp_buf	local_sigjmp_buf;
 	volatile bool send_ready_for_query = true;
+
+#ifdef PGXC /* PGXC_DATANODE */
+	PoolHandle		*pool_handle;
+
+	remoteConnType = REMOTE_CONN_APP;
+#endif
 
 	/*
 	 * Initialize globals (already done if under postmaster, but not if
@@ -3775,6 +4286,10 @@ PostgresMain(int argc, char *argv[],
 	 * Now all GUC states are fully set up.  Report them to client if
 	 * appropriate.
 	 */
+#ifdef AGTM
+	if(IsUnderPostmaster)
+		start_agtm_listen();
+#endif /* AGTM */
 	BeginReportingGUCOptions();
 
 	/*
@@ -3830,6 +4345,48 @@ PostgresMain(int argc, char *argv[],
 	 */
 	if (!IsUnderPostmaster)
 		PgStartTime = GetCurrentTimestamp();
+
+#ifdef PGXC /* PGXC_COORD */
+	/*
+	 * Initialize key pair to be used as object id while using advisory lock
+	 * for backup
+	 */
+	xc_lockForBackupKey1 = Int32GetDatum(XC_LOCK_FOR_BACKUP_KEY_1);
+	xc_lockForBackupKey2 = Int32GetDatum(XC_LOCK_FOR_BACKUP_KEY_2);
+
+	/* If this postgres is launched from another Coord, do not initialize handles. skip it */
+	if (!am_walsender && IS_PGXC_COORDINATOR && !IsPoolHandle())
+	{
+		CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForPGXCNodes");
+
+		InitMultinodeExecutor(false);
+		if (!IsConnFromCoord())
+		{
+			pool_handle = GetPoolManagerHandle();
+			if (pool_handle == NULL)
+			{
+				ereport(ERROR,
+					(errcode(ERRCODE_IO_ERROR),
+					 errmsg("Can not connect to pool manager")));
+			}
+			/* Pooler initialization has to be made before ressource is released */
+			PoolManagerConnect(pool_handle, dbname, username, session_options());
+		}
+
+		ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
+		ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
+		ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
+		CurrentResourceOwner = NULL;
+
+		/* If we exit, first try and clean connections and send to pool */
+		on_proc_exit (PGXCNodeCleanAndRelease, 0);
+	}
+	if (!am_walsender && IS_PGXC_DATANODE)
+	{
+		/* If we exit, first try and clean connection to GTM */
+		on_proc_exit (DataNodeShutdown, 0);
+	}
+#endif
 
 	/*
 	 * POSTGRES main processing loop begins here
@@ -3942,6 +4499,9 @@ PostgresMain(int argc, char *argv[],
 			ereport(FATAL,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
 					 errmsg("terminating connection because protocol sync was lost")));
+#ifdef ADBMGRD
+		ma_clean();
+#endif /* ADBMGRD */
 
 		/* Now we can allow interrupts again */
 		RESUME_INTERRUPTS();
@@ -3956,7 +4516,6 @@ PostgresMain(int argc, char *argv[],
 	/*
 	 * Non-error queries loop here.
 	 */
-
 	for (;;)
 	{
 		/*
@@ -4009,6 +4568,7 @@ PostgresMain(int argc, char *argv[],
 			}
 
 			ReadyForQuery(whereToSendOutput);
+
 			send_ready_for_query = false;
 		}
 
@@ -4057,19 +4617,34 @@ PostgresMain(int argc, char *argv[],
 		switch (firstchar)
 		{
 			case 'Q':			/* simple query */
+#ifdef ADB
+			case 'q':
+#endif /* ADB */
 				{
 					const char *query_string;
-
+#ifdef ADB
+					Node *query_node;
+#endif
 					/* Set statement_timestamp() */
 					SetCurrentStatementStartTimestamp();
 
 					query_string = pq_getmsgstring(&input_message);
+#ifdef ADB
+					if(input_message.cursor != input_message.len)
+						query_node = loadNode(&input_message);
+					else
+						query_node = NULL;
+#endif /* ADB */
 					pq_getmsgend(&input_message);
 
 					if (am_walsender)
 						exec_replication_command(query_string);
 					else
+#ifdef ADB
+						exec_simple_query(query_string, query_node);
+#else /* ADB */
 						exec_simple_query(query_string);
+#endif /* ADB */
 
 					send_ready_for_query = true;
 				}
@@ -4081,6 +4656,7 @@ PostgresMain(int argc, char *argv[],
 					const char *query_string;
 					int			numParams;
 					Oid		   *paramTypes = NULL;
+					char 	  **paramTypeNames = NULL;
 
 					forbidden_in_wal_sender(firstchar);
 
@@ -4090,18 +4666,28 @@ PostgresMain(int argc, char *argv[],
 					stmt_name = pq_getmsgstring(&input_message);
 					query_string = pq_getmsgstring(&input_message);
 					numParams = pq_getmsgint(&input_message, 2);
+					paramTypes = (Oid *) palloc(numParams * sizeof(Oid));
 					if (numParams > 0)
 					{
 						int			i;
-
-						paramTypes = (Oid *) palloc(numParams * sizeof(Oid));
-						for (i = 0; i < numParams; i++)
-							paramTypes[i] = pq_getmsgint(&input_message, 4);
+#ifdef PGXC
+						if (IsConnFromCoord())
+						{
+							paramTypeNames = (char **)palloc(numParams * sizeof(char *));
+							for (i = 0; i < numParams; i++)
+								paramTypeNames[i] = (char *)pq_getmsgstring(&input_message);
+						}
+						else
+#endif /* PGXC */
+						{
+							for (i = 0; i < numParams; i++)
+								paramTypes[i] = pq_getmsgint(&input_message, 4);
+						}
 					}
 					pq_getmsgend(&input_message);
 
 					exec_parse_message(query_string, stmt_name,
-									   paramTypes, numParams);
+									   paramTypes, paramTypeNames, numParams);
 				}
 				break;
 
@@ -4257,6 +4843,24 @@ PostgresMain(int argc, char *argv[],
 				}
 				break;
 
+#ifdef ADB
+			case 'L':
+				{
+					int listen_port;
+
+					listen_port = pq_getmsgint(&input_message, 4);
+
+					elog(LOG, "Received AGTM listen port: %d", listen_port);
+
+					if (IS_PGXC_DATANODE ||
+						(IS_PGXC_COORDINATOR && IsConnFromCoord()))
+						agtm_SetPort(listen_port);
+				}
+				EndCommand("", whereToSendOutput);
+				send_ready_for_query = true;
+				break;
+#endif
+
 			case 'H':			/* flush */
 				pq_getmsgend(&input_message);
 				if (whereToSendOutput == DestRemote)
@@ -4303,6 +4907,56 @@ PostgresMain(int argc, char *argv[],
 				 * is still sending data.
 				 */
 				break;
+#ifdef AGTM
+			case 'A':
+				{
+					/* process agtm command */
+					ProcessAGtmCommand(&input_message);
+				}
+				break;
+#endif
+
+#ifdef PGXC
+			case 'M':			/* Command ID */
+				{
+					CommandId cid = (CommandId) pq_getmsgint(&input_message, 4);
+					elog(DEBUG1, "Received cmd id %u", cid);
+					SaveReceivedCommandId(cid);
+				}
+				break; 
+#if 0
+			case 'b':			/* barrier */
+				{
+					int command;
+					char *id;
+
+					command = pq_getmsgbyte(&input_message);
+					id = (char *) pq_getmsgstring(&input_message);
+					pq_getmsgend(&input_message);
+
+					switch (command)
+					{
+						case CREATE_BARRIER_PREPARE:
+							ProcessCreateBarrierPrepare(id);
+							break;
+
+						case CREATE_BARRIER_END:
+							ProcessCreateBarrierEnd(id);
+							break;
+
+						case CREATE_BARRIER_EXECUTE:
+							ProcessCreateBarrierExecute(id);
+							break;
+
+						default:
+							ereport(ERROR,
+									(errcode(ERRCODE_INTERNAL_ERROR),
+									 errmsg("Invalid command received")));
+					}
+				}
+				break;
+#endif
+#endif /* PGXC */
 
 			default:
 				ereport(FATAL,

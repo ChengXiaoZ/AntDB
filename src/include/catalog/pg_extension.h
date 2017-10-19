@@ -19,7 +19,11 @@
 #ifndef PG_EXTENSION_H
 #define PG_EXTENSION_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_extension definition.  cpp turns this into

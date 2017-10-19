@@ -29,6 +29,9 @@
 #include "utils/bytea.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
+#ifdef ADB
+#include "utils/varbit.h"
+#endif
 
 
 /* GUC variable */
@@ -76,8 +79,14 @@ static bytea *bytea_substring(Datum str,
 static bytea *bytea_overlay(bytea *t1, bytea *t2, int sp, int sl);
 static void appendStringInfoText(StringInfo str, const text *t);
 static Datum text_to_array_internal(PG_FUNCTION_ARGS);
+#ifdef ADB
+static text *array_to_text_internal(FunctionCallInfo fcinfo, ArrayType *v,
+					   const char *fldsep, const char *null_string,
+					   void (*check_value_func_ptr)(char*));
+#else
 static text *array_to_text_internal(FunctionCallInfo fcinfo, ArrayType *v,
 					   const char *fldsep, const char *null_string);
+#endif
 static StringInfo makeStringAggState(FunctionCallInfo fcinfo);
 static bool text_format_parse_digits(const char **ptr, const char *end_ptr,
 						 int *value);
@@ -2982,10 +2991,24 @@ appendStringInfoRegexpSubstr(StringInfo str, text *replace_text,
  *
  * Note: to avoid having to include regex.h in builtins.h, we declare
  * the regexp argument as void *, but really it's regex_t *.
+ *
+ * Note: start_position is a positive integer indicating the character of 
+ * src_text where we should begin the search. The default is 0, 
+ * meaning that we begin the search at the first character of src_text.
+ *
+ * Note: match_occurence is a nonnegative integer indicating the occurrence of
+ * the replace operation:
+ *     If you specify 0, then we replace all occurrences of the match.
+ *     If you specify a positive integer n, then we replace the nth occurrence
  */
 text *
 replace_text_regexp(text *src_text, void *regexp,
-					text *replace_text, bool glob)
+					text *replace_text,
+#ifdef ADB
+					int start_position,
+					int match_occurence,
+#endif
+					bool glob)
 {
 	text	   *ret_text;
 	regex_t    *re = (regex_t *) regexp;
@@ -2996,8 +3019,17 @@ replace_text_regexp(text *src_text, void *regexp,
 	size_t		data_len;
 	int			search_start;
 	int			data_pos;
+#ifdef ADB
+	int			match_cnt;
+	int			chunk_len;
+#endif
 	char	   *start_ptr;
 	bool		have_escape;
+
+#ifdef ADB
+	Assert(start_position >= 0);
+	Assert(match_occurence >= 0);
+#endif
 
 	initStringInfo(&buf);
 
@@ -3012,7 +3044,12 @@ replace_text_regexp(text *src_text, void *regexp,
 	start_ptr = (char *) VARDATA_ANY(src_text);
 	data_pos = 0;
 
+#ifdef ADB
+	match_cnt = 0;
+	search_start = start_position;
+#else
 	search_start = 0;
+#endif
 	while (search_start <= data_len)
 	{
 		int			regexec_result;
@@ -3048,8 +3085,9 @@ replace_text_regexp(text *src_text, void *regexp,
 		 */
 		if (pmatch[0].rm_so - data_pos > 0)
 		{
+#ifndef ADB
 			int			chunk_len;
-
+#endif
 			chunk_len = charlen_to_bytelen(start_ptr,
 										   pmatch[0].rm_so - data_pos);
 			appendBinaryStringInfo(&buf, start_ptr, chunk_len);
@@ -3062,6 +3100,39 @@ replace_text_regexp(text *src_text, void *regexp,
 			data_pos = pmatch[0].rm_so;
 		}
 
+#ifdef ADB
+		/*
+		 * Get one match, and get pmatch length "chunk_len"
+		 */
+		match_cnt++;
+		chunk_len = charlen_to_bytelen(start_ptr, pmatch[0].rm_eo - data_pos);
+
+		/*
+		 * If match_occurence is 0, then we replace all occurrences of the match.
+		 * If match_occurence equal match_cnt, then we replace the current 
+		 * occurrence of the match and break. see line 3121.
+		 *
+		 * Otherwise, we keep the source text.
+		 */
+		if (match_occurence == 0 || match_cnt == match_occurence)
+		{
+			/*
+			 * Copy the replace_text. Process back references when the
+			 * replace_text has escape characters.
+			 */
+			if (have_escape)
+				appendStringInfoRegexpSubstr(&buf, replace_text, pmatch,
+											 start_ptr, data_pos);
+			else
+				appendStringInfoText(&buf, replace_text);
+		} else
+		{
+			appendBinaryStringInfo(&buf, start_ptr, chunk_len);
+		}
+
+		/* Advance start_ptr and data_pos over the matched text. */
+		start_ptr += chunk_len;
+#else
 		/*
 		 * Copy the replace_text. Process back references when the
 		 * replace_text has escape characters.
@@ -3075,13 +3146,24 @@ replace_text_regexp(text *src_text, void *regexp,
 		/* Advance start_ptr and data_pos over the matched text. */
 		start_ptr += charlen_to_bytelen(start_ptr,
 										pmatch[0].rm_eo - data_pos);
+#endif
 		data_pos = pmatch[0].rm_eo;
 
+#ifdef ADB
+		/*
+		 * When global option is off, replace the first instance only.
+		 * Or
+		 * We replace the appropriate occurence of the match.
+		 */
+		if (!glob || match_cnt == match_occurence)
+			break;
+#else
 		/*
 		 * When global option is off, replace the first instance only.
 		 */
 		if (!glob)
 			break;
+#endif
 
 		/*
 		 * Advance search position.  Normally we start the next search at the
@@ -3426,7 +3508,11 @@ array_to_text(PG_FUNCTION_ARGS)
 	ArrayType  *v = PG_GETARG_ARRAYTYPE_P(0);
 	char	   *fldsep = text_to_cstring(PG_GETARG_TEXT_PP(1));
 
+#ifdef ADB
+	PG_RETURN_TEXT_P(array_to_text_internal(fcinfo, v, fldsep, NULL, NULL));
+#else
 	PG_RETURN_TEXT_P(array_to_text_internal(fcinfo, v, fldsep, NULL));
+#endif
 }
 
 /*
@@ -3456,7 +3542,11 @@ array_to_text_null(PG_FUNCTION_ARGS)
 	else
 		null_string = NULL;
 
+#ifdef ADB
+	PG_RETURN_TEXT_P(array_to_text_internal(fcinfo, v, fldsep, null_string, NULL));
+#else
 	PG_RETURN_TEXT_P(array_to_text_internal(fcinfo, v, fldsep, null_string));
+#endif
 }
 
 /*
@@ -3464,7 +3554,11 @@ array_to_text_null(PG_FUNCTION_ARGS)
  */
 static text *
 array_to_text_internal(FunctionCallInfo fcinfo, ArrayType *v,
-					   const char *fldsep, const char *null_string)
+					   const char *fldsep, const char *null_string
+#ifdef ADB
+					   , void (*check_value_func_ptr)(char*)
+#endif
+					   )
 {
 	text	   *result;
 	int			nitems,
@@ -3551,6 +3645,10 @@ array_to_text_internal(FunctionCallInfo fcinfo, ArrayType *v,
 			itemvalue = fetch_att(p, typbyval, typlen);
 
 			value = OutputFunctionCall(&my_extra->proc, itemvalue);
+#ifdef ADB
+			if (check_value_func_ptr)
+				(*check_value_func_ptr)(value);
+#endif
 
 			if (printed)
 				appendStringInfo(&buf, "%s%s", fldsep, value);
@@ -3810,7 +3908,11 @@ string_agg_finalfn(PG_FUNCTION_ARGS)
  */
 static text *
 concat_internal(const char *sepstr, int argidx,
-				FunctionCallInfo fcinfo)
+				FunctionCallInfo fcinfo
+#ifdef ADB
+				, void (*check_value_func_ptr)(char*)
+#endif
+				)
 {
 	text	   *result;
 	StringInfoData str;
@@ -3855,7 +3957,11 @@ concat_internal(const char *sepstr, int argidx,
 		 * And serialize the array.  We tell array_to_text to ignore null
 		 * elements, which matches the behavior of the loop below.
 		 */
+#ifdef ADB
+		return array_to_text_internal(fcinfo, arr, sepstr, NULL, check_value_func_ptr);
+#else
 		return array_to_text_internal(fcinfo, arr, sepstr, NULL);
+#endif
 	}
 
 	/* Normal case without explicit VARIADIC marker */
@@ -3900,7 +4006,11 @@ text_concat(PG_FUNCTION_ARGS)
 {
 	text	   *result;
 
+#ifdef ADB
+	result = concat_internal("", 0, fcinfo, NULL);
+#else
 	result = concat_internal("", 0, fcinfo);
+#endif
 	if (result == NULL)
 		PG_RETURN_NULL();
 	PG_RETURN_TEXT_P(result);
@@ -3921,7 +4031,11 @@ text_concat_ws(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 	sep = text_to_cstring(PG_GETARG_TEXT_PP(0));
 
+#ifdef ADB
+	result = concat_internal(sep, 1, fcinfo, NULL);
+#else
 	result = concat_internal(sep, 1, fcinfo);
+#endif
 	if (result == NULL)
 		PG_RETURN_NULL();
 	PG_RETURN_TEXT_P(result);
@@ -4539,3 +4653,38 @@ text_format_nv(PG_FUNCTION_ARGS)
 {
 	return text_format(fcinfo);
 }
+
+#ifdef ADB
+static void check_array_elem_value(char* val)
+{
+	if (!val || 
+		(strcmp(val, "1") != 0 &&
+		 strcmp(val, "0") != 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				errmsg("the value of parameter of bin_to_num is 0 or 1"),
+				errhint("current value is \"%s\"", val ? val : "NULL")));
+}
+
+Datum
+ora_bin_to_num(PG_FUNCTION_ARGS)
+{
+	text	   *str;
+	StringInfoData buf;
+	Datum      bit_val;
+
+	str = concat_internal("", 0, fcinfo, check_array_elem_value);
+	if (str == NULL)
+		PG_RETURN_INT32(0);
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "B%s", text_to_cstring(str));
+
+	bit_val = DirectFunctionCall3(bit_in,
+								  CStringGetDatum(buf.data),
+								  ObjectIdGetDatum(0),
+								  Int32GetDatum(-1));
+	pfree(buf.data);
+	return DirectFunctionCall1(bittoint8, bit_val);
+}
+#endif

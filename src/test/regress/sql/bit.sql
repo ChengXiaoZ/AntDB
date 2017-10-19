@@ -16,7 +16,7 @@ INSERT INTO BIT_TABLE VALUES (B'101011111010'); -- too long
 --INSERT INTO BIT_TABLE VALUES ('X554');
 --INSERT INTO BIT_TABLE VALUES ('X555');
 
-SELECT * FROM BIT_TABLE;
+SELECT * FROM BIT_TABLE ORDER BY b; 
 
 CREATE TABLE VARBIT_TABLE(v BIT VARYING(11));
 
@@ -27,8 +27,7 @@ INSERT INTO VARBIT_TABLE VALUES (B'01010101010');
 INSERT INTO VARBIT_TABLE VALUES (B'101011111010'); -- too long
 --INSERT INTO VARBIT_TABLE VALUES ('X554');
 --INSERT INTO VARBIT_TABLE VALUES ('X555');
-SELECT * FROM VARBIT_TABLE;
-
+SELECT * FROM VARBIT_TABLE ORDER BY v; 
 
 -- Concatenation
 SELECT v, b, (v || b) AS concat
@@ -37,21 +36,21 @@ SELECT v, b, (v || b) AS concat
 
 -- Length
 SELECT b, length(b) AS lb
-       FROM BIT_TABLE;
+       FROM BIT_TABLE ORDER BY b;
 SELECT v, length(v) AS lv
-       FROM VARBIT_TABLE;
+       FROM VARBIT_TABLE ORDER BY v;
 
 -- Substring
 SELECT b,
        SUBSTRING(b FROM 2 FOR 4) AS sub_2_4,
        SUBSTRING(b FROM 7 FOR 13) AS sub_7_13,
        SUBSTRING(b FROM 6) AS sub_6
-       FROM BIT_TABLE;
+       FROM BIT_TABLE ORDER BY b;
 SELECT v,
        SUBSTRING(v FROM 2 FOR 4) AS sub_2_4,
        SUBSTRING(v FROM 7 FOR 13) AS sub_7_13,
        SUBSTRING(v FROM 6) AS sub_6
-       FROM VARBIT_TABLE;
+       FROM VARBIT_TABLE ORDER BY v;
 
 --- Bit operations
 DROP TABLE varbit_table;
@@ -69,11 +68,11 @@ XFA50	X05AF
 X1234	XFFF5
 \.
 
-SELECT a, b, ~a AS "~ a", a & b AS "a & b",
-       a | b AS "a | b", a # b AS "a # b" FROM varbit_table;
+SELECT a, b, ~a AS "~ a", a & b AS "a & b", 
+       a | b AS "a | b", a # b AS "a # b" FROM varbit_table ORDER BY a,b;
 SELECT a,b,a<b AS "a<b",a<=b AS "a<=b",a=b AS "a=b",
-        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM varbit_table;
-SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM varbit_table;
+        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM varbit_table ORDER BY a,b;
+SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM varbit_table ORDER BY a,b;
 
 DROP TABLE varbit_table;
 
@@ -93,11 +92,11 @@ XFA50	X05AF
 X1234	XFFF5
 \.
 
-SELECT a,b,~a AS "~ a",a & b AS "a & b",
-	a|b AS "a | b", a # b AS "a # b" FROM bit_table;
+SELECT a,b,~a AS "~ a",a & b AS "a & b", 
+	a|b AS "a | b", a # b AS "a # b" FROM bit_table ORDER BY a,b;
 SELECT a,b,a<b AS "a<b",a<=b AS "a<=b",a=b AS "a=b",
-        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM bit_table;
-SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM bit_table;
+        a>=b AS "a>=b",a>b AS "a>b",a<>b AS "a<>b" FROM bit_table ORDER BY a,b;
+SELECT a,a<<4 AS "a<<4",b,b>>2 AS "b>>2" FROM bit_table ORDER BY a,b;
 
 DROP TABLE bit_table;
 
@@ -166,8 +165,8 @@ INSERT INTO BIT_SHIFT_TABLE SELECT b>>4 FROM BIT_SHIFT_TABLE;
 INSERT INTO BIT_SHIFT_TABLE SELECT b>>8 FROM BIT_SHIFT_TABLE;
 SELECT POSITION(B'1101' IN b),
        POSITION(B'11011' IN b),
-       b
-       FROM BIT_SHIFT_TABLE ;
+       b 
+       FROM BIT_SHIFT_TABLE  ORDER BY b;
 
 
 CREATE TABLE VARBIT_SHIFT_TABLE(v BIT VARYING(20));
@@ -178,8 +177,8 @@ INSERT INTO VARBIT_SHIFT_TABLE SELECT CAST(v || B'0000' AS BIT VARYING(12)) >>4 
 INSERT INTO VARBIT_SHIFT_TABLE SELECT CAST(v || B'00000000' AS BIT VARYING(20)) >>8 FROM VARBIT_SHIFT_TABLE;
 SELECT POSITION(B'1101' IN v),
        POSITION(B'11011' IN v),
-       v
-       FROM VARBIT_SHIFT_TABLE ;
+       v 
+       FROM VARBIT_SHIFT_TABLE  ORDER BY v;
 
 
 DROP TABLE BIT_SHIFT_TABLE;

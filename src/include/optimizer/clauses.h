@@ -58,6 +58,9 @@ extern double expression_returns_set_rows(Node *clause);
 extern double tlist_returns_set_rows(List *tlist);
 
 extern bool contain_subplans(Node *clause);
+#ifdef ADB
+extern bool contain_rownum(Node *clause);
+#endif /* ADB */
 
 extern bool contain_mutable_functions(Node *clause);
 extern bool contain_volatile_functions(Node *clause);

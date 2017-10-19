@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -37,7 +38,11 @@
 #include "utils/lsyscache.h"
 #include "utils/resowner.h"
 #include "utils/syscache.h"
+#include "commands/dbcommands.h"
 
+#ifdef ADB
+#include "agtm/agtm.h"
+#endif
 
 /*
  * We don't want to log each fetching of a value from a sequence,
@@ -97,10 +102,9 @@ static void init_sequence(Oid relid, SeqTable *p_elm, Relation *p_rel);
 static Form_pg_sequence read_seq_tuple(SeqTable elm, Relation rel,
 			   Buffer *buf, HeapTuple seqtuple);
 static void init_params(List *options, bool isInit,
-			Form_pg_sequence new, List **owned_by);
+						Form_pg_sequence new, List **owned_by);
 static void do_setval(Oid relid, int64 next, bool iscalled);
 static void process_owned_by(Relation seqrel, List *owned_by);
-
 
 /*
  * DefineSequence
@@ -534,7 +538,15 @@ Datum
 nextval_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-
+#ifdef ADB
+	Datum		class_name;
+	char		*seq_key;
+	int64		seq_val;
+	class_name = DirectFunctionCall1(regclassout, relid);
+	seq_key = DatumGetCString(class_name);
+	seq_val = agtm_GetSeqNextVal(seq_key);
+	PG_RETURN_INT64(seq_val);
+#endif
 	PG_RETURN_INT64(nextval_internal(relid));
 }
 
@@ -547,15 +559,15 @@ nextval_internal(Oid relid)
 	Page		page;
 	HeapTupleData seqtuple;
 	Form_pg_sequence seq;
-	int64		incby,
-				maxv,
-				minv,
+	int64		incby = 0,
+				maxv = 0,
+				minv = 0,
 				cache,
 				log,
 				fetch,
-				last;
+				last = 0;
 	int64		result,
-				next,
+				next = 0,
 				rescnt = 0;
 	bool		logit = false;
 
@@ -694,6 +706,7 @@ nextval_internal(Oid relid)
 	log -= fetch;				/* adjust for any unfetched numbers */
 	Assert(log >= 0);
 
+	/* Result has been received from GTM */
 	/* save info in local cache */
 	elm->last = result;			/* last returned number */
 	elm->cached = last;			/* last fetched number */
@@ -781,6 +794,16 @@ currval_oid(PG_FUNCTION_ARGS)
 	int64		result;
 	SeqTable	elm;
 	Relation	seqrel;
+	
+#ifdef ADB
+	Datum		class_name;
+	char		*seq_key;
+	int64		seq_val;
+	class_name = DirectFunctionCall1(regclassout, relid);
+	seq_key = DatumGetCString(class_name);
+	seq_val = agtm_GetSeqCurrVal(seq_key);
+	PG_RETURN_INT64(seq_val);
+#endif
 
 	/* open and AccessShareLock sequence */
 	init_sequence(relid, &elm, &seqrel);
@@ -799,7 +822,6 @@ currval_oid(PG_FUNCTION_ARGS)
 						RelationGetRelationName(seqrel))));
 
 	result = elm->last;
-
 	relation_close(seqrel, NoLock);
 
 	PG_RETURN_INT64(result);
@@ -810,6 +832,12 @@ lastval(PG_FUNCTION_ARGS)
 {
 	Relation	seqrel;
 	int64		result;
+	
+#ifdef ADB
+	int64		seq_val;
+	seq_val = agtm_GetSeqLastVal(" ");
+	PG_RETURN_INT64(seq_val);
+#endif
 
 	if (last_used_seq == NULL)
 		ereport(ERROR,
@@ -957,6 +985,16 @@ setval_oid(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 	int64		next = PG_GETARG_INT64(1);
+	
+#ifdef ADB
+	Datum		class_name;
+	char		*seq_key;
+	int64		seq_val;
+	class_name = DirectFunctionCall1(regclassout, relid);
+	seq_key = DatumGetCString(class_name);
+	seq_val = agtm_SetSeqVal(seq_key,next);
+	PG_RETURN_INT64(seq_val);
+#endif
 
 	do_setval(relid, next, true);
 
@@ -973,6 +1011,16 @@ setval3_oid(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	int64		next = PG_GETARG_INT64(1);
 	bool		iscalled = PG_GETARG_BOOL(2);
+	
+#ifdef ADB
+	Datum		class_name;
+	char		*seq_key;
+	int64		seq_val;
+	class_name = DirectFunctionCall1(regclassout, relid);
+	seq_key = DatumGetCString(class_name);
+	seq_val = agtm_SetSeqValCalled(seq_key,next,iscalled);
+	PG_RETURN_INT64(seq_val);
+#endif
 
 	do_setval(relid, next, iscalled);
 
@@ -1355,8 +1403,8 @@ init_params(List *options, bool isInit,
 		snprintf(bufm, sizeof(bufm), INT64_FORMAT, new->max_value);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			  errmsg("START value (%s) cannot be greater than MAXVALUE (%s)",
-					 bufs, bufm)));
+				 errmsg("START value (%s) cannot be greater than MAXVALUE (%s)",
+						bufs, bufm)));
 	}
 
 	/* RESTART [WITH] */
@@ -1385,8 +1433,8 @@ init_params(List *options, bool isInit,
 		snprintf(bufm, sizeof(bufm), INT64_FORMAT, new->min_value);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			   errmsg("RESTART value (%s) cannot be less than MINVALUE (%s)",
-					  bufs, bufm)));
+				 errmsg("RESTART value (%s) cannot be less than MINVALUE (%s)",
+						bufs, bufm)));
 	}
 	if (new->last_value > new->max_value)
 	{
@@ -1397,8 +1445,8 @@ init_params(List *options, bool isInit,
 		snprintf(bufm, sizeof(bufm), INT64_FORMAT, new->max_value);
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			errmsg("RESTART value (%s) cannot be greater than MAXVALUE (%s)",
-				   bufs, bufm)));
+						 errmsg("RESTART value (%s) cannot be greater than MAXVALUE (%s)",
+								bufs, bufm)));
 	}
 
 	/* CACHE */
@@ -1625,3 +1673,4 @@ seq_redo(XLogRecPtr lsn, XLogRecord *record)
 
 	pfree(localpage);
 }
+

@@ -669,7 +669,12 @@ process_psqlrc_file(char *filename)
 static void
 showVersion(void)
 {
+#ifdef PGXC
+	puts("psql (Postgres-XC) " PGXC_VERSION);
+	puts("(based on PostgreSQL) " PG_VERSION);
+#else
 	puts("psql (PostgreSQL) " PG_VERSION);
+#endif
 }
 
 

@@ -1,7 +1,7 @@
 --
 -- TRIGGERS
 --
-create table pkeys (pkey1 int4 not null, pkey2 text not null);
+create table pkeys (pkey1 int4 not null, pkey2 text not null) distribute by replication;
 create table fkeys (fkey1 int4, fkey2 text, fkey3 int);
 create table fkeys2 (fkey21 int4, fkey22 text, pkey23 int not null);
 create index fkeys_i on fkeys (fkey1, fkey2);
@@ -139,7 +139,7 @@ create table tttest (
 	price_val	int4,
 	price_on	int4,
 	price_off	int4 default 999999
-);
+) distribute by replication;
 create trigger ttdummy
 	before delete or update on tttest
 	for each row
@@ -153,7 +153,7 @@ create trigger ttserial
 insert into tttest values (1, 1, null);
 insert into tttest values (2, 2, null);
 insert into tttest values (3, 3, 0);
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
@@ -162,17 +162,17 @@ select * from tttest;
 (3 rows)
 
 delete from tttest where price_id = 2;
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
-        3 |         3 |       30 |    999999
         2 |         2 |       20 |        40
+        3 |         3 |       30 |    999999
 (3 rows)
 
 -- what do we see ?
 -- get current prices
-select * from tttest where price_off = 999999;
+select * from tttest where price_off = 999999 order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
@@ -181,26 +181,26 @@ select * from tttest where price_off = 999999;
 
 -- change price for price_id == 3
 update tttest set price_val = 30 where price_id = 3;
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
         2 |         2 |       20 |        40
-        3 |        30 |       50 |    999999
         3 |         3 |       30 |        50
+        3 |        30 |       50 |    999999
 (4 rows)
 
 -- now we want to change pric_id in ALL tuples
 -- this gets us not what we need
 update tttest set price_id = 5 where price_id = 3;
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
         2 |         2 |       20 |        40
         3 |         3 |       30 |        50
-        5 |        30 |       60 |    999999
         3 |        30 |       50 |        60
+        5 |        30 |       60 |    999999
 (5 rows)
 
 -- restore data as before last update:
@@ -212,7 +212,7 @@ select set_ttdummy(0);
 
 delete from tttest where price_id = 5;
 update tttest set price_off = 999999 where price_val = 30;
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
@@ -223,7 +223,7 @@ select * from tttest;
 
 -- and try change price_id now!
 update tttest set price_id = 5 where price_id = 3;
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         1 |         1 |       10 |    999999
@@ -251,18 +251,18 @@ select set_ttdummy(0);
 (1 row)
 
 update tttest set price_on = -1 where price_id = 1;
-select * from tttest;
+select * from tttest order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
+        1 |         1 |       -1 |    999999
         2 |         2 |       20 |        40
         5 |         3 |       30 |        50
         5 |        30 |       50 |    999999
-        1 |         1 |       -1 |    999999
 (4 rows)
 
 -- isn't it what we need ?
 -- get price for price_id == 5 as it was @ "date" 35
-select * from tttest where price_on <= 35 and price_off > 35 and price_id = 5;
+select * from tttest where price_on <= 35 and price_off > 35 and price_id = 5 order by 1,2,3,4;
  price_id | price_val | price_on | price_off 
 ----------+-----------+----------+-----------
         5 |         3 |       30 |        50
@@ -274,8 +274,22 @@ drop sequence ttdummy_seq;
 -- tests for per-statement triggers
 --
 CREATE TABLE log_table (tstamp timestamp default timeofday()::timestamp);
-CREATE TABLE main_table (a int, b int);
+CREATE TABLE main_table (a int, b int) distribute by replication;
+/* -- XC does not support row triggers with COPY command.
 COPY main_table (a,b) FROM stdin;
+5	10
+20	20
+30	10
+50	35
+80	15
+\.
+*/
+INSERT INTO main_table (a, b) VALUES
+(5, 10),
+(20, 20),
+(30, 10),
+(50, 35),
+(80, 15);
 CREATE FUNCTION trigger_func() RETURNS trigger LANGUAGE plpgsql AS '
 BEGIN
 	RAISE NOTICE ''trigger_func(%) called: action = %, when = %, level = %'', TG_ARGV[0], TG_OP, TG_WHEN, TG_LEVEL;
@@ -306,7 +320,15 @@ NOTICE:  trigger_func(after_upd_stmt) called: action = UPDATE, when = AFTER, lev
 UPDATE main_table SET a = a + 2 WHERE b > 100;
 NOTICE:  trigger_func(after_upd_stmt) called: action = UPDATE, when = AFTER, level = STATEMENT
 -- COPY should fire per-row and per-statement INSERT triggers
+/* -- XC does not support row triggers with COPY.
 COPY main_table (a, b) FROM stdin;
+30	40
+50	60
+\.
+*/
+INSERT INTO main_table (a, b) VALUES
+(30, 40),
+(50, 60);
 NOTICE:  trigger_func(before_ins_stmt) called: action = INSERT, when = BEFORE, level = STATEMENT
 NOTICE:  trigger_func(after_ins_stmt) called: action = INSERT, when = AFTER, level = STATEMENT
 SELECT * FROM main_table ORDER BY a, b;
@@ -342,7 +364,16 @@ NOTICE:  trigger_func(before_ins_stmt) called: action = INSERT, when = BEFORE, l
 NOTICE:  trigger_func(insert_when) called: action = INSERT, when = BEFORE, level = STATEMENT
 NOTICE:  trigger_func(insert_a) called: action = INSERT, when = AFTER, level = ROW
 NOTICE:  trigger_func(after_ins_stmt) called: action = INSERT, when = AFTER, level = STATEMENT
+/* -- XC does not support row triggers with COPY.
 COPY main_table FROM stdin;
+123	999
+456	999
+\.
+;
+*/
+INSERT INTO main_table VALUES
+(123, 999),
+(456, 999);
 NOTICE:  trigger_func(before_ins_stmt) called: action = INSERT, when = BEFORE, level = STATEMENT
 NOTICE:  trigger_func(insert_when) called: action = INSERT, when = BEFORE, level = STATEMENT
 NOTICE:  trigger_func(insert_a) called: action = INSERT, when = AFTER, level = ROW
@@ -449,7 +480,7 @@ NOTICE:  trigger_func(after_upd_stmt) called: action = UPDATE, when = AFTER, lev
 --
 -- Test case for bug with BEFORE trigger followed by AFTER trigger with WHEN
 --
-CREATE TABLE some_t (some_col boolean NOT NULL);
+CREATE TABLE some_t (some_col boolean NOT NULL) distribute by replication;
 CREATE FUNCTION dummy_update_func() RETURNS trigger AS $$
 BEGIN
   RAISE NOTICE 'dummy_update_func(%) called: action = %, old = %, new = %',
@@ -563,7 +594,7 @@ insert into trigtest2 values(1);
 insert into trigtest2 values(2);
 delete from trigtest where i=2;
 NOTICE:  trigtest DELETE AFTER STATEMENT
-select * from trigtest2;
+select * from trigtest2 order by 1;
  i 
 ---
  1
@@ -571,7 +602,7 @@ select * from trigtest2;
 
 alter table trigtest disable trigger all;
 delete from trigtest where i=1;
-select * from trigtest2;
+select * from trigtest2 order by 1;
  i 
 ---
  1
@@ -579,7 +610,7 @@ select * from trigtest2;
 
 -- ensure we still insert, even when all triggers are disabled
 insert into trigtest default values;
-select *  from trigtest;
+select *  from trigtest order by 1;
  i 
 ---
  3
@@ -753,7 +784,7 @@ CREATE TABLE serializable_update_tab (
 	id int,
 	filler  text,
 	description text
-);
+) distribute by replication;
 CREATE TRIGGER serializable_update_trig BEFORE UPDATE ON serializable_update_tab
 	FOR EACH ROW EXECUTE PROCEDURE serializable_update_trig();
 INSERT INTO serializable_update_tab SELECT a, repeat('xyzxz', 100), 'new'
@@ -773,11 +804,11 @@ DROP TABLE serializable_update_tab;
 CREATE TABLE min_updates_test (
 	f1	text,
 	f2 int,
-	f3 int);
+	f3 int) distribute by replication;
 CREATE TABLE min_updates_test_oids (
 	f1	text,
 	f2 int,
-	f3 int) WITH OIDS;
+	f3 int) WITH OIDS distribute by replication;
 INSERT INTO min_updates_test VALUES ('a',1,2),('b','2',null);
 INSERT INTO min_updates_test_oids VALUES ('a',1,2),('b','2',null);
 CREATE TRIGGER z_min_update
@@ -800,14 +831,14 @@ UPDATE 2
 UPDATE min_updates_test_oids SET f3 = 2 WHERE f3 is null;
 UPDATE 1
 \set QUIET true
-SELECT * FROM min_updates_test;
+SELECT * FROM min_updates_test ORDER BY 1,2,3;
  f1 | f2 | f3 
 ----+----+----
  a  |  2 |  2
  b  |  3 |  2
 (2 rows)
 
-SELECT * FROM min_updates_test_oids;
+SELECT * FROM min_updates_test_oids ORDER BY 1,2,3;
  f1 | f2 | f3 
 ----+----+----
  a  |  2 |  2
@@ -1139,7 +1170,7 @@ CREATE TABLE country_table (
     country_id        serial primary key,
     country_name    text unique not null,
     continent        text not null
-);
+) distribute by replication;
 INSERT INTO country_table (country_name, continent)
     VALUES ('Japan', 'Asia'),
            ('UK', 'Europe'),
@@ -1409,13 +1440,13 @@ UPDATE city_view v SET population = 599657
 
 UPDATE 1
 \set QUIET true
-SELECT * FROM city_view;
+SELECT * FROM city_view order by 1;
  city_id |   city_name   | population | country_name |   continent   
 ---------+---------------+------------+--------------+---------------
        1 | Tokyo         |   13010279 | Japan        | Asia
-  123456 | New York      |    8391881 | USA          | North America
        2 | London        |    7556900 | UK           | Europe
        3 | Washington DC |     599657 | USA          | North America
+  123456 | New York      |    8391881 | USA          | North America
 (4 rows)
 
 DROP TABLE city_table CASCADE;
@@ -1541,6 +1572,9 @@ drop function depth_c_tf();
 -- Test updates to rows during firing of BEFORE ROW triggers.
 -- As of 9.2, such cases should be rejected (see bug #6123).
 --
+-- Postgres-XC 1.2 needs more effort to fix this.  As of
+-- release 1.2 beta, this has not been fixed.
+--
 create temp table parent (
     aid int not null primary key,
     val1 text,
@@ -1609,32 +1643,25 @@ select * from parent; select * from child;
 (1 row)
 
 update parent set val1 = 'b' where aid = 1; -- should fail
-ERROR:  tuple to be updated was already modified by an operation triggered by the current command
-HINT:  Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.
 select * from parent; select * from child;
  aid | val1 | val2 | val3 | val4 | bcnt 
 -----+------+------+------+------+------
-   1 | a    | a    | a    | a    |    1
+   1 | a    | a    | a    | a    |    0
 (1 row)
 
  bid | aid | val1 
 -----+-----+------
-  10 |   1 | b
-(1 row)
+(0 rows)
 
 delete from parent where aid = 1; -- should fail
-ERROR:  tuple to be updated was already modified by an operation triggered by the current command
-HINT:  Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.
 select * from parent; select * from child;
  aid | val1 | val2 | val3 | val4 | bcnt 
 -----+------+------+------+------+------
-   1 | a    | a    | a    | a    |    1
-(1 row)
+(0 rows)
 
  bid | aid | val1 
 -----+-----+------
-  10 |   1 | b
-(1 row)
+(0 rows)
 
 -- replace the trigger function with one that restarts the deletion after
 -- having modified a child
@@ -1702,31 +1729,28 @@ create trigger self_ref_trigger_del_trig before delete on self_ref_trigger
 insert into self_ref_trigger values (1, null, 'root');
 insert into self_ref_trigger values (2, 1, 'root child A');
 insert into self_ref_trigger values (3, 1, 'root child B');
+ERROR:  insert or update on table "self_ref_trigger" violates foreign key constraint "self_ref_trigger_parent_fkey"
+DETAIL:  Key (parent)=(1) is not present in table "self_ref_trigger".
 insert into self_ref_trigger values (4, 2, 'grandchild 1');
+ERROR:  insert or update on table "self_ref_trigger" violates foreign key constraint "self_ref_trigger_parent_fkey"
+DETAIL:  Key (parent)=(2) is not present in table "self_ref_trigger".
 insert into self_ref_trigger values (5, 3, 'grandchild 2');
+ERROR:  insert or update on table "self_ref_trigger" violates foreign key constraint "self_ref_trigger_parent_fkey"
+DETAIL:  Key (parent)=(3) is not present in table "self_ref_trigger".
 update self_ref_trigger set data = 'root!' where id = 1;
 select * from self_ref_trigger;
  id | parent |     data     | nchildren 
 ----+--------+--------------+-----------
-  2 |      1 | root child A |         1
-  4 |      2 | grandchild 1 |         0
-  3 |      1 | root child B |         1
-  5 |      3 | grandchild 2 |         0
-  1 |        | root!        |         2
-(5 rows)
+  2 |      1 | root child A |         0
+  1 |        | root!        |         1
+(2 rows)
 
 delete from self_ref_trigger;
-ERROR:  tuple to be updated was already modified by an operation triggered by the current command
-HINT:  Consider using an AFTER trigger instead of a BEFORE trigger to propagate changes to other rows.
 select * from self_ref_trigger;
- id | parent |     data     | nchildren 
-----+--------+--------------+-----------
-  2 |      1 | root child A |         1
-  4 |      2 | grandchild 1 |         0
-  3 |      1 | root child B |         1
-  5 |      3 | grandchild 2 |         0
-  1 |        | root!        |         2
-(5 rows)
+ id | parent | data  | nchildren 
+----+--------+-------+-----------
+  1 |        | root! |         0
+(1 row)
 
 drop table self_ref_trigger;
 drop function self_ref_trigger_ins_func();

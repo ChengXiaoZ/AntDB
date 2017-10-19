@@ -1874,6 +1874,37 @@ OidFunctionCall9Coll(Oid functionId, Oid collation, Datum arg1, Datum arg2,
 	return result;
 }
 
+#ifdef ADB
+Datum
+OidFunctionCallNColl(Oid functionId, Oid collation, int nelems,
+					 Datum *values, bool* nulls)
+{
+	FmgrInfo	flinfo;
+	FunctionCallInfoData fcinfo;
+	Datum		result;
+	int			i;
+
+	Assert(nelems >= 1);
+	Assert(values && nulls);
+	fmgr_info(functionId, &flinfo);
+	InitFunctionCallInfoData(fcinfo, &flinfo, nelems, collation, NULL, NULL);
+
+	for (i = 0; i < nelems; i++)
+	{
+		fcinfo.arg[i] = values[i];
+		fcinfo.argnull[i] = nulls[i];
+	}
+
+	result = FunctionCallInvoke(&fcinfo);
+
+	/* Check for null result, since caller is clearly not expecting one */
+	if (fcinfo.isnull)
+		elog(ERROR, "function %u returned NULL", flinfo.fn_oid);
+
+	return result;
+}
+
+#endif
 
 /*
  * Special cases for convenient invocation of datatype I/O functions.

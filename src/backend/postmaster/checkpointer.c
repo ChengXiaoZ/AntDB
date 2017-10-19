@@ -52,6 +52,7 @@
 #include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/lwlock.h"
+#include "storage/pmsignal.h"
 #include "storage/proc.h"
 #include "storage/shmem.h"
 #include "storage/smgr.h"
@@ -345,6 +346,10 @@ CheckpointerMain(void)
 	 * Unblock signals (they were blocked when the postmaster forked us)
 	 */
 	PG_SETMASK(&UnBlockSig);
+
+	CHECK_FOR_INTERRUPTS();
+	if(!PostmasterIsAlive())
+		exit(1);
 
 	/*
 	 * Ensure all shared memory values are set correctly for the config. Doing

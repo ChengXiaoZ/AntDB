@@ -19,7 +19,11 @@
 #ifndef PG_AUTH_MEMBERS_H
 #define PG_AUTH_MEMBERS_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_auth_members definition.  cpp turns this into

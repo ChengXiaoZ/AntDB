@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/utils/rel.h
  *
@@ -20,6 +21,9 @@
 #include "catalog/pg_index.h"
 #include "fmgr.h"
 #include "nodes/bitmapset.h"
+#ifdef PGXC
+#include "pgxc/locator.h"
+#endif
 #include "rewrite/prs2lock.h"
 #include "storage/block.h"
 #include "storage/relfilenode.h"
@@ -177,6 +181,9 @@ typedef struct RelationData
 
 	/* use "struct" here to avoid needing to include pgstat.h: */
 	struct PgStat_TableStatus *pgstat_info;		/* statistics collection area */
+#ifdef PGXC
+	RelationLocInfo *rd_locator_info;
+#endif
 } RelationData;
 
 /*
@@ -402,6 +409,23 @@ typedef struct StdRdOptions
 #define RELATION_IS_LOCAL(relation) \
 	((relation)->rd_islocaltemp || \
 	 (relation)->rd_createSubid != InvalidSubTransactionId)
+
+#ifdef PGXC
+/*
+ * RelationGetLocInfo
+ *		Return the location info of relation
+ */
+#define RelationGetLocInfo(relation) ((relation)->rd_locator_info)
+#endif
+
+#ifdef ADB
+/*
+ * RelationGetLocatorType
+ *		Returns the rel's locator type.
+ */
+#define RelationGetLocatorType(relation) \
+	((relation)->rd_locator_info->locatorType)
+#endif
 
 /*
  * RELATION_IS_OTHER_TEMP

@@ -90,6 +90,8 @@ my $BOOTSTRAP_SUPERUSERID =
   find_defined_symbol('pg_authid.h', 'BOOTSTRAP_SUPERUSERID');
 my $PG_CATALOG_NAMESPACE =
   find_defined_symbol('pg_namespace.h', 'PG_CATALOG_NAMESPACE');
+my $PG_ORACLE_NAMESPACE =
+  find_defined_symbol('pg_namespace.h', 'PG_ORACLE_NAMESPACE');
 
 # Read all the input header files into internal data structures
 my $catalogs = Catalog::Catalogs(@input_files);
@@ -144,6 +146,7 @@ foreach my $catname (@{ $catalogs->{names} })
 			# substitute constant values we acquired above
 			$row->{bki_values} =~ s/\bPGUID\b/$BOOTSTRAP_SUPERUSERID/g;
 			$row->{bki_values} =~ s/\bPGNSP\b/$PG_CATALOG_NAMESPACE/g;
+			$row->{bki_values} =~ s/\bORANSP\b/$PG_ORACLE_NAMESPACE/g;
 
 			# Save pg_type info for pg_attribute processing below
 			if ($catname eq 'pg_type')
@@ -229,7 +232,11 @@ foreach my $catname (@{ $catalogs->{names} })
 					{ cmin     => 'cid' },
 					{ xmax     => 'xid' },
 					{ cmax     => 'cid' },
-					{ tableoid => 'oid' });
+                    { tableoid => 'oid' }
+#PGXC_BEGIN
+				   ,{ xc_node_id  => 'int4' }
+#PGXC_END
+                );
 				foreach my $attr (@SYS_ATTRS)
 				{
 					$attnum--;

@@ -16,6 +16,13 @@
 #include "catalog/pg_type.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "pgxc/pgxcnode.h"
+#include "pgxc/nodemgr.h"
+#include "executor/spi.h"
+#include "tcop/utility.h"
+#endif
 #include "storage/predicate_internals.h"
 #include "utils/builtins.h"
 
@@ -48,6 +55,27 @@ typedef struct
 	PredicateLockData *predLockData;	/* state data for pred locks */
 	int			predLockIdx;	/* current index for pred lock */
 } PG_Lock_Status;
+
+#ifdef PGXC
+/*
+ * These enums are defined to make calls to pgxc_advisory_lock more readable.
+ */
+typedef enum
+{
+	SESSION_LOCK,
+	TRANSACTION_LOCK
+} LockLevel;
+
+typedef enum
+{
+	WAIT,
+	DONT_WAIT
+} TryType;
+
+static bool
+pgxc_advisory_lock(int64 key64, int32 key1, int32 key2, bool iskeybig,
+			LOCKMODE lockmode, LockLevel locklevel, TryType try);
+#endif
 
 /* Number of columns in pg_locks output */
 #define NUM_LOCK_STATUS_COLUMNS		15
@@ -411,6 +439,145 @@ pg_lock_status(PG_FUNCTION_ARGS)
 #define SET_LOCKTAG_INT32(tag, key1, key2) \
 	SET_LOCKTAG_ADVISORY(tag, MyDatabaseId, key1, key2, 2)
 
+#ifdef PGXC
+
+#define MAXINT8LEN 25
+
+/*
+ * pgxc_advisory_lock - Core function that implements the algorithm needed to
+ * propogate the advisory lock function calls to all Coordinators.
+ * The idea is to make the advisory locks cluster-aware, so that a user having
+ * a lock from Coordinator 1 will make the user from Coordinator 2 to wait for
+ * the same lock.
+ *
+ * Return true if all locks are returned successfully. False otherwise.
+ * Effectively this function returns false only if dontWait is true. Otherwise
+ * it either returns true, or waits on a resource, or throws an exception
+ * returned by the lock function calls in case of unexpected or fatal errors.
+ *
+ * Currently used only for session level locks; not used for transaction level
+ * locks.
+ */
+static bool
+pgxc_advisory_lock(int64 key64, int32 key1, int32 key2, bool iskeybig,
+			LOCKMODE lockmode,
+			LockLevel locklevel,
+			TryType try)
+{
+	LOCKTAG		locktag;
+	Oid				*coOids, *dnOids;
+	int numdnodes, numcoords;
+	StringInfoData  lock_cmd, unlock_cmd, lock_funcname, unlock_funcname, args;
+	char		str_key[MAXINT8LEN + 1];
+	int i, prev;
+	bool abort_locking = false;
+	Datum lock_status;
+	bool sessionLock = (locklevel == SESSION_LOCK);
+	bool dontWait = (try == DONT_WAIT);
+
+	if (iskeybig)
+		SET_LOCKTAG_INT64(locktag, key64);
+	else
+		SET_LOCKTAG_INT32(locktag, key1, key2);
+
+	PgxcNodeGetOids(&coOids, &dnOids, &numcoords, &numdnodes, false);
+
+	/* Skip everything XC specific if there's only one Coordinator running */
+	if (numcoords <= 1)
+	{
+		LockAcquireResult res;
+
+		res = LockAcquire(&locktag, lockmode, sessionLock, dontWait);
+		return (res == LOCKACQUIRE_OK || res == LOCKACQUIRE_ALREADY_HELD);
+	}
+
+	/*
+	 * If there is already a lock held by us, just increment and return; we
+	 * already did all necessary steps when we locked for the first time.
+	 */
+	if (LockIncrementIfExists(&locktag, lockmode, sessionLock) == true)
+		return true;
+
+	initStringInfo(&lock_funcname);
+	appendStringInfo(&lock_funcname, "pg_%sadvisory_%slock%s",
+	                                 (dontWait ? "try_" : ""),
+									 (sessionLock ? "" : "xact_"),
+									 (lockmode == ShareLock ? "_shared": ""));
+
+	initStringInfo(&unlock_funcname);
+	appendStringInfo(&unlock_funcname, "pg_advisory_unlock%s",
+									 (lockmode == ShareLock ? "_shared": ""));
+
+	initStringInfo(&args);
+
+	if (iskeybig)
+	{
+		pg_lltoa(key64, str_key);
+		appendStringInfo(&args, "%s", str_key);
+	}
+	else
+	{
+		pg_ltoa(key1, str_key);
+		appendStringInfo(&args, "%s, ", str_key);
+		pg_ltoa(key2, str_key);
+		appendStringInfo(&args, "%s", str_key);
+	}
+
+	initStringInfo(&lock_cmd);
+	appendStringInfo(&lock_cmd, "SELECT pg_catalog.%s(%s)", lock_funcname.data, args.data);
+	initStringInfo(&unlock_cmd);
+	appendStringInfo(&unlock_cmd, "SELECT pg_catalog.%s(%s)", unlock_funcname.data, args.data);
+
+	/*
+	 * Go on locking on each Coordinator. Keep on unlocking the previous one
+	 * after a lock is held on next Coordinator. Don't unlock the local
+	 * Coordinator. After finishing all Coordinators, ultimately only the local
+	 * Coordinator would be locked, but still we will have scanned all
+	 * Coordinators to make sure no one else has already grabbed the lock. The
+	 * reason for unlocking all remote locks is because the session level locks
+	 * don't get unlocked until explicitly unlocked or the session quits. After
+	 * the user session quits without explicitly unlocking, the coord-to-coord
+	 * pooler connection stays and so does the remote Coordinator lock.
+	 */
+	prev = -1;
+	for (i = 0; i <= numcoords && !abort_locking; i++, prev++)
+	{
+		if (i < numcoords)
+		{
+			/* If this Coordinator is myself, execute native lock calls */
+			if (i == PGXCNodeId - 1)
+				lock_status = LockAcquire(&locktag, lockmode, sessionLock, dontWait);
+			else
+				lock_status = pgxc_execute_on_nodes(1, &coOids[i], lock_cmd.data);
+
+			if (dontWait == true && DatumGetBool(lock_status) == false)
+			{
+				abort_locking = true;
+				/*
+				 * If we have gone past the local Coordinator node, it implies
+				 * that we have obtained a local lock. But now that we are
+				 * aborting, we need to release the local lock first.
+				 */
+				if (i > PGXCNodeId - 1)
+					(void) LockRelease(&locktag, lockmode, sessionLock);
+			}
+		}
+
+		/*
+		 * If we are dealing with session locks, unlock the previous lock, but
+		 * only if it is a remote Coordinator. If it is a local one, we want to
+		 * keep that lock. Remember, the final status should be that there is
+		 * only *one* lock held, and that is the local lock.
+		 */
+		if (sessionLock && prev >= 0 && prev != PGXCNodeId - 1)
+			pgxc_execute_on_nodes(1, &coOids[prev], unlock_cmd.data);
+	}
+
+	return (!abort_locking);
+}
+
+#endif /* PGXC */
+
 /*
  * pg_advisory_lock(int8) - acquire exclusive lock on an int8 key
  */
@@ -419,6 +586,14 @@ pg_advisory_lock_int8(PG_FUNCTION_ARGS)
 {
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(key, 0, 0, true, ExclusiveLock, SESSION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
 
 	SET_LOCKTAG_INT64(tag, key);
 
@@ -437,6 +612,14 @@ pg_advisory_xact_lock_int8(PG_FUNCTION_ARGS)
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(key, 0, 0, true, ExclusiveLock, TRANSACTION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
+
 	SET_LOCKTAG_INT64(tag, key);
 
 	(void) LockAcquire(&tag, ExclusiveLock, false, false);
@@ -452,6 +635,14 @@ pg_advisory_lock_shared_int8(PG_FUNCTION_ARGS)
 {
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(key, 0, 0, true, ShareLock, SESSION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
 
 	SET_LOCKTAG_INT64(tag, key);
 
@@ -469,6 +660,14 @@ pg_advisory_xact_lock_shared_int8(PG_FUNCTION_ARGS)
 {
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(key, 0, 0, true, ShareLock, TRANSACTION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
 
 	SET_LOCKTAG_INT64(tag, key);
 
@@ -488,6 +687,11 @@ pg_try_advisory_lock_int8(PG_FUNCTION_ARGS)
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
 	LockAcquireResult res;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(key, 0, 0, true, ExclusiveLock, SESSION_LOCK, DONT_WAIT));
+#endif
 
 	SET_LOCKTAG_INT64(tag, key);
 
@@ -509,6 +713,11 @@ pg_try_advisory_xact_lock_int8(PG_FUNCTION_ARGS)
 	LOCKTAG		tag;
 	LockAcquireResult res;
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(key, 0, 0, true, ExclusiveLock, TRANSACTION_LOCK, DONT_WAIT));
+#endif
+
 	SET_LOCKTAG_INT64(tag, key);
 
 	res = LockAcquire(&tag, ExclusiveLock, false, true);
@@ -527,6 +736,11 @@ pg_try_advisory_lock_shared_int8(PG_FUNCTION_ARGS)
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
 	LockAcquireResult res;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(key, 0, 0, true, ShareLock, SESSION_LOCK, DONT_WAIT));
+#endif
 
 	SET_LOCKTAG_INT64(tag, key);
 
@@ -547,6 +761,11 @@ pg_try_advisory_xact_lock_shared_int8(PG_FUNCTION_ARGS)
 	int64		key = PG_GETARG_INT64(0);
 	LOCKTAG		tag;
 	LockAcquireResult res;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(key, 0, 0, true, ShareLock, TRANSACTION_LOCK, DONT_WAIT));
+#endif
 
 	SET_LOCKTAG_INT64(tag, key);
 
@@ -603,6 +822,14 @@ pg_advisory_lock_int4(PG_FUNCTION_ARGS)
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(0, key1, key2, false, ExclusiveLock, SESSION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
+
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
 	(void) LockAcquire(&tag, ExclusiveLock, true, false);
@@ -621,6 +848,14 @@ pg_advisory_xact_lock_int4(PG_FUNCTION_ARGS)
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(0, key1, key2, false, ExclusiveLock, TRANSACTION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
+
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
 	(void) LockAcquire(&tag, ExclusiveLock, false, false);
@@ -637,6 +872,14 @@ pg_advisory_lock_shared_int4(PG_FUNCTION_ARGS)
 	int32		key1 = PG_GETARG_INT32(0);
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(0, key1, key2, false, ShareLock, SESSION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
@@ -655,6 +898,14 @@ pg_advisory_xact_lock_shared_int4(PG_FUNCTION_ARGS)
 	int32		key1 = PG_GETARG_INT32(0);
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		pgxc_advisory_lock(0, key1, key2, false, ShareLock, TRANSACTION_LOCK, WAIT);
+		PG_RETURN_VOID();
+	}
+#endif
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
@@ -675,6 +926,11 @@ pg_try_advisory_lock_int4(PG_FUNCTION_ARGS)
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
 	LockAcquireResult res;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(0, key1, key2, false, ExclusiveLock, SESSION_LOCK, DONT_WAIT));
+#endif
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
@@ -697,6 +953,11 @@ pg_try_advisory_xact_lock_int4(PG_FUNCTION_ARGS)
 	LOCKTAG		tag;
 	LockAcquireResult res;
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(0, key1, key2, false, ExclusiveLock, TRANSACTION_LOCK, DONT_WAIT));
+#endif
+
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
 	res = LockAcquire(&tag, ExclusiveLock, false, true);
@@ -716,6 +977,11 @@ pg_try_advisory_lock_shared_int4(PG_FUNCTION_ARGS)
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
 	LockAcquireResult res;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(0, key1, key2, false, ShareLock, SESSION_LOCK, DONT_WAIT));
+#endif
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
@@ -737,6 +1003,11 @@ pg_try_advisory_xact_lock_shared_int4(PG_FUNCTION_ARGS)
 	int32		key2 = PG_GETARG_INT32(1);
 	LOCKTAG		tag;
 	LockAcquireResult res;
+
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		PG_RETURN_BOOL(pgxc_advisory_lock(0, key1, key2, false, ShareLock, TRANSACTION_LOCK, DONT_WAIT));
+#endif
 
 	SET_LOCKTAG_INT32(tag, key1, key2);
 
@@ -795,3 +1066,128 @@ pg_advisory_unlock_all(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
+
+#ifdef PGXC
+/*
+ * pgxc_lock_for_backup
+ *
+ * Lock the cluster for taking backup
+ * To lock the cluster, try to acquire a session level advisory lock exclusivly
+ * By lock we mean to disallow any statements that change
+ * the portions of the catalog which are backed up by pg_dump/pg_dumpall
+ * Returns true or fails with an error message.
+ */
+Datum
+pgxc_lock_for_backup(PG_FUNCTION_ARGS)
+{
+	bool lockAcquired = false;
+	int prepared_xact_count = 0;
+
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					errmsg("only superuser can lock the cluster for backup")));
+
+	/*
+	 * The system cannot be locked for backup if there is an uncommitted
+	 * prepared transaction, the reason is as follows:
+	 * Utility statements are divided into two groups, one is allowed group
+	 * and the other is disallowed group. A statement is put in allowed group
+	 * if it does not make changes to the catalog or makes such changes which
+	 * are not backed up by pg_dump or pg_dumpall, otherwise it is put in
+	 * disallowed group. Every time a disallowed statement is issued we try to
+	 * hold an advisory lock in shared mode and if the lock can be acquired
+	 * only then the statement is allowed.
+	 * In case of prepared transactions suppose the lock is not released at
+	 * prepare transaction 'txn_id'
+	 * Consider the following scenario:
+	 *
+	 *	begin;
+	 *	create table abc_def(a int, b int);
+	 *	insert into abc_def values(1,2),(3,4);
+	 *	prepare transaction 'abc';
+	 *
+	 * Now assume that the server is restarted for any reason.
+	 * When prepared transactions are saved on disk, session level locks are
+	 * ignored and hence when the prepared transactions are reterieved and all
+	 * the other locks are reclaimed, but session level advisory locks are
+	 * not reclaimed.
+	 * Hence we made the following decisions
+	 * a) Transaction level advisory locks should be used for DDLs which are
+	 *    automatically released at prepare transaction 'txn_id'
+	 * b) If there is any uncomitted prepared transaction, it is assumed
+	 *    that it must be issuing a statement that belongs to disallowed
+	 *    group and hence the request to hold the advisory lock exclusively
+	 *    is denied.
+	 */
+
+	/* Connect to SPI manager to check any prepared transactions */
+	if (SPI_connect() < 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CONNECTION_EXCEPTION),
+					errmsg("internal error while locking the cluster for backup")));
+	}
+
+	/* Are there any prepared transactions that have not yet been committed? */
+	SPI_execute("select gid from pg_catalog.pg_prepared_xacts limit 1", true, 0);
+	prepared_xact_count = SPI_processed;
+	SPI_finish();
+
+	if (prepared_xact_count > 0)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("cannot lock cluster for backup in presence of %d uncommitted prepared transactions",
+						prepared_xact_count)));
+	}
+
+	/* try to acquire the advisory lock in exclusive mode */
+	lockAcquired = DatumGetBool(DirectFunctionCall2(
+										pg_try_advisory_lock_int4,
+										xc_lockForBackupKey1,
+										xc_lockForBackupKey2));
+
+	if (!lockAcquired)
+		ereport(ERROR,
+				(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+				errmsg("cannot lock cluster for backup, lock is already held")));
+
+	/*
+	 * sessin level advisory locks stay for only as long as the session
+	 * that issues them does
+	 */
+	elog(INFO, "please do not close this session until you are done adding the new node");
+
+	/* will be true always */
+	PG_RETURN_BOOL(lockAcquired);
+}
+
+/*
+ * pgxc_lock_for_backup
+ *
+ * Lock the cluster for taking backup
+ * To lock the cluster, try to acquire a session level advisory lock exclusivly
+ * By lock we mean to disallow any statements that change
+ * the portions of the catalog which are backed up by pg_dump/pg_dumpall
+ * Returns true or fails with an error message.
+ */
+bool
+pgxc_lock_for_utility_stmt(Node *parsetree)
+{
+	bool lockAcquired;
+
+	lockAcquired = DatumGetBool(DirectFunctionCall2(
+								pg_try_advisory_xact_lock_shared_int4,
+								xc_lockForBackupKey1,
+								xc_lockForBackupKey2));
+
+	if (!lockAcquired)
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				errmsg("cannot execute %s in a locked cluster",
+						CreateCommandTag(parsetree))));
+
+	return lockAcquired;
+}
+#endif

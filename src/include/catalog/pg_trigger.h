@@ -19,7 +19,11 @@
 #ifndef PG_TRIGGER_H
 #define PG_TRIGGER_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
 #include "catalog/genbki.h"
+#endif /* BUILD_BKI */
 
 /* ----------------
  *		pg_trigger definition.  cpp turns this into

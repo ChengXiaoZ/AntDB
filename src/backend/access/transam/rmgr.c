@@ -21,6 +21,9 @@
 #include "commands/dbcommands.h"
 #include "commands/sequence.h"
 #include "commands/tablespace.h"
+#ifdef PGXC
+#include "pgxc/barrier.h"
+#endif
 #include "storage/standby.h"
 #include "utils/relmapper.h"
 

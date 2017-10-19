@@ -8,7 +8,7 @@
 
 
 -- create a simple table that we'll use in the tests
-CREATE TABLE pxtest1 (foobar VARCHAR(10));
+CREATE TABLE pxtest1 (foobar VARCHAR(10)) distribute by replication;
 
 INSERT INTO pxtest1 VALUES ('aaa');
 
@@ -16,41 +16,48 @@ INSERT INTO pxtest1 VALUES ('aaa');
 -- Test PREPARE TRANSACTION
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 UPDATE pxtest1 SET foobar = 'bbb' WHERE foobar = 'aaa';
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1 ORDER BY foobar;
 PREPARE TRANSACTION 'foo1';
 
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1 ORDER BY foobar;
 
 -- Test pg_prepared_xacts system view
-SELECT gid FROM pg_prepared_xacts;
+SELECT gid FROM pg_prepared_xacts ORDER BY gid;
+-- Test pgxc_prepared_xacts system view
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 -- Test ROLLBACK PREPARED
 ROLLBACK PREPARED 'foo1';
 
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1  ORDER BY foobar;
 
-SELECT gid FROM pg_prepared_xacts;
-
+-- Check prepared transactions on Coordinator
+SELECT gid FROM pg_prepared_xacts ORDER BY gid;
+-- Check prepared transactions in the cluster
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 -- Test COMMIT PREPARED
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 INSERT INTO pxtest1 VALUES ('ddd');
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1 ORDER BY foobar;
 PREPARE TRANSACTION 'foo2';
 
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1  ORDER BY foobar;
 
 COMMIT PREPARED 'foo2';
 
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1  ORDER BY foobar;
 
 -- Test duplicate gids
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 UPDATE pxtest1 SET foobar = 'eee' WHERE foobar = 'ddd';
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1  ORDER BY foobar;
 PREPARE TRANSACTION 'foo3';
 
-SELECT gid FROM pg_prepared_xacts;
+-- Check prepared transactions on Coordinator
+SELECT gid FROM pg_prepared_xacts ORDER BY gid;
+-- Check prepared transactions in the cluster
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 INSERT INTO pxtest1 VALUES ('fff');
@@ -58,11 +65,11 @@ INSERT INTO pxtest1 VALUES ('fff');
 -- This should fail, because the gid foo3 is already in use
 PREPARE TRANSACTION 'foo3';
 
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1  ORDER BY foobar;
 
 ROLLBACK PREPARED 'foo3';
 
-SELECT * FROM pxtest1;
+SELECT * FROM pxtest1  ORDER BY foobar;
 
 -- Test serialization failure (SSI)
 BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
@@ -84,6 +91,10 @@ SELECT gid FROM pg_prepared_xacts;
 ROLLBACK PREPARED 'foo4';
 
 SELECT gid FROM pg_prepared_xacts;
+
+-- In Postgres-XC, serializable is not yet supported, and SERIALIZABLE falls to
+-- read-committed silently, so rollback transaction properly
+ROLLBACK PREPARED 'foo5';
 
 -- Clean up
 DROP TABLE pxtest1;
@@ -119,7 +130,9 @@ FETCH 1 FROM foo;
 SELECT * FROM pxtest2;
 
 -- There should be two prepared transactions
-SELECT gid FROM pg_prepared_xacts;
+SELECT gid FROM pg_prepared_xacts ORDER BY gid;
+-- Check prepared transactions in the cluster
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 -- pxtest3 should be locked because of the pending DROP
 begin;
@@ -131,7 +144,9 @@ rollback;
 \c -
 
 -- There should still be two prepared transactions
-SELECT gid FROM pg_prepared_xacts;
+SELECT gid FROM pg_prepared_xacts ORDER BY gid;
+-- Check prepared transactions in the cluster
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 -- pxtest3 should still be locked because of the pending DROP
 begin;
@@ -145,14 +160,18 @@ COMMIT PREPARED 'regress-one';
 SELECT * FROM pxtest2;
 
 -- There should be one prepared transaction
-SELECT gid FROM pg_prepared_xacts;
+SELECT gid FROM pg_prepared_xacts ORDER BY 1;
+-- Check prepared transactions in the cluster
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 -- Commit table drop
 COMMIT PREPARED 'regress-two';
 SELECT * FROM pxtest3;
 
 -- There should be no prepared transactions
-SELECT gid FROM pg_prepared_xacts;
+SELECT gid FROM pg_prepared_xacts ORDER BY gid;
+-- Check prepared transactions in the cluster
+SELECT pgxc_prepared_xact FROM pgxc_prepared_xacts ORDER by 1;
 
 -- Clean up
 DROP TABLE pxtest2;

@@ -29,7 +29,14 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
 
+#ifdef ADB
+#include "tcop/tcopprot.h"
+#include "oraschema/oracoerce.h"
+#endif
 
 static Node *coerce_type_typmod(Node *node,
 				   Oid targetTypeId, int32 targetTypMod,
@@ -113,6 +120,10 @@ coerce_to_target_type(ParseState *pstate, Node *expr, Oid exprtype,
 								(cformat != COERCE_IMPLICIT_CAST),
 								(result != expr && !IsA(result, Const)));
 
+#ifdef PGXC
+	/* Do not need to do that on local Coordinator */
+	if (IsConnFromCoord())
+#endif
 	if (expr != origexpr)
 	{
 		/* Reinstall top CollateExpr */
@@ -360,6 +371,11 @@ coerce_type(ParseState *pstate, Node *node,
 	}
 	pathtype = find_coercion_pathway(targetTypeId, inputTypeId, ccontext,
 									 &funcId);
+#ifdef ADB
+	if (pathtype == COERCION_PATH_ORA_FUNC)
+		cformat = COERCE_EXPLICIT_CALL;
+#endif
+
 	if (pathtype != COERCION_PATH_NONE)
 	{
 		if (pathtype != COERCION_PATH_RELABELTYPE)
@@ -795,7 +811,12 @@ build_coercion_expression(Node *node,
 		ReleaseSysCache(tp);
 	}
 
+#ifdef ADB
+	if (pathtype == COERCION_PATH_FUNC ||
+		pathtype == COERCION_PATH_ORA_FUNC)
+#else
 	if (pathtype == COERCION_PATH_FUNC)
+#endif
 	{
 		/* We build an ordinary FuncExpr with special arguments */
 		FuncExpr   *fexpr;
@@ -2228,6 +2249,21 @@ find_coercion_pathway(Oid targetTypeId, Oid sourceTypeId,
 				result = COERCION_PATH_COERCEVIAIO;
 		}
 	}
+
+#ifdef ADB
+	/*
+	 * If current grammar is oracle grammar and we still haven't found a
+	 * possibilty to the last, check out coeicion function explicitly by
+	 * oracle coerce function map.
+	 */
+	if (result == COERCION_PATH_NONE &&
+		IsOracleCoerceFunc())
+	{
+		*funcid = ora_find_coerce_func(sourceTypeId, targetTypeId);
+		if (*funcid != InvalidOid)
+			result = COERCION_PATH_ORA_FUNC;
+	}
+#endif
 
 	return result;
 }

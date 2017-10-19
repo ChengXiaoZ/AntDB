@@ -137,6 +137,9 @@
 extern bool errstart(int elevel, const char *filename, int lineno,
 		 const char *funcname, const char *domain);
 extern void errfinish(int dummy,...);
+#ifdef ADB
+extern void errdump(void);
+#endif
 
 extern int	errcode(int sqlerrcode);
 
@@ -195,6 +198,10 @@ errhint(const char *fmt,...)
    the supplied arguments. */
 __attribute__((format(PG_PRINTF_ATTRIBUTE, 1, 2)));
 
+#ifdef ADB
+extern const struct ErrorData* err_current_data(void);
+#endif /* ADB */
+
 /*
  * errcontext() is typically called in error context callback functions, not
  * within an ereport() invocation. The callback function can be in a different
@@ -233,6 +240,10 @@ extern int	getinternalerrposition(void);
  *----------
  */
 #ifdef HAVE__VA_ARGS
+#if defined(ADB) || defined(ADBMGRD)
+#	define elog(elevel, ...)		\
+		ereport(elevel, (errmsg(__VA_ARGS__)))
+#else /* defined(ADB) || defined(ADBMGRD) */
 /*
  * If we have variadic macros, we can give the compiler a hint about the
  * call not returning when elevel >= ERROR.  See comments for ereport().
@@ -258,6 +269,7 @@ extern int	getinternalerrposition(void);
 			pg_unreachable(); \
 	} while(0)
 #endif   /* HAVE__BUILTIN_CONSTANT_P */
+#endif /* defined(ADB) || defined(ADBMGRD) */
 #else							/* !HAVE__VA_ARGS */
 #define elog  \
 	elog_start(__FILE__, __LINE__, PG_FUNCNAME_MACRO), \

@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * IDENTIFICATION
  *	  src/backend/catalog/dependency.c
@@ -53,6 +54,15 @@
 #include "catalog/pg_ts_template.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_user_mapping.h"
+#ifdef PGXC
+#include "catalog/pgxc_class.h"
+#include "catalog/pgxc_node.h"
+#include "catalog/pgxc_group.h"
+#include "pgxc/execRemote.h"
+#include "pgxc/pgxc.h"
+#include "commands/sequence.h"
+#include "commands/tablecmds.h"
+#endif
 #include "commands/comment.h"
 #include "commands/defrem.h"
 #include "commands/event_trigger.h"
@@ -72,6 +82,9 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
+#ifdef ADB
+#include "catalog/adb_ha_sync_log.h"
+#endif
 
 /*
  * Deletion processing requires additional state for each ObjectAddress that
@@ -152,6 +165,14 @@ static const Oid object_classes[MAX_OCLASS] = {
 	ForeignDataWrapperRelationId,		/* OCLASS_FDW */
 	ForeignServerRelationId,	/* OCLASS_FOREIGN_SERVER */
 	UserMappingRelationId,		/* OCLASS_USER_MAPPING */
+#ifdef PGXC
+	PgxcClassRelationId,		/* OCLASS_PGXC_CLASS */
+	PgxcNodeRelationId,			/* OCLASS_PGXC_NODE */
+	PgxcGroupRelationId,		/* OCLASS_PGXC_GROUP */
+#endif
+#ifdef ADB
+	AdbHaSyncLogRelationId,		/* OCLASS_ADB_HA_SYNC_LOG */
+#endif
 	DefaultAclRelationId,		/* OCLASS_DEFACL */
 	ExtensionRelationId,		/* OCLASS_EXTENSION */
 	EventTriggerRelationId		/* OCLASS_EVENT_TRIGGER */
@@ -1240,6 +1261,16 @@ doDeletion(const ObjectAddress *object, int flags)
 		case OCLASS_DEFACL:
 			RemoveDefaultACLById(object->objectId);
 			break;
+#ifdef PGXC
+		case OCLASS_PGXC_CLASS:
+			RemovePgxcClass(object->objectId);
+			break;
+
+		/*
+		 * OCLASS_PGXC_NODE, OCLASS_PGXC_GROUP intentionally not
+		 * handled here
+		 */
+#endif
 
 		case OCLASS_EXTENSION:
 			RemoveExtensionById(object->objectId);
@@ -2346,6 +2377,21 @@ getObjectClass(const ObjectAddress *object)
 
 		case EventTriggerRelationId:
 			return OCLASS_EVENT_TRIGGER;
+#ifdef PGXC
+		case PgxcClassRelationId:
+			Assert(object->objectSubId == 0);
+			return OCLASS_PGXC_CLASS;
+
+		case PgxcNodeRelationId:
+			return OCLASS_PGXC_NODE;
+
+		case PgxcGroupRelationId:
+			return OCLASS_PGXC_GROUP;
+#endif
+#ifdef ADB
+		case AdbHaSyncLogRelationId:
+			return OCLASS_ADB_HA_SYNC_LOG;
+#endif
 	}
 
 	/* shouldn't get here */

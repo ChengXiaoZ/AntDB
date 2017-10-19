@@ -15,6 +15,9 @@
 #include "postgres.h"
 
 #include "access/htup_details.h"
+#ifdef ADB
+#include "catalog/pg_namespace.h"
+#endif
 #include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "funcapi.h"
@@ -31,6 +34,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#ifdef ADB
+#include "oraschema/oracoerce.h"
+#endif
 
 static Oid	FuncNameAsType(List *funcname);
 static Node *ParseComplexProjection(ParseState *pstate, char *funcname,
@@ -965,7 +971,6 @@ func_select_candidate(int nargs,
 	return NULL;				/* failed to select a best candidate */
 }	/* func_select_candidate() */
 
-
 /* func_get_detail()
  *
  * Find the named function in the system catalogs.
@@ -1161,6 +1166,22 @@ func_get_detail(List *funcname,
 				best_candidate = func_select_candidate(nargs,
 													   argtypes,
 													   current_candidates);
+#ifdef ADB
+				/*
+				 * We think the function belong to oracle namespace is the best
+				 * candidate if we are not able to choose the best candidate
+				 */
+				if (!best_candidate && IsOracleCoerceFunc())
+				{
+					for (best_candidate = current_candidates;
+						best_candidate != NULL;
+						best_candidate = best_candidate->next)
+					{
+						if (best_candidate->nspoid == PG_ORACLE_NAMESPACE)
+							break;
+					}
+				}
+#endif
 
 				/*
 				 * If we were able to choose a best candidate, we're done.

@@ -518,5 +518,17 @@ main(int argc, char **argv)
 		rc += (vacuumlo(argv[c], &param) != 0);
 	}
 
+#ifdef ADB
+	/* fix: Potential leak of memory */
+	if (param.pg_user)
+		free(param.pg_user);
+	if (param.pg_host)
+		free(param.pg_host);
+	if (param.pg_port)
+		free(param.pg_port);
+	if (param.progname)
+		free((void*)param.progname);
+#endif
+
 	return rc;
 }

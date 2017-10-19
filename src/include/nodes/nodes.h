@@ -6,6 +6,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/nodes/nodes.h
  *
@@ -80,6 +81,21 @@ typedef enum NodeTag
 	T_NestLoopParam,
 	T_PlanRowMark,
 	T_PlanInvalItem,
+#ifdef PGXC
+	/*
+	 * TAGS FOR PGXC NODES
+	 * (planner.h, locator.h, nodemgr.h, groupmgr.h)
+	 */
+	T_ExecNodes,
+	T_SimpleSort,
+	T_RemoteQuery,
+	T_PGXCNodeHandle,
+	T_AlterNodeStmt,
+	T_CreateNodeStmt,
+	T_DropNodeStmt,
+	T_CreateGroupStmt,
+	T_DropGroupStmt,
+#endif
 
 	/*
 	 * TAGS FOR PLAN STATE NODES (execnodes.h)
@@ -121,6 +137,9 @@ typedef enum NodeTag
 	T_SetOpState,
 	T_LockRowsState,
 	T_LimitState,
+#ifdef PGXC
+	T_RemoteQueryState,
+#endif
 
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)
@@ -166,11 +185,16 @@ typedef enum NodeTag
 	T_CoerceToDomainValue,
 	T_SetToDefault,
 	T_CurrentOfExpr,
+	T_RownumExpr,
 	T_TargetEntry,
 	T_RangeTblRef,
 	T_JoinExpr,
 	T_FromExpr,
 	T_IntoClause,
+#ifdef PGXC
+	T_DistributeBy,
+	T_PGXCSubCluster,
+#endif
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -205,6 +229,7 @@ typedef enum NodeTag
 	T_NullTestState,
 	T_CoerceToDomainState,
 	T_DomainConstraintState,
+	T_RownumExprState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
@@ -240,6 +265,9 @@ typedef enum NodeTag
 	T_PlaceHolderInfo,
 	T_MinMaxAggInfo,
 	T_PlannerParamItem,
+#ifdef PGXC
+	T_RemoteQueryPath,
+#endif /* PGXC */
 
 	/*
 	 * TAGS FOR MEMORY NODES (memnodes.h)
@@ -353,6 +381,8 @@ typedef enum NodeTag
 	T_CreateUserMappingStmt,
 	T_AlterUserMappingStmt,
 	T_DropUserMappingStmt,
+	T_ExecDirectStmt,
+	T_CleanConnStmt,
 	T_AlterTableSpaceOptionsStmt,
 	T_SecLabelStmt,
 	T_CreateForeignTableStmt,
@@ -362,12 +392,18 @@ typedef enum NodeTag
 	T_CreateEventTrigStmt,
 	T_AlterEventTrigStmt,
 	T_RefreshMatViewStmt,
+#ifdef PGXC
+	T_BarrierStmt,
+#endif
 
 	/*
 	 * TAGS FOR PARSE TREE NODES (parsenodes.h)
 	 */
 	T_A_Expr = 900,
 	T_ColumnRef,
+#ifdef ADB
+	T_ColumnRefJoin,
+#endif /* ADB */
 	T_ParamRef,
 	T_A_Const,
 	T_FuncCall,
@@ -425,6 +461,31 @@ typedef enum NodeTag
 	T_TIDBitmap,				/* in nodes/tidbitmap.h */
 	T_InlineCodeBlock,			/* in nodes/parsenodes.h */
 	T_FdwRoutine				/* in foreign/fdwapi.h */
+#ifdef ADBMGRD
+	,T_MGR_NODE_START = 1000
+	,T_MGRAddHost = T_MGR_NODE_START
+	,T_MGRListHost
+	,T_MGRDropHost
+	,T_MGRAlterHost
+	,T_MGRAddGtm
+	,T_MGRAlterGtm
+	,T_MGRDropGtm
+	,T_MGRListGtm
+	,T_MGRAlterParm
+	,T_MGRListParm
+	,T_MGRAddNode
+	,T_MGRAlterNode
+	,T_MGRDropNode
+	,T_MGRListNode
+	,T_MGRDeplory
+	/*,T_MGRDrop
+	,T_MGRList
+	,T_MGRMonitor
+	,T_MGRStart
+	,T_MGRStop
+	,T_MGRRestart*/
+	,T_MGR_NODE_END
+#endif /* ADBMGRD */
 } NodeTag;
 
 /*
@@ -440,6 +501,9 @@ typedef struct Node
 
 #define nodeTag(nodeptr)		(((const Node*)(nodeptr))->type)
 
+#ifdef ADBMGRD
+#define IsMgrNode(nodeptr) (nodeTag(nodeptr) >= T_MGR_NODE_START && nodeTag(nodeptr) < T_MGR_NODE_END)
+#endif /* ADBMGRD */
 /*
  * newNode -
  *	  create a new node of the specified size and tag the node with the
@@ -496,6 +560,19 @@ extern PGDLLIMPORT Node *newNodeMacroHolder;
  */
 extern char *nodeToString(const void *obj);
 
+#if defined(ADB) || defined(ADBMGRD) || defined(AGTM)
+/*
+ * nodes/outobject.c
+ */
+extern char *printObject(const void *obj);
+#endif
+#ifdef ADB
+/* nodes/saveload.c */
+struct StringInfoData;
+extern void saveNode(struct StringInfoData* buf, const Node *node);
+extern Node* loadNode(struct StringInfoData* buf);
+
+#endif /* ADB */
 /*
  * nodes/{readfuncs.c,read.c}
  */

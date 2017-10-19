@@ -20,6 +20,9 @@
 #include "storage/sinval.h"
 #include "utils/timestamp.h"
 
+#ifdef ADB
+#include "access/remote_xact.h"
+#endif
 
 static void
 xact_desc_commit(StringInfo buf, xl_xact_commit *xlrec)
@@ -134,6 +137,53 @@ xact_desc_assignment(StringInfo buf, xl_xact_assignment *xlrec)
 		appendStringInfo(buf, " %u", xlrec->xsub[i]);
 }
 
+#ifdef ADB
+static void
+remote_xact_desc(StringInfo buf, uint8 xl_info, xl_remote_xact *xlrec)
+{
+	switch (xl_info)
+	{
+		case XLOG_RXACT_PREPARE:
+			appendStringInfo(buf, "remote prepare %u:", xlrec->xid);
+			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			break;
+		case XLOG_RXACT_PREPARE_SUCCESS:
+			appendStringInfo(buf, "remote prepare success %u:", xlrec->xid);
+			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			break;
+		case XLOG_RXACT_COMMIT:
+			appendStringInfo(buf, "remote commit %u:", xlrec->xid);
+			break;
+		case XLOG_RXACT_COMMIT_PREPARED:
+			appendStringInfo(buf, "remote commit prepared %u:", xlrec->xid);
+			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			break;
+		case XLOG_RXACT_COMMIT_PREPARED_SUCCESS:
+			appendStringInfo(buf, "remote commit prepared success %u:", xlrec->xid);
+			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			break;
+		case XLOG_RXACT_ABORT:
+			appendStringInfo(buf, "remote abort %u:", xlrec->xid);
+			break;
+		case XLOG_RXACT_ABORT_PREPARED:
+			appendStringInfo(buf, "remote abort prepared %u:", xlrec->xid);
+			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			break;
+		case XLOG_RXACT_ABORT_PREPARED_SUCCESS:
+			appendStringInfo(buf, "remote abort prepared success %u:", xlrec->xid);
+			appendStringInfo(buf, "; prepared gid: '%s'", xlrec->gid);
+			break;
+		default:
+			Assert(0);
+			break;
+	}
+	appendStringInfo(buf, "; database: %s", xlrec->dbname);
+	appendStringInfo(buf, "; xact time: %s", timestamptz_to_str(xlrec->xact_time));
+	appendStringInfo(buf, "; implicit: %s", xlrec->implicit ? "yes" : "no");
+	appendStringInfo(buf, "; involved remote nodes: %d", xlrec->nnodes);	
+}
+#endif
+
 void
 xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 {
@@ -190,6 +240,20 @@ xact_desc(StringInfo buf, uint8 xl_info, char *rec)
 		appendStringInfo(buf, "xid assignment xtop %u: ", xlrec->xtop);
 		xact_desc_assignment(buf, xlrec);
 	}
+#ifdef ADB
+	else if (info == XLOG_RXACT_PREPARE ||
+			 info == XLOG_RXACT_PREPARE_SUCCESS ||
+			 info == XLOG_RXACT_COMMIT ||
+			 info == XLOG_RXACT_COMMIT_PREPARED ||
+			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
+			 info == XLOG_RXACT_ABORT ||
+			 info == XLOG_RXACT_ABORT_PREPARED ||
+			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
+	{
+		xl_remote_xact *xlrec = (xl_remote_xact *) rec;
+		remote_xact_desc(buf, info, xlrec);
+	}
+#endif
 	else
 		appendStringInfo(buf, "UNKNOWN");
 }

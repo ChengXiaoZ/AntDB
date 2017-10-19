@@ -7,6 +7,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -20,6 +21,16 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "pgxc/xc_maintenance_mode.h"
+/* PGXC_COORD */
+#include "pgxc/execRemote.h"
+/* PGXC_DATANODE */
+#include "postmaster/autovacuum.h"
+#include "libpq/pqformat.h"
+#include "libpq/libpq.h"
+#endif
 #include "access/multixact.h"
 #include "access/subtrans.h"
 #include "access/transam.h"
@@ -30,6 +41,7 @@
 #include "catalog/namespace.h"
 #include "catalog/storage.h"
 #include "commands/async.h"
+#include "commands/dbcommands.h"
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"
 #include "executor/spi.h"
@@ -57,6 +69,10 @@
 #include "utils/timestamp.h"
 #include "pg_trace.h"
 
+#ifdef ADB
+#include "agtm/agtm.h"
+#include "access/remote_xact.h"
+#endif
 
 /*
  *	User-tweakable parameters
@@ -131,7 +147,18 @@ typedef enum TBlockState
  */
 typedef struct TransactionStateData
 {
+#ifdef PGXC  /* PGXC_COORD */
+	/* my GXID, or Invalid if none */
+	GlobalTransactionId transactionId;
+	bool				isLocalParameterUsed;		/* Check if a local parameter is active
+													 * in transaction block (SET LOCAL, DEFERRED) */
+#ifdef ADB
+	bool				agtm_begin;					/* mark agtm is begin or not in current xact */
+	bool				implicit2PC;				/* mark whether is implicit two-phase commit  */
+#endif
+#else
 	TransactionId transactionId;	/* my XID, or Invalid if none */
+#endif
 	SubTransactionId subTransactionId;	/* my subxact ID */
 	char	   *name;			/* savepoint name, if any */
 	int			savepointLevel; /* savepoint level */
@@ -159,7 +186,16 @@ typedef TransactionStateData *TransactionState;
  * transaction at all, or when in a top-level transaction.
  */
 static TransactionStateData TopTransactionStateData = {
+#ifdef PGXC
+	0,							/* global transaction id */
+	false,						/* isLocalParameterUsed */
+#ifdef ADB
+	false,						/* agtm begin? */
+	false,						/* implicit two-phase commit? */
+#endif
+#else
 	0,							/* transaction id */
+#endif
 	0,							/* subtransaction id */
 	NULL,						/* savepoint name */
 	0,							/* savepoint level */
@@ -197,6 +233,21 @@ static SubTransactionId currentSubTransactionId;
 static CommandId currentCommandId;
 static bool currentCommandIdUsed;
 
+#ifdef PGXC
+/*
+ * Parameters for communication control of Command ID between Postgres-XC nodes.
+ * isCommandIdReceived is used to determine of a command ID has been received by a remote
+ * node from a Coordinator.
+ * sendCommandId is used to determine if a Postgres-XC node needs to communicate its command ID.
+ * This is possible for both remote nodes and Coordinators connected to applications.
+ * receivedCommandId is the command ID received on Coordinator from remote node or on remote node
+ * from Coordinator.
+ */
+static bool isCommandIdReceived;
+static bool sendCommandId;
+static CommandId receivedCommandId;
+#endif
+
 /*
  * xactStartTimestamp is the value of transaction_timestamp().
  * stmtStartTimestamp is the value of statement_timestamp().
@@ -209,10 +260,44 @@ static TimestampTz stmtStartTimestamp;
 static TimestampTz xactStopTimestamp;
 
 /*
+ * PGXC receives from GTM a timestamp value at the same time as a GXID
+ * This one is set as AGTMxactStartTimestamp and is a return value of now(), current_transaction().
+ * AGTMxactStartTimestamp is also sent to each node with gxid and snapshot and delta is calculated locally.
+ * AGTMdeltaTimestamp is used to calculate current_statement as its value can change
+ * during a transaction. Delta can have a different value through the nodes of the cluster
+ * but its uniqueness in the cluster is maintained thanks to the global value AGTMxactStartTimestamp.
+ */
+#ifdef PGXC
+static TimestampTz AGTMxactStartTimestamp = 0;
+static TimestampTz AGTMdeltaTimestamp = 0;
+#endif
+
+/*
  * GID to be used for preparing the current transaction.  This is also
  * global to a whole transaction, so we don't keep it in the state stack.
  */
 static char *prepareGID;
+#ifdef PGXC
+/* Gid for implicit internal twophase commit */
+static char *savePrepareGID;
+
+/* Is current xact read local node */
+static bool XactReadLocalNode;
+
+/* Is current xact write local node */
+static bool XactWriteLocalNode;
+#endif /* PGXC */
+
+#ifdef ADB
+#define SafeFreeSaveGID() \
+	do { \
+		if (savePrepareGID) \
+		{ \
+			pfree(savePrepareGID); \
+			savePrepareGID = NULL; \
+		} \
+	} while (0)
+#endif
 
 /*
  * Some commands want to force synchronous commit.
@@ -249,7 +334,6 @@ typedef struct SubXactCallbackItem
 } SubXactCallbackItem;
 
 static SubXactCallbackItem *SubXact_callbacks = NULL;
-
 
 /* local function prototypes */
 static void AssignTransactionId(TransactionState s);
@@ -289,7 +373,7 @@ static void ShowTransactionState(const char *str);
 static void ShowTransactionStateRec(TransactionState state);
 static const char *BlockStateAsString(TBlockState blockState);
 static const char *TransStateAsString(TransState state);
-
+static void PrepareTransaction(void);
 
 /* ----------------------------------------------------------------
  *	transaction state accessors
@@ -419,6 +503,31 @@ GetStableLatestTransactionId(void)
 	return stablexid;
 }
 
+#ifdef PGXC
+/*
+ *	GetCurrentLocalParamStatus
+ *
+ * This will return if current sub xact is using local parameters
+ * that may involve pooler session related parameters (SET LOCAL).
+ */
+bool
+GetCurrentLocalParamStatus(void)
+{
+	return CurrentTransactionState->isLocalParameterUsed;
+}
+
+/*
+ *	SetCurrentLocalParamStatus
+ *
+ * This sets local parameter usage for current sub xact.
+ */
+void
+SetCurrentLocalParamStatus(bool status)
+{
+	CurrentTransactionState->isLocalParameterUsed = status;
+}
+#endif
+
 /*
  * AssignTransactionId
  *
@@ -467,6 +576,18 @@ AssignTransactionId(TransactionState s)
 		pfree(parents);
 	}
 
+#ifdef ADB
+	/*
+	 * Get global transaction xid from AGTM.
+	 */
+	if (IsUnderAGTM())
+	{
+		agtm_BeginTransaction();
+		s->transactionId = agtm_GetGlobalTransactionId(isSubXact);
+		AGTMxactStartTimestamp = agtm_GetTimestamptz();
+		AGTMdeltaTimestamp = AGTMxactStartTimestamp - stmtStartTimestamp;
+	} else
+#endif
 	/*
 	 * Generate a new Xid and record it in PG_PROC and pg_subtrans.
 	 *
@@ -605,11 +726,85 @@ SubTransactionIsActive(SubTransactionId subxid)
 CommandId
 GetCurrentCommandId(bool used)
 {
+#ifdef PGXC
+	/* If coordinator has sent a command id, remote node should use it */
+	if (IsConnFromCoord() && isCommandIdReceived)
+	{
+		/*
+		 * Indicate to successive calls of this function that the sent command id has
+		 * already been used.
+		 */
+		isCommandIdReceived = false;
+		currentCommandId = GetReceivedCommandId();
+	}
+	else if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		/*
+		 * If command id reported by remote node is greater that the current
+		 * command id, the coordinator needs to use it. This is required because
+		 * a remote node can increase the command id sent by the coordinator
+		 * e.g. in case a trigger fires at the remote node and inserts some rows
+		 * The coordinator should now send the next command id knowing
+		 * the largest command id either current or received from remote node.
+		 */
+		if (GetReceivedCommandId() > currentCommandId)
+			currentCommandId = GetReceivedCommandId();
+	}
+#endif
+
 	/* this is global to a transaction, not subtransaction-local */
 	if (used)
 		currentCommandIdUsed = true;
 	return currentCommandId;
 }
+
+#ifdef ADB
+CommandId
+GetCurrentCommandIdIfAny(void)
+{
+	return currentCommandId;
+}
+
+void
+SetTopXactBeginAGTM(bool status)
+{
+	TopTransactionStateData.agtm_begin = status;
+}
+
+bool
+TopXactBeginAGTM(void)
+{
+	return TopTransactionStateData.agtm_begin;
+}
+
+/*
+ * Run at the end of the current transaction,
+ * to make sure commit/abort the transaction
+ * at remote nodes(especially AGTM).
+ *
+ * It may be redundant, but it is essential.
+ */
+static void
+AtEOXact_Local(bool commit)
+{
+	if (TopXactBeginAGTM())
+	{
+		PG_TRY();
+		{
+			if (commit)
+				agtm_CommitTransaction(savePrepareGID, true);
+			else
+				agtm_AbortTransaction(savePrepareGID, true);
+		} PG_CATCH();
+		{
+			SafeFreeSaveGID();
+			PG_RE_THROW();
+		} PG_END_TRY();
+
+		SafeFreeSaveGID();
+	}
+}
+#endif
 
 /*
  *	GetCurrentTransactionStartTimestamp
@@ -617,7 +812,15 @@ GetCurrentCommandId(bool used)
 TimestampTz
 GetCurrentTransactionStartTimestamp(void)
 {
+	/*
+	 * In Postgres-XC, Transaction start timestamp is the value received
+	 * from GTM along with GXID.
+	 */
+#ifdef PGXC
+	return AGTMxactStartTimestamp;
+#else
 	return xactStartTimestamp;
+#endif
 }
 
 /*
@@ -626,7 +829,17 @@ GetCurrentTransactionStartTimestamp(void)
 TimestampTz
 GetCurrentStatementStartTimestamp(void)
 {
+	/*
+	 * For Postgres-XC, Statement start timestamp is adjusted at each node
+	 * (Coordinator and Datanode) with a difference value that is calculated
+	 * based on the global timestamp value received from GTM and the local
+	 * clock. This permits to follow the GTM timeline in the cluster.
+	 */
+#ifdef PGXC
+	return stmtStartTimestamp + AGTMdeltaTimestamp;
+#else
 	return stmtStartTimestamp;
+#endif
 }
 
 /*
@@ -638,10 +851,34 @@ GetCurrentStatementStartTimestamp(void)
 TimestampTz
 GetCurrentTransactionStopTimestamp(void)
 {
+	/*
+	 * As for Statement start timestamp, stop timestamp has to
+	 * be adjusted with the delta value calculated with the
+	 * timestamp received from GTM and the local node clock.
+	 */
+#ifdef PGXC
+	TimestampTz	timestamp;
+
+	if (xactStopTimestamp != 0)
+		return xactStopTimestamp + AGTMdeltaTimestamp;
+
+	timestamp = GetCurrentTimestamp() + AGTMdeltaTimestamp;
+
+	return timestamp;
+#else
 	if (xactStopTimestamp != 0)
 		return xactStopTimestamp;
 	return GetCurrentTimestamp();
+#endif
 }
+
+#ifdef PGXC
+TimestampTz
+GetCurrentAGTMStartTimestamp(void)
+{
+	return AGTMxactStartTimestamp;
+}
+#endif
 
 /*
  *	SetCurrentStatementStartTimestamp
@@ -660,6 +897,20 @@ SetCurrentTransactionStopTimestamp(void)
 {
 	xactStopTimestamp = GetCurrentTimestamp();
 }
+
+#ifdef PGXC
+/*
+ *  SetCurrentAGTMDeltaTimestamp
+ *
+ *  Note: Sets local timestamp delta with the value received from GTM
+ */
+void
+SetCurrentAGTMDeltaTimestamp(TimestampTz timestamp)
+{
+	AGTMxactStartTimestamp = timestamp;
+	AGTMdeltaTimestamp = AGTMxactStartTimestamp - xactStartTimestamp;
+}
+#endif
 
 /*
  *	GetCurrentTransactionNestLevel
@@ -779,6 +1030,17 @@ CommandCounterIncrement(void)
 
 		/* Propagate new command ID into static snapshots */
 		SnapshotSetCommandId(currentCommandId);
+
+#ifdef PGXC
+		/*
+		 * Remote node should report local command id changes only if
+		 * required by the Coordinator. The requirement of the
+		 * Coordinator is inferred from the fact that Coordinator
+		 * has itself sent the command id to the remote nodes.
+		 */
+		if (IsConnFromCoord() && IsSendCommandId())
+			ReportCommandIdChange(currentCommandId);
+#endif
 
 		/*
 		 * Make any catalog changes done by the just-completed command visible
@@ -1054,7 +1316,12 @@ RecordTransactionCommit(void)
 			xlrec.dbId = MyDatabaseId;
 			xlrec.tsId = MyDatabaseTableSpace;
 
+#ifdef PGXC
+			/* In Postgres-XC, stop timestamp has to follow the timeline of GTM */
+			xlrec.xact_time = xactStopTimestamp + AGTMdeltaTimestamp;
+#else
 			xlrec.xact_time = xactStopTimestamp;
+#endif
 			xlrec.nrels = nrels;
 			xlrec.nsubxacts = nchildren;
 			xlrec.nmsgs = nmsgs;
@@ -1439,7 +1706,12 @@ RecordTransactionAbort(bool isSubXact)
 	else
 	{
 		SetCurrentTransactionStopTimestamp();
+#ifdef PGXC
+		/* In Postgres-XC, stop timestamp has to follow the timeline of GTM */
+		xlrec.xact_time = xactStopTimestamp + AGTMdeltaTimestamp;
+#else
 		xlrec.xact_time = xactStopTimestamp;
+#endif
 	}
 	xlrec.nrels = nrels;
 	xlrec.nsubxacts = nchildren;
@@ -1705,6 +1977,15 @@ StartTransaction(void)
 	s->state = TRANS_START;
 	s->transactionId = InvalidTransactionId;	/* until assigned */
 
+#ifdef PGXC
+	s->isLocalParameterUsed = false;
+#endif
+
+#ifdef ADB
+	s->agtm_begin = false;
+	s->implicit2PC = false;
+#endif
+
 	/*
 	 * Make sure we've reset xact state variables
 	 *
@@ -1722,8 +2003,21 @@ StartTransaction(void)
 	{
 		s->startedInRecovery = false;
 		XactReadOnly = DefaultXactReadOnly;
+#ifdef PGXC
+		/* Save Postgres-XC session as read-only if necessary */
+		if (!xc_maintenance_mode)
+			XactReadOnly |= IsPGXCNodeXactReadOnly();
+#endif
 	}
 	XactDeferrable = DefaultXactDeferrable;
+#ifdef PGXC
+	/* PGXCTODO - PGXC doesn't support 9.1 serializable transactions. They are
+	 * silently turned into repeatable-reads which is same as pre 9.1
+	 * serializable isolation level
+	 */
+	if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
+		DefaultXactIsoLevel = XACT_REPEATABLE_READ;
+#endif
 	XactIsoLevel = DefaultXactIsoLevel;
 	forceSyncCommit = false;
 	MyXactAccessedTempRel = false;
@@ -1735,7 +2029,18 @@ StartTransaction(void)
 	currentSubTransactionId = TopSubTransactionId;
 	currentCommandId = FirstCommandId;
 	currentCommandIdUsed = false;
-
+#ifdef PGXC
+	/*
+	 * Parameters related to global command ID control for transaction.
+	 * Send the 1st command ID.
+	 */
+	isCommandIdReceived = false;
+	if (IsConnFromCoord())
+	{
+		SetReceivedCommandId(FirstCommandId);
+		SetSendCommandId(false);
+	}
+#endif
 	/*
 	 * initialize reported xid accounting
 	 */
@@ -1746,6 +2051,13 @@ StartTransaction(void)
 	 */
 	AtStart_Memory();
 	AtStart_ResourceOwner();
+
+#ifdef ADB
+	/*
+	 * Set global snapshot to NULL, which will get from AGTM.
+	 */
+	UnsetGlobalSnapshot();
+#endif
 
 	/*
 	 * Assign a new LocalTransactionId, and combine it with the backendId to
@@ -1776,7 +2088,12 @@ StartTransaction(void)
 	 */
 	xactStartTimestamp = stmtStartTimestamp;
 	xactStopTimestamp = 0;
+#ifdef PGXC
+	/* For Postgres-XC, transaction start timestamp has to follow the GTM timeline */
+	pgstat_report_xact_timestamp(AGTMxactStartTimestamp);
+#else
 	pgstat_report_xact_timestamp(xactStartTimestamp);
+#endif
 
 	/*
 	 * initialize current transaction state fields
@@ -1820,6 +2137,11 @@ CommitTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
+#ifdef ADB
+	bool isimplicit = !(s->blockState == TBLOCK_PREPARE);
+	int nodecnt = 0;
+	Oid *nodeIds = NULL;
+#endif
 
 	ShowTransactionState("CommitTransaction");
 
@@ -1830,6 +2152,78 @@ CommitTransaction(void)
 		elog(WARNING, "CommitTransaction while in %s state",
 			 TransStateAsString(s->state));
 	Assert(s->parent == NULL);
+
+#ifdef ADB
+	/*
+	 * If we are a Coordinator and currently serving the client,
+	 * we must run a 2PC if more than one nodes are involved in this
+	 * transaction. We first prepare on the remote nodes and if everything goes
+	 * right, we commit locally and then commit on the remote nodes. We must
+	 * also be careful to prepare locally on this Coordinator only if the
+	 * local Coordinator has done some write activity.
+	 *
+	 * If there are any errors, they will be reported via ereport and the
+	 * transaction will be aborted.
+	 *
+	 * First save the current top transaction ID before it may get overwritten
+	 * by PrepareTransaction below.
+	 */
+	if (isimplicit && IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		SafeFreeSaveGID();
+
+		/*
+		 * Check if there are any ON COMMIT actions or if temporary objects are in use.
+		 * If session is set-up to enforce 2PC for such transactions, return an error.
+		 * If not, simply enforce autocommit on each remote node.
+		 */
+		if (IsOnCommitActions() || ExecIsTempObjectIncluded())
+		{
+			if (!EnforceTwoPhaseCommit)
+				ExecSetTempObjectIncluded();
+			else
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cannot PREPARE a transaction that has operated on temporary tables"),
+						 errdetail("Disabling enforce_two_phase_commit is recommended to enforce COMMIT")));
+		}
+
+		/*
+		 * If the local node has done some write activity, prepare the local node
+		 * first. If that fails, the transaction is aborted on all the remote
+		 * nodes
+		 */
+		if (IsTwoPhaseCommitRequired(XactWriteLocalNode))
+		{
+			prepareGID = MemoryContextAlloc(TopTransactionContext, 256);
+			sprintf(prepareGID, "T%u", GetTopTransactionId());
+
+			savePrepareGID = MemoryContextStrdup(TopMemoryContext, prepareGID);
+
+			//if (XactWriteLocalNode)
+			{
+				PrepareTransaction();
+				s->blockState = TBLOCK_DEFAULT;
+
+				/*
+				 * PrepareTransaction would have ended the current transaction.
+				 * Start a new transaction. We can also use the GXID of this
+				 * new transaction to run the COMMIT/ROLLBACK PREPARED
+				 * commands. Note that information as part of the
+				 * auxilliaryTransactionId
+				 */
+				StartTransaction();
+
+				/*
+				 * Local node is prepared
+				 */
+				s = CurrentTransactionState;
+				s->implicit2PC = true;
+				TellRemoteXactLocalPrepared(true);
+			}
+		}
+	}
+#endif
 
 	/*
 	 * Do pre-commit processing that involves calling user-defined code, such
@@ -1888,6 +2282,56 @@ CommitTransaction(void)
 	 */
 	PreCommit_Notify();
 
+#ifdef ADB
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+	{
+		/*
+		 * Now that all the remote nodes have successfully prepared and
+		 * commited, commit the local transaction as well. Remember, any errors
+		 * before this point would have been reported via ereport. The fact
+		 * that we are here shows that the transaction has been committed
+		 * successfully on the remote nodes
+		 */
+		if (s->implicit2PC)
+		{
+			PreventTransactionChain(true, "COMMIT IMPLICIT PREPARED");
+
+			PG_TRY();
+			{
+				FinishPreparedTransaction(savePrepareGID, true);
+			} PG_CATCH();
+			{
+				SafeFreeSaveGID();
+				s->implicit2PC = false;
+				PG_RE_THROW();
+			} PG_END_TRY();
+			
+			SafeFreeSaveGID();
+			s->implicit2PC = false;
+		} else
+		{
+			nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
+
+			/* Here is where we commit remote xact */
+			RecordRemoteXactCommit(nodecnt, nodeIds);
+		}
+
+		/*
+		 * The current transaction may have been ended and we might have
+		 * started a new transaction. Re-initialize with
+		 * CurrentTransactionState
+		 */
+		s = CurrentTransactionState;
+
+		/*
+		 * Let the normal commit processing now handle the main transaction if
+		 * the local node was not involved. Otherwise, we are in an
+		 * auxilliary transaction and that will be closed along with the main
+		 * transaction
+		 */
+	}
+#endif
+
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
@@ -1931,6 +2375,15 @@ CommitTransaction(void)
 	 */
 
 	CallXactCallbacks(XACT_EVENT_COMMIT);
+
+#ifdef PGXC
+	/*
+	 * Call any callback functions initialized for post-commit cleaning up
+	 * of database/tablespace operations. Mostly this should involve resetting
+	 * the abort callback functions registered during the db/tbspc operations.
+	 */
+	AtEOXact_DBCleanup(true);
+#endif
 
 	ResourceOwnerRelease(TopTransactionResourceOwner,
 						 RESOURCE_RELEASE_BEFORE_LOCKS,
@@ -2003,6 +2456,22 @@ CommitTransaction(void)
 	s->nChildXids = 0;
 	s->maxChildXids = 0;
 
+#ifdef PGXC
+	s->isLocalParameterUsed = false;
+	ForgetTransactionLocalNode();
+
+	/*
+	 * Set the command ID of Coordinator to be sent to the remote nodes
+	 * as the 1st one.
+	 * For remote nodes, enforce the command ID sending flag to false to avoid
+	 * sending any command ID by default as now transaction is done.
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		SetReceivedCommandId(FirstCommandId);
+	else
+		SetSendCommandId(false);
+#endif
+
 	/*
 	 * done with commit processing, set current transaction state back to
 	 * default
@@ -2010,13 +2479,33 @@ CommitTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
-}
 
+#ifdef PGXC
+
+#ifdef ADB
+	AtEOXact_Local(true);
+#endif
+
+	/*
+	 * XXX We now close the main and auxilliary transaction (if any) on the
+	 * GTM. We do this after resuming interrupts to ensure that we don't end
+	 * blocking forever on the communication channel. But we need to see if
+	 * this is safe in all cases (TODO)
+	 */
+	AtEOXact_Remote();
+#endif /* PGXC */
+}
 
 /*
  *	PrepareTransaction
  *
  * NB: if you change this routine, better look at CommitTransaction too!
+ */
+/*
+ * Only a Postgres-XC Coordinator that received a PREPARE Command from
+ * an application can use this special prepare.
+ * If PrepareTransaction is called during an implicit 2PC, do not release ressources,
+ * this is made by CommitTransaction when transaction has been committed on Nodes.
  */
 static void
 PrepareTransaction(void)
@@ -2025,6 +2514,11 @@ PrepareTransaction(void)
 	TransactionId xid = GetCurrentTransactionId();
 	GlobalTransaction gxact;
 	TimestampTz prepared_at;
+#ifdef ADB
+	bool isimplicit = !(s->blockState == TBLOCK_PREPARE);
+	int  nodecnt = 0;
+	Oid	*nodeIds = NULL;
+#endif
 
 	ShowTransactionState("PrepareTransaction");
 
@@ -2103,7 +2597,11 @@ PrepareTransaction(void)
 	 * cases, such as a temp table created and dropped all within the
 	 * transaction.  That seems to require much more bookkeeping though.
 	 */
+#ifdef PGXC
+	if (MyXactAccessedTempRel && !isimplicit)
+#else
 	if (MyXactAccessedTempRel)
+#endif
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot PREPARE a transaction that has operated on temporary tables")));
@@ -2136,8 +2634,24 @@ PrepareTransaction(void)
 	 * Reserve the GID for this transaction. This could fail if the requested
 	 * GID is invalid or already in use.
 	 */
+#ifdef ADB
+	/*
+	 * Get all involved remote nodes,
+	 */
+	nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
+
+	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
+							GetUserId(), MyDatabaseId,
+							nodecnt, nodeIds, isimplicit);
+
+	/* Here is where we truly prepare remote nodes(include AGTM). */
+	RecordRemoteXactPrepare(xid, prepared_at, isimplicit,
+							prepareGID, nodecnt, nodeIds);
+
+#else
 	gxact = MarkAsPreparing(xid, prepareGID, prepared_at,
 							GetUserId(), MyDatabaseId);
+#endif
 	prepareGID = NULL;
 
 	/*
@@ -2277,8 +2791,14 @@ PrepareTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
-}
 
+#ifdef PGXC
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		SetReceivedCommandId(FirstCommandId);
+	else
+		SetSendCommandId(false);
+#endif
+}
 
 /*
  *	AbortTransaction
@@ -2288,6 +2808,44 @@ AbortTransaction(void)
 {
 	TransactionState s = CurrentTransactionState;
 	TransactionId latestXid;
+#ifdef ADB
+	int nodecnt;
+	Oid *nodeIds;
+
+	/*
+	 * Cleanup the files created during database/tablespace operations.
+	 * This must happen before we release locks, because we want to hold the
+	 * locks acquired initially while we cleanup the files.
+	 */
+	AtEOXact_DBCleanup(false);
+
+	/*
+	 * Handle remote abort first.
+	 */
+	if (s->implicit2PC)
+	{
+		PreventTransactionChain(true, "ROLLBACK IMPLICIT PREPARED");
+
+		PG_TRY();
+		{
+			FinishPreparedTransaction(savePrepareGID, false);
+		} PG_CATCH();
+		{
+			SafeFreeSaveGID();
+			s->implicit2PC = false;
+			PG_RE_THROW();
+		} PG_END_TRY();
+
+		SafeFreeSaveGID();
+		s->implicit2PC = false;
+	} else
+	{
+		nodecnt = pgxcGetInvolvedRemoteNodes(&nodeIds);
+
+		/* Abort remote xact */
+		RecordRemoteXactAbort(nodecnt, nodeIds);
+	}
+#endif
 
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
@@ -2418,10 +2976,23 @@ AbortTransaction(void)
 		pgstat_report_xact_timestamp(0);
 	}
 
+#ifdef PGXC
+	ForgetTransactionLocalNode();
+#endif
+
 	/*
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
 	RESUME_INTERRUPTS();
+
+#ifdef PGXC
+
+#ifdef ADB
+	AtEOXact_Local(false);
+#endif
+
+	AtEOXact_Remote();
+#endif
 }
 
 /*
@@ -2467,6 +3038,24 @@ CleanupTransaction(void)
 	 * default
 	 */
 	s->state = TRANS_DEFAULT;
+#ifdef PGXC
+	s->isLocalParameterUsed = false;
+	/*
+	 * Set the command ID of Coordinator to be sent to the remote nodes
+	 * as the 1st one.
+	 * For remote nodes, enforce the command ID sending flag to false to avoid
+	 * sending any command ID by default as now transaction is done.
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		SetReceivedCommandId(FirstCommandId);
+	else
+		SetSendCommandId(false);
+#endif
+
+#ifdef ADB
+	s->agtm_begin = false;
+	s->implicit2PC = true;
+#endif
 }
 
 /*
@@ -3175,7 +3764,6 @@ CallSubXactCallbacks(SubXactEvent event,
 		(*item->callback) (event, mySubid, parentSubid, item->arg);
 }
 
-
 /* ----------------------------------------------------------------
  *					   transaction block support
  * ----------------------------------------------------------------
@@ -3229,6 +3817,17 @@ BeginTransactionBlock(void)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
+
+#ifdef PGXC
+	/*
+	 * Set command Id sending flag only for a local Coordinator when transaction begins,
+	 * For a remote node this flag is set to true only if a command ID has been received
+	 * from a Coordinator. This may not be always the case depending on the queries being
+	 * run and how command Ids are generated on remote nodes.
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+		SetSendCommandId(true);
+#endif
 }
 
 /*
@@ -3278,6 +3877,11 @@ PrepareTransactionBlock(char *gid)
 			result = false;
 		}
 	}
+
+#ifdef PGXC
+	/* Reset command ID sending flag */
+	SetSendCommandId(false);
+#endif
 
 	return result;
 }
@@ -3399,6 +4003,11 @@ EndTransactionBlock(void)
 			break;
 	}
 
+#ifdef PGXC
+	/* Reset command Id sending flag */
+	SetSendCommandId(false);
+#endif
+
 	return result;
 }
 
@@ -3491,6 +4100,11 @@ UserAbortTransactionBlock(void)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
+
+#ifdef PGXC
+	/* Reset Command Id sending flag */
+	SetSendCommandId(false);
+#endif
 }
 
 /*
@@ -4929,6 +5543,194 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 			ProcArrayApplyXidAssignment(xlrec->xtop,
 										xlrec->nsubxacts, xlrec->xsub);
 	}
+#ifdef ADB
+	else if (info == XLOG_RXACT_COMMIT ||
+			 info == XLOG_RXACT_PREPARE ||
+			 info == XLOG_RXACT_PREPARE_SUCCESS ||
+			 info == XLOG_RXACT_ABORT ||
+			 info == XLOG_RXACT_COMMIT_PREPARED ||
+			 info == XLOG_RXACT_COMMIT_PREPARED_SUCCESS ||
+			 info == XLOG_RXACT_ABORT_PREPARED ||
+			 info == XLOG_RXACT_ABORT_PREPARED_SUCCESS)
+	{
+		xl_remote_xact *xlrec = (xl_remote_xact *) XLogRecGetData(record);
+		remote_xact_redo(info, xlrec);
+	}
+#endif
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
 }
+
+#ifdef PGXC
+/*
+ * Remember that the local node has done some write activity
+ */
+void
+RegisterTransactionLocalNode(bool write)
+{
+	XactWriteLocalNode = write;
+	XactReadLocalNode = !write;
+}
+
+/*
+ * Forget about the local node's involvement in the transaction
+ */
+void
+ForgetTransactionLocalNode(void)
+{
+	XactReadLocalNode = XactWriteLocalNode = false;
+}
+
+/*
+ * Check if the local node is involved in the transaction
+ */
+bool
+IsTransactionLocalNode(bool write)
+{
+	if (write && XactWriteLocalNode)
+		return true;
+	else if (!write && XactReadLocalNode)
+		return true;
+	else
+		return false;
+}
+
+/*
+ * Check if the given xid is form implicit 2PC
+ */
+bool
+IsXidImplicit(const char *xid)
+{
+#define implicit2PC_head "_$XC$"
+	const size_t implicit2PC_head_len = strlen(implicit2PC_head);
+
+	if (strncmp(xid, implicit2PC_head, implicit2PC_head_len))
+		return false;
+	return true;
+}
+
+/*
+ * SaveReceivedCommandId
+ * Save a received command ID from another node for future use.
+ */
+void
+SaveReceivedCommandId(CommandId cid)
+{
+	/* Set the new command ID */
+	SetReceivedCommandId(cid);
+
+	/*
+	 * Change command ID information status to report any changes in remote ID
+	 * for a remote node. A new command ID has also been received.
+	 */
+	if (IsConnFromCoord())
+	{
+		SetSendCommandId(true);
+		isCommandIdReceived = true;
+	}
+}
+
+/*
+ * SetReceivedCommandId
+ * Set the command Id received from other nodes
+ */
+void
+SetReceivedCommandId(CommandId cid)
+{
+	receivedCommandId = cid;
+}
+
+/*
+ * GetReceivedCommandId
+ * Get the command id received from other nodes
+ */
+CommandId
+GetReceivedCommandId(void)
+{
+	return receivedCommandId;
+}
+
+/*
+ * ReportCommandIdChange
+ * ReportCommandIdChange reports a change in current command id at remote node
+ * to the Coordinator. This is required because a remote node can increment command
+ * Id in case of triggers or constraints.
+ */
+void
+ReportCommandIdChange(CommandId cid)
+{
+	StringInfoData buf;
+
+	/* Send command Id change to Coordinator */
+	pq_beginmessage(&buf, 'M');
+	pq_sendint(&buf, cid, 4);
+	pq_endmessage(&buf);
+	pq_flush();
+}
+
+/*
+ * IsSendCommandId
+ * Get status of command ID sending. If set at true, command ID needs to be communicated
+ * to other nodes.
+ */
+bool
+IsSendCommandId(void)
+{
+	return sendCommandId;
+}
+
+/*
+ * SetSendCommandId
+ * Change status of command ID sending.
+ */
+void
+SetSendCommandId(bool status)
+{
+	sendCommandId = status;
+}
+
+/*
+ * IsPGXCNodeXactReadOnly
+ * Determine if a Postgres-XC node session
+ * is read-only or not.
+ */
+bool
+IsPGXCNodeXactReadOnly(void)
+{
+	/*
+	 * For the time being a Postgres-XC session is read-only
+	 * under very specific conditions.
+	 * This is the case of an application accessing directly
+	 * a Datanode provided the server was not started in restore mode.
+	 */
+	return IsPGXCNodeXactDatanodeDirect() && !isRestoreMode;
+}
+
+/*
+ * IsPGXCNodeXactDatanodeDirect
+ * Determine if a Postgres-XC node session
+ * is being accessed directly by an application.
+ */
+bool
+IsPGXCNodeXactDatanodeDirect(void)
+{
+	/*
+	 * For the time being a Postgres-XC session is considered
+	 * as being connected directly under very specific conditions.
+	 *
+	 * IsPostmasterEnvironment || !useLocalXid
+	 *     All standalone backends except initdb are considered to be
+	 *     "directly connected" by application, which implies that for xid
+	 *     consistency, the backend should use global xids. initdb is the only
+	 *     one where local xids are used. So any standalone backend except
+	 *     initdb is supposed to use global xids.
+	 * IsNormalProcessingMode() - checks for new connections
+	 * IsAutoVacuumLauncherProcess - checks for autovacuum launcher process
+	 */
+	return IS_PGXC_DATANODE &&
+		   (IsPostmasterEnvironment || !useLocalXid) &&
+		   IsNormalProcessingMode() &&
+		   !IsAutoVacuumLauncherProcess() &&
+		   !IsConnFromCoord();
+}
+#endif

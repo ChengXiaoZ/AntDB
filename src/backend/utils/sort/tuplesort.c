@@ -107,6 +107,10 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "pg_trace.h"
+#ifdef PGXC
+#include "pgxc/execRemote.h"
+#include "catalog/pgxc_node.h"
+#endif
 #include "utils/datum.h"
 #include "utils/logtape.h"
 #include "utils/lsyscache.h"
@@ -118,10 +122,13 @@
 
 
 /* sort-type codes for sort__start probes */
-#define HEAP_SORT		0
-#define INDEX_SORT		1
-#define DATUM_SORT		2
+#define HEAP_SORT	0
+#define INDEX_SORT	1
+#define DATUM_SORT	2
 #define CLUSTER_SORT	3
+#ifdef PGXC
+#define MERGE_SORT 4
+#endif
 
 /* GUC variables */
 #ifdef TRACE_SORT
@@ -217,6 +224,9 @@ struct Tuplesortstate
 	int			tapeRange;		/* maxTapes-1 (Knuth's P) */
 	MemoryContext sortcontext;	/* memory context holding all sort data */
 	LogicalTapeSet *tapeset;	/* logtape.c object for tapes in a temp file */
+#ifdef PGXC
+	Oid			current_xcnode;	/* node from where we are got last tuple */
+#endif /* PGXC */
 
 	/*
 	 * These function pointers decouple the routines that must know what kind
@@ -395,6 +405,9 @@ struct Tuplesortstate
 #define COPYTUP(state,stup,tup) ((*(state)->copytup) (state, stup, tup))
 #define WRITETUP(state,tape,stup)	((*(state)->writetup) (state, tape, stup))
 #define READTUP(state,stup,tape,len) ((*(state)->readtup) (state, stup, tape, len))
+#ifdef PGXC
+#define GETLEN(state,tape,eofOK) ((*(state)->getlen) (state, tape, eofOK))
+#endif
 #define REVERSEDIRECTION(state) ((*(state)->reversedirection) (state))
 #define LACKMEM(state)		((state)->availMem < 0)
 #define USEMEM(state,amt)	((state)->availMem -= (amt))
@@ -1087,6 +1100,40 @@ noalloc:
 	return false;
 }
 
+#ifdef PGXC
+void
+tuplesort_puttupleslotontape(Tuplesortstate *state, TupleTableSlot *slot)
+{
+	SortTuple stup;
+
+	MemoryContext oldcontext = MemoryContextSwitchTo(state->sortcontext);
+
+	if (state->current_xcnode == 0)
+	{
+		state->current_xcnode = slot->tts_xcnodeoid;
+		inittapes(state);
+	}
+
+	if (state->current_xcnode != slot->tts_xcnodeoid)
+	{
+		state->currentRun++;
+		state->current_xcnode = slot->tts_xcnodeoid;
+		markrunend(state, state->tp_tapenum[state->destTape]);
+		state->tp_runs[state->destTape]++;
+		state->tp_dummy[state->destTape]--; /* per Alg D step D2 */
+		selectnewtape(state);
+	}
+
+	COPYTUP(state, &stup, slot);
+	/* Write the tuple to that node */
+	WRITETUP(state, state->tp_tapenum[state->destTape], &stup);
+
+	/* Got at-least one tuple, change the status to building runs */
+	state->status = TSS_BUILDRUNS;
+	MemoryContextSwitchTo(oldcontext);
+}
+#endif /* PGXC */
+
 /*
  * Accept one tuple while collecting input data for sort.
  *
@@ -1511,7 +1558,6 @@ tuplesort_gettuple_common(Tuplesortstate *state, bool forward,
 										  sizeof(unsigned int)))
 					return false;
 				tuplen = getlen(state, state->result_tape, false);
-
 				/*
 				 * Back up to get ending length word of tuple before it.
 				 */
@@ -2290,6 +2336,22 @@ mergeprereadone(Tuplesortstate *state, int srcTape)
 static void
 dumptuples(Tuplesortstate *state, bool alltuples)
 {
+#ifdef PGXC
+	/*
+	 * If we are reading from the datanodes, we have already dumped all the
+	 * tuples onto tapes. There may not be any tuples in the heap. Close the
+	 * last run.
+	 */
+	if (state->current_xcnode && state->memtupcount <= 0)
+	{
+		markrunend(state, state->tp_tapenum[state->destTape]);
+		state->currentRun++;
+		state->tp_runs[state->destTape]++;
+		state->tp_dummy[state->destTape]--; /* per Alg D step D2 */
+		return;
+	}
+#endif /* PGXC */
+
 	while (alltuples ||
 		   (LACKMEM(state) && state->memtupcount > 1) ||
 		   state->memtupcount >= state->memtupsize)
@@ -2703,7 +2765,6 @@ markrunend(Tuplesortstate *state, int tapenum)
 	LogicalTapeWrite(state->tapeset, tapenum, (void *) &len, sizeof(len));
 }
 
-
 /*
  * Inline-able copy of FunctionCall2Coll() to save some cycles in sorting.
  */
@@ -2909,7 +2970,6 @@ reversedirection_heap(Tuplesortstate *state)
 	}
 }
 
-
 /*
  * Routines specialized for the CLUSTER case (HeapTuple data, with
  * comparisons per a btree index definition)
@@ -3071,6 +3131,10 @@ readtup_cluster(Tuplesortstate *state, SortTuple *stup,
 						 &tuple->t_self, sizeof(ItemPointerData));
 	/* We don't currently bother to reconstruct t_tableOid */
 	tuple->t_tableOid = InvalidOid;
+#ifdef PGXC
+	tuple->t_xc_node_id = 0;
+#endif
+
 	/* Read in the tuple body */
 	LogicalTapeReadExact(state->tapeset, tapenum,
 						 tuple->t_data, tuple->t_len);

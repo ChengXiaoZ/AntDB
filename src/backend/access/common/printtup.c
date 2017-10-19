@@ -21,7 +21,9 @@
 #include "tcop/pquery.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
-
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
 
 static void printtup_startup(DestReceiver *self, int operation,
 				 TupleDesc typeinfo);
@@ -204,6 +206,20 @@ SendRowDescriptionMessage(TupleDesc typeinfo, List *targetlist, int16 *formats)
 		int32		atttypmod = attrs[i]->atttypmod;
 
 		pq_sendstring(&buf, NameStr(attrs[i]->attname));
+
+#ifdef PGXC
+		/*
+		 * Send the type name from a Postgres-XC backend node.
+		 * This preserves from OID inconsistencies as architecture is shared nothing.
+		 */
+		if (IsConnFromCoord())
+		{
+			char	   *typename;
+			typename = get_typename(atttypid);
+			pq_sendstring(&buf, typename);
+		}
+#endif
+
 		/* column ID info appears in protocol 3.0 and up */
 		if (proto >= 3)
 		{
@@ -307,6 +323,19 @@ printtup(TupleTableSlot *slot, DestReceiver *self)
 	StringInfoData buf;
 	int			natts = typeinfo->natts;
 	int			i;
+
+#ifdef PGXC
+	/*
+	 * If we are having DataRow-based tuple we do not have to encode attribute
+	 * values, just send over the DataRow message as we received it from the
+	 * Datanode
+	 */
+	if (slot->tts_dataRow)
+	{
+		pq_putmessage('D', slot->tts_dataRow, slot->tts_dataLen);
+		return;
+	}
+#endif
 
 	/* Set or update my derived attribute info, if needed */
 	if (myState->attrinfo != typeinfo || myState->nattrs != natts)

@@ -24,7 +24,9 @@
 #include "storage/shmem.h"
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
-
+#ifdef PGXC
+#include "pgxc/poolutils.h"
+#endif
 
 /*
  * The SIGUSR1 signal is multiplexed to support signalling multiple event
@@ -264,6 +266,11 @@ procsignal_sigusr1_handler(SIGNAL_ARGS)
 
 	if (CheckProcSignal(PROCSIG_NOTIFY_INTERRUPT))
 		HandleNotifyInterrupt();
+
+#ifdef PGXC
+	if (CheckProcSignal(PROCSIG_PGXCPOOL_RELOAD))
+		HandlePoolerReload();
+#endif
 
 	if (CheckProcSignal(PROCSIG_RECOVERY_CONFLICT_DATABASE))
 		RecoveryConflictInterrupt(PROCSIG_RECOVERY_CONFLICT_DATABASE);

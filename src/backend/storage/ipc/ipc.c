@@ -163,6 +163,9 @@ proc_exit_prepare(int code)
 	ImmediateInterruptOK = false;
 	InterruptHoldoffCount = 1;
 	CritSectionCount = 0;
+#ifdef ADB
+	FatalSectionCount = 0;
+#endif
 
 	/*
 	 * Also clear the error context stack, to prevent error callbacks from

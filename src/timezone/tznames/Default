@@ -231,6 +231,10 @@ WGST    -7200 D  # Western Greenland Summer Time
                  #     (America/Godthab)
 WGT    -10800    # West Greenland Time
                  #     (America/Godthab)
+YDT    -28800 D  # Yukon Summer Time
+                 #     (Canada/Whitehorse)
+YST    -32400    # Yukon Standard Time
+                 #     (Canada/Whitehorse)
 
 #################### ANTARCTICA ####################
 
@@ -698,6 +702,9 @@ GAMT   -32400    # Gambier Time
                  #     (Pacific/Gambier)
 GILT    43200    # Gilbert Islands Time
                  #     (Pacific/Tarawa)
+#ifdef ADB
+HDT    -32400 D  # Hawaiian-Aleutian Daylight Time
+##endif
 HST    -36000    # Hawaiian Standard Time
                  #     (Pacific/Honolulu)
                  #     (Pacific/Johnston)

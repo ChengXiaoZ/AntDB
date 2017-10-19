@@ -269,7 +269,13 @@ init_ps_display(const char *username, const char *dbname,
 			 username, dbname, host_info);
 #else
 	snprintf(ps_buffer, ps_buffer_size,
+#if defined(ADBMGRD)
+			 "adbmgr: %s %s %s ",
+#elif defined(AGTM)
+			 "agtm: %s %s %s ",
+#else
 			 "postgres: %s %s %s ",
+#endif
 			 username, dbname, host_info);
 #endif
 

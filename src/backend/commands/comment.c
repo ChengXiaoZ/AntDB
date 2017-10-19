@@ -5,6 +5,7 @@
  * PostgreSQL object comments utility code.
  *
  * Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2013 Postgres-XC Development Group
  *
  * IDENTIFICATION
  *	  src/backend/commands/comment.c
@@ -464,3 +465,5 @@ GetComment(Oid oid, Oid classoid, int32 subid)
 
 	return comment;
 }
+
+

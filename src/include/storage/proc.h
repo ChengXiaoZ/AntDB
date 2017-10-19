@@ -98,6 +98,11 @@ struct PGPROC
 	 */
 	bool		recoveryConflictPending;
 
+#ifdef PGXC
+	/* Postgres-XC flags */
+	bool		isPooler;		/* true if process is Postgres-XC pooler */
+#endif
+
 	/* Info about LWLock the process is currently waiting for, if any. */
 	bool		lwWaiting;		/* true if waiting for an LW lock */
 	uint8		lwWaitMode;		/* lwlock mode being waited for */
@@ -215,8 +220,14 @@ extern PGPROC *PreparedXactProcs;
  * Background writer, checkpointer and WAL writer run during normal operation.
  * Startup process and WAL receiver also consume 2 slots, but WAL writer is
  * launched only after startup has exited, so we only need 4 slots.
+ *
+ * PGXC needs another slot for the pool manager process
  */
+#ifdef PGXC
+#define NUM_AUXILIARY_PROCS		5
+#else
 #define NUM_AUXILIARY_PROCS		4
+#endif
 
 
 /* configurable options */

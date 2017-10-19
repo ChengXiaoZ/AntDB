@@ -5,6 +5,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  *
  * IDENTIFICATION
@@ -30,7 +31,9 @@
 
 #include "nodes/parsenodes.h"
 #include "nodes/readfuncs.h"
-
+#ifdef PGXC
+#include "access/htup.h"
+#endif
 
 /*
  * Macros to simplify reading of different kinds of fields.  Use these
@@ -474,6 +477,10 @@ _readAggref(void)
 
 	READ_OID_FIELD(aggfnoid);
 	READ_OID_FIELD(aggtype);
+#ifdef PGXC
+	READ_OID_FIELD(aggtrantype);
+	READ_BOOL_FIELD(agghas_collectfn);
+#endif /* PGXC */
 	READ_OID_FIELD(aggcollid);
 	READ_OID_FIELD(inputcollid);
 	READ_NODE_FIELD(args);
@@ -866,6 +873,9 @@ _readCaseExpr(void)
 	READ_NODE_FIELD(args);
 	READ_NODE_FIELD(defresult);
 	READ_LOCATION_FIELD(location);
+#ifdef ADB
+	READ_BOOL_FIELD(isdecode);
+#endif
 
 	READ_DONE();
 }
@@ -1185,6 +1195,9 @@ _readRangeTblEntry(void)
 	READ_NODE_FIELD(alias);
 	READ_NODE_FIELD(eref);
 	READ_ENUM_FIELD(rtekind, RTEKind);
+#ifdef PGXC
+	READ_STRING_FIELD(relname);
+#endif
 
 	switch (local_node->rtekind)
 	{
@@ -1218,6 +1231,11 @@ _readRangeTblEntry(void)
 			READ_NODE_FIELD(ctecoltypmods);
 			READ_NODE_FIELD(ctecolcollations);
 			break;
+#ifdef PGXC
+		case RTE_REMOTE_DUMMY:
+			/* Nothing to do */
+			break;
+#endif /* PGXC */
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d",
 				 (int) local_node->rtekind);

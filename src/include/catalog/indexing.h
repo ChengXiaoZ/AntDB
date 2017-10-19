@@ -7,6 +7,7 @@
  *
  * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
+ * Portions Copyright (c) 2010-2012 Postgres-XC Development Group
  *
  * src/include/catalog/indexing.h
  *
@@ -15,8 +16,13 @@
 #ifndef INDEXING_H
 #define INDEXING_H
 
+#ifdef BUILD_BKI
+#include "catalog/buildbki.h"
+#else /* BUILD_BKI */
+#include "catalog/genbki.h"
 #include "access/htup.h"
 #include "utils/relcache.h"
+#endif /* BUILD_BKI */
 
 /*
  * The state object used by CatalogOpenIndexes and friends is actually the
@@ -39,10 +45,11 @@ extern void CatalogUpdateIndexes(Relation heapRel, HeapTuple heapTuple);
  * These macros are just to keep the C compiler from spitting up on the
  * upcoming commands for genbki.pl.
  */
+#ifndef BUILD_BKI
 #define DECLARE_INDEX(name,oid,decl) extern int no_such_variable
 #define DECLARE_UNIQUE_INDEX(name,oid,decl) extern int no_such_variable
 #define BUILD_INDICES
-
+#endif /* BUILD_BKI */
 
 /*
  * What follows are lines processed by genbki.pl to create the statements
@@ -285,6 +292,32 @@ DECLARE_UNIQUE_INDEX(pg_user_mapping_oid_index, 174, on pg_user_mapping using bt
 DECLARE_UNIQUE_INDEX(pg_user_mapping_user_server_index, 175, on pg_user_mapping using btree(umuser oid_ops, umserver oid_ops));
 #define UserMappingUserServerIndexId	175
 
+#ifdef PGXC
+DECLARE_UNIQUE_INDEX(pgxc_class_pcrelid_index, 9002, on pgxc_class using btree(pcrelid oid_ops));
+#define PgxcClassPgxcRelIdIndexId 	9002
+
+DECLARE_UNIQUE_INDEX(pgxc_node_oid_index, 9010, on pgxc_node using btree(oid oid_ops));
+#define PgxcNodeOidIndexId			9010
+
+DECLARE_UNIQUE_INDEX(pgxc_node_name_index, 9011, on pgxc_node using btree(node_name name_ops));
+#define PgxcNodeNodeNameIndexId 	9011
+
+DECLARE_UNIQUE_INDEX(pgxc_group_name_index, 9012, on pgxc_group using btree(group_name name_ops));
+#define PgxcGroupGroupNameIndexId 	9012
+
+DECLARE_UNIQUE_INDEX(pgxc_group_oid, 9013, on pgxc_group using btree(oid oid_ops));
+#define PgxcGroupOidIndexId			9013
+
+DECLARE_UNIQUE_INDEX(pgxc_node_id_index, 9003, on pgxc_node using btree(node_id int4_ops));
+#define PgxcNodeNodeIdIndexId 	9003
+
+#endif
+
+#ifdef ADB
+DECLARE_UNIQUE_INDEX(adb_ha_sync_log_oid_index, 9004, on adb_ha_sync_log using btree(oid oid_ops));
+#define AdbHaSyncLogOidIndexId			9004
+#endif
+
 DECLARE_UNIQUE_INDEX(pg_foreign_table_relid_index, 3119, on pg_foreign_table using btree(ftrelid oid_ops));
 #define ForeignTableRelidIndexId 3119
 
@@ -310,6 +343,32 @@ DECLARE_UNIQUE_INDEX(pg_extension_name_index, 3081, on pg_extension using btree(
 
 DECLARE_UNIQUE_INDEX(pg_range_rngtypid_index, 3542, on pg_range using btree(rngtypid oid_ops));
 #define RangeTypidIndexId					3542
+
+#ifdef ADBMGRD
+DECLARE_UNIQUE_INDEX(mgr_host_oid_index, 4909, on mgr_host using btree(oid oid_ops));
+#define HostOidIndexId 4909
+
+DECLARE_UNIQUE_INDEX(mgr_host_hostname_index, 4910, on mgr_host using btree(hostname name_ops));
+#define HostHostnameIndexId					4910
+
+DECLARE_UNIQUE_INDEX(mgr_gtm_oid_index, 4919, on mgr_gtm using btree(oid oid_ops));
+#define GtmOidIndexId 4919
+
+DECLARE_UNIQUE_INDEX(mgr_gtm_gtmname_index, 4920, on mgr_gtm using btree(gtmname name_ops));
+#define GtmGtmNameIndexId 4920
+
+DECLARE_UNIQUE_INDEX(mgr_parm_oid_index, 4929, on mgr_parm using btree(oid oid_ops));
+#define ParmOidIndexId 4929
+
+DECLARE_UNIQUE_INDEX(mgr_parm_parmkey_index, 4930, on mgr_parm using btree(parmkey name_ops,parmnode name_ops));
+#define ParmParmkeyIndexId 4930
+
+DECLARE_UNIQUE_INDEX(mgr_node_oid_index, 4949, on mgr_node using btree(oid oid_ops));
+#define NodeOidIndexId 4949
+
+DECLARE_UNIQUE_INDEX(mgr_node_nodenametype_index, 4950, on mgr_node using btree(nodename name_ops, nodetype char_ops));
+#define NodeNodeNameTypeIndexId 4950
+#endif /* ADBMGRD */
 
 /* last step of initialization script: build the indexes declared above */
 BUILD_INDICES

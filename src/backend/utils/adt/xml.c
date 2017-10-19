@@ -2056,7 +2056,11 @@ map_sql_value_to_xml_value(Datum value, Oid type, bool xml_escape_strings)
 								 errmsg("timestamp out of range"),
 								 errdetail("XML does not support infinite timestamp values.")));
 					else if (timestamp2tm(timestamp, NULL, &tm, &fsec, NULL, NULL) == 0)
+#ifdef ADB
+						EncodeDateTime(&tm, fsec, false, 0, NULL, USE_XSD_DATES, buf, false);
+#else
 						EncodeDateTime(&tm, fsec, false, 0, NULL, USE_XSD_DATES, buf);
+#endif
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
@@ -2083,7 +2087,11 @@ map_sql_value_to_xml_value(Datum value, Oid type, bool xml_escape_strings)
 								 errmsg("timestamp out of range"),
 								 errdetail("XML does not support infinite timestamp values.")));
 					else if (timestamp2tm(timestamp, &tz, &tm, &fsec, &tzn, NULL) == 0)
+#ifdef ADB
+						EncodeDateTime(&tm, fsec, true, tz, tzn, USE_XSD_DATES, buf, false);
+#else
 						EncodeDateTime(&tm, fsec, true, tz, tzn, USE_XSD_DATES, buf);
+#endif
 					else
 						ereport(ERROR,
 								(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),

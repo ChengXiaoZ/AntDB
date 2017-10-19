@@ -53,7 +53,6 @@ ProcessingMode Mode = InitProcessing;
 /* List of lock files to be removed at proc exit */
 static List *lock_files = NIL;
 
-
 /* ----------------------------------------------------------------
  *		ignoring system indexes support stuff
  *
@@ -1413,3 +1412,11 @@ pg_bindtextdomain(const char *domain)
 	}
 #endif
 }
+
+#ifdef PGXC
+void
+PGXC_init_lock_files(void)
+{
+	lock_files = NIL;
+}
+#endif

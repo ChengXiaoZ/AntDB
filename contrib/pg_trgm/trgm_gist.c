@@ -321,7 +321,14 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 			else
 			{					/* non-leaf contains signature */
 				int32		count = cnt_sml_sign_common(qtrg, GETSIGN(key));
+#ifdef ADB
+				/* fix: Dereference of null pointer */
+				int32		len;
+				AssertArg(qtrg);
+				len = ARRNELEM(qtrg);
+#else
 				int32		len = ARRNELEM(qtrg);
+#endif
 
 				if (len == 0)
 					res = false;
@@ -352,11 +359,25 @@ gtrgm_consistent(PG_FUNCTION_ARGS)
 			}
 			else
 			{					/* non-leaf contains signature */
+#ifdef ADB
+				/* fix: Dereference of null pointer */
+				int32		k,
+							tmp = 0,
+							len;
+				trgm	   *ptr = NULL;
+				BITVECP 	sign;
+
+				AssertArg(qtrg);
+				len = ARRNELEM(qtrg);
+				ptr = GETARR(qtrg);
+				sign = GETSIGN(key);
+#else
 				int32		k,
 							tmp = 0,
 							len = ARRNELEM(qtrg);
 				trgm	   *ptr = GETARR(qtrg);
 				BITVECP		sign = GETSIGN(key);
+#endif
 
 				res = true;
 				for (k = 0; k < len; k++)

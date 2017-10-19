@@ -30,8 +30,8 @@ ABORT;
 -- should not exist
 SELECT oid FROM pg_class WHERE relname = 'disappear';
 
--- should have members again
-SELECT * FROM aggtest;
+-- should have members again 
+SELECT * FROM aggtest order by a, b;
 
 
 -- Read-only tests
@@ -138,8 +138,8 @@ BEGIN;
 	RELEASE SAVEPOINT three;
 	INSERT INTO foo VALUES (3);
 COMMIT;
-SELECT * FROM foo;		-- should have 1 and 3
-SELECT * FROM barbaz;	-- should have 1
+SELECT * FROM foo ORDER BY a;		-- should have 1 and 3
+SELECT * FROM barbaz ORDER BY a;	-- should have 1
 
 -- test whole-tree commit
 BEGIN;
@@ -158,7 +158,7 @@ BEGIN;
 				ROLLBACK TO SAVEPOINT five;
 COMMIT;
 COMMIT;		-- should not be in a transaction block
-SELECT * FROM savepoints;
+SELECT * FROM savepoints ORDER BY 1;
 
 -- test whole-tree rollback
 BEGIN;
@@ -171,8 +171,8 @@ BEGIN;
 			DELETE FROM savepoints WHERE a=2;
 ROLLBACK;
 COMMIT;		-- should not be in a transaction block
-
-SELECT * FROM savepoints;
+		
+SELECT * FROM savepoints ORDER BY 1;
 
 -- test whole-tree commit on an aborted subtransaction
 BEGIN;
@@ -181,7 +181,7 @@ BEGIN;
 		INSERT INTO savepoints VALUES (5);
 		SELECT foo;
 COMMIT;
-SELECT * FROM savepoints;
+SELECT * FROM savepoints ORDER BY a;
 
 BEGIN;
 	INSERT INTO savepoints VALUES (6);
@@ -202,7 +202,7 @@ BEGIN;
 	ROLLBACK TO SAVEPOINT one;
 		INSERT INTO savepoints VALUES (11);
 COMMIT;
-SELECT a FROM savepoints WHERE a in (9, 10, 11);
+SELECT a FROM savepoints WHERE a in (9, 10, 11) ORDER BY a;
 -- rows 9 and 11 should have been created by different xacts
 SELECT a.xmin = b.xmin FROM savepoints a, savepoints b WHERE a.a=9 AND b.a=11;
 
@@ -219,7 +219,7 @@ BEGIN;
 			SAVEPOINT three;
 				INSERT INTO savepoints VALUES (17);
 COMMIT;
-SELECT a FROM savepoints WHERE a BETWEEN 12 AND 17;
+SELECT a FROM savepoints WHERE a BETWEEN 12 AND 17 ORDER BY a;
 
 BEGIN;
 	INSERT INTO savepoints VALUES (18);
@@ -232,7 +232,7 @@ BEGIN;
 	ROLLBACK TO SAVEPOINT one;
 		INSERT INTO savepoints VALUES (22);
 COMMIT;
-SELECT a FROM savepoints WHERE a BETWEEN 18 AND 22;
+SELECT a FROM savepoints WHERE a BETWEEN 18 AND 22 ORDER BY a;
 
 DROP TABLE savepoints;
 
@@ -279,14 +279,14 @@ COMMIT;
 -- also check that they don't see commits of concurrent transactions, but
 -- that's a mite hard to do within the limitations of pg_regress.)
 --
-select * from xacttest;
+select * from xacttest order by a, b;
 
 create or replace function max_xacttest() returns smallint language sql as
 'select max(a) from xacttest' stable;
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest;
+select * from xacttest order by a, b;
 rollback;
 
 -- But a volatile function can see the partial results of the calling query
@@ -295,7 +295,7 @@ create or replace function max_xacttest() returns smallint language sql as
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest;
+select * from xacttest order by a, b;
 rollback;
 
 -- Now the same test with plpgsql (since it depends on SPI which is different)
@@ -304,7 +304,7 @@ create or replace function max_xacttest() returns smallint language plpgsql as
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest;
+select * from xacttest order by a, b;
 rollback;
 
 create or replace function max_xacttest() returns smallint language plpgsql as
@@ -312,7 +312,7 @@ create or replace function max_xacttest() returns smallint language plpgsql as
 
 begin;
 update xacttest set a = max_xacttest() + 10 where a > 0;
-select * from xacttest;
+select * from xacttest order by a, b;
 rollback;
 
 
@@ -342,7 +342,7 @@ savepoint x;
 create table abc (a int);
 insert into abc values (5);
 insert into abc values (10);
-declare foo cursor for select * from abc;
+declare foo cursor for select * from abc order by a;
 fetch from foo;
 rollback to x;
 
@@ -356,7 +356,7 @@ create table abc (a int);
 insert into abc values (5);
 insert into abc values (10);
 insert into abc values (15);
-declare foo cursor for select * from abc;
+declare foo cursor for select * from abc order by a;
 
 fetch from foo;
 
@@ -385,7 +385,7 @@ BEGIN
 END $$;
 
 BEGIN;
-DECLARE ok CURSOR FOR SELECT * FROM int8_tbl;
+DECLARE ok CURSOR FOR SELECT * FROM int8_tbl ORDER BY 1,2;
 DECLARE ctt CURSOR FOR SELECT create_temp_tab();
 FETCH ok;
 SAVEPOINT s1;

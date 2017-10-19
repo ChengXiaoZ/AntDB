@@ -7,6 +7,7 @@
  *
  *
  * Copyright (c) 2000-2013, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2013 Postgres-XC Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
@@ -27,6 +28,9 @@
 #endif
 
 #include "access/gin.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif
 #include "access/transam.h"
 #include "access/twophase.h"
 #include "access/xact.h"
@@ -51,6 +55,18 @@
 #include "parser/parser.h"
 #include "parser/scansup.h"
 #include "pgstat.h"
+#ifdef PGXC
+#include "commands/tablecmds.h"
+#include "nodes/nodes.h"
+#include "optimizer/pgxcship.h"
+#include "pgxc/execRemote.h"
+#include "pgxc/locator.h"
+#include "optimizer/pgxcplan.h"
+#include "pgxc/poolmgr.h"
+#include "pgxc/nodemgr.h"
+#include "pgxc/pgxcnode.h"
+#include "pgxc/xc_maintenance_mode.h"
+#endif
 #include "postmaster/autovacuum.h"
 #include "postmaster/bgworker.h"
 #include "postmaster/bgwriter.h"
@@ -144,6 +160,8 @@ char	   *GUC_check_errmsg_string;
 char	   *GUC_check_errdetail_string;
 char	   *GUC_check_errhint_string;
 
+extern int copy_batch_rows;
+extern int copy_batch_size;
 
 static void set_config_sourcefile(const char *name, char *sourcefile,
 					  int sourceline);
@@ -177,6 +195,9 @@ static bool check_bonjour(bool *newval, void **extra, GucSource source);
 static bool check_ssl(bool *newval, void **extra, GucSource source);
 static bool check_stage_log_stats(bool *newval, void **extra, GucSource source);
 static bool check_log_stats(bool *newval, void **extra, GucSource source);
+#ifdef PGXC
+static bool check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source);
+#endif
 static bool check_canonical_path(char **newval, void **extra, GucSource source);
 static bool check_timezone_abbreviations(char **newval, void **extra, GucSource source);
 static void assign_timezone_abbreviations(const char *newval, void *extra);
@@ -360,6 +381,20 @@ static const struct config_enum_entry constraint_exclusion_options[] = {
 	{NULL, 0, false}
 };
 
+#ifdef PGXC
+/*
+ * Define remote connection types for PGXC
+ */
+static const struct config_enum_entry pgxc_conn_types[] = {
+	{"application", REMOTE_CONN_APP, false},
+	{"coordinator", REMOTE_CONN_COORD, false},
+	{"datanode", REMOTE_CONN_DATANODE, false},
+	{"gtm", REMOTE_CONN_GTM, false},
+	{"gtmproxy", REMOTE_CONN_GTM_PROXY, false},
+	{NULL, 0, false}
+};
+#endif
+
 /*
  * Although only "on", "off", "remote_write", and "local" are documented, we
  * accept all the likely variants of "on" and "off".
@@ -378,6 +413,25 @@ static const struct config_enum_entry synchronous_commit_options[] = {
 	{NULL, 0, false}
 };
 
+#ifdef ADB
+static const struct config_enum_entry parse_grammer_options[] = {
+	{"postgres", PARSE_GRAM_POSTGRES, false},
+	{"oracle", PARSE_GRAM_ORACLE, false},
+	{NULL, 0, false}
+};
+#endif /* ADB */
+
+#ifdef ADBMGRD
+static const struct config_enum_entry command_mode[] = {
+	{"sql", CMD_MODE_SQL, false},
+	{"manager",CMD_MODE_MGR, false},
+	{"manage",CMD_MODE_MGR, false},
+	{"mgr", CMD_MODE_MGR, false},
+	{NULL, 0, false}
+};
+
+extern int mgr_cmd_mode;
+#endif /* ADBMGRD */
 /*
  * Options for enum values stored in other modules
  */
@@ -395,6 +449,7 @@ bool		assert_enabled = false;
 bool		log_duration = false;
 bool		Debug_print_plan = false;
 bool		Debug_print_parse = false;
+bool		Debug_print_grammar = false;
 bool		Debug_print_rewritten = false;
 bool		Debug_pretty_print = true;
 
@@ -436,6 +491,23 @@ char	   *application_name;
 int			tcp_keepalives_idle;
 int			tcp_keepalives_interval;
 int			tcp_keepalives_count;
+#ifdef PGXC
+extern bool enable_node_tcp_log;
+#endif
+
+#ifdef ADB
+char		*nls_date_format;
+char		*nls_timestamp_format;
+char		*nls_timestamp_tz_format;
+bool		enable_adb_ha_sync;
+bool		enable_adb_ha_sync_select;
+char		*AGtmHost;
+int			AGtmPort;
+#endif
+
+#ifdef AGTM
+extern int agtm_listen_port;
+#endif /* AGTM */
 
 /*
  * These variables are all dummies that don't do anything, except in some
@@ -471,7 +543,6 @@ static int	effective_io_concurrency;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
-
 
 /*
  * Displayable names for context types (enum GucContext)
@@ -606,6 +677,16 @@ const char *const config_group_names[] =
 	gettext_noop("Customized Options"),
 	/* DEVELOPER_OPTIONS */
 	gettext_noop("Developer Options"),
+#ifdef PGXC
+	/* DATA_NODES */
+	gettext_noop("Datanodes and Connection Pooling"),
+	/* GTM */
+	gettext_noop("GTM Connection"),
+	/* COORDINATORS */
+	gettext_noop("Coordinator Options"),
+	/* XC_HOUSEKEEPING_OPTIONS */
+	gettext_noop("XC Housekeeping Options"),
+#endif
 	/* help_config wants this array to be null-terminated */
 	NULL
 };
@@ -756,6 +837,82 @@ static struct config_bool ConfigureNamesBool[] =
 		true,
 		NULL, NULL, NULL
 	},
+#ifdef PGXC
+	{
+		{"enable_remotejoin", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of remote join plans."),
+			NULL
+		},
+		&enable_remotejoin,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_fast_query_shipping", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of fast query shipping to ship query directly to datanode."),
+			NULL
+		},
+		&enable_fast_query_shipping,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_remotegroup", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of remote group plans."),
+			NULL
+		},
+		&enable_remotegroup,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_remotesort", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of remote sort plans."),
+			NULL
+		},
+		&enable_remotesort,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"enable_remotelimit", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of remote limit plans."),
+			NULL
+		},
+		&enable_remotelimit,
+		true,
+		NULL, NULL, NULL
+	},
+#if 0
+	{
+		{"gtm_backup_barrier", PGC_SUSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables coordinator to report barrier id to GTM for backup."),
+			NULL
+		},
+		&gtm_backup_barrier,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"xc_gtm_commit_sync_test", PGC_USERSET, STATS_MONITORING,
+			gettext_noop("Prints additional status info on GTM commit syncronization."),
+			NULL
+		},
+		&xc_gtm_commit_sync_test,
+		false,
+		NULL, NULL, NULL
+	},
+#endif
+	{
+		{"xc_enable_node_tcp_log", PGC_USERSET, LOGGING,
+			gettext_noop("Save node TCP data to log file"),
+			NULL
+		},
+		&enable_node_tcp_log,
+		false,
+		NULL, NULL, NULL
+	},
+#endif
 	{
 		{"geqo", PGC_USERSET, QUERY_TUNING_GEQO,
 			gettext_noop("Enables genetic query optimization."),
@@ -925,6 +1082,15 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&Debug_print_parse,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"debug_print_grammar", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Logs each query's grammar tree."),
+			NULL
+		},
+		&Debug_print_grammar,
 		false,
 		NULL, NULL, NULL
 	},
@@ -1432,6 +1598,47 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+#ifdef PGXC
+	{
+		{"persistent_datanode_connections", PGC_BACKEND, DEVELOPER_OPTIONS,
+			gettext_noop("Session never releases acquired connections."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&PersistentConnections,
+		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"enforce_two_phase_commit", PGC_SUSET, XC_HOUSEKEEPING_OPTIONS,
+			gettext_noop("Enforce the use of two-phase commit on transactions that"
+					"made use of temporary objects"),
+			NULL
+		},
+		&EnforceTwoPhaseCommit,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"xc_maintenance_mode", PGC_SUSET, XC_HOUSEKEEPING_OPTIONS,
+		    gettext_noop("Turn on XC maintenance mode."),
+		 	gettext_noop("Can set ON by SET command by superuser.")
+		},
+		&xc_maintenance_mode,
+		false,
+		check_pgxc_maintenance_mode, NULL, NULL
+	},
+	{
+		{"require_replicated_table_pkey", PGC_USERSET, XC_HOUSEKEEPING_OPTIONS,
+			gettext_noop("When set, non-FQS UPDATEs & DELETEs to replicated tables without"
+					" primary key or a unique key are prohibited"),
+			NULL
+		},
+		&RequirePKeyForRepTab,
+		true,
+		NULL, NULL, NULL
+	},
+#endif
 
 	{
 		{"lo_compat_privileges", PGC_SUSET, COMPAT_OPTIONS_PREVIOUS,
@@ -1464,6 +1671,28 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+
+#ifdef ADB
+	{
+		{"enable_adb_ha_sync", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable ADB record HA synchronous log."),
+			NULL
+		},
+		&enable_adb_ha_sync,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"enable_adb_ha_sync_select", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enable ADB record HA synchronous SELECT SQL log."),
+			NULL
+		},
+		&enable_adb_ha_sync_select,
+		false,
+		NULL, NULL, NULL
+	},
+#endif
 
 	/* End-of-list marker */
 	{
@@ -1674,7 +1903,13 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&PostPortNumber,
+#ifdef ADBMGRD
+		6432, 1, 65535,
+#elif defined(AGTM)
+		7432, 1, 65535,
+#else
 		DEF_PGPORT, 1, 65535,
+#endif
 		NULL, NULL, NULL
 	},
 
@@ -1849,8 +2084,13 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&max_prepared_xacts,
+#ifdef PGXC
+		10, 0, INT_MAX / 4,
+		NULL, NULL, NULL
+#else
 		0, 0, MAX_BACKENDS,
 		NULL, NULL, NULL
+#endif
 	},
 
 #ifdef LOCK_DEBUG
@@ -2338,6 +2578,16 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 	{
+		/* see varsup.c for why this is PGC_POSTMASTER not PGC_SIGHUP */
+		{"autovacuum_multixact_freeze_max_age", PGC_POSTMASTER, AUTOVACUUM,
+			gettext_noop("Multixact age at which to autovacuum a table to prevent multixact wraparound."),
+			NULL
+		},
+		&autovacuum_multixact_freeze_max_age,
+		400000000, 10000000, 2000000000,
+		NULL, NULL, NULL
+	},
+	{
 		/* see max_connections */
 		{"autovacuum_max_workers", PGC_POSTMASTER, AUTOVACUUM,
 			gettext_noop("Sets the maximum number of simultaneously running autovacuum worker processes."),
@@ -2450,6 +2700,103 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+        {"copy_batch_rows", PGC_USERSET, RESOURCES_MEM,
+            gettext_noop("Set copy to table batch of max row"),
+            NULL
+        },
+        &copy_batch_rows,
+        1000, 1, INT_MAX,
+        NULL, NULL, NULL
+	},
+
+	{
+        {"copy_batch_size", PGC_USERSET, RESOURCES_MEM,
+            gettext_noop("Set copy to table batch of max memory"),
+            NULL,
+            GUC_UNIT_KB
+        },
+        &copy_batch_size,
+        64, 1, MAX_KILOBYTES,
+        NULL, NULL, NULL
+	},
+#ifdef PGXC
+	{
+		{"min_pool_size", PGC_POSTMASTER, DATA_NODES,
+			gettext_noop("Initial pool size."),
+			gettext_noop("If number of active connections decreased below this value, "
+						 "new connections are established")
+		},
+		&MinPoolSize,
+		1, 1, 65535,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"max_pool_size", PGC_POSTMASTER, DATA_NODES,
+			gettext_noop("Max pool size."),
+			gettext_noop("If number of active connections reaches this value, "
+						 "other connection requests will be refused")
+		},
+		&MaxPoolSize,
+		100, 1, 65535,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"agtm_port", PGC_POSTMASTER, GTM,
+			gettext_noop("Port of GTM."),
+			NULL
+		},
+		&AGtmPort,
+		6666, 1, 65535,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"max_datanodes", PGC_POSTMASTER, DATA_NODES,
+			gettext_noop("Maximum number of Datanodes in the cluster."),
+			gettext_noop("It is not possible to create more Datanodes in the cluster than "
+						 "this maximum number.")
+		},
+		&MaxDataNodes,
+		16, 2, 65535,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"max_coordinators", PGC_POSTMASTER, DATA_NODES,
+			gettext_noop("Maximum number of Coordinators in the cluster."),
+			gettext_noop("It is not possible to create more Coordinators in the cluster than "
+						 "this maximum number.")
+		},
+		&MaxCoords,
+		16, 2, 65535,
+		NULL, NULL, NULL
+	},
+	{
+		{"pgxcnode_cancel_delay", PGC_USERSET, DATA_NODES,
+			gettext_noop("Cancel deay dulation at the coordinator."),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&pgxcnode_cancel_delay,
+		10, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+#endif
+#ifdef AGTM
+	{
+		{"agtm_port", PGC_INTERNAL, CONN_AUTH,
+			gettext_noop("Other coordinator/datanode backend connect port."),
+			NULL,
+			GUC_NO_RESET_ALL | GUC_REPORT
+		},
+		&agtm_listen_port,
+		0, 0, 65535,
+		NULL, NULL, NULL
+	},
+#endif /* AGTM */
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -2596,7 +2943,6 @@ static struct config_real ConfigureNamesReal[] =
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL, NULL
 	}
 };
-
 
 static struct config_string ConfigureNamesString[] =
 {
@@ -3116,6 +3462,28 @@ static struct config_string ConfigureNamesString[] =
 		check_TSCurrentConfig, assign_TSCurrentConfig, NULL
 	},
 
+#ifdef PGXC
+	{
+		{"agtm_host", PGC_POSTMASTER, GTM,
+			gettext_noop("Host name or address of GTM"),
+			NULL
+		},
+		&AGtmHost,
+		"localhost",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"pgxc_node_name", PGC_POSTMASTER, GTM,
+			gettext_noop("The Coordinator or Datanode name."),
+			NULL,
+			GUC_NO_RESET_ALL | GUC_IS_NAME
+		},
+		&PGXCNodeName,
+		"",
+		NULL, NULL, NULL
+	},
+#endif
 	{
 		{"ssl_ciphers", PGC_POSTMASTER, CONN_AUTH_SECURITY,
 			gettext_noop("Sets the list of allowed SSL ciphers."),
@@ -3141,6 +3509,41 @@ static struct config_string ConfigureNamesString[] =
 		"",
 		check_application_name, assign_application_name, NULL
 	},
+
+#ifdef ADB
+	{
+		{"nls_date_format", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Emulate oracle's date output behaviour."),
+			NULL,
+			GUC_REPORT | GUC_NOT_IN_SAMPLE
+		},
+		&nls_date_format,
+		"YYYY-MM-DD",
+		NULL, NULL, NULL
+	},
+
+	{
+		{"nls_timestamp_format", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Emulate oracle's timestamp without time zone output behaviour."),
+			NULL,
+			GUC_REPORT | GUC_NOT_IN_SAMPLE
+		},
+		&nls_timestamp_format,
+		"YYYY-MM-DD HH24:MI:SS.US",
+		NULL, NULL, NULL
+	},
+		
+	{
+		{"nls_timestamp_tz_format", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Emulate oracle's timestamp with time zone output behaviour."),
+			NULL,
+			GUC_REPORT | GUC_NOT_IN_SAMPLE
+		},
+		&nls_timestamp_tz_format,
+		"YYYY-MM-DD HH24:MI:SS.US TZ",
+		NULL, NULL, NULL
+	},
+#endif
 
 	/* End-of-list marker */
 	{
@@ -3358,7 +3761,39 @@ static struct config_enum ConfigureNamesEnum[] =
 		NULL, NULL, NULL
 	},
 
-
+#ifdef PGXC
+	{
+		{"remotetype", PGC_BACKEND, CONN_AUTH,
+			gettext_noop("Sets the type of Postgres-XC remote connection"),
+			NULL
+		},
+		&remoteConnType,
+		REMOTE_CONN_APP, pgxc_conn_types,
+		NULL, NULL, NULL
+	},
+#endif
+#ifdef ADB
+	{
+		{"grammar", PGC_USERSET, UNGROUPED,
+			gettext_noop("Set SQL grammar"),
+			NULL
+		},
+		&parse_grammar,
+		PARSE_GRAM_POSTGRES, parse_grammer_options,
+		NULL, NULL, NULL
+	},
+#endif /* ADB */
+#ifdef ADBMGRD
+	{
+		{"command_mode", PGC_SUSET, UNGROUPED,
+			gettext_noop("Set command mode"),
+			NULL
+		},
+		&mgr_cmd_mode,
+		CMD_MODE_MGR, command_mode,
+		NULL, NULL, NULL
+	},
+#endif /* ADBMGRD */
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, NULL, NULL, NULL, NULL
@@ -5207,6 +5642,15 @@ set_config_option(const char *name, const char *value,
 	bool		prohibitValueChange = false;
 	bool		makeDefault;
 
+#ifdef PGXC
+	/*
+	 * Current GucContest value is needed to check if xc_maintenance_mode parameter
+	 * is specified in valid contests.   It is allowed only by SET command or
+	 * libpq connect parameters so that setting this ON is just temporary.
+	 */
+	currentGucContext = context;
+#endif
+
 	if (elevel == 0)
 	{
 		if (source == PGC_S_DEFAULT || source == PGC_S_FILE)
@@ -6429,6 +6873,31 @@ set_config_by_name(PG_FUNCTION_ARGS)
 
 	/* get the new current value */
 	new_value = GetConfigOptionByName(name, NULL);
+
+
+#ifdef PGXC
+	/*
+	 * Convert this to SET statement and pass it to pooler.
+	 * If command is local and we are not in a transaction block do NOT
+	 * send this query to backend nodes, it is just bypassed by the backend.
+	 */
+	if (IS_PGXC_COORDINATOR && !IsConnFromCoord()
+		&& (!is_local || IsTransactionBlock()))
+	{
+		PoolCommandType poolcmdType = (is_local ? POOL_CMD_LOCAL_SET : POOL_CMD_GLOBAL_SET);
+		StringInfoData poolcmd;
+
+		initStringInfo(&poolcmd);
+		appendStringInfo(&poolcmd, "SET %s %s TO %s",
+		                            (is_local ? "LOCAL" : ""),
+		                            name,
+		                            (value ? value : "DEFAULT"));
+
+		if (PoolManagerSetCommand(poolcmdType, poolcmd.data) < 0)
+			elog(ERROR, "Postgres-XC: ERROR SET query");
+
+	}
+#endif
 
 	/* Convert return string to text */
 	PG_RETURN_TEXT_P(cstring_to_text(new_value));
@@ -8572,6 +9041,53 @@ check_log_stats(bool *newval, void **extra, GucSource source)
 	}
 	return true;
 }
+
+#ifdef PGXC
+/*
+ * Only a warning is printed to log.
+ * Returning false will cause FATAL error and it will not be good.
+ */
+static bool
+check_pgxc_maintenance_mode(bool *newval, void **extra, GucSource source)
+{
+
+	switch(source)
+	{
+		case PGC_S_DYNAMIC_DEFAULT:
+		case PGC_S_ENV_VAR:
+		case PGC_S_ARGV:
+			GUC_check_errmsg("pgxc_maintenance_mode is not allowed here.");
+			return false;
+		case PGC_S_FILE:
+			switch (currentGucContext)
+			{
+				case PGC_SIGHUP:
+					elog(WARNING, "pgxc_maintenance_mode is not allowed in  postgresql.conf.  Set to default (false).");
+					*newval = false;
+					return true;
+				default:
+					GUC_check_errmsg("pgxc_maintenance_mode is not allowed in postgresql.conf.");
+					return false;
+			}
+			return false;	/* Should not come here */
+		case PGC_S_DATABASE:
+		case PGC_S_USER:
+		case PGC_S_DATABASE_USER:
+		case PGC_S_INTERACTIVE:
+		case PGC_S_TEST:
+			elog(WARNING, "pgxc_maintenance_mode is not allowed here.  Set to default (false).");
+			*newval = false;
+			return true;
+		case PGC_S_DEFAULT:
+		case PGC_S_CLIENT:
+		case PGC_S_SESSION:
+			return true;
+		default:
+			GUC_check_errmsg("Unknown source");
+			return false;
+	}
+}
+#endif
 
 static bool
 check_canonical_path(char **newval, void **extra, GucSource source)

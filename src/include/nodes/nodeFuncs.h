@@ -61,5 +61,9 @@ extern Node *query_or_expression_tree_mutator(Node *node, Node *(*mutator) (),
 
 extern bool raw_expression_tree_walker(Node *node, bool (*walker) (),
 												   void *context);
-
+#ifdef ADB
+/* not support PlannerInfo and RelOptInfo */
+extern bool node_tree_walker(Node *node, bool (*walker)(), void *context);
+extern bool get_parse_node_grammar(const Node *node, ParseGrammar *grammar);
+#endif /* ADB */
 #endif   /* NODEFUNCS_H */

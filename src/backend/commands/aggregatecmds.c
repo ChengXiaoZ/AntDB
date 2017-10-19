@@ -59,6 +59,10 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 	TypeName   *baseType = NULL;
 	TypeName   *transType = NULL;
 	char	   *initval = NULL;
+#ifdef PGXC
+	List	   *collectfuncName = NIL;
+	char	   *initcollect = NULL;
+#endif
 	Oid		   *aggArgTypes;
 	int			numArgs;
 	Oid			transTypeId;
@@ -100,6 +104,12 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "initcond1") == 0)
 			initval = defGetString(defel);
+#ifdef PGXC
+		else if (pg_strcasecmp(defel->defname, "cfunc") == 0)
+			collectfuncName = defGetQualifiedName(defel);
+		else if (pg_strcasecmp(defel->defname, "initcollect") == 0)
+			initcollect = defGetString(defel);
+#endif
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -222,8 +232,16 @@ DefineAggregate(List *name, List *args, bool oldstyle, List *parameters)
 						   aggArgTypes, /* input data type(s) */
 						   numArgs,
 						   transfuncName,		/* step function name */
+#ifdef PGXC
+						   collectfuncName,	/* collect function name */
+#endif
 						   finalfuncName,		/* final function name */
 						   sortoperatorName,	/* sort operator name */
 						   transTypeId, /* transition data type */
+#ifdef PGXC
+						   initval,	/* initial condition */
+						   initcollect);	/* initial condition for collection function */
+#else
 						   initval);	/* initial condition */
+#endif
 }

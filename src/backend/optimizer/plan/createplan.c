@@ -42,6 +42,9 @@
 #include "parser/parse_clause.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#endif /* PGXC */
 
 
 static Plan *create_plan_recurse(PlannerInfo *root, Path *best_path);
@@ -171,7 +174,6 @@ static EquivalenceMember *find_ec_member_for_tle(EquivalenceClass *ec,
 					   Relids relids);
 static Material *make_material(Plan *lefttree);
 
-
 /*
  * create_plan
  *	  Creates the access plan for a query by recursively processing the
@@ -265,6 +267,12 @@ create_plan_recurse(PlannerInfo *root, Path *best_path)
 			plan = create_unique_plan(root,
 									  (UniquePath *) best_path);
 			break;
+#ifdef PGXC
+		case T_RemoteQuery:
+			plan = create_remotequery_plan(root,
+													(RemoteQueryPath *)best_path);
+			break;
+#endif
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->pathtype);
@@ -666,7 +674,6 @@ create_join_plan(PlannerInfo *root, JoinPath *best_path)
 				   list_concat(get_qpqual((Plan) plan),
 					   get_actual_clauses(get_loc_restrictinfo(best_path))));
 #endif
-
 	return plan;
 }
 
@@ -2036,7 +2043,6 @@ create_foreignscan_plan(PlannerInfo *root, ForeignPath *best_path,
 	return scan_plan;
 }
 
-
 /*****************************************************************************
  *
  *	JOIN METHODS
@@ -2214,6 +2220,11 @@ create_mergejoin_plan(PlannerInfo *root,
 									outer_plan,
 									best_path->outersortkeys,
 									-1.0);
+#ifdef PGXC
+			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+				outer_plan = (Plan *) create_remotesort_plan(root,
+														outer_plan);
+#endif /* PGXC */
 		outerpathkeys = best_path->outersortkeys;
 	}
 	else
@@ -2227,6 +2238,21 @@ create_mergejoin_plan(PlannerInfo *root,
 									inner_plan,
 									best_path->innersortkeys,
 									-1.0);
+#ifdef PGXC
+			if (IS_PGXC_COORDINATOR && !IsConnFromCoord())
+			{
+				inner_plan = (Plan *) create_remotesort_plan(root,
+														inner_plan);
+				/* If Sort node is not needed on top of RemoteQuery node, we
+				 * will need to materialize the datanode result so that
+				 * mark/restore on the inner node can be handled.
+				 * We shouldn't be changing the members in path structure while
+				 * creating plan, but changing the one below isn't harmful.
+				 */
+				if (IsA(inner_plan, RemoteQuery))
+					best_path->materialize_inner = true;
+			}
+#endif /* PGXC */
 		innerpathkeys = best_path->innersortkeys;
 	}
 	else
@@ -3502,6 +3528,7 @@ make_foreignscan(List *qptlist,
 				 List *fdw_private)
 {
 	ForeignScan *node = makeNode(ForeignScan);
+
 	Plan	   *plan = &node->scan.plan;
 
 	/* cost will be filled in by create_foreignscan_plan */
@@ -3517,6 +3544,7 @@ make_foreignscan(List *qptlist,
 
 	return node;
 }
+
 
 Append *
 make_append(List *appendplans, List *tlist)
@@ -4880,3 +4908,41 @@ is_projection_capable_plan(Plan *plan)
 	}
 	return true;
 }
+
+#ifdef PGXC
+/*
+ * Wrapper functions to expose some functions to PGXC planner. These functions
+ * are meant to be wrappers just calling the static function in this file. If
+ * you need to add more functionality, add it to the original function.
+ */
+List *
+pgxc_order_qual_clauses(PlannerInfo *root, List *clauses)
+{
+	return order_qual_clauses(root, clauses);
+}
+
+List *
+pgxc_build_path_tlist(PlannerInfo *root, Path *path)
+{
+	return build_path_tlist(root, path);
+}
+
+void
+pgxc_copy_path_costsize(Plan *dest, Path *src)
+{
+	copy_path_costsize(dest, src);
+}
+
+Plan *
+pgxc_create_gating_plan(PlannerInfo *root, Plan *plan, List *quals)
+{
+	return create_gating_plan(root, plan, quals);
+}
+
+extern Node *
+pgxc_replace_nestloop_params(PlannerInfo *root, Node *expr)
+{
+	return replace_nestloop_params(root, expr);
+}
+
+#endif /* PGXC */

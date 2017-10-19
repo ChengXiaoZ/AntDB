@@ -110,6 +110,12 @@ transfer_all_new_dbs(DbInfoArr *old_db_arr, DbInfoArr *new_db_arr,
 			pg_log(PG_FATAL, "old database \"%s\" not found in the new cluster\n",
 				   old_db->db_name);
 
+#ifdef ADB
+		/* fix: Access to field 'db_name' results in a dereference
+		 * of a null pointer (loaded from variable 'new_db')
+		 */
+		AssertArg(new_db);
+#endif
 		n_maps = 0;
 		mappings = gen_db_file_maps(old_db, new_db, &n_maps, old_pgdata,
 									new_pgdata);

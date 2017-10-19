@@ -33,6 +33,10 @@
 #include "utils/memutils.h"
 #include "utils/snapmgr.h"
 #include "utils/syscache.h"
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "commands/prepare.h"
+#endif
 
 
 /*
@@ -842,6 +846,9 @@ postquel_getnext(execution_state *es, SQLFunctionCachePtr fcache)
 					   PROCESS_UTILITY_QUERY,
 					   es->qd->params,
 					   es->qd->dest,
+#ifdef PGXC
+					   false,
+#endif /* PGXC */
 					   NULL);
 		result = true;			/* never stops early */
 	}

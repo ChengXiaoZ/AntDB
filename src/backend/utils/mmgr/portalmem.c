@@ -26,6 +26,14 @@
 #include "utils/memutils.h"
 #include "utils/timestamp.h"
 
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "access/hash.h"
+#include "catalog/pg_collation.h"
+#include "utils/formatting.h"
+#include "utils/lsyscache.h"
+#endif
+
 /*
  * Estimate of the maximum number of open portals a user would have,
  * used in initially sizing the PortalHashTable in EnablePortalManager().
@@ -193,7 +201,11 @@ PortalListGetPrimaryStmt(List *stmts)
  * dupSilent: if true, don't even emit a WARNING.
  */
 Portal
+#ifdef ADB
+CreatePortal(const char *name, bool allowDup, bool dupSilent, ParseGrammar grammar)
+#else
 CreatePortal(const char *name, bool allowDup, bool dupSilent)
+#endif
 {
 	Portal		portal;
 
@@ -243,6 +255,20 @@ CreatePortal(const char *name, bool allowDup, bool dupSilent)
 	/* put portal in table (sets portal->name) */
 	PortalHashTableInsert(portal, name);
 
+#ifdef PGXC
+	if (PGXCNodeIdentifier == 0)
+	{
+		char *node_name;
+		node_name = str_tolower(PGXCNodeName, strlen(PGXCNodeName), DEFAULT_COLLATION_OID);
+		PGXCNodeIdentifier = get_pgxc_node_id(get_pgxc_nodeoid(node_name));
+		pfree(node_name);
+	}
+#endif
+
+#ifdef ADB
+	portal->grammar = grammar;
+#endif
+
 	return portal;
 }
 
@@ -266,7 +292,11 @@ CreateNewPortal(void)
 			break;
 	}
 
+#ifdef ADB
+	return CreatePortal(portalname, false, false, PARSE_GRAM_POSTGRES);
+#else
 	return CreatePortal(portalname, false, false);
+#endif
 }
 
 /*
@@ -846,9 +876,16 @@ AtCleanup_Portals(void)
 		if (portal->portalPinned)
 			portal->portalPinned = false;
 
-		/* We had better not be calling any user-defined code here */
-		Assert(portal->cleanup == NULL);
+#ifdef PGXC		
+		/* XXX This is a PostgreSQL bug (already reported on the list by
+		 * Pavan). We comment out the assertion until the bug is fixed
+		 * upstream.
+		 */ 
 
+		/* We had better not be calling any user-defined code here */
+		/* Assert(portal->cleanup == NULL); */
+#endif
+		
 		/* Zap it. */
 		PortalDrop(portal, false);
 	}

@@ -789,6 +789,11 @@ difference(PG_FUNCTION_ARGS)
 	result = 0;
 	for (i = 0; i < SOUNDEX_LEN; i++)
 	{
+#ifdef ADB
+		/* fix: The right operand of '==' is a garbage value */
+		if (!sndx1[i] || !sndx2[i])
+			break; 
+#endif
 		if (sndx1[i] == sndx2[i])
 			result++;
 	}
