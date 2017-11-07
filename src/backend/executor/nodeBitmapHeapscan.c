@@ -47,6 +47,18 @@
 #include "utils/snapmgr.h"
 #include "utils/tqual.h"
 
+#ifdef PGXC
+#include "pgxc/pgxc.h"
+#include "miscadmin.h"
+#endif
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#include "pgxc/slot.h"
+#define SLOT_ERR_MVCC 		elog(ERROR, "%s:fatal error. clean slot when mvcc is off.", PGXCNodeName);
+#define SLOT_ERR_DN 		elog(ERROR, "%s:clean slot cmd only deletes data on datanode.", PGXCNodeName);
+#define SLOT_ERR_HTABLE 	elog(ERROR, "%s:clean slot cmd only deletes hash table or toast table.", PGXCNodeName);
+#endif
+
 
 static TupleTableSlot *BitmapHeapNext(BitmapHeapScanState *node);
 static void bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres);
@@ -388,6 +400,33 @@ bitgetpage(HeapScanDesc scan, TBMIterateResult *tbmres)
 			loctup.t_tableOid = scan->rs_rd->rd_id;
 			ItemPointerSet(&loctup.t_self, page, offnum);
 			valid = HeapTupleSatisfiesVisibility(&loctup, snapshot, buffer);
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+			//only check tuple slot in datanode and hash distribution
+			if ((valid)
+				&& IS_PGXC_REAL_DATANODE
+				&&(LOCATOR_TYPE_HASH == scan->rs_rd->dn_locatorType))
+			{
+				if(adb_slot_enable_mvcc)
+					valid = HeapTupleSatisfiesSlot(scan->rs_rd, &loctup);
+				else if(adb_slot_enable_clean)
+					SLOT_ERR_MVCC;
+			}
+
+			if(adb_slot_enable_clean)
+			{
+				if(RelationGetRelid(scan->rs_rd) >= FirstNormalObjectId)
+				{
+					if(!IS_PGXC_DATANODE)
+						SLOT_ERR_DN;
+
+					if(!(LOCATOR_TYPE_HASH == scan->rs_rd->dn_locatorType
+						||RELKIND_TOASTVALUE==scan->rs_rd->rd_rel->relkind))
+						SLOT_ERR_HTABLE;
+				}
+			}
+
+#endif
+
 			if (valid)
 			{
 				scan->rs_vistuples[ntup++] = offnum;

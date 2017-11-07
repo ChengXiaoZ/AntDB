@@ -102,8 +102,8 @@ static int mgr_get_parm_unit_type(char *nodename, char *parmunit);
 static bool mgr_parm_enum_lookup_by_name(char *value, StringInfo valuelist);
 static void mgr_string_add_single_quota(NameLocal value);
 /*
-* for command: set {datanode|coordinaotr}  {master|slave|extra} {nodename|ALL} {key1=value1,key2=value2...} ,
-* set datanode all {key1=value1,key2=value2...},set gtm all {key1=value1,key2=value2...}, set gtm master|slave|extra
+* for command: set {datanode|coordinaotr}  {master|slave} {nodename|ALL} {key1=value1,key2=value2...} ,
+* set datanode all {key1=value1,key2=value2...},set gtm all {key1=value1,key2=value2...}, set gtm master|slave
 * gtmx {key1=value1,key2=value2...} to record the parameter in mgr_updateparm
 */
 void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest)
@@ -134,9 +134,11 @@ Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS)
 	ScanKeyData scankey[1];
 	HeapScanDesc rel_scan;
 	HeapTuple tuple;
+	HeapTuple checktuple;
 	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_nodemaster;
 	bool bneednotice = true;
-	char nodetype; /*master/slave/extra*/
+	char nodetype; /*master/slave*/
 
 	MGRUpdateparm *parm_node;
 	parm_node = palloc(sizeof(*parm_node));
@@ -150,13 +152,38 @@ Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS)
 	nodetype = parm_node->nodetype;
 	/*nodename*/
 	namestrcpy(&nodename, parm_node->nodename);
+	
 	/*open systbl: mgr_parm*/
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	/* check node */
+	if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) != 0)
+	{
+		checktuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodename));
+		if (!HeapTupleIsValid(checktuple))
+		{
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("the node \"%s\" does not exist", NameStr(nodename))));
+		}
+		/* check node type */
+		mgr_nodemaster = (Form_mgr_node)GETSTRUCT(checktuple);
+		if (parm_node->nodetype != mgr_nodemaster->nodetype)
+		{
+			heap_freetuple(checktuple);
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("the type of node \"%s\" is not %s", NameStr(nodename), mgr_nodetype_str(parm_node->nodetype))));
+		}	
+		heap_freetuple(checktuple);
+	}
+
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
-	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 
-	/*set datanode master/slave/extra all (key=value,...)*/
-	if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0 && (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype))
+	/*set datanode master/slave all (key=value,...)*/
+	if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0 && (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_COORDINATOR_MASTER == nodetype 
+	|| CNDN_TYPE_COORDINATOR_SLAVE == nodetype || GTM_TYPE_GTM_MASTER == nodetype 
+	|| GTM_TYPE_GTM_SLAVE == nodetype))
 	{
 		bneednotice = true;
 		ScanKeyInit(&scankey[0]
@@ -581,12 +608,15 @@ static int mgr_check_parm_in_updatetbl(Relation noderel, char nodetype, Name nod
 	int delnum = 0;
 	int ret;
 
-	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
 		allnodetype = CNDN_TYPE_GTM;
-	else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
+	else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype)
 		allnodetype = CNDN_TYPE_DATANODE;
+	else if (CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_COORDINATOR_SLAVE == nodetype)
+		allnodetype = CNDN_TYPE_COORDINATOR;
 	else
 		allnodetype = nodetype;
+
 	/*nodename is MACRO_STAND_FOR_ALL_NODENAME*/
 	if (namestrcmp(nodename, MACRO_STAND_FOR_ALL_NODENAME) == 0)
 	{
@@ -785,9 +815,9 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 	NameData nodenamedata;
 	NameData nodenamedatacheck;
 
-	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+	if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
 		allnodetype = CNDN_TYPE_GTM;
-	else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
+	else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype)
 		allnodetype = CNDN_TYPE_DATANODE;
 	else
 		allnodetype = CNDN_TYPE_COORDINATOR_MASTER;
@@ -870,7 +900,7 @@ void mgr_add_parm(char *nodename, char nodetype, StringInfo infosendparamsg)
 }
 
 /*
-* according to "set datanode|coordinator|gtm master|slave|extra nodename(key1=value1,...)" , get the nodename, key and value,
+* according to "set datanode|coordinator|gtm master|slave nodename(key1=value1,...)" , get the nodename, key and value,
 * then from node systbl to get ip and path, then reload the key for the node(datanode or coordinator or gtm) when
 * the type of the key does not need restart to make effective
 */
@@ -897,24 +927,28 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, Str
 			Assert(mgr_node);
 			if(!mgr_node->nodeincluster)
 				continue;
-			/*all gtm type: master/slave/extra*/
+			/*all gtm type: master/slave*/
 			if (CNDN_TYPE_GTM == nodetype)
 			{
-				if (mgr_node->nodetype != GTM_TYPE_GTM_MASTER && mgr_node->nodetype != GTM_TYPE_GTM_SLAVE && mgr_node->nodetype != GTM_TYPE_GTM_EXTRA)
+				if (mgr_node->nodetype != GTM_TYPE_GTM_MASTER && mgr_node->nodetype != GTM_TYPE_GTM_SLAVE)
 					continue;
 			}
-			/*all datanode type: master/slave/extra*/
+			/*all datanode type: master/slave*/
 			else if (CNDN_TYPE_DATANODE == nodetype)
 			{
-				if (mgr_node->nodetype != CNDN_TYPE_DATANODE_MASTER && mgr_node->nodetype != CNDN_TYPE_DATANODE_SLAVE && mgr_node->nodetype != CNDN_TYPE_DATANODE_EXTRA)
+				if (mgr_node->nodetype != CNDN_TYPE_DATANODE_MASTER && mgr_node->nodetype != CNDN_TYPE_DATANODE_SLAVE)
 					continue;
 			}
 			/*for coordinator all*/
-			else
+			else if (CNDN_TYPE_COORDINATOR == nodetype)
 			{
-				if (nodetype != mgr_node->nodetype)
+				if (mgr_node->nodetype != CNDN_TYPE_COORDINATOR_MASTER 
+						&& mgr_node->nodetype != CNDN_TYPE_COORDINATOR_SLAVE)
 					continue;
 			}
+			else
+				continue;
+
 			datumpath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(noderel), &isNull);
 			if(isNull)
 			{
@@ -931,7 +965,7 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, Str
 	}
 	else	/*for given nodename*/
 	{
-		tuple = mgr_get_tuple_node_from_name_type(noderel, nodename, nodetype);
+		tuple = mgr_get_tuple_node_from_name_type(noderel, nodename);
 		if(!(HeapTupleIsValid(tuple)))
 		{
 			nodetypestr = mgr_nodetype_str(nodetype);
@@ -1010,24 +1044,27 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
 			continue;
 		if (strcmp(NameStr(mgr_updateparm->updateparmnodename), MACRO_STAND_FOR_ALL_NODENAME) == 0)
 			continue;
-		/*all gtm type: master/slave/extra*/
+		/*all gtm type: master/slave*/
 		if (CNDN_TYPE_GTM == nodetype)
 		{
-			if (mgr_updateparm->updateparmnodetype != GTM_TYPE_GTM_MASTER && mgr_updateparm->updateparmnodetype != GTM_TYPE_GTM_SLAVE && mgr_updateparm->updateparmnodetype != GTM_TYPE_GTM_EXTRA)
+			if (mgr_updateparm->updateparmnodetype != GTM_TYPE_GTM_MASTER && mgr_updateparm->updateparmnodetype != GTM_TYPE_GTM_SLAVE)
 				continue;
 		}
-		/*all datanode type: master/slave/extra*/
+		/*all datanode type: master/slave*/
 		else if (CNDN_TYPE_DATANODE == nodetype)
 		{
-			if (mgr_updateparm->updateparmnodetype != CNDN_TYPE_DATANODE_MASTER && mgr_updateparm->updateparmnodetype != CNDN_TYPE_DATANODE_SLAVE && mgr_updateparm->updateparmnodetype != CNDN_TYPE_DATANODE_EXTRA)
+			if (mgr_updateparm->updateparmnodetype != CNDN_TYPE_DATANODE_MASTER && mgr_updateparm->updateparmnodetype != CNDN_TYPE_DATANODE_SLAVE)
 				continue;
 		}
 		/*for coordinator all*/
-		else
+		else if (CNDN_TYPE_COORDINATOR == nodetype)
 		{
-			if (mgr_updateparm->updateparmnodetype != nodetype)
+			if (mgr_updateparm->updateparmnodetype != CNDN_TYPE_COORDINATOR_MASTER 
+					&& mgr_updateparm->updateparmnodetype != CNDN_TYPE_COORDINATOR_SLAVE)
 				continue;
 		}
+		else
+			continue;
 		/*delete the tuple which nodename is not MACRO_STAND_FOR_ALL_NODENAME and has the same nodetype and key*/
 		delnum++;
 		simple_heap_delete(noderel, &looptuple->t_self);
@@ -1038,8 +1075,8 @@ static int mgr_delete_tuple_not_all(Relation noderel, char nodetype, Name key)
 }
 
 /*
-* for command: reset {datanode|coordinaotr} {master|slave|extra} {nodename | all}{key1,key2...} , reset datanode
-* all {key1,key2...}, reset gtm all{key1,key2...}, reset gtm master|slave|extra gtmx {key1,key2...}, to remove the
+* for command: reset {datanode|coordinaotr} {master|slave} {nodename | all}{key1,key2...} , reset datanode
+* all {key1,key2...}, reset gtm all{key1,key2...}, reset gtm master|slave gtmx {key1,key2...}, to remove the
 * parameter in mgr_updateparm; if the reset parameters not in mgr_updateparm, report error; otherwise use the values
 * which come from mgr_parm to replace the old values;
 */
@@ -1070,6 +1107,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	HeapTuple newtuple;
 	HeapTuple looptuple;
 	HeapTuple tuple;
+	HeapTuple checktuple;
 	NameData nodename;
 	NameData nodenametmp;
 	NameData parmmin;
@@ -1084,6 +1122,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	ScanKeyData scankey[3];
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_nodemaster;
 	StringInfoData enumvalue;
 	StringInfoData paramstrdata;
 	bool isnull[Natts_mgr_updateparm];
@@ -1092,7 +1131,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	bool bneednotice = true;
 	bool bsighup = false;
 	char parmtype;			/*coordinator or datanode or gtm */
-	char nodetype;			/*master/slave/extra*/
+	char nodetype;			/*master/slave*/
 	char nodetypetmp;
 	char allnodetype;
 	char *kValue;
@@ -1116,9 +1155,30 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	namestrcpy(&nodename, parm_node->nodename);
 
 	/*open systbl: mgr_parm*/
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	/* check node */
+	if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) != 0)
+	{
+		checktuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodename));
+		if (!HeapTupleIsValid(checktuple))
+		{
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("the node \"%s\" does not exist", NameStr(nodename))));
+		}
+		/* check node type */
+		mgr_nodemaster = (Form_mgr_node)GETSTRUCT(checktuple);
+		if (parm_node->nodetype != mgr_nodemaster->nodetype)
+		{
+			heap_freetuple(checktuple);
+			heap_close(rel_node, RowExclusiveLock);
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				, errmsg("the type of node \"%s\" is not %s", NameStr(nodename), mgr_nodetype_str(parm_node->nodetype))));
+		}
+		heap_freetuple(checktuple);
+	}
 	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
 	rel_parm = heap_open(ParmRelationId, RowExclusiveLock);
-	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 
 	memset(datum, 0, sizeof(datum));
 	memset(isnull, 0, sizeof(isnull));
@@ -1166,7 +1226,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 		* reset coordinator all (key=value,...)
 		* reset datanode all (key=value,...)
 		*/
-		if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0 && (CNDN_TYPE_GTM == nodetype || CNDN_TYPE_DATANODE == nodetype ||CNDN_TYPE_COORDINATOR_MASTER == nodetype))
+		if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) == 0 && (CNDN_TYPE_GTM == nodetype || CNDN_TYPE_DATANODE == nodetype ||CNDN_TYPE_COORDINATOR == nodetype))
 		{
 			ScanKeyInit(&scankey[0],
 				Anum_mgr_updateparm_key
@@ -1181,35 +1241,38 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 				nodetypetmp = mgr_updateparm->updateparmnodetype;
 				if (CNDN_TYPE_GTM == nodetype)
 				{
-					if (GTM_TYPE_GTM_MASTER != nodetypetmp && GTM_TYPE_GTM_SLAVE != nodetypetmp && GTM_TYPE_GTM_EXTRA != nodetypetmp && CNDN_TYPE_GTM != nodetypetmp)
+					if (GTM_TYPE_GTM_MASTER != nodetypetmp && GTM_TYPE_GTM_SLAVE != nodetypetmp && CNDN_TYPE_GTM != nodetypetmp)
 						continue;
 				}
 				else if (CNDN_TYPE_DATANODE == nodetype)
 				{
-					if (CNDN_TYPE_DATANODE_MASTER != nodetypetmp && CNDN_TYPE_DATANODE_SLAVE != nodetypetmp && CNDN_TYPE_DATANODE_EXTRA != nodetypetmp && CNDN_TYPE_DATANODE != nodetypetmp)
+					if (CNDN_TYPE_DATANODE_MASTER != nodetypetmp && CNDN_TYPE_DATANODE_SLAVE != nodetypetmp && CNDN_TYPE_DATANODE != nodetypetmp)
 						continue;
 				}
-				else  /*for coordinator all*/
+				/*for coordinator all*/
+				else if (CNDN_TYPE_COORDINATOR == nodetype)
 				{
-					if (nodetypetmp != nodetype)
+					if (CNDN_TYPE_COORDINATOR_MASTER != nodetypetmp && CNDN_TYPE_COORDINATOR_SLAVE != nodetypetmp && CNDN_TYPE_COORDINATOR != nodetypetmp)
 						continue;
 				}
+				else
+					continue;
 				/*delete the tuple which nodetype is the given nodetype*/
 				simple_heap_delete(rel_updateparm, &looptuple->t_self);
 				CatalogUpdateIndexes(rel_updateparm, looptuple);
 			}
 			heap_endscan(rel_scan);
 		}
-		/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME or nodetype is datanode master/slave/extra, refresh the postgresql.conf
+		/*the nodename is not MACRO_STAND_FOR_ALL_NODENAME or nodetype is datanode master/slave, refresh the postgresql.conf
 		* of the node, and delete the tuple in mgr_updateparm which nodetype and nodename is given;if MACRO_STAND_FOR_ALL_NODENAME
 		* in mgr_updateparm has the same nodetype, insert one tuple to mgr_updateparm for record
 		*/
 		else
 		{
 			/*check the MACRO_STAND_FOR_ALL_NODENAME has the same nodetype*/
-			if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+			if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
 				allnodetype = CNDN_TYPE_GTM;
-			else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
+			else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype)
 				allnodetype = CNDN_TYPE_DATANODE;
 			else
 				allnodetype = CNDN_TYPE_COORDINATOR_MASTER;
@@ -1262,9 +1325,9 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 			{
 				mgr_updateparm = (Form_mgr_updateparm)GETSTRUCT(looptuple);
 				Assert(mgr_updateparm);
-				/*for reset datanode master|slave|extra all (key,...),
+				/*for reset datanode master|slave all (key,...),
 				* reset gtm master gtmname(key,...),
-				* reset datanode master|slave|extra dnname(key),
+				* reset datanode master|slave dnname(key),
 				* reset coordinator cnname (key,...)
 				*/
 				if (strcmp(NameStr(nodename), MACRO_STAND_FOR_ALL_NODENAME) == 0 || strcmp(NameStr(mgr_updateparm->updateparmnodename), NameStr(nodename)) ==0)
@@ -1586,12 +1649,12 @@ void mgr_parmr_delete_tuple_nodename_nodetype(Relation noderel, Name nodename, c
 	{
 		if (CNDN_TYPE_COORDINATOR_MASTER == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype || GTM_TYPE_GTM_MASTER == nodetype)
 		{
-				if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+				if (GTM_TYPE_GTM_MASTER == nodetype || GTM_TYPE_GTM_SLAVE == nodetype)
 					nodetype = CNDN_TYPE_GTM;
-				else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype)
+				else if (CNDN_TYPE_DATANODE_MASTER == nodetype || CNDN_TYPE_DATANODE_SLAVE == nodetype)
 					nodetype = CNDN_TYPE_DATANODE;
 				else
-					nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+					nodetype = CNDN_TYPE_COORDINATOR;
 		}
 		else
 			return;
@@ -1688,25 +1751,51 @@ void mgr_parm_after_gtm_failover_handle(Name mastername, char mastertype, Name s
 Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 {
 	HeapTuple tuple;
+	HeapTuple checkTuple;
 	HeapTuple out;
 	FuncCallContext *funcctx;
 	InitNodeInfo *info;
 	StringInfoData buf;
 	StringInfoData infosendmsg;
+	StringInfoData nodetypemsg;
 	NameData nodename;
 	NameData param;
 	NameData nodetypedata;
-	ScanKeyData key[2];
+	ScanKeyData key[1];
 	Form_mgr_node mgr_node;
 	GetAgentCmdRst getAgentCmdRst;
+	Relation relNode;
 	char *nodetypestr;
 	/*max port is 65535,so the length of portstr is 6*/
 	char portstr[6]="00000";
+	char checkNodeType;
+	Oid masterTupleOid;
 
 	/*get node name and parameter name*/
 	namestrcpy(&nodename, PG_GETARG_CSTRING(0));
 	namestrcpy(&param, PG_GETARG_CSTRING(1));
 
+	relNode = heap_open(NodeRelationId, AccessShareLock);
+	checkTuple = mgr_get_tuple_node_from_name_type(relNode, nodename.data);
+	if (!HeapTupleIsValid(checkTuple))
+	{
+		heap_close(relNode, AccessShareLock);
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT),
+			errmsg("the node \"%s\" does not exist", nodename.data)));
+	}
+	mgr_node = (Form_mgr_node)GETSTRUCT(checkTuple);
+	Assert(mgr_node);
+	checkNodeType = mgr_node->nodetype;
+	if (GTM_TYPE_GTM_MASTER == checkNodeType || CNDN_TYPE_COORDINATOR_MASTER == checkNodeType
+					|| CNDN_TYPE_DATANODE_MASTER == checkNodeType)
+		masterTupleOid = HeapTupleGetOid(checkTuple);
+	else
+		masterTupleOid = mgr_node->nodemasternameoid;
+	heap_freetuple(checkTuple);
+	heap_close(relNode, AccessShareLock);
+	
+	
+		
 	if (SRF_IS_FIRSTCALL())
 	{
 		MemoryContext oldcontext;
@@ -1717,16 +1806,11 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 		info = palloc(sizeof(*info));
 		info->rel_node = heap_open(NodeRelationId, AccessShareLock);
 		ScanKeyInit(&key[0]
-			,Anum_mgr_node_nodename
-			,BTEqualStrategyNumber
-			,F_NAMEEQ
-			,CStringGetDatum(nodename.data));
-		ScanKeyInit(&key[1]
 				,Anum_mgr_node_nodeincluster
 				,BTEqualStrategyNumber
 				,F_BOOLEQ
 				,BoolGetDatum(true));
-		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
+		info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 1, key);
 		info->lcp =NULL;
 
 		/* save info */
@@ -1749,6 +1833,16 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
+
+		if (GTM_TYPE_GTM_MASTER == checkNodeType || CNDN_TYPE_COORDINATOR_MASTER == checkNodeType
+					|| CNDN_TYPE_DATANODE_MASTER == checkNodeType)
+		{
+			if (masterTupleOid != HeapTupleGetOid(tuple) && masterTupleOid != mgr_node->nodemasternameoid)
+				continue;
+		}
+		else
+			if (strcmp(nodename.data, NameStr(mgr_node->nodename)) != 0)
+				continue;
 		/*send the command string to agent to get the value*/
 		sprintf(portstr, "%d", mgr_node->nodeport);
 		resetStringInfo(&(getAgentCmdRst.description));
@@ -1757,14 +1851,17 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 		appendStringInfoCharMacro(&infosendmsg, '\0');
 		appendStringInfo(&infosendmsg, "%s", param.data);
 		appendStringInfoCharMacro(&infosendmsg, '\0');
-		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype || GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype)
 			mgr_send_show_parameters(AGT_CMD_SHOW_AGTM_PARAM, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
 		else
 			mgr_send_show_parameters(AGT_CMD_SHOW_CNDN_PARAM, &infosendmsg, mgr_node->nodehost, &getAgentCmdRst);
 
 		nodetypestr = mgr_nodetype_str(mgr_node->nodetype);
-		namestrcpy(&nodetypedata, nodetypestr);
+		initStringInfo(&nodetypemsg);
+		appendStringInfo(&nodetypemsg, "%s %s", nodetypestr, NameStr(mgr_node->nodename));
 		pfree(nodetypestr);
+		namestrcpy(&nodetypedata, nodetypemsg.data);
+		pfree(nodetypemsg.data);
 		out = build_common_command_tuple(&nodetypedata, getAgentCmdRst.ret, getAgentCmdRst.description.data);
 		SRF_RETURN_NEXT(funcctx, HeapTupleGetDatum(out));
 	}
@@ -1909,12 +2006,10 @@ Datum mgr_update_param_gtm_failover(PG_FUNCTION_ARGS)
 
 	if (strcmp(newmastertypestr.data, "slave") == 0)
 		newmastertype = GTM_TYPE_GTM_SLAVE;
-	else if (strcmp(newmastertypestr.data, "extra") == 0)
-		newmastertype = GTM_TYPE_GTM_EXTRA;
 	else
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
 				,errmsg("nodetype \"%s\" is not recognized", newmastertypestr.data)
-				,errhint("nodetype is \"slave\" or \"extra\"")));
+				,errhint("nodetype is \"slave\"")));
 	if (strcmp(oldmastername.data, newmastername.data) != 0)
 	{
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
@@ -1945,12 +2040,10 @@ Datum mgr_update_param_datanode_failover(PG_FUNCTION_ARGS)
 
 	if (strcmp(newmastertypestr.data, "slave") == 0)
 		newmastertype = CNDN_TYPE_DATANODE_SLAVE;
-	else if (strcmp(newmastertypestr.data, "extra") == 0)
-		newmastertype = CNDN_TYPE_DATANODE_EXTRA;
 	else
 		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE)
 				,errmsg("nodetype \"%s\" is not recognized", newmastertypestr.data)
-				,errhint("nodetype is \"slave\" or \"extra\"")));
+				,errhint("nodetype is \"slave\"")));
 
 	if (strcmp(oldmastername.data, newmastername.data) != 0)
 	{

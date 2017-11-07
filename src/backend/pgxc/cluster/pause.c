@@ -22,6 +22,13 @@
 #include "pgxc/poolmgr.h"
 #include "pgxc/nodemgr.h"
 #include "nodes/makefuncs.h"
+#include "catalog/pgxc_node.h"
+#include "utils/lsyscache.h"
+#include "utils/syscache.h"
+#include "utils/builtins.h"
+#include "access/htup_details.h"
+#include "utils/rel.h"
+#include "catalog/indexing.h"
 
 /* globals */
 bool cluster_lock_held;
@@ -503,23 +510,145 @@ ReleaseClusterLock(bool exclusive)
 
 Datum pg_alter_node(PG_FUNCTION_ARGS)
 {
-	/*name, port, host, primary, preferred*/
-	char *node_host;
-	int		node_port;
-	bool	node_preferred;
-	AlterNodeStmt *nodestmt;
+	const char *node_name_old;
+	const char *node_name_new;
+	char *node_host = NULL;
+	char		node_type, node_type_old;
+	bool		is_preferred;
+	bool		is_primary;
+	bool		was_primary;
+	bool		primary_off = false;
+	Oid			new_primary = InvalidOid;
+	Oid			nodeOid;
+	Relation	rel;
+	HeapTuple	oldtup, newtup;
+	Datum		new_record[Natts_pgxc_node];
+	bool		new_record_nulls[Natts_pgxc_node];
+	bool		new_record_repl[Natts_pgxc_node];
+	uint32		node_id;
+	uint32		node_port = 0;
+	NameData node_name_data;
 
-	node_host = PG_GETARG_CSTRING(1);
-	node_port = PG_GETARG_INT32(2);
-	node_preferred = PG_GETARG_BOOL(3);
-	nodestmt = makeNode(AlterNodeStmt);
-	nodestmt->node_name = PG_GETARG_CSTRING(0);
-	nodestmt->options = lappend(nodestmt->options, makeDefElem("port", (Node *)makeInteger(node_port)));
-	nodestmt->options = lappend(nodestmt->options, makeDefElem("host", (Node *)makeString(node_host)));
-	nodestmt->options = lappend(nodestmt->options, makeDefElem("preferred", (Node *)makeInteger(node_preferred)));
-	
-	PgxcNodeAlter(nodestmt);
-	
+	node_name_old = PG_GETARG_CSTRING(0);
+	node_name_new = PG_GETARG_CSTRING(1);
+	node_host = PG_GETARG_CSTRING(2);
+	node_port = PG_GETARG_INT32(3);
+	is_preferred = PG_GETARG_BOOL(4);
+	nodeOid = get_pgxc_nodeoid(node_name_old);
+
+	/* Only a DB administrator can alter cluster nodes */
+	if (!superuser())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("must be superuser to change cluster nodes")));
+
+	/* Look at the node tuple, and take exclusive lock on it */
+	rel = heap_open(PgxcNodeRelationId, RowExclusiveLock);
+
+	/* Check that node exists */
+	if (!OidIsValid(nodeOid))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("PGXC Node %s: object not defined",
+						node_name_old)));
+
+	/* Open new tuple, checks are performed on it and new values */
+	oldtup = SearchSysCacheCopy1(PGXCNODEOID, ObjectIdGetDatum(nodeOid));
+	if (!HeapTupleIsValid(oldtup))
+		elog(ERROR, "cache lookup failed for object %u", nodeOid);
+
+	/*
+	 * check_options performs some internal checks on option values
+	 * so set up values.
+	 */
+	if (!node_host)
+		node_host = get_pgxc_nodehost(nodeOid);
+	if (!node_port)
+		node_port = get_pgxc_nodeport(nodeOid);
+	//is_preferred = is_pgxc_nodepreferred(nodeOid);
+	is_primary = was_primary = is_pgxc_nodeprimary(nodeOid);
+	node_type = get_pgxc_nodetype(nodeOid);
+	node_type_old = node_type;
+	node_id = get_pgxc_node_id(nodeOid);
+
+	/*
+	 * Two nodes cannot be primary at the same time. If the primary
+	 * node is this node itself, well there is no point in having an
+	 * error.
+	 */
+	if (is_primary &&
+		OidIsValid(primary_data_node) &&
+		nodeOid != primary_data_node)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("PGXC node %s: two nodes cannot be primary",
+						node_name_new)));
+	/*
+	 * If this node is a primary and the statement says primary = false,
+	 * we need to invalidate primary_data_node when the whole operation
+	 * is successful.
+	 */
+	if (was_primary && !is_primary &&
+		OidIsValid(primary_data_node) &&
+		nodeOid == primary_data_node)
+		primary_off = true;
+	else if (is_primary)
+		new_primary = nodeOid;
+
+	/* Check type dependency */
+	if (node_type_old == PGXC_NODE_COORDINATOR &&
+		node_type == PGXC_NODE_DATANODE)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("PGXC node %s: cannot alter Coordinator to Datanode",
+						node_name_new)));
+	else if (node_type_old == PGXC_NODE_DATANODE &&
+			 node_type == PGXC_NODE_COORDINATOR)
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("PGXC node %s: cannot alter Datanode to Coordinator",
+						node_name_new)));
+
+	/* Update values for catalog entry */
+	MemSet(new_record, 0, sizeof(new_record));
+	MemSet(new_record_nulls, false, sizeof(new_record_nulls));
+	MemSet(new_record_repl, false, sizeof(new_record_repl));
+
+	namestrcpy(&node_name_data, node_name_new);
+	new_record[Anum_pgxc_node_name - 1] = NameGetDatum(&node_name_data);
+	new_record_repl[Anum_pgxc_node_name - 1] = true;
+	new_record[Anum_pgxc_node_port - 1] = Int32GetDatum(node_port);
+	new_record_repl[Anum_pgxc_node_port - 1] = true;
+	new_record[Anum_pgxc_node_host - 1] =
+		DirectFunctionCall1(namein, CStringGetDatum(node_host));
+	new_record_repl[Anum_pgxc_node_host - 1] = true;
+	new_record[Anum_pgxc_node_type - 1] = CharGetDatum(node_type);
+	new_record_repl[Anum_pgxc_node_type - 1] = true;
+	new_record[Anum_pgxc_node_is_primary - 1] = BoolGetDatum(is_primary);
+	new_record_repl[Anum_pgxc_node_is_primary - 1] = true;
+	new_record[Anum_pgxc_node_is_preferred - 1] = BoolGetDatum(is_preferred);
+	new_record_repl[Anum_pgxc_node_is_preferred - 1] = true;
+	new_record[Anum_pgxc_node_id - 1] = UInt32GetDatum(node_id);
+	new_record_repl[Anum_pgxc_node_id - 1] = true;
+
+	/* Update relation */
+	newtup = heap_modify_tuple(oldtup, RelationGetDescr(rel),
+							   new_record,
+							   new_record_nulls, new_record_repl);
+	simple_heap_update(rel, &oldtup->t_self, newtup);
+
+	/* Update indexes */
+	CatalogUpdateIndexes(rel, newtup);
+
+	/* Invalidate primary_data_node if needed */
+	if (primary_off)
+		primary_data_node = InvalidOid;
+	/* Update primary datanode if needed */
+	if (OidIsValid(new_primary))
+		primary_data_node = new_primary;
+	/* Release lock at Commit */
+	heap_close(rel, NoLock);
+
 	PG_RETURN_BOOL(true);
 }
 

@@ -1313,6 +1313,7 @@ typedef enum DistributionType
 	DISTTYPE_MODULO				/* Modulo partitioned */
 #ifdef ADB
 	,DISTTYPE_USER_DEFINED		/* User-defined function partitioned */
+	,DISTTYPE_META				/* meta table */
 #endif
 } DistributionType;
 

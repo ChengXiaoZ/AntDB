@@ -56,3 +56,51 @@ CREATE FUNCTION pgstatginindex(IN relname regclass,
     OUT pending_tuples BIGINT)
 AS 'MODULE_PATHNAME', 'pgstatginindex'
 LANGUAGE C STRICT;
+
+CREATE FUNCTION pg_hashtables(
+	OUT len1 text,
+	OUT len2 text
+)
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pg_hashtables'
+LANGUAGE C STRICT;
+
+CREATE FUNCTION pgstatdatabaseslot(
+	OUT nname 		text,			-- datanode name
+    OUT slot_id 	INT4,			-- slotid
+    OUT located 	text,			-- slot located datanode name
+    OUT space 		BIGINT,			-- physical table length in bytes
+    OUT tp_count 	BIGINT,			-- number of live tuples
+    OUT tp_len 		BIGINT,			-- total tuples length in bytes
+    OUT tp_per 		FLOAT8,			-- live tuples in %
+    OUT dtp_count 	BIGINT,			-- number of dead tuples
+    OUT dtp_len 	BIGINT,			-- total dead tuples length in bytes
+    OUT dtp_per 	FLOAT8,			-- dead tuples in %
+    OUT free_space 	BIGINT,			-- free space in bytes
+    OUT free_per 	FLOAT8)			-- free space in %
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pgstatdatabaseslot'
+LANGUAGE C STRICT;
+
+
+CREATE FUNCTION pgstatslot(IN relname text,
+    OUT nname 		text,			-- datanode name
+    OUT slot_id 	INT4,			-- slotid
+    OUT located 	text,			-- slot located datanode name
+    OUT space 		BIGINT,			-- physical table length in bytes
+    OUT tp_count 	BIGINT,			-- number of live tuples
+    OUT tp_len 		BIGINT,			-- total tuples length in bytes
+    OUT tp_per 		FLOAT8,			-- live tuples in %
+    OUT dtp_count 	BIGINT,			-- number of dead tuples
+    OUT dtp_len 	BIGINT,			-- total dead tuples length in bytes
+    OUT dtp_per 	FLOAT8,			-- dead tuples in %
+    OUT free_space 	BIGINT,			-- free space in bytes
+    OUT free_per 	FLOAT8)			-- free space in %
+RETURNS SETOF record
+AS 'MODULE_PATHNAME', 'pgstatslot'
+LANGUAGE C STRICT;
+
+CREATE FUNCTION pgvalueslot(IN	tablename text, IN hashkey text)
+RETURNS INT4
+AS 'MODULE_PATHNAME', 'pgvalueslot'
+LANGUAGE C STRICT;

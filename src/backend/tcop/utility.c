@@ -94,10 +94,13 @@ static void ExecUtilityStmtOnNodes(const char *queryString, ExecNodes *nodes, bo
 								   bool force_autocommit, RemoteQueryExecType exec_type,
 								   bool is_temp);
 #ifdef ADB
+static bool IsAlterTableStmtRedistribution(AlterTableStmt *atstmt);
 static void ExecUtilityStmtOnNodes2(Node *stmt, const char *queryString, ExecNodes *nodes, bool sentToRemote,
 								   bool force_autocommit, RemoteQueryExecType exec_type,
 								   bool is_temp);
-static bool IsAlterTableStmtRedistribution(AlterTableStmt *atstmt);
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#include "pgxc/slot.h"
+#endif
 #endif /* ADB */
 static RemoteQueryExecType ExecUtilityFindNodes(ObjectType objectType,
 												Oid relid,
@@ -1152,9 +1155,11 @@ standard_ProcessUtility(Node *parsetree,
 			break;
 
 #ifdef PGXC
+
 		case T_BarrierStmt:
 			RequestBarrier(((BarrierStmt *) parsetree)->id, completionTag);
 			break;
+
 
 		/*
 		 * Node DDL is an operation local to Coordinator.
@@ -1179,6 +1184,47 @@ standard_ProcessUtility(Node *parsetree,
 
 		case T_DropGroupStmt:
 			PgxcGroupRemove((DropGroupStmt *) parsetree);
+			break;
+#endif
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		case T_AlterSlotStmt:
+			SlotAlter((AlterSlotStmt *) parsetree);
+
+			if (IS_PGXC_COORDINATOR)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+
+			break;
+
+		case T_CreateSlotStmt:
+			SlotCreate((CreateSlotStmt *) parsetree);
+
+			if (IS_PGXC_COORDINATOR)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+
+			break;
+
+		case T_DropSlotStmt:
+			SlotRemove((DropSlotStmt *) parsetree);
+
+			if (IS_PGXC_COORDINATOR)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+
+			break;
+
+		case T_FlushSlotStmt:
+			SlotFlush((FlushSlotStmt *) parsetree);
+
+			if (IS_PGXC_COORDINATOR)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_ALL_NODES, false);
+			break;
+
+		case T_CleanSlotStmt:
+			if (IS_PGXC_DATANODE)
+				SlotClean((CleanSlotStmt *) parsetree);
+
+			if (IS_PGXC_COORDINATOR)
+				ExecUtilityStmtOnNodes(queryString, NULL, sentToRemote, false, EXEC_ON_DATANODES, false);
 			break;
 #endif
 
@@ -3778,6 +3824,27 @@ CreateCommandTag(Node *parsetree)
 			break;
 #endif
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		case T_AlterSlotStmt:
+			tag = "ALTER SLOT";
+			break;
+
+		case T_CreateSlotStmt:
+			tag = "CREATE SLOT";
+			break;
+
+		case T_DropSlotStmt:
+			tag = "DROP SLOT";
+			break;
+
+		case T_FlushSlotStmt:
+			tag = "FLUSH SLOT";
+			break;
+
+		case T_CleanSlotStmt:
+			tag = "CLEAN SLOT";
+			break;
+#endif
 		case T_ReindexStmt:
 			tag = "REINDEX";
 			break;
@@ -4432,6 +4499,15 @@ GetCommandLogLevel(Node *parsetree)
 		case T_ExecDirectStmt:
 		case T_BarrierStmt:
 			lev = LOGSTMT_ALL;
+			break;
+#endif
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		case T_CreateSlotStmt:
+		case T_AlterSlotStmt:
+		case T_DropSlotStmt:
+		case T_FlushSlotStmt:
+		case T_CleanSlotStmt:
+			lev = LOGSTMT_DDL;
 			break;
 #endif
 

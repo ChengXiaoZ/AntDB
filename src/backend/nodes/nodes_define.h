@@ -141,9 +141,9 @@ BEGIN_NODE(ModifyTable)
 	NODE_NODE(List,fdwPrivLists)
 	NODE_NODE(List,rowMarks)
 	NODE_SCALAR(int,epqParam)
-#ifdef PGXC	
+#ifdef PGXC
 	NODE_NODE(List,remote_plans)
-#endif	
+#endif
 END_NODE(ModifyTable)
 #endif /* NO_NODE_ModifyTable */
 
@@ -571,6 +571,37 @@ BEGIN_NODE(CreateGroupStmt)
 	NODE_NODE(List,nodes)
 END_NODE(CreateGroupStmt)
 #endif /* NO_NODE_CreateGroupStmt */
+
+#ifndef NO_NODE_AlterSlotStmt
+BEGIN_NODE(AlterSlotStmt)
+	NODE_SCALAR(int32,slotid)
+	NODE_NODE(List,options)
+END_NODE(AlterSlotStmt)
+#endif /* NO_NODE_AlterSlotStmt */
+
+#ifndef NO_NODE_CreateSlotStmt
+BEGIN_NODE(CreateSlotStmt)
+	NODE_SCALAR(int32,slotid)
+	NODE_NODE(List,options)
+END_NODE(CreateSlotStmt)
+#endif /* NO_NODE_CreateSlotStmt */
+
+#ifndef NO_NODE_DropSlotStmt
+BEGIN_NODE(DropSlotStmt)
+	NODE_SCALAR(int32,slotid)
+END_NODE(DropSlotStmt)
+#endif /* NO_NODE_DropSlotStmt */
+
+#ifndef NO_NODE_FlushSlotStmt
+BEGIN_NODE(FlushSlotStmt)
+END_NODE(FlushSlotStmt)
+#endif /* FlushSlotStmt*/
+
+#ifndef NO_NODE_CleanSlotStmt
+BEGIN_NODE(CleanSlotStmt)
+	NODE_STRING(table_name)
+END_NODE(CleanSlotStmt)
+#endif /* CleanSlotStmt*/
 
 #ifndef NO_NODE_DropGroupStmt
 BEGIN_NODE(DropGroupStmt)
@@ -1655,36 +1686,36 @@ END_STRUCT(ParamListInfoData)
 
 #ifndef NO_NODE_Query
 BEGIN_NODE(Query)
-	NODE_ENUM(CmdType,commandType)	
-	NODE_ENUM(QuerySource,querySource)	
-	NODE_SCALAR(uint32,queryId)		
-	NODE_SCALAR(bool,canSetTag)		
-	NODE_NODE(Node,utilityStmt)	
-								
-	NODE_SCALAR(int,resultRelation) 
-								
-	NODE_SCALAR(bool,hasAggs)		
-	NODE_SCALAR(bool,hasWindowFuncs) 
-	NODE_SCALAR(bool,hasSubLinks)	
-	NODE_SCALAR(bool,hasDistinctOn)	
-	NODE_SCALAR(bool,hasRecursive)	
+	NODE_ENUM(CmdType,commandType)
+	NODE_ENUM(QuerySource,querySource)
+	NODE_SCALAR(uint32,queryId)
+	NODE_SCALAR(bool,canSetTag)
+	NODE_NODE(Node,utilityStmt)
+
+	NODE_SCALAR(int,resultRelation)
+
+	NODE_SCALAR(bool,hasAggs)
+	NODE_SCALAR(bool,hasWindowFuncs)
+	NODE_SCALAR(bool,hasSubLinks)
+	NODE_SCALAR(bool,hasDistinctOn)
+	NODE_SCALAR(bool,hasRecursive)
 	NODE_SCALAR(bool,hasModifyingCTE)
-	NODE_SCALAR(bool,hasForUpdate)	
-	NODE_NODE(List,cteList)		
-	NODE_NODE(List,rtable)			
-	NODE_NODE(FromExpr,jointree)		
-	NODE_NODE(List,targetList)		
-	NODE_NODE(List,returningList)	
-	NODE_NODE(List,groupClause)	
-	NODE_NODE(Node,havingQual)		
-	NODE_NODE(List,windowClause)	
-	NODE_NODE(List,distinctClause) 
-	NODE_NODE(List,sortClause)		
-	NODE_NODE(Node,limitOffset)	
-	NODE_NODE(Node,limitCount)		
-	NODE_NODE(List,rowMarks)		
-	NODE_NODE(Node,setOperations)	
-	NODE_NODE(List,constraintDeps) 
+	NODE_SCALAR(bool,hasForUpdate)
+	NODE_NODE(List,cteList)
+	NODE_NODE(List,rtable)
+	NODE_NODE(FromExpr,jointree)
+	NODE_NODE(List,targetList)
+	NODE_NODE(List,returningList)
+	NODE_NODE(List,groupClause)
+	NODE_NODE(Node,havingQual)
+	NODE_NODE(List,windowClause)
+	NODE_NODE(List,distinctClause)
+	NODE_NODE(List,sortClause)
+	NODE_NODE(Node,limitOffset)
+	NODE_NODE(Node,limitCount)
+	NODE_NODE(List,rowMarks)
+	NODE_NODE(Node,setOperations)
+	NODE_NODE(List,constraintDeps)
 #ifdef PGXC
 	NODE_STRING(sql_statement)
 	NODE_SCALAR(bool,is_local)
@@ -4123,7 +4154,6 @@ END_NODE(MGRDropHost)
 
 #ifndef NO_NODE_MGRAlterHost
 BEGIN_NODE(MGRAlterHost)
-	NODE_SCALAR(bool, if_not_exists)
 	NODE_STRING(name)
 	NODE_NODE(List, options)
 END_NODE(MGRAlterHost)
@@ -4131,7 +4161,8 @@ END_NODE(MGRAlterHost)
 
 #ifndef NO_NODE_MGRAddNode
 BEGIN_NODE(MGRAddNode)
-	NODE_SCALAR(bool, if_not_exists)
+	NODE_SCALAR(char, nodetype)
+	NODE_STRING(mastername)
 	NODE_STRING(name)
 	NODE_NODE(List, options)
 END_NODE(MGRAddNode)
@@ -4139,7 +4170,7 @@ END_NODE(MGRAddNode)
 
 #ifndef NO_NODE_MGRAlterNode
 BEGIN_NODE(MGRAlterNode)
-	NODE_SCALAR(bool, if_not_exists)
+	NODE_SCALAR(char, nodetype)
 	NODE_STRING(name)
 	NODE_NODE(List, options)
 END_NODE(MGRAlterNode)
@@ -4147,8 +4178,7 @@ END_NODE(MGRAlterNode)
 
 #ifndef NO_NODE_MGRDropNode
 BEGIN_NODE(MGRDropNode)
-	NODE_SCALAR(bool, if_exists)
-	NODE_NODE(List, names)
+	NODE_STRING(name)
 END_NODE(MGRDropNode)
 #endif /* NO_NODE_MGRDropNode */
 
@@ -4256,5 +4286,11 @@ END_NODE(MGRSetClusterInit)
 BEGIN_NODE(MonitorDeleteData)
 END_NODE(MonitorDeleteData)
 #endif /* NO_NODE_MonitorDeleteData */
+
+#ifndef NO_NODE_ClusterSlotInitStmt
+BEGIN_NODE(ClusterSlotInitStmt)
+	NODE_NODE(List,options)
+END_NODE(ClusterSlotInitStmt)
+#endif /* NO_NODE_ClusterSlotInitStmt */
 
 #endif /* ADBMGRD */

@@ -95,6 +95,10 @@ int			CommitSiblings = 5; /* # concurrent xacts needed to sleep */
 bool		XLOG_DEBUG = false;
 #endif
 
+#ifdef ADB
+extern bool	rep_read_archive_path_flag;
+#endif
+
 /*
  * XLOGfileslop is the maximum number of preallocated future XLOG segments.
  * When we are done with an old XLOG segment file, we will recycle it as a
@@ -2845,6 +2849,11 @@ CheckXLogRemoved(XLogSegNo segno, TimeLineID tli)
 	/* use volatile pointer to prevent code rearrangement */
 	volatile XLogCtlData *xlogctl = XLogCtl;
 	XLogSegNo	lastRemovedSegNo;
+
+#ifdef ADB
+	if(rep_read_archive_path_flag)
+		return;
+#endif
 
 	SpinLockAcquire(&xlogctl->info_lck);
 	lastRemovedSegNo = xlogctl->lastRemovedSegNo;

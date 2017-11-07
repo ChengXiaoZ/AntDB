@@ -137,14 +137,14 @@ static void check_jobitem_name_isvaild(List *node_name_list);
  * parse errors.  It is needed by PL/pgsql.
  */
 %token <str>	IDENT FCONST SCONST BCONST XCONST Op
-%token <ival>	ICONST 
+%token <ival>	ICONST
 %token			TYPECAST DOT_DOT COLON_EQUALS
 
 %type <list>	stmtblock stmtmulti
 %type <node>	stmt
 %type <node>	AddHostStmt DropHostStmt ListHostStmt AlterHostStmt
 				ListParmStmt StartAgentStmt AddNodeStmt StopAgentStmt
-				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt 
+				DropNodeStmt AlterNodeStmt ListNodeStmt InitNodeStmt
 				VariableSetStmt StartNodeMasterStmt StopNodeMasterStmt
 				MonitorStmt FailoverStmt /* ConfigAllStmt */DeploryStmt
 				Gethostparm ListMonitor Gettopologyparm Update_host_config_value
@@ -153,7 +153,11 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 				AddHbaStmt DropHbaStmt ListHbaStmt ListAclStmt
 				CreateUserStmt DropUserStmt GrantStmt privilege username hostname
 				AlterUserStmt AddJobitemStmt AlterJobitemStmt DropJobitemStmt ListJobStmt
-				AddExtensionStmt DropExtensionStmt RemoveNodeStmt FailoverManualStmt SwitchoverStmt
+
+				AddExtensionStmt DropExtensionStmt RemoveNodeStmt FailoverManualStmt
+				ExpandNodeStmt CheckNodeStmt ClusterMetaInitStmt ClusterSlotInitStmt
+				ClusterPgxcNodeInitStmt ClusterPgxcNodeCheckStmt
+				ImportHashMetaStmt ClusterHashMetaCheckStmt SwitchoverStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -165,7 +169,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 
 %type <defelt>	CreateOptRoleElem AlterOptRoleElem
 
-%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type opt_general_force 
+%type <ival>	Iconst SignedIconst opt_gtm_inner_type opt_dn_inner_type opt_cn_inner_type opt_general_force 
 							opt_slave_inner_type
 %type <vsetstmt> set_rest set_rest_more
 %type <value>	NumericOnly
@@ -180,16 +184,18 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %type <chr>		node_type cluster_type
 
 %token<keyword>	ADD_P DEPLOY DROP ALTER LIST CREATE ACL CLUSTER
-%token<keyword>	IF_P EXISTS NOT
+%token<keyword>	IF_P EXISTS NOT FOR
 %token<keyword>	FALSE_P TRUE_P
 %token<keyword>	HOST MONITOR PARAM HBA HA
-%token<keyword>	INIT GTM MASTER SLAVE EXTRA ALL NODE COORDINATOR DATANODE
+%token<keyword>	INIT GTM MASTER SLAVE ALL NODE COORDINATOR DATANODE
 %token<keyword> PASSWORD CLEAN RESET WHERE ROW_ID
 %token<keyword> START AGENT STOP FAILOVER
 %token<keyword> SET TO ON OFF
 %token<keyword> APPEND CONFIG MODE FAST SMART IMMEDIATE S I F FORCE SHOW FLUSH
 %token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
-%token<keyword> STATUS ACTIVATE
+
+%token<keyword> EXPAND ACTIVATE CHECKOUT STATUS RECOVER BASEBACKUP FAIL SUCCESS DOPROMOTE SLOT DOCHECK PGXCNODE END SLEEP META
+%token<keyword> IMPORT HASH
 %token<keyword> PROMOTE ADBMGR REWIND SWITCHOVER
 
 /* for ADB monitor*/
@@ -279,6 +285,14 @@ stmt :
 	| AddExtensionStmt
 	| DropExtensionStmt
 	| RemoveNodeStmt
+	| ExpandNodeStmt
+	| CheckNodeStmt
+	| ClusterMetaInitStmt
+	| ClusterSlotInitStmt
+	| ClusterPgxcNodeInitStmt
+	| ClusterPgxcNodeCheckStmt
+	| ImportHashMetaStmt
+	| ClusterHashMetaCheckStmt
 	| FailoverManualStmt
 	| SwitchoverStmt
 	| /* empty */
@@ -446,6 +460,168 @@ AlterOptRoleElem:
  *				}
  */
 
+ExpandNodeStmt:
+		EXPAND DATANODE MASTER Ident TO Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			args = lappend(args,makeStringConst($6, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_dnmaster", args));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND ACTIVATE DATANODE MASTER Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_activate_dnmaster", args));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND RECOVER BASEBACKUP FAIL Ident TO Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($5, -1));
+			args = lappend(args,makeStringConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_recover_backup_fail", args));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND RECOVER BASEBACKUP SUCCESS Ident TO Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($5, -1));
+			args = lappend(args,makeStringConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_recover_backup_suc", args));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND ACTIVATE RECOVER DOPROMOTE SUCCESS Ident
+		{
+
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($6, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_activate_recover_promote_suc", args));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND DOCHECK STATUS
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_check_status", NULL));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND SHOW STATUS
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_show_status", NULL));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND CLEAN INIT
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_clean_init", NULL));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND CLEAN START
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_clean_start", NULL));
+			$$ = (Node*)stmt;
+		}
+		|
+		EXPAND CLEAN END
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_expand_clean_end", NULL));
+			$$ = (Node*)stmt;
+		}		|
+		EXPAND SLEEP ICONST
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeIntConst($3, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("pg_sleep", args));
+			$$ = (Node*)stmt;
+		};
+
+ClusterMetaInitStmt:
+		CLUSTER META INIT
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_cluster_meta_init", NULL));
+			$$ = (Node*)stmt;
+		};
+
+ClusterSlotInitStmt:
+		CLUSTER SLOT INIT opt_general_options
+		{
+			ClusterSlotInitStmt *node = makeNode(ClusterSlotInitStmt);
+			node->options = $4;
+			$$ = (Node*)node;
+		};
+
+ClusterPgxcNodeInitStmt:
+		CLUSTER PGXCNODE INIT
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_cluster_pgxcnode_init", NULL));
+			$$ = (Node*)stmt;
+		};
+
+ClusterPgxcNodeCheckStmt:
+		CLUSTER PGXCNODE DOCHECK
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_cluster_pgxcnode_check", NULL));
+			$$ = (Node*)stmt;
+		};
+
+ImportHashMetaStmt:
+		IMPORT HASH META TO Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($5, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_import_hash_meta", args));
+			$$ = (Node*)stmt;
+		};
+
+ClusterHashMetaCheckStmt:
+		CLUSTER HASH META DOCHECK
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_cluster_hash_meta_check", NULL));
+			$$ = (Node*)stmt;
+		};
+
+
+CheckNodeStmt:
+		CHECKOUT DATANODE SLAVE STATUS
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("checkout_dnslave_status"), -1));
+			$$ = (Node*)stmt;
+		}
+
 AppendNodeStmt:
 		APPEND DATANODE MASTER Ident
 		{
@@ -473,30 +649,31 @@ AppendNodeStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnslave", args));
 			$$ = (Node*)stmt;
 		}
-		| APPEND DATANODE EXTRA Ident
+		| APPEND COORDINATOR MASTER Ident
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst($4, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_dnextra", args));
-			$$ = (Node*)stmt;
-		}
-		| APPEND COORDINATOR Ident
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($3, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordmaster", args));
 			with_data_checksums = false;
 			$$ = (Node*)stmt;
 		}
-		| APPEND COORDINATOR Ident DATA_CHECKSUMS
+		| APPEND COORDINATOR MASTER Ident DATA_CHECKSUMS
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($3, -1));
+			List *args = list_make1(makeStringConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordmaster", args));
 			with_data_checksums = true;
+			$$ = (Node*)stmt;
+		}
+		| APPEND COORDINATOR MASTER Ident TO SLAVE Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			args = lappend(args, makeStringConst($7, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coordslave", args));
 			$$ = (Node*)stmt;
 		}
 		| APPEND GTM SLAVE Ident
@@ -507,19 +684,11 @@ AppendNodeStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_agtmslave", args));
 			$$ = (Node*)stmt;
 		}
-		| APPEND GTM EXTRA Ident
+		|APPEND COORDINATOR Ident FOR Ident
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($4, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_agtmextra", args));
-			$$ = (Node*)stmt;
-		}
-		|APPEND COORDINATOR Ident TO Ident
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($3, -1));
-			args = lappend(args, makeStringConst($5, -1));
+			List *args = list_make1(makeStringConst($5, -1));
+			args = lappend(args, makeStringConst($3, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_append_coord_to_coord", args));
 			$$ = (Node*)stmt;
@@ -577,7 +746,7 @@ Get_alarm_info:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("get_alarm_info_count", args));
 			$$ = (Node*)stmt;
-		} 
+		}
 		|RESOLVE_ALARM '(' SignedIconst ',' Ident ',' Ident ')'
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -805,11 +974,10 @@ hostname : IDENT { $$ = makeStringConst(pstrdup($1), @1); };
 node_type:
 		DATANODE MASTER			{$$ = CNDN_TYPE_DATANODE_MASTER;}
 		| DATANODE SLAVE		{$$ = CNDN_TYPE_DATANODE_SLAVE;}
-		| DATANODE EXTRA		{$$ = CNDN_TYPE_DATANODE_EXTRA;}
-		| COORDINATOR			{$$ = CNDN_TYPE_COORDINATOR_MASTER;}
+		| COORDINATOR	MASTER		{$$ = CNDN_TYPE_COORDINATOR_MASTER;}
+		| COORDINATOR	SLAVE		{$$ = CNDN_TYPE_COORDINATOR_SLAVE;}
 		| GTM MASTER			{$$ = GTM_TYPE_GTM_MASTER;}
 		| GTM SLAVE				{$$ = GTM_TYPE_GTM_SLAVE;}
-		| GTM EXTRA				{$$ = GTM_TYPE_GTM_EXTRA;}
 		;
 
 opt_general_all:
@@ -825,7 +993,7 @@ VariableSetStmt:
 					$$ = (Node *) n;
 				}
 			;
-			
+
 set_rest: set_rest_more { $$ = $1; };
 
 set_rest_more:
@@ -883,7 +1051,7 @@ opt_boolean_or_string:
 			 */
 			| NonReservedWord_or_Sconst				{ $$ = $1; }
 			;
-			
+
 NonReservedWord_or_Sconst:
 			NonReservedWord							{ $$ = $1; }
 			| SConst								{ $$ = $1; }
@@ -893,8 +1061,8 @@ RoleId:		NonReservedWord							{ $$ = $1; };
 
 NonReservedWord:	IDENT							{ $$ = $1; }
 			| unreserved_keyword					{ $$ = pstrdup($1); }
-			;			
-			
+			;
+
 NumericOnly:
 			FCONST								{ $$ = makeFloat($1); }
 			| '-' FCONST
@@ -932,7 +1100,7 @@ opt_general_options:
 set_parm_general_options:
 	  general_options	{ $$ = $1; }
 	;
-	
+
 general_options: '(' general_option_list ')'
 		{
 			$$ = $2;
@@ -959,7 +1127,7 @@ general_option_item:
 
 	;
 /*conntype database role addr auth_method*/
-	
+
 general_option_arg:
 	  Ident								{ $$ = (Node*)makeString($1); }
 	| SConst							{ $$ = (Node*)makeString($1); }
@@ -994,7 +1162,7 @@ ObjList:
 		{
 			$$ = list_make1(makeString($1));
 		}
-	;	
+	;
 
 ListHostStmt:
 	  LIST HOST
@@ -1157,6 +1325,26 @@ AddUpdataparmStmt:
 				node->is_force= true;
 				$$ = (Node*)node;
 		}
+	|	SET GTM opt_gtm_inner_type ALL set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	|	SET GTM opt_gtm_inner_type ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $5;
+				node->is_force= true;
+				$$ = (Node*)node;
+		}
 	|	SET GTM ALL set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
@@ -1217,22 +1405,42 @@ AddUpdataparmStmt:
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
-	| SET COORDINATOR set_ident set_parm_general_options
+	| SET COORDINATOR opt_cn_inner_type set_ident set_parm_general_options
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
 				node->parmtype = PARM_TYPE_COORDINATOR;
-				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $3;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| SET COORDINATOR opt_cn_inner_type set_ident set_parm_general_options FORCE
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
+	| SET COORDINATOR ALL set_parm_general_options
+		{
+				MGRUpdateparm *node = makeNode(MGRUpdateparm);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
 				node->options = $4;
 				node->is_force = false;
 				$$ = (Node*)node;
 		}
-	| SET COORDINATOR set_ident set_parm_general_options FORCE
+	| SET COORDINATOR ALL set_parm_general_options FORCE
 		{
 				MGRUpdateparm *node = makeNode(MGRUpdateparm);
 				node->parmtype = PARM_TYPE_COORDINATOR;
-				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $3;
+				node->nodetype = CNDN_TYPE_COORDINATOR;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
 				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
@@ -1260,6 +1468,26 @@ ResetUpdataparmStmt:
 				node->parmtype = PARM_TYPE_GTM;
 				node->nodetype = $3;
 				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
+	|	RESET GTM opt_gtm_inner_type ALL set_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
+				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	|	RESET GTM opt_gtm_inner_type ALL set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_GTM;
+				node->nodetype = $3;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
 				node->options = $5;
 				node->is_force = true;
 				$$ = (Node*)node;
@@ -1324,22 +1552,42 @@ ResetUpdataparmStmt:
 				node->is_force = true;
 				$$ = (Node*)node;
 		}
-	| RESET COORDINATOR set_ident set_parm_general_options
+	| RESET COORDINATOR opt_cn_inner_type set_ident set_parm_general_options
 		{
 				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_COORDINATOR;
-				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $3;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = false;
+				$$ = (Node*)node;
+		}
+	| RESET COORDINATOR opt_cn_inner_type set_ident set_parm_general_options FORCE
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = $3;
+				node->nodename = $4;
+				node->options = $5;
+				node->is_force = true;
+				$$ = (Node*)node;
+		}
+	| RESET COORDINATOR ALL set_parm_general_options
+		{
+				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
+				node->parmtype = PARM_TYPE_COORDINATOR;
+				node->nodetype = CNDN_TYPE_COORDINATOR;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
 				node->options = $4;
 				node->is_force = false;
 				$$ = (Node*)node;
 		}
-	| RESET COORDINATOR set_ident set_parm_general_options FORCE
+	| RESET COORDINATOR ALL set_parm_general_options FORCE
 		{
 				MGRUpdateparmReset *node = makeNode(MGRUpdateparmReset);
 				node->parmtype = PARM_TYPE_COORDINATOR;
-				node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-				node->nodename = $3;
+				node->nodetype = CNDN_TYPE_COORDINATOR;
+				node->nodename = MACRO_STAND_FOR_ALL_NODENAME;
 				node->options = $4;
 				node->is_force = true;
 				$$ = (Node*)node;
@@ -1378,20 +1626,17 @@ ListParmStmt:
 				case CNDN_TYPE_DATANODE_SLAVE:
 						stmt->whereClause = make_whereClause_for_datanode("datanode slave", node_name, like_expr.data);
 						break;
-				case CNDN_TYPE_DATANODE_EXTRA:
-						stmt->whereClause = make_whereClause_for_datanode("datanode extra", node_name, like_expr.data);
-						break;
 				case CNDN_TYPE_COORDINATOR_MASTER:
-						stmt->whereClause = make_whereClause_for_coord("coordinator", node_name, like_expr.data);
+						stmt->whereClause = make_whereClause_for_coord("coordinator master", node_name, like_expr.data);
+						break;
+				case CNDN_TYPE_COORDINATOR_SLAVE:
+						stmt->whereClause = make_whereClause_for_coord("coordinator slave", node_name, like_expr.data);
 						break;
 				case GTM_TYPE_GTM_MASTER:
 						stmt->whereClause = make_whereClause_for_gtm("gtm master", node_name, like_expr.data);
 						break;
 				case GTM_TYPE_GTM_SLAVE:
 						stmt->whereClause = make_whereClause_for_gtm("gtm slave", node_name, like_expr.data);
-						break;
-				case GTM_TYPE_GTM_EXTRA:
-						stmt->whereClause = make_whereClause_for_gtm("gtm extra", node_name, like_expr.data);
 						break;
 				default:
 						break;
@@ -1419,7 +1664,7 @@ ListParmStmt:
 					stmt->whereClause =
 						(Node *)(Node *)makeA_Expr(AEXPR_AND, NIL,
 							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
-									make_ColumnRef("nodetype"), 
+									make_ColumnRef("nodetype"),
 									makeStringConst(pstrdup("gtm"), -1), -1),
 							(Node *) makeSimpleA_Expr(AEXPR_OP, "~~",
 									make_ColumnRef("key"),
@@ -1436,6 +1681,37 @@ ListParmStmt:
 									make_ColumnRef("key"),
 									makeStringConst(pstrdup(like_expr.data), -1), -1),
 									-1);
+					break;
+				case CNDN_TYPE_COORDINATOR_MASTER:
+					stmt->whereClause =
+					(Node *)makeA_Expr(AEXPR_AND, NIL,
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+								make_ColumnRef("nodetype"),
+								makeStringConst(pstrdup("coordinator master"), -1),-1),
+						(Node *) makeSimpleA_Expr(AEXPR_OP, "~~",
+										make_ColumnRef("key"),
+										makeStringConst(pstrdup(like_expr.data), -1), -1),
+										-1);
+					break;
+				case CNDN_TYPE_COORDINATOR_SLAVE:
+					stmt->whereClause =
+					(Node *)makeA_Expr(AEXPR_AND, NIL,
+						(Node *)makeA_Expr(AEXPR_OR, NIL,
+							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+										make_ColumnRef("nodetype"),
+										makeStringConst(pstrdup("coordinator slave"), -1),-1),
+							(Node *) makeA_Expr(AEXPR_AND, NIL,
+								(Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+											make_ColumnRef("nodename"),
+											makeStringConst(pstrdup("*"), -1), -1),
+								(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
+											make_ColumnRef("nodetype"),
+											makeStringConst(pstrdup("coordinator master"), -1), -1),
+											-1),-1),
+						(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
+								make_ColumnRef("key"),
+								makeStringConst(pstrdup(like_expr.data), -1), -1),
+								-1);
 					break;
 				case DATANODE_TYPE:
 					stmt->whereClause =
@@ -1479,26 +1755,6 @@ ListParmStmt:
 								makeStringConst(pstrdup(like_expr.data), -1), -1),
 								-1);
 					break;
-				case CNDN_TYPE_DATANODE_EXTRA:
-					stmt->whereClause =
-					(Node *)makeA_Expr(AEXPR_AND, NIL,
-					(Node *)makeA_Expr(AEXPR_OR, NIL,
-							(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
-										make_ColumnRef("nodetype"),
-										makeStringConst(pstrdup("datanode extra"), -1),-1),
-							(Node *) makeA_Expr(AEXPR_AND, NIL,
-								(Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-											make_ColumnRef("nodename"),
-											makeStringConst(pstrdup("*"), -1), -1),
-								(Node *) makeSimpleA_Expr(AEXPR_OP, "~",
-											make_ColumnRef("nodetype"),
-											makeStringConst(pstrdup("datanode master"), -1), -1),
-											-1),-1),
-					(Node *)makeSimpleA_Expr(AEXPR_OP, "~~",
-								make_ColumnRef("key"),
-								makeStringConst(pstrdup(like_expr.data), -1), -1),
-								-1);
-					break;
 				default:
 					break;
 			}
@@ -1526,11 +1782,11 @@ CleanAllStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
 			$$ = (Node*)stmt;
 		}
-	| CLEAN COORDINATOR NodeConstList
+	| CLEAN COORDINATOR opt_cn_inner_type NodeConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeIntConst(CNDN_TYPE_COORDINATOR_MASTER, -1));
-			args = list_concat(args, $3);
+			List *args = list_make1(makeIntConst($3, -1));
+			args = list_concat(args, $4);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_clean_node", args));
 			$$ = (Node*)stmt;
@@ -1556,25 +1812,27 @@ CleanAllStmt:
 AddHbaStmt:
 	ADD_P HBA set_ident '(' NodeConstList ')'
 	{
-		SelectStmt *stmt = makeNode(SelectStmt);	
+		SelectStmt *stmt = makeNode(SelectStmt);
 		List *args = lappend($5, makeStringConst($3,@3));
 		stmt->targetList = list_make1(make_star_target(-1));
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_add_hba", args));
 		$$ = (Node*)stmt;
 	}
-	
+	;
+
 DropHbaStmt:
-	DROP HBA set_ident HbaParaList 
+	DROP HBA set_ident HbaParaList
 	{
-		SelectStmt *stmt = makeNode(SelectStmt);	
-		List *args = lappend($4, makeStringConst($3,@3));		
+		SelectStmt *stmt = makeNode(SelectStmt);
+		List *args = lappend($4, makeStringConst($3,@3));
 		stmt->targetList = list_make1(make_star_target(-1));
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_drop_hba", args));
 		$$ = (Node*)stmt;
 	}
+	;
 
 ListHbaStmt:
-	LIST HBA 
+	LIST HBA
 	{
 		SelectStmt *stmt = makeNode(SelectStmt);
 		stmt->targetList = list_make1(make_star_target(-1));
@@ -1588,155 +1846,124 @@ ListHbaStmt:
 		stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_list_hba_by_name", $3));
 		$$ = (Node*)stmt;
 	}
-	
+	;
+
 HbaParaList:
 	'(' NodeConstList ')' 	{$$ = $2;}
 	| /*empty*/             {$$ = NIL;}
-	
+	;
 	
 /*hba end*/
 
-/* gtm/coordinator/datanode 
+/* gtm/coordinator/datanode
 */
+
 AddNodeStmt:
-	  ADD_P GTM opt_gtm_inner_type Ident opt_general_options
+	  ADD_P GTM MASTER Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = false;
-			node->nodetype = $3; 
+			node->nodetype = GTM_TYPE_GTM_MASTER;
+			node->mastername = $4;
 			node->name = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
-	| ADD_P GTM opt_gtm_inner_type IF_P NOT EXISTS Ident opt_general_options
+	| ADD_P GTM SLAVE Ident FOR Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = true;
-			node->nodetype = $3;
-			node->name = $7;
-			node->options = $8;
-			$$ = (Node*)node;
-		}
-	| ADD_P COORDINATOR Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = false;
-			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-			node->name = $3;
-			node->options = $4;
-			$$ = (Node*)node;
-		}
-	| ADD_P COORDINATOR IF_P NOT EXISTS Ident opt_general_options
-		{
-			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = true;
-			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-			node->name = $6;
+			node->nodetype = GTM_TYPE_GTM_SLAVE; 
+			node->mastername = $6;
+			node->name = $4;
 			node->options = $7;
 			$$ = (Node*)node;
 		}
-	| ADD_P DATANODE opt_dn_inner_type Ident opt_general_options
+	| ADD_P COORDINATOR MASTER Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = false;
-			node->nodetype = $3;
+			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
+			node->mastername = $4;
 			node->name = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
-	| ADD_P DATANODE opt_dn_inner_type IF_P NOT EXISTS Ident opt_general_options
+	| ADD_P COORDINATOR SLAVE Ident FOR Ident opt_general_options
 		{
 			MGRAddNode *node = makeNode(MGRAddNode);
-			node->if_not_exists = true;
-			node->nodetype = $3;
-			node->name = $7;
-			node->options = $8;
+			node->nodetype = CNDN_TYPE_COORDINATOR_SLAVE;
+			node->mastername = $6;
+			node->name = $4;
+			node->options = $7;
+			$$ = (Node*)node;
+		}
+	| ADD_P DATANODE MASTER Ident opt_general_options
+		{
+			MGRAddNode *node = makeNode(MGRAddNode);
+			node->nodetype = CNDN_TYPE_DATANODE_MASTER;
+			node->mastername = $4;
+			node->name = $4;
+			node->options = $5;
+			$$ = (Node*)node;
+		}
+	| ADD_P DATANODE SLAVE Ident FOR Ident opt_general_options
+		{
+			MGRAddNode *node = makeNode(MGRAddNode);
+			node->nodetype = CNDN_TYPE_DATANODE_SLAVE;
+			node->mastername = $6;
+			node->name = $4;
+			node->options = $7;
 			$$ = (Node*)node;
 		}
 	;
-	
 
 AlterNodeStmt:
 		ALTER GTM opt_gtm_inner_type Ident opt_general_options
 		{
 			MGRAlterNode *node = makeNode(MGRAlterNode);
-			node->if_not_exists = false;
 			node->nodetype = $3;
 			node->name = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
-	| ALTER COORDINATOR Ident opt_general_options
+	| ALTER COORDINATOR opt_cn_inner_type Ident opt_general_options
 		{
 			MGRAlterNode *node = makeNode(MGRAlterNode);
-			node->if_not_exists = false;
-			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-			node->name = $3;
-			node->options = $4;
+			node->nodetype = $3;
+			node->name = $4;
+			node->options = $5;
 			$$ = (Node*)node;
 		}
 	| ALTER DATANODE opt_dn_inner_type Ident opt_general_options
 		{
 			MGRAlterNode *node = makeNode(MGRAlterNode);
-			node->if_not_exists = false;
 			node->nodetype = $3;
 			node->name = $4;
 			node->options = $5;
 			$$ = (Node*)node;
 		}
 	;
-
 DropNodeStmt:
-	  DROP GTM opt_gtm_inner_type ObjList
+	  DROP GTM opt_gtm_inner_type Ident
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
 			node->nodetype = $3;
-			node->names = $4;
+			node->name = $4;
 			$$ = (Node*)node;
 		}
-	|	DROP GTM opt_gtm_inner_type IF_P EXISTS ObjList
+	|	DROP COORDINATOR opt_cn_inner_type Ident
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = true;
 			node->nodetype = $3;
-			node->names = $6;
+			node->name = $4;
 			$$ = (Node*)node;
 		}
-	|	DROP COORDINATOR ObjList
+	|	DROP DATANODE opt_dn_inner_type Ident
 		{
 			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
-			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-			node->names = $3;
-			$$ = (Node*)node;
-		}
-	|	DROP COORDINATOR IF_P EXISTS ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = true;
-			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-			node->names = $5;
-			$$ = (Node*)node;
-		}
-	|	DROP DATANODE opt_dn_inner_type ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = false;
 			node->nodetype = $3;
-			node->names = $4;
-			$$ = (Node*)node;
-		}
-	|	DROP DATANODE opt_dn_inner_type IF_P EXISTS ObjList
-		{
-			MGRDropNode *node = makeNode(MGRDropNode);
-			node->if_exists = true;
-			node->nodetype = $3;
-			node->names = $6;
+			node->name = $4;
 			$$ = (Node*)node;
 		}
 	;
-
 ListAclStmt:
 		LIST ACL opt_general_all
 		{
@@ -1785,7 +2012,26 @@ ListNodeStmt:
 	| LIST NODE COORDINATOR
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("coordinator", -1));
+			List *args = list_make1(makeStringConst("coordinator master", -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			args = lappend(args,makeStringConst("coordinator slave", -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
+	|	LIST NODE COORDINATOR MASTER
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst("coordinator master", -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			stmt->whereClause = make_column_in("type", args);
+			$$ = (Node*)stmt;
+		}
+	|	LIST NODE COORDINATOR SLAVE
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst("coordinator slave", -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
 			stmt->whereClause = make_column_in("type", args);
@@ -1798,7 +2044,6 @@ ListNodeStmt:
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
 			args = lappend(args,makeStringConst("datanode slave", -1));
-			args = lappend(args,makeStringConst("datanode extra", -1));
 			stmt->whereClause = make_column_in("type", args);
 			$$ = (Node*)stmt;
 		}
@@ -1820,105 +2065,8 @@ ListNodeStmt:
 			stmt->whereClause = make_column_in("type", args);
 			$$ = (Node*)stmt;
 		}
-	|	LIST NODE DATANODE EXTRA
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("datanode extra", -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
-			stmt->whereClause = make_column_in("type", args);
-			$$ = (Node*)stmt;
-		}
 	;
 InitNodeStmt:
-/*	INIT GTM MASTER 
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_master", NULL));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT GTM SLAVE 
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_slave", NULL));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT GTM EXTRA 
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_gtm_extra", NULL));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT COORDINATOR NodeConstList
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_cn_master", $3));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT COORDINATOR  ALL
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*		 	List *args = list_make1(makeNullAConst(-1));
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_cn_master", args));
-*			$$ = (Node*)stmt;
-*		}
-*	|	INIT DATANODE MASTER NodeConstList
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", $4));
-*			$$ = (Node*)stmt;
-*		}
-*	|	INIT DATANODE MASTER ALL
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*		 	List *args = list_make1(makeNullAConst(-1));
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_master", args));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT DATANODE SLAVE NodeConstList
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave", $4));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT DATANODE EXTRA NodeConstList
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra", $4));
-*			$$ = (Node*)stmt;
-*		}
-*	|	INIT DATANODE SLAVE ALL
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_slave_all", NULL));
-*			$$ = (Node*)stmt;
-*		}
-*	|	INIT DATANODE EXTRA ALL
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_init_dn_extra_all", NULL));
-*			$$ = (Node*)stmt;
-*		}
-*	| INIT DATANODE ALL
-*		{
-*			SelectStmt *stmt = makeNode(SelectStmt);
-*			stmt->targetList = list_make1(make_star_target(-1));
-*			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("initdatanodeall"), -1));
-*			$$ = (Node*)stmt;
-*		}
-*	| 
-*/
 INIT ALL
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -1953,14 +2101,6 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_slave", args));
 			$$ = (Node*)stmt;
 		}
-	| START GTM EXTRA Ident
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($4, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_gtm_extra", args));
-			$$ = (Node*)stmt;
-		}
 	| START GTM ALL
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -1968,19 +2108,34 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("start_gtm_all"), -1));
 			$$ = (Node*)stmt;
 		}
-	|	START COORDINATOR NodeConstList
+	|	START COORDINATOR MASTER NodeConstList
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_master", $3));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_master", $4));
 			$$ = (Node*)stmt;
 		}
-	|	START COORDINATOR ALL
+	|	START COORDINATOR SLAVE NodeConstList
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_slave", $4));
+			$$ = (Node*)stmt;
+		}
+	|	START COORDINATOR MASTER ALL
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_master", args));
+			$$ = (Node*)stmt;
+		}
+	|	START COORDINATOR SLAVE ALL
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+		 	List *args = list_make1(makeNullAConst(-1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_slave", args));
 			$$ = (Node*)stmt;
 		}
 	|	START DATANODE MASTER NodeConstList
@@ -2005,27 +2160,12 @@ StartNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_slave", $4));
 			$$ = (Node*)stmt;
 		}
-	|	START DATANODE EXTRA NodeConstList
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_extra", $4));
-			$$ = (Node*)stmt;
-		}
 	|	START DATANODE SLAVE ALL
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_slave", args));
-			$$ = (Node*)stmt;
-		}
-	|	START DATANODE EXTRA ALL
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-		 	List *args = list_make1(makeNullAConst(-1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_dn_extra", args));
 			$$ = (Node*)stmt;
 		}
 	|	START DATANODE ALL
@@ -2064,15 +2204,6 @@ StopNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_slave", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP GTM EXTRA Ident opt_stop_mode
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($5, -1));
-			args = lappend(args,makeStringConst($4, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_gtm_extra", args));
-			$$ = (Node*)stmt;
-		}
 	| STOP GTM ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -2085,13 +2216,22 @@ StopNodeMasterStmt:
 				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_gtm_all_i"), -1));
 			$$ = (Node*)stmt;
 		}
-	|	STOP COORDINATOR NodeConstList opt_stop_mode
+	|	STOP COORDINATOR MASTER NodeConstList opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($4, -1));
-			args = list_concat(args, $3);
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, $4);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master", args));
+			$$ = (Node*)stmt;
+		}
+	|	STOP COORDINATOR SLAVE NodeConstList opt_stop_mode
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($5, -1));
+			args = list_concat(args, $4);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_slave", args));
 			$$ = (Node*)stmt;
 		}
 	|	STOP COORDINATOR ALL opt_stop_mode
@@ -2139,25 +2279,6 @@ StopNodeMasterStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_slave", args));
 			$$ = (Node*)stmt;
 		}
-	|	STOP DATANODE EXTRA NodeConstList opt_stop_mode
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($5, -1));
-			args = list_concat(args, $4);
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", args));
-			$$ = (Node*)stmt;
-		}
-	|	STOP DATANODE EXTRA ALL opt_stop_mode
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($5, -1));
-			args = list_concat(args, list_make1(makeNullAConst(-1)));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_dn_extra", args));
-			$$ = (Node*)stmt;
-		}
-
 	|	STOP DATANODE ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
@@ -2186,61 +2307,19 @@ StopNodeMasterStmt:
 		}
 	;
 FailoverStmt:
-		FAILOVER DATANODE SLAVE Ident opt_general_force
+		FAILOVER DATANODE Ident opt_general_force
 	{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("slave", -1));
-			args = lappend(args, makeStringConst($4, -1));
-			args = lappend(args, makeBoolAConst($5, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
-			$$ = (Node*)stmt;
-	}
-	|	FAILOVER DATANODE EXTRA Ident opt_general_force
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("extra", -1));
-			args = lappend(args, makeStringConst($4, -1));
-			args = lappend(args, makeBoolAConst($5, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
-			$$ = (Node*)stmt;
-		}
-	| FAILOVER DATANODE Ident opt_general_force
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst("either", -1));
-			args = lappend(args, makeStringConst($3, -1));
+			List *args = list_make1(makeStringConst($3, -1));
 			args = lappend(args, makeBoolAConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_one_dn", args));
 			$$ = (Node*)stmt;
-		}
-	| FAILOVER GTM SLAVE Ident opt_general_force
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($4, -1));
-			args = lappend(args, makeStringConst("slave", -1));
-			args = lappend(args, makeBoolAConst($5, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
-			$$ = (Node*)stmt;
-		}
-	| FAILOVER GTM EXTRA Ident opt_general_force
-		{
-			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($4, -1));
-			args = lappend(args, makeStringConst("extra", -1));
-			args = lappend(args, makeBoolAConst($5, -1));
-			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
-			$$ = (Node*)stmt;
-		}
+	}
 	| FAILOVER GTM Ident opt_general_force
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
 			List *args = list_make1(makeStringConst($3, -1));
-			args = lappend(args, makeStringConst("either", -1));
 			args = lappend(args, makeBoolAConst($4, -1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_gtm", args));
@@ -2250,6 +2329,7 @@ FailoverStmt:
 opt_general_force:
 	FORCE		{$$ = TRUE;}
 	|/*empty*/	{$$ = FALSE;}
+	;
 /* cndn end*/
 
 DeploryStmt:
@@ -2291,27 +2371,31 @@ opt_stop_mode:
 opt_gtm_inner_type:
 	  MASTER { $$ = GTM_TYPE_GTM_MASTER; }
 	| SLAVE { $$ = GTM_TYPE_GTM_SLAVE; }
-	| EXTRA { $$ = GTM_TYPE_GTM_EXTRA; }
 	;
 opt_dn_inner_type:
 	 MASTER { $$ = CNDN_TYPE_DATANODE_MASTER; }
 	|SLAVE { $$ = CNDN_TYPE_DATANODE_SLAVE; }
-	| EXTRA { $$ = CNDN_TYPE_DATANODE_EXTRA; }
+	;
+opt_cn_inner_type:
+	 MASTER { $$ = CNDN_TYPE_COORDINATOR_MASTER; }
+	|SLAVE { $$ = CNDN_TYPE_COORDINATOR_SLAVE; }
 	;
 opt_slave_inner_type:
 		GTM SLAVE { $$ = GTM_TYPE_GTM_SLAVE; }
-	|	GTM EXTRA { $$ = GTM_TYPE_GTM_EXTRA; }
+	| COORDINATOR SLAVE { $$ = CNDN_TYPE_COORDINATOR_SLAVE; }
 	|	DATANODE SLAVE { $$ = CNDN_TYPE_DATANODE_SLAVE; }
-	|	DATANODE EXTRA { $$ = CNDN_TYPE_DATANODE_EXTRA; }
 	;
 
 cluster_type:
-	GTM               {$$ = GTM_TYPE;}
-	| COORDINATOR     {$$ = COORDINATOR_TYPE;}
+	GTM             {$$ = GTM_TYPE;}
+	| GTM MASTER    {$$ = GTM_TYPE_GTM_MASTER;}
+	| GTM SLAVE    {$$ = GTM_TYPE_GTM_SLAVE;}
+	| COORDINATOR    {$$ = COORDINATOR_TYPE;}
+	| COORDINATOR MASTER   {$$ = CNDN_TYPE_COORDINATOR_MASTER;}
+	| COORDINATOR SLAVE   {$$ = CNDN_TYPE_COORDINATOR_SLAVE;}
 	| DATANODE        {$$ = DATANODE_TYPE;}
 	| DATANODE MASTER {$$ = CNDN_TYPE_DATANODE_MASTER;}
 	| DATANODE SLAVE  {$$ = CNDN_TYPE_DATANODE_SLAVE;}
-	| DATANODE EXTRA  {$$ = CNDN_TYPE_DATANODE_EXTRA;}
 	;
 
 sub_like_expr:
@@ -2634,7 +2718,7 @@ RemoveNodeStmt:
 			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 			node->names = $3;
 			$$ = (Node*)node;
-		}	
+		}
 	;
 
 FailoverManualStmt:
@@ -2665,10 +2749,10 @@ FailoverManualStmt:
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_promote_func", args));
 			$$ = (Node*)stmt;
 		}
-	|	CONFIG DATANODE MASTER Ident
+	|	CONFIG DATANODE SLAVE Ident
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeIntConst(CNDN_TYPE_DATANODE_MASTER, @3));
+			List *args = list_make1(makeIntConst(CNDN_TYPE_DATANODE_SLAVE, @3));
 			args = lappend(args, makeStringConst($4, @4));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_failover_manual_pgxcnode_func", args));
@@ -2738,6 +2822,7 @@ unreserved_keyword:
 	| APPEND
 	| CHECK_PASSWORD
 	| CHECK_USER
+	| CHECKOUT
 	| CLEAN
 	| CONFIG
 	| CLUSTER
@@ -2745,12 +2830,12 @@ unreserved_keyword:
 	| DEPLOY
 	| DROP
 	| EXISTS
-	| EXTRA
 	| EXTENSION
 	| F
 	| FAILOVER
 	| FAST
 	| FLUSH
+	| FOR
 	| FROM
 	| GET_AGTM_NODE_TOPOLOGY
 	| GET_ALARM_INFO_ASC
@@ -2786,7 +2871,6 @@ unreserved_keyword:
 	| INIT
 	| ITEM
 	| LIST
-	| MASTER
 	| MODE
 	| MONITOR
 	| NODE
@@ -2818,6 +2902,7 @@ reserved_keyword:
 	  ALL
 	| FALSE_P
 	| FORCE
+	| MASTER
 	| NOT
 	| TRUE_P
 	| ON
@@ -2914,7 +2999,7 @@ static List* make_start_agent_args(List *options)
 	char *password = NULL;
 	ListCell *lc;
 	DefElem *def;
-	
+
 	/* for(lc=list_head(options);lc;lc=lnext(lc)) */
 	foreach(lc,options)
 	{
@@ -2929,7 +3014,7 @@ static List* make_start_agent_args(List *options)
 				,errhint("option is password.")));
 		}
 	}
-	
+
 	if(password == NULL)
 		result = list_make1(makeNullAConst(-1));
 	else
@@ -3054,7 +3139,10 @@ static void check_node_name_isvaild(char node_type, List* node_name_list)
 			switch (node_type)
 			{
 				case CNDN_TYPE_COORDINATOR_MASTER:
-					ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", NameStr(name))));
+					ereport(ERROR, (errmsg("coordinator master \"%s\" does not exist", NameStr(name))));
+					break;
+				case CNDN_TYPE_COORDINATOR_SLAVE:
+					ereport(ERROR, (errmsg("coordinator slave \"%s\" does not exist", NameStr(name))));
 					break;
 				case CNDN_TYPE_DATANODE_MASTER:
 					ereport(ERROR, (errmsg("datanode master \"%s\" does not exist", NameStr(name))));
@@ -3062,14 +3150,11 @@ static void check_node_name_isvaild(char node_type, List* node_name_list)
 				case CNDN_TYPE_DATANODE_SLAVE:
 					ereport(ERROR, (errmsg("datanode slave \"%s\" does not exist", NameStr(name))));
 					break;
-				case CNDN_TYPE_DATANODE_EXTRA:
-					ereport(ERROR, (errmsg("datanode extra \"%s\" does not exist", NameStr(name))));
+				case GTM_TYPE_GTM_MASTER:
+					ereport(ERROR, (errmsg("gtm master \"%s\" does not exist", NameStr(name))));
 					break;
 				case GTM_TYPE_GTM_SLAVE:
 					ereport(ERROR, (errmsg("gtm slave \"%s\" does not exist", NameStr(name))));
-					break;
-				case GTM_TYPE_GTM_EXTRA:
-					ereport(ERROR, (errmsg("gtm extra \"%s\" does not exist", NameStr(name))));
 					break;
 				default:
 					ereport(ERROR, (errmsg("node type \"%c\" does not exist", node_type)));

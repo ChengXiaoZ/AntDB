@@ -26,6 +26,9 @@
 #ifdef PGXC
 #include "pgxc/nodemgr.h"
 #endif
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#include "pgxc/slot.h"
+#endif
 #if defined(ADBMGRD)
 #include "postmaster/adbmonitor.h"
 #endif
@@ -137,6 +140,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 #ifdef ADB
 		if (IS_PGXC_COORDINATOR)
 			size = add_size(size, ClusterLockShmemSize());
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		size = add_size(size, SlotShmemSize());
+#endif
 #endif
 #ifdef PGXC
 		size = add_size(size, NodeTablesShmemSize());
@@ -252,6 +258,9 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 #ifdef ADB
 if (IS_PGXC_COORDINATOR)
 	ClusterLockShmemInit();
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	SlotShmemInit();
+#endif
 #endif
 	/*
 	 * Set up other modules that need some shared memory space

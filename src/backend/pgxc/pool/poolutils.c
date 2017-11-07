@@ -107,8 +107,25 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 				 errmsg("pgxc_pool_reload cannot run inside a transaction block")));
 
 	/* A Datanode has no pooler active, so do not bother about that */
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if (IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode)
+	{
+		/* Now session information is reset in correct memory context */
+		old_context = MemoryContextSwitchTo(TopMemoryContext);
+
+		/* Reinitialize session, while old pooler connection is active */
+		InitMultinodeExecutor(true);
+
+		MemoryContextSwitchTo(old_context);
+
+		PG_RETURN_BOOL(true);
+	}
+#else
 	if (IS_PGXC_DATANODE)
 		PG_RETURN_BOOL(true);
+#endif
+
+
 
 #ifdef ADB
 	RemoteXactReloadNode();
@@ -264,7 +281,7 @@ CleanConnection(CleanConnStmt *stmt)
 	{
 		PoolManagerReconnect();
 	}
-	
+
 	/*
 	 * FORCE is activated,
 	 * Send a SIGTERM signal to all the processes and take a lock on Pooler
@@ -381,7 +398,7 @@ DropDBCleanConnection(char *dbname)
 	{
 		PoolManagerReconnect();
 	}
-	
+
 	PoolManagerCleanConnection(dn_list, co_list, dbname, NULL);
 
 	/* Clean up memory */

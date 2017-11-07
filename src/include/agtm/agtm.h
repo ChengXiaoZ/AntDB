@@ -24,11 +24,20 @@
 #define IsNormalDatabase()	(MyDatabaseId != InvalidOid &&		\
 							 MyDatabaseId != TemplateDbOid)
 
+#if (defined AGTM) && (defined ENABLE_EXPANSION)
+#define IsUnderAGTM()		(!isRestoreMode && \
+							  (isPGXCCoordinator || isPGXCDataNode) &&	\
+							  IsUnderPostmaster &&						\
+							  IsNormalDatabase() &&						\
+							  IsNormalProcessingMode())
+#else
 #define IsUnderAGTM()		((isPGXCCoordinator || isPGXCDataNode) &&	\
 							  IsUnderPostmaster &&						\
 							  IsNormalDatabase() &&						\
 							  IsNormalProcessingMode())
-							  
+#endif
+
+
 /* Type of sequence name used when dropping it */
 typedef enum AGTM_SequenceKeyType
 {
@@ -167,7 +176,7 @@ extern void agtm_Schema(const char *dmlSchema);
  */
 extern void agtm_User(const char *dmlUser);
 
-/* 
+/*
  * process command
  */
 void ProcessAGtmCommand(StringInfo input_message, CommandDest dest);

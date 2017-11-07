@@ -54,6 +54,7 @@
 #include "fmgr.h"
 #include "postmaster/autovacuum.h"
 #include "utils/datum.h"
+#include "pgxc/slot.h"
 #endif
 
 static Expr *pgxc_find_distcol_expr(Index varno, AttrNumber attrNum,
@@ -479,8 +480,195 @@ IsLocatorInfoEqual(RelationLocInfo *locInfo1,
  * The returned List is a copy, so it should be freed when finished.
  */
 #ifdef ADB
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
 ExecNodes *
-GetRelationNodes(RelationLocInfo *rel_loc_info, 
+GetRelationNodes(RelationLocInfo *rel_loc_info,
+				 int nelems,
+				 Datum* dist_col_values,
+				 bool* dist_col_nulls,
+				 Oid* dist_col_types,
+				 RelationAccessType accessType)
+{
+	ExecNodes	*exec_nodes;
+	long		hashValue;
+	int		modulo;
+	int		nodeIndex;
+	int		slotstatus;
+
+
+	if (rel_loc_info == NULL)
+		return NULL;
+
+	if(!IS_PGXC_COORDINATOR)
+		return NULL;
+
+
+
+	exec_nodes = makeNode(ExecNodes);
+	exec_nodes->baselocatortype = rel_loc_info->locatorType;
+	exec_nodes->accesstype = accessType;
+
+	switch (rel_loc_info->locatorType)
+	{
+		case LOCATOR_TYPE_REPLICATED:
+
+			/*
+			 * When intention is to read from replicated table, return all the
+			 * nodes so that planner can choose one depending upon the rest of
+			 * the JOIN tree. But while reading with update lock, we need to
+			 * read from the primary node (if exists) so as to avoid the
+			 * deadlock.
+			 * For write access set primary node (if exists).
+			 */
+			exec_nodes->nodeList = list_copy(rel_loc_info->nodeList);
+			if (accessType == RELATION_ACCESS_UPDATE || accessType == RELATION_ACCESS_INSERT)
+			{
+				/* we need to write to all synchronously */
+
+				/*
+				 * Write to primary node first, to reduce chance of a deadlock
+				 * on replicated tables. If -1, do not use primary copy.
+				 */
+				if (IsTableDistOnPrimary(rel_loc_info)
+						&& exec_nodes->nodeList
+						&& list_length(exec_nodes->nodeList) > 1) /* make sure more than 1 */
+				{
+					exec_nodes->primarynodelist = list_make1_int(PGXCNodeGetNodeId(primary_data_node,
+																	PGXC_NODE_DATANODE));
+					exec_nodes->nodeList = list_delete_int(exec_nodes->nodeList,
+															PGXCNodeGetNodeId(primary_data_node,
+															PGXC_NODE_DATANODE));
+				}
+			}
+			else if (accessType == RELATION_ACCESS_READ_FOR_UPDATE &&
+					IsTableDistOnPrimary(rel_loc_info))
+			{
+				/*
+				 * We should ensure row is locked on the primary node to
+				 * avoid distributed deadlock if updating the same row
+				 * concurrently
+				 */
+				exec_nodes->nodeList = list_make1_int(PGXCNodeGetNodeId(primary_data_node, PGXC_NODE_DATANODE));
+			}
+			break;
+
+		case LOCATOR_TYPE_HASH:
+		case LOCATOR_TYPE_MODULO:
+			{
+				bool isValueNull = dist_col_nulls[0];
+
+				Assert(nelems == 1);
+
+				if (!isValueNull)
+				{
+					hashValue = compute_hash(dist_col_types[0], dist_col_values[0],
+												 rel_loc_info->locatorType);
+					modulo = compute_modulo(labs(hashValue), SLOTSIZE);
+					SlotGetInfo(modulo, &nodeIndex, &slotstatus);
+					exec_nodes->nodeList = list_make1_int(nodeIndex);
+				}
+				else
+				{
+					//check if slot info is valid
+					SlotGetInfo(0, &nodeIndex, &slotstatus);
+
+					/* Insert NULL to first slot*/
+					if (accessType == RELATION_ACCESS_INSERT)
+					{
+						SlotGetInfo(0, &nodeIndex, &slotstatus);
+						exec_nodes->nodeList = list_make1_int(nodeIndex);
+					}
+					else
+						exec_nodes->nodeList = list_copy(rel_loc_info->nodeList);
+				}
+			}
+			break;
+
+		case LOCATOR_TYPE_RROBIN:
+			/*
+			 * round robin, get next one in case of insert. If not insert, all
+			 * node needed
+			 */
+			if (accessType == RELATION_ACCESS_INSERT)
+				exec_nodes->nodeList = list_make1_int(GetRoundRobinNode(rel_loc_info->relid));
+			else
+				exec_nodes->nodeList = list_copy(rel_loc_info->nodeList);
+			break;
+
+		case LOCATOR_TYPE_USER_DEFINED:
+			{
+				int 	i;
+				Datum 	result;
+				bool	allValuesNotNull = true;
+
+				Assert(nelems >= 1);
+				Assert(OidIsValid(rel_loc_info->funcid));
+				Assert(rel_loc_info->funcAttrNums);
+
+				for (i = 0; i < nelems; i++)
+				{
+					if(dist_col_nulls[i])
+					{
+						allValuesNotNull = false;
+						break;
+					}
+				}
+
+				exec_nodes->en_funcid = rel_loc_info->funcid;
+
+				/*
+				 * If the table is distributed by user-defined partition function,
+				 * we should get all parameters' value to evaluate the value to
+				 * reduce the Datanodes if possible.
+				 *
+				 * First, check whether values' type match function arguments or not,
+				 * if not, coerce them.
+				 */
+				if (allValuesNotNull)
+				{
+					CoerceUserDefinedFuncArgs(rel_loc_info->funcid,
+											  nelems,
+											  dist_col_values,
+											  dist_col_nulls,
+											  dist_col_types);
+					result = OidFunctionCallN(rel_loc_info->funcid,
+											  nelems,
+											  dist_col_values,
+											  dist_col_nulls);
+					modulo = compute_modulo(labs((long)result), list_length(rel_loc_info->nodeList));
+					nodeIndex = get_node_from_modulo(modulo, rel_loc_info->nodeList);
+					exec_nodes->nodeList = list_make1_int(nodeIndex);
+				} else
+				{
+					if (accessType == RELATION_ACCESS_INSERT)
+						/* Insert NULL to first node*/
+						exec_nodes->nodeList = list_make1_int(linitial_int(rel_loc_info->nodeList));
+					else
+						exec_nodes->nodeList = list_copy(rel_loc_info->nodeList);
+				}
+			}
+			break;
+
+		case LOCATOR_TYPE_META:
+			if (accessType == RELATION_ACCESS_READ)
+				return NULL;
+			else
+				ereport(ERROR, (errmsg("Error: can't use sql to modify meta table. Use command.\n")));
+			break;
+
+			/* PGXCTODO case LOCATOR_TYPE_RANGE: */
+			/* PGXCTODO case LOCATOR_TYPE_CUSTOM: */
+		default:
+			ereport(ERROR, (errmsg("Error: no such supported locator type: %c\n",
+								   rel_loc_info->locatorType)));
+			break;
+	}
+
+	return exec_nodes;
+}
+#else
+ExecNodes *
+GetRelationNodes(RelationLocInfo *rel_loc_info,
 				 int nelems,
 				 Datum* dist_col_values,
 				 bool* dist_col_nulls,
@@ -549,7 +737,7 @@ GetRelationNodes(RelationLocInfo *rel_loc_info,
 				bool isValueNull = dist_col_nulls[0];
 
 				Assert(nelems == 1);
-				
+
 				if (!isValueNull)
 				{
 					hashValue = compute_hash(dist_col_types[0], dist_col_values[0],
@@ -644,6 +832,8 @@ GetRelationNodes(RelationLocInfo *rel_loc_info,
 
 	return exec_nodes;
 }
+
+#endif
 
 #else
 ExecNodes *
@@ -770,6 +960,14 @@ GetRelationNodesByQuals(Oid reloid, Index varno, Node *quals,
 	if (!rel_loc_info)
 		return NULL;
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if(!IS_PGXC_COORDINATOR)
+		return NULL;
+
+	if(rel_loc_info->locatorType == LOCATOR_TYPE_META)
+		return NULL;
+#endif
+
 #ifdef ADB
 	/*
 	 * If the table distributed by user-defined partition function,
@@ -856,7 +1054,7 @@ GetRelationNodesByMultQuals(RelationLocInfo *rel_loc_info,
 							RelationAccessType relaccess)
 {
 	int			i;
-	int 		nargs;		
+	int 		nargs;
 	Oid 		disttype;
 	int32 		disttypmod;
 	Expr		*distcol_expr = NULL;
@@ -962,7 +1160,7 @@ CoerceUserDefinedFuncArgs(Oid funcid,
 	Oid 		srcTypOutput;
 	bool 		srcTypIsVarlena;
 	Datum 		srcValue;
-	
+
 	(void)get_func_signature(funcid, &func_argstype, &nelems);
 	Assert(nargs == nelems);
 
@@ -1050,6 +1248,51 @@ GetAllCoordNodes(void)
 }
 
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+/*
+ * RelationBuildLocatorOnDN
+ * Build locator information associated with the specified relation on the datanode.
+ */
+void
+RelationBuildLocatorOnDN(Relation rel)
+{
+	Relation	pcrel;
+	ScanKeyData	skey;
+	SysScanDesc	pcscan;
+	HeapTuple	htup;
+	Form_pgxc_class	pgxc_class;
+
+	rel->rd_locator_info = NULL;
+	rel->dn_locatorType = LOCATOR_TYPE_INVALID;
+	rel->dn_partAttrNum = -1;
+
+	ScanKeyInit(&skey,
+				Anum_pgxc_class_pcrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelationGetRelid(rel)));
+
+	pcrel = heap_open(PgxcClassRelationId, AccessShareLock);
+	pcscan = systable_beginscan(pcrel, PgxcClassPgxcRelIdIndexId, true,
+								SnapshotNow, 1, &skey);
+	htup = systable_getnext(pcscan);
+
+	if (!HeapTupleIsValid(htup))
+	{
+		systable_endscan(pcscan);
+		heap_close(pcrel, AccessShareLock);
+		return;
+	}
+
+	pgxc_class = (Form_pgxc_class) GETSTRUCT(htup);
+
+	rel->dn_locatorType = pgxc_class->pclocatortype;
+	rel->dn_partAttrNum = pgxc_class->pcattnum;
+
+	systable_endscan(pcscan);
+	heap_close(pcrel, AccessShareLock);
+}
+#endif
+
 /*
  * RelationBuildLocator
  * Build locator information associated with the specified relation.
@@ -1098,10 +1341,16 @@ RelationBuildLocator(Relation rel)
 	relationLocInfo->partAttrNum = pgxc_class->pcattnum;
 	relationLocInfo->nodeList = NIL;
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	for (j = 0; j < NumDataNodes; j++)
+		relationLocInfo->nodeList = lappend_int(relationLocInfo->nodeList,j);
+#else
 	for (j = 0; j < pgxc_class->nodeoids.dim1; j++)
 		relationLocInfo->nodeList = lappend_int(relationLocInfo->nodeList,
-												PGXCNodeGetNodeId(pgxc_class->nodeoids.values[j],
-																  PGXC_NODE_DATANODE));
+								PGXCNodeGetNodeId(pgxc_class->nodeoids.values[j],
+									  PGXC_NODE_DATANODE));
+#endif
+
 
 	/*
 	 * If the locator type is round robin, we set a node to
@@ -1140,12 +1389,12 @@ RelationBuildLocator(Relation rel)
 		bool isnull;
 		int2vector *attrnums = NULL;
 
-		funcidDatum = SysCacheGetAttr(PGXCCLASSRELID, htup, 
+		funcidDatum = SysCacheGetAttr(PGXCCLASSRELID, htup,
 									Anum_pgxc_class_pcfuncid, &isnull);
 		Assert(!isnull);
 		relationLocInfo->funcid = DatumGetObjectId(funcidDatum);
 
-		attrnumsDatum = SysCacheGetAttr(PGXCCLASSRELID, htup, 
+		attrnumsDatum = SysCacheGetAttr(PGXCCLASSRELID, htup,
 									Anum_pgxc_class_pcfuncattnums, &isnull);
 		Assert(!isnull);
 		attrnums = (int2vector *)DatumGetPointer(attrnumsDatum);
@@ -1346,3 +1595,17 @@ pgxc_find_distcol_expr(Index varno,
 	/* Exhausted all quals, but no distribution column expression */
 	return NULL;
 }
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+Datum
+locator_compute_hash(Oid type, Datum value, char locator)
+{
+	return compute_hash(type, value, locator);
+}
+
+int
+locator_compute_modulo(unsigned int numerator, unsigned int denominator)
+{
+	return compute_modulo(numerator, denominator);
+}
+#endif

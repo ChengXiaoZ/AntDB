@@ -1107,7 +1107,7 @@ GetUserDefinedFuncArgVars(Oid relid,
 					{
 						invalid_col = true;
 						break;
-					}					
+					}
 				}
 				break;
 			case 4:
@@ -1162,7 +1162,7 @@ GetUserDefinedFuncArgVars(Oid relid,
 								descriptor->attrs[local_attnum - 1]->atttypmod,
 								descriptor->attrs[local_attnum - 1]->attcollation,
 								0);
-			local_var->location = cref->location;										
+			local_var->location = cref->location;
 			func_var_args = lappend(func_var_args, local_var);
 		}
 	}
@@ -1302,7 +1302,7 @@ GetUserDefinedDistribution(Oid relid,
 
 	/*
 	 * Step 1:
-	 * 
+	 *
 	 * Parse each ColumnRef argument of the function, get a var consists of
 	 * attnum, atttypid, atttypmod and attcollation.
 	 */
@@ -1310,14 +1310,14 @@ GetUserDefinedDistribution(Oid relid,
 
 	/*
 	 * Step 2:
-	 * 
+	 *
 	 * Analyze and get distribute function infomation.
 	 */
 	fnoid = lookup_distribute_function(distributeby->funcname, funcargs);
 
 	/*
 	 * Step 3:
-	 * 
+	 *
 	 * Get column information of distribute function
 	 */
 	nargs = list_length(funcargs);
@@ -1469,7 +1469,7 @@ GetRelationDistributionItems(Oid relid,
 #ifdef ADB
 							 , Oid *funcid
 							 , int *numatts
-							 , int16 **attnums 
+							 , int16 **attnums
 #endif
 							 )
 {
@@ -1508,7 +1508,15 @@ GetRelationDistributionItems(Oid relid,
 
 		/* If we did not find a usable type, fall back to round robin */
 		if (local_attnum == 0)
+		{
+			ereport(ERROR,
+			(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("don't support implicit conversion to RROBIN")));
+
 			local_locatortype = LOCATOR_TYPE_RROBIN;
+		}
+
+
 	}
 	else
 	{
@@ -1584,6 +1592,13 @@ GetRelationDistributionItems(Oid relid,
 												   attnums);
 				}
 				break;
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+			case DISTTYPE_META:
+				local_locatortype = LOCATOR_TYPE_META;
+				break;
+#endif
+
 #endif
 			default:
 				ereport(ERROR,
@@ -1622,7 +1637,7 @@ BuildRelationDistributionNodes(List *nodes, int *numnodes)
 	ListCell *item;
 	*numnodes = 0;
 
-	/* Allocate once enough space for OID array */	  
+	/* Allocate once enough space for OID array */
 	nodeoids = (Oid *) palloc0(list_length(nodes) * sizeof(Oid));
 
 	/* Do process for each node name */

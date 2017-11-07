@@ -1228,6 +1228,25 @@ BuildTupleFromCStrings(AttInMetadata *attinmeta, char **values)
 	return tuple;
 }
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+Datum
+BuildFieldFromCStrings(AttInMetadata *attinmeta, char *value, int fieldnum)
+{
+	TupleDesc	tupdesc = attinmeta->tupdesc;
+	Datum	   	dvalue;
+	int			index;
+
+	index = fieldnum - 1;
+	Assert(!tupdesc->attrs[index]->attisdropped);
+
+	dvalue = (Datum) palloc(sizeof(Datum));
+	dvalue = InputFunctionCall(&attinmeta->attinfuncs[index],
+										   value,
+										   attinmeta->attioparams[index],
+										   attinmeta->atttypmods[index]);
+	return dvalue;
+}
+#endif
 /*
  * HeapTupleHeaderGetDatum - convert a HeapTupleHeader pointer to a Datum.
  *

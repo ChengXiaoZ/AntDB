@@ -256,7 +256,13 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 			iarray_heaphit_read_indexsize[iloop] = 0;
 		}
 		/*heaphit, heapread, indexsize*/
-		appendStringInfoString(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit) from pg_statio_user_tables union all select sum(heap_blks_read) from pg_statio_user_tables union all select round(sum(pg_catalog.pg_indexes_size(c.oid))::numeric(18,4)/1024/1024) from pg_catalog.pg_class c  WHERE c.relkind = 'r' or c.relkind = 't';");
+		/*indexsize: now user "select 1.0" instead of right sql as below because the index 
+		*size is too large and used too much time more then ten minutes.
+		*
+		* select round(sum(pg_catalog.pg_indexes_size(c.oid))::numeric(18,4)/1024/1024) from 
+		*pg_catalog.pg_class c  WHERE c.relkind = 'r' or c.relkind = 't';
+		*/
+		appendStringInfoString(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit) from pg_statio_user_tables union all select sum(heap_blks_read) from pg_statio_user_tables union all select 1.0");
 		monitor_get_sum_all_onetypenode_onedb(rel_node, sqlstr_heaphit_read_indexsize.data, dbname, CNDN_TYPE_DATANODE_MASTER, iarray_heaphit_read_indexsize, 3);
 		
 		heaphit = iarray_heaphit_read_indexsize[0];

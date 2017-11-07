@@ -1,7 +1,7 @@
 # contrib/pgstattuple/Makefile
 
 MODULE_big	= pgstattuple
-OBJS		= pgstattuple.o pgstatindex.o
+OBJS		= pgstattuple.o pgstatindex.o pgstatslot.o
 
 EXTENSION = pgstattuple
 DATA = pgstattuple--1.1.sql pgstattuple--1.0--1.1.sql pgstattuple--unpackaged--1.0.sql

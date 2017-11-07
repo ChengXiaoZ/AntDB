@@ -530,6 +530,15 @@ else
 fi
 AC_SUBST(TAS)
 
+#
+# expansion check
+#
+AC_MSG_CHECKING([enable expansion])
+PGAC_ARG_BOOL(enable, expansion, no, [build in expansion mode],
+              [AC_DEFINE([ENABLE_EXPANSION], 1, [Define to 1 to build enable expansion. (--enable-expansion)])])
+AC_SUBST(enable_expansion)
+AC_MSG_RESULT([${enable_expansion}])
+
 
 #
 # Automatic dependency tracking

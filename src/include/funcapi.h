@@ -232,6 +232,9 @@ extern HeapTuple BuildTupleFromCStrings(AttInMetadata *attinmeta, char **values)
 extern Datum HeapTupleHeaderGetDatum(HeapTupleHeader tuple);
 extern TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc);
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+extern Datum BuildFieldFromCStrings(AttInMetadata *attinmeta, char *value, int fieldnum);
+#endif
 
 /*----------
  *		Support for Set Returning Functions (SRFs)

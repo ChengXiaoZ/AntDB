@@ -222,6 +222,7 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 		DropOwnedStmt ReassignOwnedStmt
 		AlterTSConfigurationStmt AlterTSDictionaryStmt
 		BarrierStmt AlterNodeStmt CreateNodeStmt DropNodeStmt
+		AlterSlotStmt CreateSlotStmt DropSlotStmt FlushSlotStmt CleanSlotStmt
 		CreateNodeGroupStmt DropNodeGroupStmt
 		CreateMatViewStmt RefreshMatViewStmt
 
@@ -276,6 +277,8 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 				name cursor_name file_name
 				index_name opt_index_name cluster_index_specification
 				pgxcnode_name pgxcgroup_name
+
+%type <ival>	slotid
 
 %type <list>	func_name handler_name qual_Op qual_all_Op subquery_Op
 				opt_class opt_inline_handler opt_validator validator_clause
@@ -529,7 +532,8 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 	EXCLUDE EXCLUDING EXCLUSIVE EXECUTE EXISTS EXPLAIN
 	EXTENSION EXTERNAL EXTRACT
 
-	FALSE_P FAMILY FETCH FIRST_P FLOAT_P FOLLOWING FOR FORCE FOREIGN FORWARD
+ /* ADB added FLUSH token */
+	FALSE_P FAMILY FETCH FIRST_P FLOAT_P FLUSH FOLLOWING FOR FORCE FOREIGN FORWARD
 	FREEZE FROM FULL FUNCTION FUNCTIONS
 
 	GLOBAL GRANT GRANTED GREATEST GROUP_P
@@ -574,9 +578,10 @@ static void processCASbits(int cas_bits, int location, const char *constrType,
 	RESET RESTART RESTRICT RETURNING RETURNS REVOKE RIGHT ROLE ROLLBACK
 	ROW ROWS RULE
 
-	SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE SEQUENCES
+ /* ADB added SLOT token */
+ 	SAVEPOINT SCHEMA SCROLL SEARCH SECOND_P SECURITY SELECT SEQUENCE SEQUENCES
 	SERIALIZABLE SERVER SESSION SESSION_USER SET SETOF SHARE
-	SHOW SIMILAR SIMPLE SMALLINT SNAPSHOT SOME STABLE STANDALONE_P START
+	SHOW SIMILAR SIMPLE SLOT SMALLINT SNAPSHOT SOME STABLE STANDALONE_P START
 	STATEMENT STATISTICS STDIN STDOUT STORAGE STRICT_P STRIP_P SUBSTRING
 	SYMMETRIC SYSID SYSTEM_P
 
@@ -725,6 +730,7 @@ stmt :
 			| AlterFunctionStmt
 			| AlterGroupStmt
 			| AlterNodeStmt
+			| AlterSlotStmt
 			| AlterObjectSchemaStmt
 			| AlterOwnerStmt
 			| AlterSeqStmt
@@ -741,6 +747,7 @@ stmt :
 			| BarrierStmt
 			| CheckPointStmt
 			| CleanConnStmt
+			| CleanSlotStmt
 			| ClosePortalStmt
 			| ClusterStmt
 			| CommentStmt
@@ -760,6 +767,7 @@ stmt :
 			| CreateGroupStmt
 			| CreateNodeGroupStmt
 			| CreateNodeStmt
+			| CreateSlotStmt
 			| CreateMatViewStmt
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
@@ -788,6 +796,7 @@ stmt :
 			| DropGroupStmt
 			| DropNodeGroupStmt
 			| DropNodeStmt
+			| DropSlotStmt
 			| DropOpClassStmt
 			| DropOpFamilyStmt
 			| DropOwnedStmt
@@ -804,6 +813,7 @@ stmt :
 			| ExecDirectStmt
 			| ExplainStmt
 			| FetchStmt
+			| FlushSlotStmt
 			| GrantStmt
 			| GrantRoleStmt
 			| IndexStmt
@@ -2228,6 +2238,7 @@ alter_table_cmd:
 				}
 /* PGXC_BEGIN */
 			/* ALTER TABLE <name> DISTRIBUTE BY ... */
+			/*
 			| OptDistributeByInternal
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
@@ -2235,6 +2246,7 @@ alter_table_cmd:
 					n->def = (Node *)$1;
 					$$ = (Node *)n;
 				}
+			*/
 			/* ALTER TABLE <name> TO [ NODE (nodelist) | GROUP groupname ] */
 			| OptSubClusterInternal
 				{
@@ -2431,7 +2443,7 @@ ClosePortalStmt:
 
 CopyFuncStmt:	COPY opt_binary FUNCTION func_expr
 				FROM opt_program copy_file_name
-				TO opt_program copy_file_name opt_with copy_options 
+				TO opt_program copy_file_name opt_with copy_options
 					{
 						CopyFuncStmt *n;
 						if($2)
@@ -3399,8 +3411,11 @@ OptDistributeByInternal:  DISTRIBUTE BY OptDistributeType
 					DistributeBy *n = makeNode(DistributeBy);
 					if (strcmp($3, "replication") == 0)
 						n->disttype = DISTTYPE_REPLICATION;
-					else if (strcmp($3, "roundrobin") == 0)
-						n->disttype = DISTTYPE_ROUNDROBIN;
+					/* forbid roundrobin distribute type if hot expansion */
+					/*else if (strcmp($3, "roundrobin") == 0)
+						n->disttype = DISTTYPE_ROUNDROBIN;*/
+					else if (strcmp($3, "meta") == 0)
+						n->disttype = DISTTYPE_META;
                     else
                         ereport(ERROR,
                                 (errcode(ERRCODE_SYNTAX_ERROR),
@@ -9061,6 +9076,92 @@ DropNodeGroupStmt: DROP NODE GROUP_P pgxcgroup_name
 				}
 		;
 
+/*****************************************************************************
+ *
+ *		QUERY:
+ *
+ *		FLUSH SLOT
+ *
+ *****************************************************************************/
+ FlushSlotStmt: FLUSH SLOT
+				{
+					FlushSlotStmt *n = makeNode(FlushSlotStmt);
+					$$ = (Node *)n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *
+ *		FLUSH SLOT
+ *
+ *****************************************************************************/
+ CleanSlotStmt: CLEAN SLOT pgxcnode_name
+				{
+					CleanSlotStmt *n = makeNode(CleanSlotStmt);
+					n->table_name = $3;
+					$$ = (Node *)n;
+				}
+		;
+/*****************************************************************************
+ *
+ *		QUERY:
+ *
+ *		CREATE SLOT slotid WITH
+ *				(
+UNRESERVED_KEYWORD *					[ NODENAME = 'nodename', ]
+ *				)
+ *
+ *****************************************************************************/
+
+CreateSlotStmt: CREATE SLOT slotid OptWith
+				{
+					CreateSlotStmt *n = makeNode(CreateSlotStmt);
+					n->slotid = $3;
+					n->options = $4;
+					$$ = (Node *)n;
+				}
+		;
+
+slotid:
+			Iconst							{ $$ = $1; };
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *		ALTER SLOT slotid WITH
+ *				(
+ *					[ NODENAME = 'nodename', ]
+ *					[ STATUS = 'status', ]
+ *				)
+ *
+ *****************************************************************************/
+
+AlterSlotStmt: ALTER SLOT slotid OptWith
+				{
+					AlterSlotStmt *n = makeNode(AlterSlotStmt);
+					n->slotid = $3;
+					n->options = $4;
+					$$ = (Node *)n;
+				}
+		;
+
+/*****************************************************************************
+ *
+ *		QUERY:
+ *				DROP SLOT slotid
+ *
+ *****************************************************************************/
+
+DropSlotStmt: DROP SLOT slotid
+				{
+					DropSlotStmt *n = makeNode(DropSlotStmt);
+					n->slotid = $3;
+					$$ = (Node *)n;
+				}
+		;
+
 /* PGXC_END */
 
 /*****************************************************************************
@@ -13249,6 +13350,7 @@ ColLabel:	IDENT									{ $$ = $1; }
 /* "Unreserved" keywords --- available for use as any kind of name.
  */
 /* PGXC - added DISTRIBUTE, DIRECT, COORDINATOR, CLEAN, NODE, BARRIER */
+/* ADB --added SLOT */
 unreserved_keyword:
 			  ABORT_P
 			| ABSOLUTE_P
@@ -13339,6 +13441,9 @@ unreserved_keyword:
 			| EXTERNAL
 			| FAMILY
 			| FIRST_P
+/* ADB BEGIN */
+			| FLUSH
+/* ADB END */
 			| FOLLOWING
 			| FORCE
 			| FORWARD
@@ -13466,6 +13571,9 @@ unreserved_keyword:
 			| SHARE
 			| SHOW
 			| SIMPLE
+/* ADB BEGIN */
+			| SLOT
+/* ADB END */
 			| SNAPSHOT
 			| STABLE
 			| STANDALONE_P

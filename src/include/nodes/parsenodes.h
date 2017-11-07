@@ -265,6 +265,8 @@ typedef struct PriorExpr
 	Node	   *expr;
 }PriorExpr;
 
+
+
 #endif /* ADB */
 
 /*
@@ -1009,7 +1011,7 @@ typedef struct CommonTableExpr
 /*
  * oracle rownum expr
  */
-typedef struct 
+typedef struct
 {
 	NodeTag		type;
 	int			location;		/* token location, or -1 if unknown */
@@ -1059,7 +1061,7 @@ typedef struct BaseStmt
 							 * Due to get itself sql text of each parsetree in
 							 * "exec_simple_query" and no other use, so we don't
 							 * deal with the "endpos" parameter of every statement,
-							 * see below, in functions such as "equal()", 
+							 * see below, in functions such as "equal()",
 							 * "_outNode" and "parseNodeString".
 							 */
 } BaseStmt;
@@ -1147,6 +1149,11 @@ typedef struct BaseStmt
 	IsA(node, DropNodeStmt) || \
 	IsA(node, CreateGroupStmt) || \
 	IsA(node, DropGroupStmt) || \
+	IsA(node, CreateSlotStmt) || \
+	IsA(node, AlterSlotStmt) || \
+	IsA(node, DropSlotStmt) || \
+	IsA(node, FlushSlotStmt) || \
+	IsA(node, CleanSlotStmt) || \
 	IsA(node, ExplainStmt) || \
 	IsA(node, CreateTableAsStmt) || \
 	IsA(node, RefreshMatViewStmt) || \
@@ -2927,6 +2934,8 @@ typedef struct BarrierStmt
 	const char	*id;			/* User supplied barrier id, if any */
 } BarrierStmt;
 
+
+
 /*
  * ----------------------
  *      Create Node statement
@@ -2967,6 +2976,61 @@ typedef struct DropNodeStmt
 #endif
 	char		*node_name;
 } DropNodeStmt;
+
+
+typedef struct CreateSlotStmt
+{
+	NodeTag		type;
+#ifdef ADB
+	int 		endpos;			/* the position of ';' in the sql */
+#endif
+	int 		slotid;
+	List		*options;
+} CreateSlotStmt;
+
+typedef struct AlterSlotStmt
+{
+	NodeTag		type;
+#ifdef ADB
+	int 		endpos;			/* the position of ';' in the sql */
+#endif
+	int 		slotid;
+	List		*options;
+} AlterSlotStmt;
+
+typedef struct DropSlotStmt
+{
+	NodeTag		type;
+#ifdef ADB
+	int 		endpos;			/* the position of ';' in the sql */
+#endif
+	int			slotid;
+} DropSlotStmt;
+
+/*
+ * ----------------------
+ *      Flush Slot table
+ */
+typedef struct FlushSlotStmt
+{
+	NodeTag		type;
+#ifdef ADB
+	int 		endpos;			/* the position of ';' in the sql */
+#endif
+} FlushSlotStmt;
+
+/*
+ * ----------------------
+ *      Clean Slot table
+ */
+typedef struct CleanSlotStmt
+{
+	NodeTag		type;
+#ifdef ADB
+	int 		endpos;			/* the position of ';' in the sql */
+#endif
+	char		*table_name;
+} CleanSlotStmt;
 
 /*
  * ----------------------
@@ -3304,5 +3368,6 @@ typedef struct CleanConnStmt
 	bool		is_force;	/* option force  */
 } CleanConnStmt;
 /* PGXC_END */
+
 
 #endif   /* PARSENODES_H */

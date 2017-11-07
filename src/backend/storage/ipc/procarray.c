@@ -27,7 +27,7 @@
  *
  * The member max_xcnt was added as SnapshotData member to indicate the
  * real size of xip array.
- * 
+ *
  * Here, the following assumption is made for SnapshotData struct throughout
  * this module.
  *
@@ -1685,12 +1685,17 @@ GetSnapshotData(Snapshot snapshot)
 	 */
 	if (TransactionIdPrecedes(xmin, globalxmin))
 		globalxmin = xmin;
-	
+
+	if (!TransactionIdIsNormal(RecentGlobalXmin))
+		RecentGlobalXmin = FirstNormalTransactionId;
+
+	if (RecentGlobalXmin==FirstNormalTransactionId)
+		RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
+
 	if(TransactionIdFollows(RecentGlobalXmin , (globalxmin - vacuum_defer_cleanup_age)))
 		/* Update global variables too */
 		RecentGlobalXmin = globalxmin - vacuum_defer_cleanup_age;
-	if (!TransactionIdIsNormal(RecentGlobalXmin))
-		RecentGlobalXmin = FirstNormalTransactionId;
+
 	RecentXmin = xmin;
 
 	snapshot->xmin = xmin;

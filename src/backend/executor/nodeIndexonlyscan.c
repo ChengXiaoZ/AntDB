@@ -33,6 +33,9 @@
 #include "storage/predicate.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#include "pgxc/slot.h"
+#endif
 
 
 static TupleTableSlot *IndexOnlyNext(IndexOnlyScanState *node);
@@ -98,9 +101,16 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 * reading the TID; and (2) is satisfied by the acquisition of the
 		 * buffer content lock in order to insert the TID.
 		 */
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if ((adb_slot_enable_mvcc)
+		||(!visibilitymap_test(scandesc->heapRelation,
+							ItemPointerGetBlockNumber(tid),
+							&node->ioss_VMBuffer)))
+#else
 		if (!visibilitymap_test(scandesc->heapRelation,
 								ItemPointerGetBlockNumber(tid),
 								&node->ioss_VMBuffer))
+#endif
 		{
 			/*
 			 * Rats, we have to visit the heap to check visibility.

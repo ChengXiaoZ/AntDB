@@ -119,6 +119,9 @@
 
 #ifdef ADB
 #include "pgxc/pause.h"
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#include "pgxc/slot.h"
+#endif
 #endif
 
 extern int	optind;
@@ -235,6 +238,7 @@ int    hash_size = 0;
 Oid   *adbload_types = NULL;
 Datum *adbload_values = NULL;
 Oid    func_oid = 0;
+
 #endif
 extern bool Debug_print_grammar;
 
@@ -4509,6 +4513,7 @@ PostgresMain(int argc, char *argv[],
 #endif /* ADB */
 
 		InitMultinodeExecutor(false);
+
 		if (!IsConnFromCoord())
 		{
 			pool_handle = GetPoolManagerHandle();
@@ -4537,6 +4542,17 @@ PostgresMain(int argc, char *argv[],
 	}
 	if (!am_walsender && IS_PGXC_DATANODE)
 	{
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		if(IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode)
+		{
+			CurrentResourceOwner = ResourceOwnerCreate(NULL, "ForPGXCNodes");
+			InitMultinodeExecutor(false);
+			ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_BEFORE_LOCKS, true, true);
+			ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_LOCKS, true, true);
+			ResourceOwnerRelease(CurrentResourceOwner, RESOURCE_RELEASE_AFTER_LOCKS, true, true);
+			CurrentResourceOwner = NULL;
+		}
+#endif
 		/* If we exit, first try and clean connection to GTM */
 		on_proc_exit (DataNodeShutdown, 0);
 	}
@@ -4620,6 +4636,9 @@ PostgresMain(int argc, char *argv[],
 		debug_query_string = NULL;
 
 #ifdef ADB
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		adb_slot_enable_clean = false;
+#endif
 		/*
 		 * Tell xact.c we are in a fatal transaction.
 		 */
@@ -4797,6 +4816,10 @@ PostgresMain(int argc, char *argv[],
 		DoingCommandRead = false;
 
 #ifdef ADB
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		adb_slot_enable_clean = false;
+#endif
+
 		/*
 		 * Acquire the ClusterLock before starting query processing.
 		 *
@@ -5196,7 +5219,7 @@ PostgresMain(int argc, char *argv[],
 				}
 				break;
 
-
+#if 0
 			case 'b':			/* barrier */
 				{
 					int command;
@@ -5227,6 +5250,7 @@ PostgresMain(int argc, char *argv[],
 					}
 				}
 				break;
+#endif
 #endif /* PGXC */
 
 			default:

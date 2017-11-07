@@ -48,7 +48,12 @@ extern Datum xc_lockForBackupKey2;
 #define IS_PGXC_COORDINATOR isPGXCCoordinator
 #define IS_PGXC_DATANODE isPGXCDataNode
 #define REMOTE_CONN_TYPE remoteConnType
+
+
 #ifdef ADB
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#define IS_PGXC_REAL_DATANODE (IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode)
+#endif
 #define IS_ADBLOADER isADBLoader
 #endif
 

@@ -25,6 +25,10 @@
 										 * replicated and distributed table */
 #ifdef ADB
 #define LOCATOR_TYPE_USER_DEFINED 'U'
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#define LOCATOR_TYPE_META 'A'
+#define LOCATOR_TYPE_INVALID 'X'
+#endif
 #endif
 
 /* Maximum number of preferred Datanodes that can be defined in cluster */
@@ -52,6 +56,9 @@
 										x == LOCATOR_TYPE_RANGE)
 #ifdef ADB
 #define IsLocatorDistributedByUserDefined(x) (x == LOCATOR_TYPE_USER_DEFINED)
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#define IsLocatorMeta(x) (x == LOCATOR_TYPE_META)
+#endif
 #endif
 
 #include "nodes/primnodes.h"
@@ -141,6 +148,9 @@ extern char *GetRelationDistribColumn(RelationLocInfo *locInfo);
 #ifdef ADB
 extern List *GetRelationDistribColumnList(RelationLocInfo *locInfo);
 extern Oid GetRelationDistribFunc(Oid relid);
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+extern void RelationBuildLocatorOnDN(Relation rel);
+#endif
 #endif
 extern char GetLocatorType(Oid relid);
 extern List *GetPreferredReplicationNode(List *relNodes);
@@ -181,6 +191,11 @@ extern void CoerceUserDefinedFuncArgs(Oid funcid,
 									  Datum *values,
 									  bool *nulls,
 									  Oid *types);
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+extern Datum locator_compute_hash(Oid type, Datum value, char locator);
+extern int locator_compute_modulo(unsigned int numerator, unsigned int denominator);
+#endif
 #endif
 
 /* Global locator data */

@@ -442,6 +442,9 @@ static const struct config_enum_entry command_mode[] = {
 };
 
 extern int mgr_cmd_mode;
+
+extern char	*MGRDatabaseName;
+
 #endif /* ADBMGRD */
 /*
  * Options for enum values stored in other modules
@@ -521,6 +524,12 @@ int			AGtmPort;
 int			pool_time_out;
 bool		enable_zero_year;
 bool		distribute_by_replication_default;
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+bool		adb_slot_enable_mvcc;
+char*		SlotDatabaseName;
+#endif
+
 #endif
 #ifdef DEBUG_ADB
 bool		ADB_DEBUG;
@@ -1809,6 +1818,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	{
+		{"adb_slot_enable_mvcc", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("enable slot mvcc."),
+			NULL
+		},
+		&adb_slot_enable_mvcc,
+		false,
+		NULL, NULL, NULL
+	},
+#endif
+
 	{
 		{"copy_cmd_comment", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("enable copy command comment."),
@@ -2981,7 +3002,7 @@ static struct config_int ConfigureNamesInt[] =
 		&rep_max_avail_lsn_lag,
 		8192, 1, 8192*10,
 		NULL, NULL, NULL
-	},		
+	},
 #endif /* ADB */
 #endif /* PGXC */
 #ifdef AGTM
@@ -3661,7 +3682,18 @@ static struct config_string ConfigureNamesString[] =
 		"pg_catalog.simple",
 		check_TSCurrentConfig, assign_TSCurrentConfig, NULL
 	},
-
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
+	{
+		{"mgr_database_name", PGC_USERSET, ADBMONITOR,
+			gettext_noop("The database name mgr connects to."),
+			NULL,
+			GUC_IS_NAME
+		},
+		&MGRDatabaseName,
+		"",
+		NULL, NULL, NULL
+	},
+#endif /* ADBMGRD */
 #ifdef PGXC
 	{
 		{"agtm_host", PGC_SIGHUP, GTM,
@@ -3732,7 +3764,7 @@ static struct config_string ConfigureNamesString[] =
 		"YYYY-MM-DD HH24:MI:SS.US",
 		NULL, NULL, NULL
 	},
-		
+
 	{
 		{"nls_timestamp_tz_format", PGC_USERSET, CUSTOM_OPTIONS,
 			gettext_noop("Emulate oracle's timestamp with time zone output behaviour."),
@@ -3776,6 +3808,20 @@ static struct config_string ConfigureNamesString[] =
 		"//",
 		check_string_valid, NULL, NULL
 	},
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	{
+		{"slot_database_name", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("The database that adb.adb_slot exists in."),
+			NULL,
+			GUC_IS_NAME
+		},
+		&SlotDatabaseName,
+		"postgres",
+		NULL, NULL, NULL
+	},
+#endif
+
 #endif
 
 	/* End-of-list marker */
