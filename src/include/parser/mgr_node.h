@@ -39,7 +39,7 @@ typedef struct MGRAlterHost
 typedef struct MGRAlterParm
 {
 	NodeTag		type;
-	bool		if_not_exists;	
+	bool		if_not_exists;
 	char		*parmkey;		/* parm name */
 	char		*parmnode;		/* parm node */
 	List		*options;	/* list of DefElem */
@@ -49,8 +49,8 @@ typedef struct MGRAlterParm
 typedef struct MGRAddNode
 {
 	NodeTag		type;
-	bool		if_not_exists;
 	char		nodetype;	/*gtm/coordinator/datanode master/slave/extern*/
+	char		*mastername;
 	char		*name;			/* node name */
 	List		*options;		/* list of DefElem */
 }MGRAddNode;
@@ -58,7 +58,6 @@ typedef struct MGRAddNode
 typedef struct MGRAlterNode
 {
 	NodeTag		type;
-	bool		if_not_exists;
 	char		nodetype;	/*gtm/coordinator/datanode master/slave/extern*/
 	char		*name;			/* node name */
 	List		*options;		/* list of DefElem */
@@ -67,9 +66,8 @@ typedef struct MGRAlterNode
 typedef struct MGRDropNode
 {
 	NodeTag		type;
-	bool		if_exists;
 	char		nodetype;	/*gtm/coordinator/datanode master/slave/extern*/
-	List		*names;		/* list of A_Const(String) */
+	char		*name;		/* list of A_Const(String) */
 }MGRDropNode;
 
 typedef struct MGRUpdateparm
@@ -191,5 +189,11 @@ typedef struct MonitorDeleteData
 	NodeTag         type;
 	int32		days;
 }MonitorDeleteData;
+
+typedef struct ClusterSlotInitStmt
+{
+	NodeTag		type;
+	List		*options;
+}ClusterSlotInitStmt;
 
 #endif /* MGR_NODE_H */

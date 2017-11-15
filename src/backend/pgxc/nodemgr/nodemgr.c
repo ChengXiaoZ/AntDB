@@ -676,18 +676,25 @@ PgxcNodeAlter(AlterNodeStmt *stmt)
 		new_primary = nodeOid;
 
 	/* Check type dependency */
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if(isPGXCCoordinator)
+	{
+#endif
 	if (node_type_old == PGXC_NODE_COORDINATOR &&
 		node_type == PGXC_NODE_DATANODE)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("PGXC node %s: cannot alter Coordinator to Datanode",
 						node_name)));
-	else if (node_type_old == PGXC_NODE_DATANODE &&
+ 	else if (node_type_old == PGXC_NODE_DATANODE &&
 			 node_type == PGXC_NODE_COORDINATOR)
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("PGXC node %s: cannot alter Datanode to Coordinator",
 						node_name)));
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	}
+#endif
 
 	/* Update values for catalog entry */
 	MemSet(new_record, 0, sizeof(new_record));

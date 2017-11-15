@@ -81,7 +81,6 @@
 #include "utils/syscache.h"
 #include "utils/tqual.h"
 
-
 /*
  *		name of relcache init file(s), used to speed up backend startup
  */
@@ -931,6 +930,22 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 		relation->trigdesc = NULL;
 
 #ifdef PGXC
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if ((IS_PGXC_COORDINATOR||(IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode))
+		&& relation->rd_id >= FirstNormalObjectId &&
+		!IsAutoVacuumWorkerProcess()
+#if defined(ADBMGRD)
+		&& !IsAnyAdbMonitorProcess()
+#endif
+		)
+		{
+			if(IS_PGXC_COORDINATOR)
+				RelationBuildLocator(relation);
+			else
+				RelationBuildLocatorOnDN(relation);
+		}
+#else
 	if (IS_PGXC_COORDINATOR &&
 		relation->rd_id >= FirstNormalObjectId &&
 		!IsAutoVacuumWorkerProcess()
@@ -939,6 +954,8 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 #endif
 		)
 		RelationBuildLocator(relation);
+#endif
+
 #endif
 	/*
 	 * if it's an index, initialize index-related information

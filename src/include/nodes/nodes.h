@@ -477,7 +477,7 @@ typedef enum NodeTag
 	,T_MGRDropGtm
 	,T_MGRListGtm
 	,T_MGRListParm
-	,T_MGRAddNode	
+	,T_MGRAddNode
 	,T_MGRAlterNode
 	,T_MGRDropNode
 	,T_MGRListNode
@@ -497,6 +497,7 @@ typedef enum NodeTag
 	,T_MgrRemoveNode
 	,T_MGRSetClusterInit
 	,T_MonitorDeleteData
+	,T_ClusterSlotInitStmt
 	/*,T_MGRDrop
 	,T_MGRList
 	,T_MGRMonitor
@@ -505,6 +506,19 @@ typedef enum NodeTag
 	,T_MGRRestart*/
 	,T_MGR_NODE_END
 #endif /* ADBMGRD */
+
+#ifdef ADB
+	/*
+	 * TAGS FOR SLOT
+	 * (slot.h)
+	 */
+	,T_CreateSlotStmt,
+	T_AlterSlotStmt,
+	T_DropSlotStmt,
+	T_FlushSlotStmt,
+	T_CleanSlotStmt
+#endif
+
 } NodeTag;
 
 /*

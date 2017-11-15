@@ -74,6 +74,12 @@
 #include "pgxc/pgxc.h"
 #endif
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+#include "pgxc/slot.h"
+#define SLOT_ERR_MVCC 		elog(ERROR, "%s:fatal error. clean slot when mvcc is off.", PGXCNodeName);
+#define SLOT_ERR_DN 		elog(ERROR, "%s:clean slot cmd only deletes data on datanode.", PGXCNodeName);
+#define SLOT_ERR_HTABLE 	elog(ERROR, "%s:clean slot cmd only deletes hash table or toast table.", PGXCNodeName);
+#endif
 
 /* GUC variable */
 bool		synchronize_seqscans = true;
@@ -411,6 +417,33 @@ heapgetpage(HeapScanDesc scan, BlockNumber page)
 			CheckForSerializableConflictOut(valid, scan->rs_rd, &loctup,
 											buffer, snapshot);
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+			//only check tuple slot in datanode and hash distribution
+			if ((valid)
+				&& IS_PGXC_REAL_DATANODE
+				&&(LOCATOR_TYPE_HASH == scan->rs_rd->dn_locatorType))
+			{
+				if(adb_slot_enable_mvcc)
+					valid = HeapTupleSatisfiesSlot(scan->rs_rd, &loctup);
+				else if(adb_slot_enable_clean)
+					SLOT_ERR_MVCC;
+			}
+
+			if(adb_slot_enable_clean)
+			{
+				if(RelationGetRelid(scan->rs_rd) >= FirstNormalObjectId)
+				{
+					if(!IS_PGXC_DATANODE)
+						SLOT_ERR_DN;
+
+					if(!(LOCATOR_TYPE_HASH == scan->rs_rd->dn_locatorType
+						||RELKIND_TOASTVALUE==scan->rs_rd->rd_rel->relkind))
+						SLOT_ERR_HTABLE;
+				}
+			}
+
+
+#endif
 			if (valid)
 				scan->rs_vistuples[ntup++] = lineoff;
 		}
@@ -610,6 +643,33 @@ heapgettup(HeapScanDesc scan,
 				if (valid && key != NULL)
 					HeapKeyTest(tuple, RelationGetDescr(scan->rs_rd),
 								nkeys, key, valid);
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+				//only check tuple slot in datanode and hash distribution
+				if ((valid)
+					&& IS_PGXC_REAL_DATANODE
+					&&(LOCATOR_TYPE_HASH == scan->rs_rd->dn_locatorType))
+				{
+					if(adb_slot_enable_mvcc)
+						valid = HeapTupleSatisfiesSlot(scan->rs_rd, tuple);
+					else if(adb_slot_enable_clean)
+						SLOT_ERR_MVCC;
+				}
+
+				if(adb_slot_enable_clean)
+				{
+					if(RelationGetRelid(scan->rs_rd) >= FirstNormalObjectId)
+					{
+						if(!IS_PGXC_DATANODE)
+							SLOT_ERR_DN;
+
+						if(!(LOCATOR_TYPE_HASH == scan->rs_rd->dn_locatorType
+							||RELKIND_TOASTVALUE==scan->rs_rd->rd_rel->relkind))
+							SLOT_ERR_HTABLE;
+					}
+				}
+
+#endif
 
 				if (valid)
 				{
@@ -1621,6 +1681,32 @@ heap_fetch(Relation relation,
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if ((valid)
+		&& IS_PGXC_REAL_DATANODE
+		&&(LOCATOR_TYPE_HASH == relation->dn_locatorType))
+	{
+		if(adb_slot_enable_mvcc)
+			valid = HeapTupleSatisfiesSlot(relation, tuple);
+		else if(adb_slot_enable_clean)
+			SLOT_ERR_MVCC;
+	}
+
+	if(adb_slot_enable_clean)
+	{
+		if(RelationGetRelid(relation) >= FirstNormalObjectId)
+		{
+			if(!IS_PGXC_DATANODE)
+				SLOT_ERR_DN;
+
+			if(!(LOCATOR_TYPE_HASH == relation->dn_locatorType
+				||RELKIND_TOASTVALUE==relation->rd_rel->relkind))
+				SLOT_ERR_HTABLE;
+		}
+	}
+
+#endif
+
 	if (valid)
 	{
 		/*
@@ -1756,6 +1842,33 @@ heap_hot_search_buffer(ItemPointer tid, Relation relation, Buffer buffer,
 			valid = HeapTupleSatisfiesVisibility(heapTuple, snapshot, buffer);
 			CheckForSerializableConflictOut(valid, relation, heapTuple,
 											buffer, snapshot);
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+			if ((valid)
+				&& IS_PGXC_REAL_DATANODE
+				&&(LOCATOR_TYPE_HASH == relation->dn_locatorType))
+			{
+				if(adb_slot_enable_mvcc)
+					valid = HeapTupleSatisfiesSlot(relation, heapTuple);
+				else if(adb_slot_enable_clean)
+					SLOT_ERR_MVCC;
+			}
+
+			if(adb_slot_enable_clean)
+			{
+				if(RelationGetRelid(relation) >= FirstNormalObjectId)
+				{
+					if(!IS_PGXC_DATANODE)
+						SLOT_ERR_DN;
+
+					if(!(LOCATOR_TYPE_HASH == relation->dn_locatorType
+						||RELKIND_TOASTVALUE==relation->rd_rel->relkind))
+						SLOT_ERR_HTABLE;
+				}
+			}
+
+#endif
+
 			if (valid)
 			{
 				ItemPointerSetOffsetNumber(tid, offnum);
@@ -1921,6 +2034,34 @@ heap_get_latest_tid(Relation relation,
 		 */
 		valid = HeapTupleSatisfiesVisibility(&tp, snapshot, buffer);
 		CheckForSerializableConflictOut(valid, relation, &tp, buffer, snapshot);
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		if ((valid)
+			&& IS_PGXC_REAL_DATANODE
+			&&(LOCATOR_TYPE_HASH == relation->dn_locatorType))
+		{
+			if(adb_slot_enable_mvcc)
+				valid = HeapTupleSatisfiesSlot(relation, &tp);
+		else if(adb_slot_enable_clean)
+				SLOT_ERR_MVCC;
+		}
+
+		if(adb_slot_enable_clean)
+		{
+			if(RelationGetRelid(relation) >= FirstNormalObjectId)
+			{
+				if(!IS_PGXC_DATANODE)
+					SLOT_ERR_DN;
+
+				if(!(LOCATOR_TYPE_HASH == relation->dn_locatorType
+					||RELKIND_TOASTVALUE==relation->rd_rel->relkind))
+					SLOT_ERR_HTABLE;
+			}
+		}
+
+#endif
+
+
 		if (valid)
 			*tid = ctid;
 

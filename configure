@@ -729,6 +729,7 @@ with_tcl
 enable_thread_safety
 INCLUDES
 autodepend
+enable_expansion
 TAS
 GCC
 CPP
@@ -824,6 +825,7 @@ with_segsize
 with_wal_blocksize
 with_wal_segsize
 with_CC
+enable_expansion
 enable_depend
 enable_cassert
 enable_thread_safety
@@ -1499,6 +1501,7 @@ Optional Features:
   --enable-profiling      build with profiling enabled
   --enable-coverage       build with coverage testing instrumentation
   --enable-dtrace         build with DTrace support
+  --enable-expansion      build in expansion mode
   --enable-depend         turn on automatic dependency tracking
   --enable-cassert        enable assertion checks (for debugging)
   --disable-thread-safety disable thread-safety in client libraries
@@ -5310,6 +5313,44 @@ else
   TAS=""
 fi
 
+
+#
+# expansion check
+#
+{ $as_echo "$as_me:$LINENO: checking enable expansion" >&5
+$as_echo_n "checking enable expansion... " >&6; }
+
+
+# Check whether --enable-expansion was given.
+if test "${enable_expansion+set}" = set; then
+  enableval=$enable_expansion;
+  case $enableval in
+    yes)
+
+cat >>confdefs.h <<\_ACEOF
+#define ENABLE_EXPANSION 1
+_ACEOF
+
+      ;;
+    no)
+      :
+      ;;
+    *)
+      { { $as_echo "$as_me:$LINENO: error: no argument expected for --enable-expansion option" >&5
+$as_echo "$as_me: error: no argument expected for --enable-expansion option" >&2;}
+   { (exit 1); exit 1; }; }
+      ;;
+  esac
+
+else
+  enable_expansion=no
+
+fi
+
+
+
+{ $as_echo "$as_me:$LINENO: result: ${enable_expansion}" >&5
+$as_echo "${enable_expansion}" >&6; }
 
 
 #

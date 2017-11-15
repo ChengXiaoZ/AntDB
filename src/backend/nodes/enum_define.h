@@ -583,6 +583,7 @@ BEGIN_ENUM(DistributionType)
 	ENUM_VALUE(DISTTYPE_MODULO)
 #ifdef ADB
 	ENUM_VALUE(DISTTYPE_USER_DEFINED)
+	ENUM_VALUE(DISTTYPE_META)	
 #endif /* ADB */
 END_ENUM(DistributionType)
 #endif /* NO_ENUM_DistributionType */

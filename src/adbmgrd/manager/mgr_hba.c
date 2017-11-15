@@ -624,7 +624,7 @@ static void drop_hba_nodename_value(char *coord_name, char *hbavalue, GetAgentCm
 	initStringInfo(&getAgentCmdRst.description);
 	/*step1: check the nodename is exist in the mgr_node table and make sure it has been initialized*/
 	rel = heap_open(NodeRelationId, AccessShareLock);
-	tuple = mgr_get_tuple_node_from_name_type(rel, coord_name, CNDN_TYPE_COORDINATOR_MASTER);
+	tuple = mgr_get_tuple_node_from_name_type(rel, coord_name);
 	if(!(HeapTupleIsValid(tuple)))
 	{
 		 ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)

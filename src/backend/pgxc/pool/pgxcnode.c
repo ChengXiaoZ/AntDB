@@ -134,6 +134,145 @@ init_pgxc_handle(PGXCNodeHandle *pgxc_handle)
 }
 
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+/*
+ * Allocate and initialize memory to store Datanode and Coordinator handles.
+ */
+void
+InitMultinodeExecutor(bool is_force)
+{
+	int				count;
+	Oid				*coOids = NULL;
+	Oid				*dnOids = NULL;
+#ifdef ADB
+	char			*nodeName = NULL;
+#endif
+
+	/* Free all the existing information first */
+	if (is_force)
+		pgxc_node_all_free();
+
+	/* This function could get called multiple times because of sigjmp */
+	if (dn_handles != NULL &&
+		co_handles != NULL)
+		return;
+
+	/* Update node table in the shared memory */
+	PgxcNodeListAndCount();
+
+	/* Get classified list of node Oids */
+	PgxcNodeGetOids(&coOids, &dnOids, (int*)&NumCoords, (int*)&NumDataNodes, true);
+
+	/* Do proper initialization of handles */
+	if (NumDataNodes > 0)
+		dn_handles = (PGXCNodeHandle *)
+			palloc0(NumDataNodes * sizeof(PGXCNodeHandle));
+	if (NumCoords > 0)
+		co_handles = (PGXCNodeHandle *)
+			palloc0(NumCoords * sizeof(PGXCNodeHandle));
+
+	if ((!dn_handles && NumDataNodes > 0) ||
+		(!co_handles && NumCoords > 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory for node handles")));
+
+	/* Initialize new empty slots */
+	for (count = 0; count < NumDataNodes; count++)
+	{
+		init_pgxc_handle(&dn_handles[count]);
+		dn_handles[count].nodeoid = dnOids[count];
+#ifdef ADB
+		dn_handles[count].type = PGXC_NODE_DATANODE;
+		nodeName = get_pgxc_nodename(dn_handles[count].nodeoid);
+		strncpy(NameStr(dn_handles[count].name),
+				nodeName,
+				NAMEDATALEN);
+		pfree(nodeName);
+#endif
+	}
+	for (count = 0; count < NumCoords; count++)
+	{
+		init_pgxc_handle(&co_handles[count]);
+		co_handles[count].nodeoid = coOids[count];
+#ifdef ADB
+		co_handles[count].type = PGXC_NODE_COORDINATOR;
+		nodeName = get_pgxc_nodename(co_handles[count].nodeoid);
+		strncpy(NameStr(co_handles[count].name),
+				nodeName,
+				NAMEDATALEN);
+		pfree(nodeName);
+#endif
+	}
+
+#ifdef ADB
+	if (coOids)
+		pfree(coOids);
+	if (dnOids)
+		pfree(dnOids);
+#endif
+
+	datanode_count = 0;
+	coord_count = 0;
+	PGXCNodeId = 0;
+
+	if (IS_PGXC_COORDINATOR)
+	{
+		for (count = 0; count < NumCoords; count++)
+		{
+			if (pg_strcasecmp(PGXCNodeName,
+					   get_pgxc_nodename(co_handles[count].nodeoid)) == 0)
+			{
+				PGXCNodeId = count + 1;
+				PGXCNodeOid = co_handles[count].nodeoid;
+				break;
+			}
+			PGXCNodeId = count + 1;
+		}
+	}
+	else /* DataNode */
+	{
+		for (count = 0; count < NumDataNodes; count++)
+		{
+			if (pg_strcasecmp(PGXCNodeName,
+					   get_pgxc_nodename(dn_handles[count].nodeoid)) == 0)
+			{
+				PGXCNodeId = count + 1;
+				PGXCNodeOid = dn_handles[count].nodeoid;
+				break;
+			}
+			PGXCNodeId = count + 1;
+
+		}
+
+		//when db init, the node is set coordinator type.
+		if(PGXCNodeId == 0)
+		{
+		for (count = 0; count < NumCoords; count++)
+		{
+			if (pg_strcasecmp(PGXCNodeName,
+					   get_pgxc_nodename(co_handles[count].nodeoid)) == 0)
+			{
+				PGXCNodeId = count + 1;
+				PGXCNodeOid = co_handles[count].nodeoid;
+				break;
+			}
+			PGXCNodeId = count + 1;
+		}
+		}
+	}
+
+	/*
+	 * No node-self?
+	 * PGXCTODO: Change error code
+	 */
+	Assert(PGXCNodeId != 0);
+	if (PGXCNodeId == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				 errmsg("Coordinator cannot identify itself")));
+}
+#else
 /*
  * Allocate and initialize memory to store Datanode and Coordinator handles.
  */
@@ -241,6 +380,7 @@ InitMultinodeExecutor(bool is_force)
 				 errmsg("Coordinator cannot identify itself")));
 }
 
+#endif
 
 /*
  * Builds up a connection string
@@ -677,7 +817,7 @@ retry:
 		if(conn->file_data)
 		{
 			bool bwrite = false;
-			fwrite(&bwrite, sizeof(bwrite), 1, conn->file_data); 
+			fwrite(&bwrite, sizeof(bwrite), 1, conn->file_data);
 			fwrite(&nread, sizeof(nread), 1, conn->file_data);
 			fwrite(conn->inBuffer+conn->inEnd, 1, nread, conn->file_data);
 		}
@@ -1129,7 +1269,7 @@ cancel_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 				}
 			}
 		}
-		
+
 		PoolManagerCancelQuery(dn_count, dn_cancel, co_count, co_cancel);
 
 		/*
@@ -1258,7 +1398,7 @@ clear_some_handles(int num_dnhandles, PGXCNodeHandle **dnhandles,
 	}
 
 	/*
-	 * We cannot release handle here, it is decided with the caller. 
+	 * We cannot release handle here, it is decided with the caller.
 	 */
 }
 
@@ -1336,7 +1476,7 @@ clear_all_handles(bool error)
 	}
 
 	/*
-	 * We cannot release handle here, it is decided with the caller. 
+	 * We cannot release handle here, it is decided with the caller.
 	 */
 }
 #endif
@@ -1572,7 +1712,7 @@ pgxc_node_send_parse(PGXCNodeHandle * handle, const char* statement,
 	int			cnt_params;
 #if USE_ASSERT_CHECKING
 	size_t		old_outEnd = handle->outEnd;
-#endif	
+#endif
 
 	/* if there are parameters, param_types should exist */
 	Assert(num_params <= 0 || param_types);
@@ -1927,7 +2067,7 @@ pgxc_node_send_query_extended(PGXCNodeHandle *handle, const char *query,
 			initStringInfo(&buf);
 			appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
 
-			adb_ereport(LOG, 
+			adb_ereport(LOG,
 				(errmsg("[ADB]Send to [node] %s [sock] %d [query] %s",
 					NameStr(handle->name), handle->sock, query)));
 
@@ -2004,7 +2144,7 @@ void pgxc_node_flush_read(PGXCNodeHandle *handle)
 	{
 		if (is_data_node_ready(handle))
 			break;
-		
+
 		FD_ZERO(&rfd);
 		FD_SET(handle->sock, &rfd);
 		tv.tv_sec = FLUSH_READ_TIMEOUT - (time(NULL) - last_time);
@@ -2090,7 +2230,7 @@ int	pgxc_node_send_query_tree(PGXCNodeHandle * handle, const char *query, String
 		appendStringInfo(&buf, "%s/*%d*/", query, MyProcPid);
 		query = buf.data;
 
-		adb_ereport(LOG, 
+		adb_ereport(LOG,
 			(errmsg("[ADB]Send to [node] %s [sock] %d [query] %s",
 				NameStr(handle->name), handle->sock, query)));
 

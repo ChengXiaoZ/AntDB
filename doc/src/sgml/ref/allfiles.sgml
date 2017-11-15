@@ -208,6 +208,7 @@ Complete list of usable sgml source files in this directory.
 <!ENTITY mgrAppendCoordinatorTo SYSTEM "mgr_append_coordinator_to.sgml">
 <!ENTITY mgrAppendDatanode  SYSTEM "mgr_append_datanode.sgml">
 <!ENTITY mgrAppendGtm       SYSTEM "mgr_append_gtm.sgml">
+<!ENTITY mgrCheckoutDnSatus SYSTEM "mgr_checkout_dn_status.sgml">
 <!ENTITY mgrCleanAll        SYSTEM "mgr_clean_all.sgml">
 <!ENTITY mgrCleanCoordinator SYSTEM "mgr_clean_coordinator.sgml">
 <!ENTITY mgrCleanDatanode   SYSTEM "mgr_clean_datanode.sgml">

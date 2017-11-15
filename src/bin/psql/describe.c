@@ -31,6 +31,7 @@
 #define LOCATOR_TYPE_MODULO 'M'
 #ifdef ADB
 #define LOCATOR_TYPE_USER_DEFINED 'U'
+#define LOCATOR_TYPE_META 'A'
 #endif
 #endif /* PGXC */
 
@@ -2293,7 +2294,52 @@ describeOneTableDetails(const char *schemaname,
 		if (verbose && tableinfo.relkind == 'r')
 		{
 #ifdef ADB
-			printfPQExpBuffer(&buf,						
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+			printfPQExpBuffer(&buf,
+						"SELECT CASE pclocatortype \n"
+						"		  WHEN '%c' THEN \n"
+						"		   'ROUND ROBIN' \n"
+						"		  WHEN '%c' THEN \n"
+						"		   'REPLICATION' \n"
+						"		  WHEN '%c' THEN \n"
+						"		   'META' \n"
+						"		  WHEN '%c' THEN \n"
+						"		   'HASH' || '(' || a.attname || ')' \n"
+						"		  WHEN '%c' THEN \n"
+						"		   'MODULO' || '(' || a.attname || ')' \n"
+						"		  WHEN '%c' THEN \n"
+						"		   (SELECT proname FROM pg_catalog.pg_proc WHERE oid = pcfuncid) || '(' || \n"
+						"		   array_to_string(ARRAY \n"
+						"						   (SELECT attname \n"
+						"							  FROM pg_catalog.pg_attribute a, \n"
+						"								   (SELECT unnest(pcfuncattnums) \n"
+						"									  FROM pg_catalog.pgxc_class \n"
+						"									 WHERE pcrelid = '%s') b(pcfuncattnum) \n"
+						"							 WHERE a.attrelid = '%s' \n"
+						"							   AND a.attnum = b.pcfuncattnum), \n"
+						"						   ', ') || ')' \n"
+						"		END AS distype, \n"
+						"		   'ALL DATANODES' \n"
+						"		AS loc_nodes \n"
+						"  FROM pg_catalog.pg_attribute a \n"
+						" RIGHT JOIN  \n"
+						"		pg_catalog.pgxc_class c \n"
+						"	ON a.attrelid = c.pcrelid \n"
+						"  AND a.attnum = c.pcattnum, \n"
+						"	   (SELECT count(*) AS dn_cn FROM pg_catalog.pgxc_node WHERE node_type = 'D') AS nc \n"
+						" WHERE pcrelid = '%s'"
+					, LOCATOR_TYPE_RROBIN
+					, LOCATOR_TYPE_REPLICATED
+					, LOCATOR_TYPE_META
+					, LOCATOR_TYPE_HASH
+					, LOCATOR_TYPE_MODULO
+					, LOCATOR_TYPE_USER_DEFINED
+					, oid
+					, oid
+					, oid);
+#else
+			printfPQExpBuffer(&buf,
 						"SELECT CASE pclocatortype \n"
 						"		  WHEN '%c' THEN \n"
 						"		   'ROUND ROBIN' \n"
@@ -2343,6 +2389,9 @@ describeOneTableDetails(const char *schemaname,
 					, oid
 					, oid
 					, oid);
+
+#endif
+
 #else
 			printfPQExpBuffer(&buf,
 						"SELECT CASE pclocatortype \n"

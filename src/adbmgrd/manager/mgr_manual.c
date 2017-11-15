@@ -53,7 +53,7 @@ static struct enum_sync_state sync_state_tab[] =
 };
 
 static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo);
-static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg);
+static void mgr_get_hba_replication_info(Oid masterTupleOid, StringInfo infosendmsg);
 static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond);
 static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid);
 static bool mgr_check_active_connect_in_coordinator(PGconn *pgConn, const Oid cnOid);
@@ -70,35 +70,60 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	char stop_cmdtype;
 	char nodetype;
 	char mastertype;
-	char anothertype;
 	char *nodetypestr;
+	char *nodename;
+	char *masternodename;
 	bool master_is_exist = true;
 	bool master_is_running = true;
 	bool slave_is_exist = true;
 	bool slave_is_running = true;
 	bool res = false;
+	bool hasOtherSlave = false;
 	NameData nodenamedata;
+	NameData masternodenamedata;
+	NameData slaveNodeName;
+	NameData sync_state_name;
 	AppendNodeInfo master_nodeinfo;
 	AppendNodeInfo slave_nodeinfo;
 	StringInfoData infosendmsg;
 	StringInfoData strinfo;
-	HeapTuple mastertuple;
+	HeapTuple masterTuple;
 	HeapTuple slavetuple;
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
+	Form_mgr_node mgr_nodetmp;
 	Relation rel_node;
 	GetAgentCmdRst getAgentCmdRst;
+	ScanKeyData key[2];
+	HeapScanDesc relScan;
+	Oid oldMasterTupleOid;
 
 	if (RecoveryInProgress())
 		ereport(ERROR, (errmsg("cannot assign TransactionIds during recovery")));
 
 	/*get the input variable*/
 	nodetype = PG_GETARG_INT32(0);
-	namestrcpy(&nodenamedata, PG_GETARG_CSTRING(1));
+	nodename = PG_GETARG_CSTRING(1);
 
+	Assert(nodename);
+	namestrcpy(&nodenamedata, nodename);
+	
+	/* check slave node */
+	if (!mgr_check_node_exist_incluster(&nodenamedata, true))
+	{
+		nodetypestr = mgr_nodetype_str(nodetype);
+		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("%s \"%s\" does not exist in cluster", nodetypestr, nodenamedata.data)));
+	}
+
+	masternodename = mgr_get_mastername_by_nodename_type(nodenamedata.data, nodetype);
+	namestrcpy(&masternodenamedata, masternodename);
+	pfree(masternodename);
 	mastertype = mgr_get_master_type(nodetype);
 	if (GTM_TYPE_GTM_MASTER == mastertype)
 		stop_cmdtype = AGT_CMD_GTM_STOP_MASTER;
+	else if (CNDN_TYPE_COORDINATOR_MASTER == mastertype)
+		stop_cmdtype = AGT_CMD_CN_STOP;
 	else if (CNDN_TYPE_DATANODE_MASTER == mastertype)
 		stop_cmdtype = AGT_CMD_DN_STOP;
 	else
@@ -116,33 +141,34 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	initStringInfo(&strinfo);
 	initStringInfo(&infosendmsg);
 	/*get the old master info*/
-	get_nodeinfo_byname(nodenamedata.data, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
+	get_nodeinfo_byname(masternodenamedata.data, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
 	if (master_is_exist && master_is_running)
 	{
 		/*stop the old master*/
 		appendStringInfo(&infosendmsg, " stop -D %s -m i -o -i -w -c", master_nodeinfo.nodepath);
 		nodetypestr = mgr_nodetype_str(mastertype);
-		ereport(LOG, (errmsg("stop the old %s \"%s\"", nodetypestr, nodenamedata.data)));
+		ereport(LOG, (errmsg("stop the old %s \"%s\"", nodetypestr, masternodenamedata.data)));
 
 		res = mgr_ma_send_cmd(stop_cmdtype, infosendmsg.data, master_nodeinfo.nodehost, &strinfo);
 		if (!res)
-			ereport(WARNING, (errmsg("stop the old %s \"%s\" fail %s", nodetypestr, nodenamedata.data, strinfo.data)));
+			ereport(WARNING, (errmsg("stop the old %s \"%s\" fail %s", nodetypestr, masternodenamedata.data, strinfo.data)));
 		pfree(nodetypestr);
 	}
-
+	oldMasterTupleOid = master_nodeinfo.tupleoid;
 	pfree_AppendNodeInfo(master_nodeinfo);
 
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
 
 	/*delete the old master tuple in node table*/
 	nodetypestr = mgr_nodetype_str(mastertype);
-	ereport(LOG, (errmsg("delete the old %s \"%s\" in the node table", nodetypestr, nodenamedata.data)));
-	mastertuple = SearchSysCache1(NODENODEOID, master_nodeinfo.tupleoid);
-	if(HeapTupleIsValid(mastertuple))
+	ereport(LOG, (errmsg("delete the old %s \"%s\" in the node table", nodetypestr, masternodenamedata.data)));
+	masterTuple = SearchSysCache1(NODENODEOID, oldMasterTupleOid);
+	pfree(nodetypestr);
+	if(HeapTupleIsValid(masterTuple))
 	{
-		simple_heap_delete(rel_node, &mastertuple->t_self);
-		CatalogUpdateIndexes(rel_node, mastertuple);
-		ReleaseSysCache(mastertuple);
+		simple_heap_delete(rel_node, &masterTuple->t_self);
+		CatalogUpdateIndexes(rel_node, masterTuple);
+		ReleaseSysCache(masterTuple);
 	}
 
 	/*update the slave type as master type in node table*/
@@ -168,54 +194,39 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	if (!slave_is_running)
 		ereport(WARNING, (errmsg("%s \"%s\" is not running normal", nodetypestr, nodenamedata.data)));
 
-	/*update the extra node: masteroid, and sync_stat*/
-	switch(nodetype)
-	{
-		case GTM_TYPE_GTM_SLAVE:
-			anothertype = GTM_TYPE_GTM_EXTRA;
-			break;
-		case GTM_TYPE_GTM_EXTRA:
-			anothertype = GTM_TYPE_GTM_SLAVE;
-			break;
-		case CNDN_TYPE_DATANODE_SLAVE:
-			anothertype = CNDN_TYPE_DATANODE_EXTRA;
-			break;
-		case CNDN_TYPE_DATANODE_EXTRA:
-			anothertype = CNDN_TYPE_DATANODE_SLAVE;
-			break;
-		default:
-			ereport(ERROR, (errmsg("unknown this type of node '%c'", nodetype)));
-	};
-	/* check another node exists */
-	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodenamedata.data, anothertype);
-	if((HeapTupleIsValid(tuple)))
-	{
-		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
-		if (strcmp(NameStr(mgr_node->nodesync), sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0)
-		{
-			namestrcpy(&(mgr_node->nodesync), sync_state_tab[SYNC_STATE_SYNC].name);
-		}
-		mgr_node->nodemasternameoid = slave_nodeinfo.tupleoid;
-		heap_inplace_update(rel_node, tuple);
-		heap_freetuple(tuple);
-	}
-	heap_close(rel_node, RowExclusiveLock);	
-	
-	/*for mgr_updateparm systbl, drop the old master param, update slave parm info in the mgr_updateparm systbl*/
-	ereport(LOG, (errmsg("refresh \"param\" table in ADB Manager, delete the old master parameters, and update %s \"%s\" as master type", nodetypestr, nodenamedata.data)));
-	pfree(nodetypestr);
-	mgr_parm_after_gtm_failover_handle(&nodenamedata, mastertype, &nodenamedata, nodetype);
-
-	/*set new master sync*/
+	/* set new master synchronous_standby_names */
 	resetStringInfo(&strinfo);
-	mgr_get_master_sync_string(slave_nodeinfo.tupleoid, true, InvalidOid, &strinfo);
-
 	resetStringInfo(&infosendmsg);
-	if (strinfo.len == 0)
-		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
-	else
+	mgr_get_master_sync_string(oldMasterTupleOid, true, slave_nodeinfo.tupleoid, &strinfo);
+	if(strinfo.len != 0)
+	{
 		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo.data, &infosendmsg);
+		int i = 0;
+		while(i<strinfo.len && strinfo.data[i] != ',' && i<NAMEDATALEN)
+		{
+			slaveNodeName.data[i] = strinfo.data[i];
+			i++;
+		}
+		if (i<NAMEDATALEN)
+			slaveNodeName.data[i] = '\0';
+		hasOtherSlave = true;
+	}
+	else
+	{
+		rel_node = heap_open(NodeRelationId, AccessShareLock);
+		res = mgr_get_normal_slave_node(rel_node, oldMasterTupleOid, SYNC_STATE_ASYNC, slave_nodeinfo.tupleoid, &slaveNodeName);
+		if (!res)
+			res = mgr_get_slave_node(rel_node, oldMasterTupleOid, SYNC_STATE_ASYNC, slave_nodeinfo.tupleoid, &slaveNodeName);
+		if (res)
+		{
+			appendStringInfo(&strinfo, "%s", slaveNodeName.data);
+		}
+		else
+			hasOtherSlave = false;
+		heap_close(rel_node, AccessShareLock);
+		mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo.len == 0 ? "" : strinfo.data, &infosendmsg);
+	}
+	ereport(LOG, (errmsg("reload \"synchronous_standby_names='%s'\" in postgresql.conf of new master \"%s\"", strinfo.len ? strinfo.data : "", slave_nodeinfo.nodename)));
 	initStringInfo(&(getAgentCmdRst.description));
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF_RELOAD,
 							slave_nodeinfo.nodepath,
@@ -224,6 +235,45 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 							&getAgentCmdRst);
 	if (!getAgentCmdRst.ret)
 		ereport(WARNING, (errmsg("refresh synchronous_standby_names of datanode master \"%s\" fail, %s", nodenamedata.data, getAgentCmdRst.description.data)));
+
+	if (!hasOtherSlave)
+		ereport(WARNING, (errmsg("the master \"%s\" has no slave node, it is better to append a new datanode slave node", masternodenamedata.data)));
+
+	/*update the other slave nodes with the same master: masteroid, and sync_stat*/
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodetype
+		,BTEqualStrategyNumber
+		,F_CHAREQ
+		,CharGetDatum(CNDN_TYPE_DATANODE_SLAVE));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodemasternameOid
+		,BTEqualStrategyNumber
+		,F_OIDEQ
+		,ObjectIdGetDatum(oldMasterTupleOid));
+	relScan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
+	{
+		if (slave_nodeinfo.tupleoid == HeapTupleGetOid(tuple))
+			continue;
+		mgr_nodetmp = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_nodetmp);	
+		/* update datanode slave nodemasternameoid */
+		mgr_nodetmp->nodemasternameoid = slave_nodeinfo.tupleoid;
+		if (strcmp(NameStr(mgr_nodetmp->nodename), slaveNodeName.data) == 0)
+		{
+			namestrcpy(&sync_state_name, sync_state_tab[SYNC_STATE_SYNC].name);
+			namestrcpy(&(mgr_nodetmp->nodesync), sync_state_name.data);
+		}
+		heap_inplace_update(rel_node, tuple);
+	}
+	heap_endscan(relScan);
+	heap_close(rel_node, RowExclusiveLock);	
+	
+	/*for mgr_updateparm systbl, drop the old master param, update slave parm info in the mgr_updateparm systbl*/
+	ereport(LOG, (errmsg("refresh \"param\" table in ADB Manager, delete the old master parameters, and update %s \"%s\" as master type", nodetypestr, nodenamedata.data)));
+	pfree(nodetypestr);
+	mgr_parm_after_gtm_failover_handle(&masternodenamedata, mastertype, &nodenamedata, nodetype);
 	
 	pfree(getAgentCmdRst.description.data);
 	pfree(strinfo.data);
@@ -265,11 +315,9 @@ Datum mgr_failover_manual_promote_func(PG_FUNCTION_ARGS)
 	}
 	if (!slave_is_running)
 		ereport(ERROR, (errmsg("%s \"%s\" is not running normal", nodetypestr, nodenamedata.data)));
-	if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype 
-			|| GTM_TYPE_GTM_MASTER == nodetype)
+	if (GTM_TYPE_GTM_SLAVE == nodetype)
 		cmdtype = AGT_CMD_GTM_SLAVE_FAILOVER;
-	else if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_EXTRA == nodetype
-					|| CNDN_TYPE_DATANODE_MASTER == nodetype)
+	else if (CNDN_TYPE_DATANODE_SLAVE == nodetype || CNDN_TYPE_DATANODE_MASTER == nodetype)
 		cmdtype = AGT_CMD_DN_FAILOVER;
 	else
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
@@ -304,6 +352,8 @@ Datum mgr_failover_manual_promote_func(PG_FUNCTION_ARGS)
 Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 {
 	char nodetype;
+	char mastertype;
+	char *mastername;
 	bool master_is_exist = true;
 	bool master_is_running = true;
 	bool cn_is_exist = false;
@@ -311,9 +361,10 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	bool getrefresh = false;
 	Oid cnoid;
 	NameData nodenamedata;
+	NameData nodemasternamedata;
 	AppendNodeInfo master_nodeinfo;
 	AppendNodeInfo cn_nodeinfo;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	Relation rel_node;
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
@@ -324,14 +375,21 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	/*get the input variable*/
 	nodetype = PG_GETARG_INT32(0);
 	namestrcpy(&nodenamedata, PG_GETARG_CSTRING(1));
+	
+	if (!mgr_check_node_exist_incluster(&nodenamedata, true))
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+					,errmsg("datanode slave \"%s\" does not exist in cluster", nodenamedata.data)));
+
+	/* get master name */
+	mastername = mgr_get_mastername_by_nodename_type(nodenamedata.data, nodetype);
+	namestrcpy(&nodemasternamedata, mastername);
+	pfree(mastername);
+	mastertype = mgr_get_master_type(nodetype);
 	/*get the new master info*/
-	get_nodeinfo_byname(nodenamedata.data, nodetype, &master_is_exist, &master_is_running, &master_nodeinfo);
+	get_nodeinfo_byname(nodemasternamedata.data, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
 	if (master_is_exist)
 		pfree_AppendNodeInfo(master_nodeinfo);
-	if (CNDN_TYPE_DATANODE_MASTER != nodetype)
-	{
-		ereport(ERROR, (errmsg("the type of node \"%s\" is not datanode master",nodenamedata.data)));
-	}
+
 	if (!master_is_exist)
 	{
 		ereport(ERROR, (errmsg("datanode master \"%s\" does not exist",nodenamedata.data)));
@@ -343,8 +401,13 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
 	rel_node = heap_open(NodeRelationId, AccessShareLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -363,16 +426,24 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	heap_endscan(rel_scan);
 	heap_close(rel_node, AccessShareLock);
 
-	/*pause cluster*/
-	mgr_lock_cluster(&pg_conn, &cnoid);
-	/*refresh pgxc_node on all coordiantors*/
-	initStringInfo(&(getAgentCmdRst.description));
-	getrefresh = mgr_pqexec_refresh_pgxc_node(PGXC_FAILOVER, CNDN_TYPE_DATANODE_MASTER, nodenamedata.data, &getAgentCmdRst, &pg_conn, cnoid);
-	if(!getrefresh)
+	PG_TRY();
 	{
-		getAgentCmdRst.ret = getrefresh;
-		ereport(WARNING, (errmsg("%s", (getAgentCmdRst.description).data)));
-	}
+		/*pause cluster*/
+		mgr_lock_cluster(&pg_conn, &cnoid);
+		/*refresh pgxc_node on all coordiantors*/
+		initStringInfo(&(getAgentCmdRst.description));
+		getrefresh = mgr_pqexec_refresh_pgxc_node(PGXC_FAILOVER, nodetype, nodenamedata.data, &getAgentCmdRst, &pg_conn, cnoid);
+		if(!getrefresh)
+		{
+			getAgentCmdRst.ret = getrefresh;
+			ereport(WARNING, (errmsg("%s", (getAgentCmdRst.description).data)));
+		}
+	}PG_CATCH();
+	{
+		mgr_unlock_cluster(&pg_conn);
+		PG_RE_THROW();
+	}PG_END_TRY();
+	
 	/*unlock cluster*/
 	mgr_unlock_cluster(&pg_conn);
 
@@ -390,13 +461,16 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	char mastertype;
 	char *nodetypestr;
 	char *str;
+	char *masterName;
 	bool master_is_exist = true;
 	bool master_is_running = true;
 	bool slave_is_exist = true;
 	bool slave_is_running = true;
 	bool res = false;
 	bool get = false;
+	bool incluster = false;
 	NameData nodenamedata;
+	NameData nodemasternamedata;
 	NameData slave_sync;
 	AppendNodeInfo master_nodeinfo;
 	AppendNodeInfo slave_nodeinfo;
@@ -415,8 +489,11 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	/*get the input variable*/
 	nodetype = PG_GETARG_INT32(0);
 	namestrcpy(&nodenamedata, PG_GETARG_CSTRING(1));
+	masterName = mgr_get_mastername_by_nodename_type(nodenamedata.data, nodetype);
+	Assert(masterName);
+	namestrcpy(&nodemasternamedata, masterName);
 
-	if (nodetype == GTM_TYPE_GTM_SLAVE || nodetype == GTM_TYPE_GTM_EXTRA)
+	if (nodetype == GTM_TYPE_GTM_SLAVE)
 	{
 		ereport(ERROR, (errmsg("not support for gtm slave or extra rewind now")));
 	}
@@ -436,7 +513,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	mgr_get_nodeinfo_byname_type(nodenamedata.data, nodetype, false, &slave_is_exist, &slave_is_running, &slave_nodeinfo);
 
 	/*get the master info*/
-	get_nodeinfo_byname(nodenamedata.data, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
+	get_nodeinfo_byname(nodemasternamedata.data, mastertype, &master_is_exist, &master_is_running, &master_nodeinfo);
 	/*get master old sync*/
 	mgr_get_master_sync_string(master_nodeinfo.tupleoid, true, InvalidOid, &strinfo_sync);
 
@@ -448,12 +525,11 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(slavetuple);
 		Assert(mgr_node);
+		incluster = mgr_node->nodeincluster;
 		mgr_node->nodemasternameoid = master_nodeinfo.tupleoid;
 		mgr_node->nodeinited = true;
 		mgr_node->nodeincluster = true;
-		if (strcmp(NameStr(mgr_node->nodesync), sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0
-			&& (strinfo_sync.len == 0 || strcmp(strinfo_sync.len !=0 ? strinfo_sync.data:"",
-				(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra") == 0))
+		if (strinfo_sync.len == 0)
 			namestrcpy(&(mgr_node->nodesync), sync_state_tab[SYNC_STATE_SYNC].name);
 		namestrcpy(&slave_sync, NameStr(mgr_node->nodesync));
 		heap_inplace_update(rel_node, slavetuple);
@@ -480,11 +556,6 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, slave_nodeinfo.nodepath, &infosendmsg, slave_nodeinfo.nodehost, &getAgentCmdRst);
 	if (!getAgentCmdRst.ret)
 	{
-		pfree(infosendmsg.data);
-		pfree(strinfo.data);
-		pfree(strinfo_sync.data);
-		pfree_AppendNodeInfo(master_nodeinfo);
-		pfree_AppendNodeInfo(slave_nodeinfo);
 		ereport(WARNING, (errmsg("set parameters of %s \"%s\" fail, %s", nodetypestr, nodenamedata.data, getAgentCmdRst.description.data)));
 		res = false;
 	}
@@ -497,7 +568,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 					master_nodeinfo.nodeaddr,
 					master_nodeinfo.nodeport,
 					master_nodeinfo.nodeusername,
-					(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)? "slave" : "extra");
+					nodenamedata.data);
 
 	mgr_append_pgconf_paras_str_quotastr("standby_mode", "on", &infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("primary_conninfo", primary_conninfo_value.data, &infosendmsg);
@@ -523,7 +594,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 	{
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&strinfo);
-		if (GTM_TYPE_GTM_SLAVE == nodetype || GTM_TYPE_GTM_EXTRA == nodetype)
+		if (GTM_TYPE_GTM_SLAVE == nodetype)
 			appendStringInfo(&infosendmsg, " start -D %s -o -i -w -c -l %s/logfile", slave_nodeinfo.nodepath, slave_nodeinfo.nodepath);
 		else
 		appendStringInfo(&infosendmsg, " start -Z datanode -D %s -o -i -w -c -l %s/logfile", slave_nodeinfo.nodepath, slave_nodeinfo.nodepath);
@@ -542,7 +613,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 		{
 			if (strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_SYNC].name) == 0)
 			{
-				appendStringInfo(&strinfo_sync, "%s",(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra");
+				appendStringInfo(&strinfo_sync, "%s", nodenamedata.data);
 				mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo_sync.data, &infosendmsg);
 			}
 			else
@@ -550,13 +621,12 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			if (strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_SYNC].name) == 0 
-				|| strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_POTENTIAL].name) == 0)
+			if ((!incluster) && (strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_SYNC].name) == 0 
+				|| strcmp(slave_sync.data, sync_state_tab[SYNC_STATE_POTENTIAL].name)) == 0)
 			{
-				if (strstr(strinfo_sync.data, (nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra") == NULL)
-					appendStringInfo(&strinfo_sync, ",%s",(nodetype == GTM_TYPE_GTM_SLAVE || nodetype == CNDN_TYPE_DATANODE_SLAVE)?"slave":"extra");
+					appendStringInfo(&strinfo_sync, ",%s", nodenamedata.data);
 			}
-			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo_sync.data, &infosendmsg);
+			mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", strinfo_sync.len != 0 ? strinfo_sync.data: "", &infosendmsg);
 		}
 		resetStringInfo(&(getAgentCmdRst.description));
 		str = mgr_nodetype_str(master_nodeinfo.nodetype);
@@ -649,7 +719,7 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			, errmsg("coordinator \"%s\" does not exist", s_coordname)));
 	}
-	if (mgr_check_node_exist_incluster(&nodename, CNDN_TYPE_COORDINATOR_MASTER, true))
+	if (mgr_check_node_exist_incluster(&nodename, true))
 	{
 		pfree_AppendNodeInfo(src_nodeinfo);
 		pfree_AppendNodeInfo(dest_nodeinfo);
@@ -779,8 +849,7 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 		resetStringInfo(&infosendmsg);
 		ereport(NOTICE, (errmsg("update pg_hba.conf of %s \"%s\"", nodetypestr, NameStr(mgr_node->nodename))));
 		pfree(nodetypestr);
-		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE 
-			|| mgr_node->nodetype == GTM_TYPE_GTM_EXTRA)
+		if (mgr_node->nodetype == GTM_TYPE_GTM_MASTER || mgr_node->nodetype == GTM_TYPE_GTM_SLAVE)
 			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "all", AGTM_USER, dest_nodeinfo.nodeaddr
 				, 32, "trust", &infosendmsg);
 		else
@@ -883,7 +952,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			, errmsg("coordinator \"%s\" does not exist", s_coordname)));
 	}
 
-	if (mgr_check_node_exist_incluster(&s_nodename, CNDN_TYPE_COORDINATOR_MASTER, true))
+	if (mgr_check_node_exist_incluster(&s_nodename, true))
 	{
 		pfree_AppendNodeInfo(dest_nodeinfo);
 		ereport(ERROR, (errmsg("coordinator \"%s\" already exists in cluster", s_coordname)));
@@ -1111,7 +1180,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 		/*restart the coordinator*/
 		resetStringInfo(&(getAgentCmdRst.description));
 		rel_node = heap_open(NodeRelationId, AccessShareLock);
-		tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, CNDN_TYPE_COORDINATOR_MASTER);
+		tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname);
 		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_I);
 		heap_freetuple(tuple);
 		heap_close(rel_node, AccessShareLock);
@@ -1160,7 +1229,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	ereport(LOG, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
 	ereport(NOTICE, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, CNDN_TYPE_COORDINATOR_MASTER);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname);
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
 	mgr_node->nodeinited = true;
@@ -1277,8 +1346,10 @@ static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, c
 Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 {
 	char nodeType;
+	char masterType;
 	char *typestr;
 	char *cndnPath;
+	char *nodeMasterName;
 	bool isExistS = false;
 	bool isExistM = false;
 	bool isRunningS = false;
@@ -1295,15 +1366,16 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	int bforce = 0;
 	int iloop = 0;
 	int nodePort;
+	int nodeSlaveSyncKind = SYNC_STATE_ASYNC;
 	const int iMax = 90;
 	HeapTuple tuple;
 	HeapTuple tupResult;
 	HeapTuple tupleS;
 	NameData nodeNameData;
+	NameData nodeMasterNameData;
 	NameData nodeTypeStrData;
 	NameData masterTypeStrData;
 	NameData oldMSyncData;
-	NameData syncStateData;
 	AppendNodeInfo nodeInfoS;
 	AppendNodeInfo nodeInfoM;
 	Form_mgr_node mgr_node;
@@ -1311,6 +1383,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	StringInfoData restmsg;
 	StringInfoData infosendmsg;
 	StringInfoData strerr;
+	StringInfoData syncStateData;
 	Oid cnOid;
 	Relation nodeRel;
 	HeapScanDesc relScan;
@@ -1325,7 +1398,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	nodeType = PG_GETARG_INT32(0);
 	namestrcpy(&nodeNameData, PG_GETARG_CSTRING(1));
 	bforce = PG_GETARG_INT32(2);
-	
+
 	/* check the type */
 	if (CNDN_TYPE_DATANODE_MASTER == nodeType || GTM_TYPE_GTM_MASTER == nodeType)
 	{
@@ -1333,25 +1406,26 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			,errmsg("it is the %s, no need switchover", GTM_TYPE_GTM_MASTER == nodeType ? "gtm master":"datanode master")));
 	}
 	
-	if (CNDN_TYPE_DATANODE_SLAVE != nodeType && CNDN_TYPE_DATANODE_EXTRA != nodeType 
-		&& GTM_TYPE_GTM_SLAVE != nodeType && GTM_TYPE_GTM_EXTRA != nodeType)
+	if (CNDN_TYPE_DATANODE_SLAVE != nodeType && GTM_TYPE_GTM_SLAVE != nodeType)
 	{
 		ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR)
 			,errmsg("unknown the node type : %c", nodeType)));
 	}
 	
 	/* check the slave node exist */
-	if (nodeType == CNDN_TYPE_DATANODE_SLAVE || nodeType == CNDN_TYPE_DATANODE_EXTRA)
+	if (nodeType == CNDN_TYPE_DATANODE_SLAVE)
 	{
 		bgtmKind = false;
+		masterType = CNDN_TYPE_DATANODE_MASTER;
 		namestrcpy(&masterTypeStrData, "datanode master");
 		namestrcpy(&nodeTypeStrData, nodeType == CNDN_TYPE_DATANODE_SLAVE ? "datanode slave":"datanode extra");
 	}
 	else
 	{
 		bgtmKind = true;
+		masterType = GTM_TYPE_GTM_MASTER;
 		namestrcpy(&masterTypeStrData, "gtm master");
-		namestrcpy(&nodeTypeStrData, nodeType == GTM_TYPE_GTM_SLAVE ? "gtm slave":"gtm extra");	
+		namestrcpy(&nodeTypeStrData, "gtm slave");	
 	}
 	
 	PG_TRY();
@@ -1376,19 +1450,30 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	/* check the node master */
 	PG_TRY();
 	{
+		/* get master name */
 		if (!bgtmKind)
-			get_nodeinfo_byname(nodeNameData.data, CNDN_TYPE_DATANODE_MASTER, &isExistM, &isRunningM, &nodeInfoM);
+		{
+			nodeMasterName = mgr_get_mastername_by_nodename_type(nodeNameData.data, CNDN_TYPE_DATANODE_SLAVE);
+			namestrcpy(&nodeMasterNameData, nodeMasterName);
+			pfree(nodeMasterName);
+			get_nodeinfo_byname(nodeMasterNameData.data, CNDN_TYPE_DATANODE_MASTER, &isExistM, &isRunningM, &nodeInfoM);
+		}
 		else
-			get_nodeinfo_byname(nodeNameData.data, GTM_TYPE_GTM_MASTER, &isExistM, &isRunningM, &nodeInfoM);
+		{
+			nodeMasterName = mgr_get_mastername_by_nodename_type(nodeNameData.data, GTM_TYPE_GTM_SLAVE);
+			namestrcpy(&nodeMasterNameData, nodeMasterName);
+			pfree(nodeMasterName);
+			get_nodeinfo_byname(nodeMasterNameData.data, GTM_TYPE_GTM_MASTER, &isExistM, &isRunningM, &nodeInfoM);
+		}
 
 		if (false == isExistM)
 		{
 			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
-				,errmsg("%s \"%s\" does not exist", masterTypeStrData.data, nodeNameData.data)));
+				,errmsg("%s \"%s\" does not exist", masterTypeStrData.data, nodeMasterNameData.data)));
 		}
 		if (false == isRunningM)
 		{
-			ereport(ERROR, (errmsg("%s \"%s\" is not running normal", masterTypeStrData.data, nodeNameData.data)));
+			ereport(ERROR, (errmsg("%s \"%s\" is not running normal", masterTypeStrData.data, nodeMasterNameData.data)));
 		}
 	}
 	PG_CATCH();
@@ -1410,11 +1495,38 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		pfree_AppendNodeInfo(nodeInfoM);
 		ereport(ERROR, (errmsg("check track_activities=on in postgresql.conf on coordinators fail; do \"set coordinator (track_activities=on)\" please")));
 	}
+	/* get slave node sync state */
+	tupleS = SearchSysCache1(NODENODEOID, nodeInfoS.tupleoid);
+	if(!(HeapTupleIsValid(tupleS)))
+	{
+		ereport(ERROR, (errmsg("get original %s \"%s\" tuple information in node table error", nodeTypeStrData.data, nodeNameData.data)));
+	}
+	mgr_node = (Form_mgr_node)GETSTRUCT(tupleS);
+	Assert(mgr_node);
+	nodeSlaveSyncKind = (strcasecmp(NameStr(mgr_node->nodesync), "sync") == 0 ? SYNC_STATE_SYNC :
+		(strcasecmp(NameStr(mgr_node->nodesync), "potential") == 0 ? SYNC_STATE_POTENTIAL:SYNC_STATE_ASYNC));
+	ReleaseSysCache(tupleS);
 
 	initStringInfo(&restmsg);
-	mgr_get_master_sync_string(nodeInfoM.tupleoid, true, InvalidOid, &restmsg);
-	namestrcpy(&syncStateData, restmsg.len == 0 ? "''":restmsg.data);
-	
+	initStringInfo(&syncStateData);
+	mgr_get_master_sync_string(nodeInfoM.tupleoid, true, nodeInfoS.tupleoid, &restmsg);
+	if (restmsg.len != 0)
+	{
+		if (SYNC_STATE_SYNC == nodeSlaveSyncKind)
+			appendStringInfo(&syncStateData, "%s,%s", nodeMasterNameData.data, restmsg.data);
+		else if (SYNC_STATE_POTENTIAL == nodeSlaveSyncKind)
+			appendStringInfo(&syncStateData, "%s,%s", restmsg.data, nodeMasterNameData.data);
+		else
+		{
+			/* do notheing */
+		}
+	}
+	else
+	{
+		if (SYNC_STATE_SYNC == nodeSlaveSyncKind || SYNC_STATE_POTENTIAL == nodeSlaveSyncKind)
+			appendStringInfo(&syncStateData, "%s", nodeMasterNameData.data);
+	}
+
 	/* lock the cluster */
 	if (bforce == 0)
 	{
@@ -1457,7 +1569,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		iloop = iMax;
 		while (iloop-- > 0)
 		{
-			/*chck three time*/
+			//chck three time
 			res = mgr_check_active_locks_in_cluster(pgConn, cnOid);
 			if(res)
 				break;
@@ -1467,10 +1579,10 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		if (iloop <= 0)
 			ereport(ERROR, (errmsg("wait max %d seconds to check there is not active locks in pg_locks table on all coordinators except the locks on pg_locks table fail", iMax)));
 
-		ereport(LOG, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
-				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
-		ereport(NOTICE, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position"
-				, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+		ereport(LOG, (errmsg("wait max %d seconds to check %s \"%s\", %s \"%s\" have the same xlog position"
+				, iMax, masterTypeStrData.data, nodeMasterNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+		ereport(NOTICE, (errmsg("wait max %d seconds to check %s \"%s\", %s \"%s\" have the same xlog position"
+				, iMax, masterTypeStrData.data, nodeMasterNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
 
 		iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iMax);
 		if (iloop)
@@ -1479,14 +1591,17 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			iloop = mgr_maxtime_check_xlog_diff(nodeType, nodeNameData.data, &nodeInfoM, iloop);
 		if (iloop <= 0)
 		{
-			ereport(ERROR, (errmsg("wait max %d seconds to check datanode master \"%s\", %s \"%s\" have the same xlog position fail"
-					, iMax, nodeNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
+			ereport(ERROR, (errmsg("wait max %d seconds to check %s \"%s\", %s \"%s\" have the same xlog position fail"
+					, iMax, masterTypeStrData.data, nodeMasterNameData.data,  nodeTypeStrData.data, nodeNameData.data)));
 		}
 		
 		/* stop datanode master mode i*/
 		bStopOldMaster = true;
 		appendStringInfo(&infosendmsg, " stop -D %s -m i -o -i -w -c", nodeInfoM.nodepath);
-		res = mgr_ma_send_cmd(AGT_CMD_DN_STOP, infosendmsg.data, nodeInfoM.nodehost, &restmsg);
+		if (!bgtmKind)
+			res = mgr_ma_send_cmd(AGT_CMD_DN_STOP, infosendmsg.data, nodeInfoM.nodehost, &restmsg);
+		else
+			res = mgr_ma_send_cmd(AGT_CMD_GTM_STOP_MASTER, infosendmsg.data, nodeInfoM.nodehost, &restmsg);
 		if (!res)
 				ereport(ERROR, (errmsg("stop %s \"%s\" fail %s", masterTypeStrData.data, nodeNameData.data, restmsg.data)));
 
@@ -1514,7 +1629,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		ereport(NOTICE, (errmsg("set %s \"%s\" pg_hba.conf", nodeTypeStrData.data, nodeNameData.data)));
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&(getAgentCmdRst.description));
-		mgr_get_hba_replication_info(nodeNameData.data, &infosendmsg);
+		mgr_get_hba_replication_info(nodeInfoS.nodemasteroid, &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGHBACONF, nodeInfoS.nodepath, &infosendmsg
 				, nodeInfoS.nodehost, &getAgentCmdRst);
 		if (!getAgentCmdRst.ret)
@@ -1528,8 +1643,12 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		/* promote the given slave node */
 		resetStringInfo(&restmsg);
 		resetStringInfo(&infosendmsg);
+
 		appendStringInfo(&infosendmsg, " promote -D %s -w", nodeInfoS.nodepath);
-		res = mgr_ma_send_cmd(AGT_CMD_DN_FAILOVER, infosendmsg.data, nodeInfoS.nodehost, &restmsg);
+		if (!bgtmKind)
+			res = mgr_ma_send_cmd(AGT_CMD_DN_FAILOVER, infosendmsg.data, nodeInfoS.nodehost, &restmsg);
+		else
+			res = mgr_ma_send_cmd(AGT_CMD_GTM_SLAVE_FAILOVER, infosendmsg.data, nodeInfoS.nodehost, &restmsg);
 		if (!res)
 		{
 			brestmsg = true;
@@ -1555,9 +1674,9 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			resetStringInfo(&(getAgentCmdRst.description));
 			nodeRel = heap_open(NodeRelationId, AccessShareLock);
 			if (!bgtmKind)
-				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, CNDN_TYPE_DATANODE_MASTER);
+				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data);
 			else
-				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, GTM_TYPE_GTM_MASTER);
+				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data);
 			mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
 			heap_freetuple(tuple);
 			heap_close(nodeRel, AccessShareLock);
@@ -1590,7 +1709,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			/*restart the given slave node*/
 			resetStringInfo(&(getAgentCmdRst.description));
 			nodeRel = heap_open(NodeRelationId, AccessShareLock);
-			tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, nodeType);
+			tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data);
 			if (!bgtmKind)
 				mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, nodeRel, tuple, SHUTDOWN_F);
 			else
@@ -1613,12 +1732,14 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			pfree(getAgentCmdRst.description.data);
 		if (!brestmsg)
 			pfree(restmsg.data);
+		pfree(syncStateData.data);
 		ereport(LOG, (errmsg("rollback end")));
 		ereport(NOTICE, (errmsg("rollback end")));
 		PG_RE_THROW();
 	}PG_END_TRY();
 	
 	pfree(restmsg.data);
+	pfree(syncStateData.data);
 
 	initStringInfo(&strerr);
 	if (!bgtmKind)
@@ -1657,12 +1778,13 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			ereport(NOTICE, (errmsg("rollback start:")));
 			mgr_unlock_cluster(&pgConn);
 			ereport(WARNING, (errmsg("set agtm_post, agtm_host fail, use \"monitor all\", \"monitor ha\" to check nodes status !!! you may need to make the original %s \"%s\" to run normal !!! check agtm_host,agtm_port in postgresql.conf of all coordinators and datanodes, make the original %s \"%s\" to run normal!!! check hot_standby in its postgresql.conf"
-			 ,masterTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+			 ,masterTypeStrData.data, nodeMasterNameData.data, nodeTypeStrData.data, nodeNameData.data)));
 			pfree_AppendNodeInfo(nodeInfoS);
 			pfree_AppendNodeInfo(nodeInfoM);
 			pfree(infosendmsg.data);
 			pfree(getAgentCmdRst.description.data);
 			pfree(restmsg.data);
+			pfree(syncStateData.data);
 			ereport(LOG, (errmsg("rollback end")));
 			ereport(NOTICE, (errmsg("rollback end")));
 			PG_RE_THROW();
@@ -1673,8 +1795,8 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 
 	PG_TRY();
 	{
-		ereport(LOG, (errmsg("exchange the node type for %s \"%s\" and %s \"%s\" in node table", masterTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
-		ereport(NOTICE, (errmsg("exchange the node type for %s \"%s\" and %s \"%s\" in node table", masterTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+		ereport(LOG, (errmsg("exchange the node type for %s \"%s\" and %s \"%s\" in node table", masterTypeStrData.data, nodeMasterNameData.data, nodeTypeStrData.data, nodeNameData.data)));
+		ereport(NOTICE, (errmsg("exchange the node type for %s \"%s\" and %s \"%s\" in node table", masterTypeStrData.data, nodeMasterNameData.data, nodeTypeStrData.data, nodeNameData.data)));
 		
 		/* refresh new master info in node table */
 		nodeRel = heap_open(NodeRelationId, RowExclusiveLock);
@@ -1690,11 +1812,13 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		{
 			ReleaseSysCache(tuple);
 			heap_close(nodeRel, RowExclusiveLock);
-			ereport(ERROR, (errmsg("get original %s \"%s\" tuple information in node table error", masterTypeStrData.data, nodeNameData.data)));
+			ereport(ERROR, (errmsg("get original %s \"%s\" tuple information in node table error", masterTypeStrData.data, nodeMasterNameData.data)));
 		}
 
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
+		nodeSlaveSyncKind = (strcasecmp(NameStr(mgr_node->nodesync), "sync") == 0 ? SYNC_STATE_SYNC :
+			(strcasecmp(NameStr(mgr_node->nodesync), "potential") == 0 ? SYNC_STATE_POTENTIAL:SYNC_STATE_ASYNC));
 		namestrcpy(&oldMSyncData, NameStr(mgr_node->nodesync));
 		if (!bgtmKind)
 			mgr_node->nodetype = CNDN_TYPE_DATANODE_MASTER;
@@ -1720,7 +1844,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		ereport(LOG, (errmsg("rollback start:")));
 		ereport(NOTICE, (errmsg("rollback start:")));
 
-		ereport(WARNING, (errmsg("exchange the node type for %s \"%s\" and %s \"%s\" in node table fail, exchange them manual, include: nodetype, sync_state, mastername !!! use \"monitor all\", \"monitor ha\" to check nodes status; make the other datanode slave or datanode extra \"%s\" as new slave or extra for new %s: refresh its recovery.conf and its mastername in node table !!!", masterTypeStrData.data, nodeNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeNameData.data, masterTypeStrData.data)));
+		ereport(WARNING, (errmsg("exchange the node type for %s \"%s\" and %s \"%s\" in node table fail, exchange them manual, include: nodetype, sync_state, mastername !!! use \"monitor all\", \"monitor ha\" to check nodes status; make the other datanode slave or datanode extra \"%s\" as new slave or extra for new %s: refresh its recovery.conf and its mastername in node table !!!", masterTypeStrData.data, nodeMasterNameData.data, nodeTypeStrData.data, nodeNameData.data, nodeNameData.data, masterTypeStrData.data)));
 		
 		pfree(strerr.data);
 		pfree(infosendmsg.data);
@@ -1733,12 +1857,19 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		PG_RE_THROW();
 	}PG_END_TRY();
 
+	/* update the param set in mgr_updateparm table */
+	Relation rel_updateparm;
+	rel_updateparm = heap_open(UpdateparmRelationId, RowExclusiveLock);
+	mgr_parmr_update_tuple_nodename_nodetype(rel_updateparm, &nodeNameData, nodeType, masterType);
+	mgr_parmr_update_tuple_nodename_nodetype(rel_updateparm, &nodeMasterNameData, masterType, nodeType);
+	heap_close(rel_updateparm, RowExclusiveLock);
+
 	/* update new slave postgresql.conf */
 	resetStringInfo(&infosendmsg);
 	resetStringInfo(&(getAgentCmdRst.description));
-	ereport(LOG, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
-	ereport(NOTICE, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names=''", nodeTypeStrData.data, nodeNameData.data)));
-	mgr_add_parm(nodeNameData.data, nodeType, &infosendmsg);
+	ereport(LOG, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names=''", nodeTypeStrData.data, nodeMasterNameData.data)));
+	ereport(NOTICE, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names=''", nodeTypeStrData.data, nodeMasterNameData.data)));
+	mgr_add_parm(nodeMasterNameData.data, nodeType, &infosendmsg);
 	mgr_append_pgconf_paras_str_str("hot_standby", "on", &infosendmsg);
 	mgr_append_pgconf_paras_str_quotastr("synchronous_standby_names", "", &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, nodeInfoM.nodepath, &infosendmsg
@@ -1747,32 +1878,29 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	{
 		rest = false;
 		ereport(WARNING, (errmsg("on new %s \"%s\", set hot_standby=on, synchronous_standby_names='' fail, %s"
-			, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
-		appendStringInfo(&strerr, "on new %s \"%s\", set hot_standby=on, synchronous_standby_names='' fail, %s\n", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data);
+			, nodeTypeStrData.data, nodeMasterNameData.data, getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "on new %s \"%s\", set hot_standby=on, synchronous_standby_names='' fail, %s\n", nodeTypeStrData.data, nodeMasterNameData.data, getAgentCmdRst.description.data);
 	}	
 	
 	/* update new slave recovery.conf */
-	ereport(LOG, (errmsg("on new %s \"%s\" refresh recovery.conf", nodeTypeStrData.data, nodeNameData.data)));
-	ereport(NOTICE, (errmsg("on new %s \"%s\" refresh recovery.conf", nodeTypeStrData.data, nodeNameData.data)));
+	ereport(LOG, (errmsg("on new %s \"%s\" refresh recovery.conf", nodeTypeStrData.data, nodeMasterNameData.data)));
+	ereport(NOTICE, (errmsg("on new %s \"%s\" refresh recovery.conf", nodeTypeStrData.data, nodeMasterNameData.data)));
 	resetStringInfo(&(getAgentCmdRst.description));
 	resetStringInfo(&infosendmsg);
-	if (!bgtmKind)
-		mgr_add_parameters_recoveryconf(nodeType, nodeType == CNDN_TYPE_DATANODE_SLAVE ? "slave":"extra", nodeInfoS.tupleoid, &infosendmsg);
-	else
-		mgr_add_parameters_recoveryconf(nodeType, nodeType == GTM_TYPE_GTM_SLAVE ? "slave":"extra", nodeInfoS.tupleoid, &infosendmsg);
+	mgr_add_parameters_recoveryconf(nodeType, nodeMasterNameData.data, nodeInfoS.tupleoid, &infosendmsg);
 	mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_RECOVERCONF, nodeInfoM.nodepath, &infosendmsg, nodeInfoM.nodehost, &getAgentCmdRst);
 	if (!getAgentCmdRst.ret)
 	{
 		rest = false;
 		ereport(WARNING, (errmsg("on new %s \"%s\", refresh recovery.conf fail, %s"
-			, nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data)));
-		appendStringInfo(&strerr, "on new %s \"%s\", refresh recovery.conf fail, %s\n", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data);
+			, nodeTypeStrData.data, nodeMasterNameData.data, getAgentCmdRst.description.data)));
+		appendStringInfo(&strerr, "on new %s \"%s\", refresh recovery.conf fail, %s\n", nodeTypeStrData.data, nodeMasterNameData.data, getAgentCmdRst.description.data);
 	}
 	
 	/* start the new slave node */
 	resetStringInfo(&(getAgentCmdRst.description));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, nodeType);
+	tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeMasterNameData.data);
 	if (!bgtmKind)
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
 	else
@@ -1788,7 +1916,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		appendStringInfo(&strerr, "start new %s \"%s\" fail, %s\n", nodeTypeStrData.data, nodeNameData.data, getAgentCmdRst.description.data);
 	}
 
-	/* for other slave or extra */
+	/* for other slave */
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodeincluster
 		,BTEqualStrategyNumber
@@ -1799,18 +1927,18 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
-	ScanKeyInit(&key[2],
-		Anum_mgr_node_nodename
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodemasternameOid
 		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(&nodeNameData));
+		,F_OIDEQ
+		,ObjectIdGetDatum(nodeInfoS.nodemasteroid));
 	nodeRel = heap_open(NodeRelationId, RowExclusiveLock);
 	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		if (mgr_node->nodemasternameoid != nodeInfoM.tupleoid)
+		if (mgr_node->nodemasternameoid != nodeInfoM.tupleoid || (nodeInfoS.tupleoid == HeapTupleGetOid(tuple)))
 			continue;
 		typestr = mgr_nodetype_str(mgr_node->nodetype);
 
@@ -1824,10 +1952,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		ereport(NOTICE, (errmsg("refresh %s \"%s\" recovery.conf", typestr, NameStr(mgr_node->nodename))));
 		resetStringInfo(&(getAgentCmdRst.description));
 		resetStringInfo(&infosendmsg);
-		if (!bgtmKind)
-			mgr_add_parameters_recoveryconf(mgr_node->nodetype, mgr_node->nodetype == CNDN_TYPE_DATANODE_SLAVE ? "slave":"extra", nodeInfoS.tupleoid, &infosendmsg);
-		else
-			mgr_add_parameters_recoveryconf(mgr_node->nodetype, mgr_node->nodetype == GTM_TYPE_GTM_SLAVE ? "slave":"extra", nodeInfoS.tupleoid, &infosendmsg);
+		mgr_add_parameters_recoveryconf(mgr_node->nodetype, NameStr(mgr_node->nodename), nodeInfoS.tupleoid, &infosendmsg);
 		datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(nodeRel), &isNull);
 		if (isNull)
 		{
@@ -1838,9 +1963,8 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			pfree(getAgentCmdRst.description.data);
 			pfree_AppendNodeInfo(nodeInfoS);
 			pfree_AppendNodeInfo(nodeInfoM);
-			ereport(WARNING, (errmsg("you should use \"monitor all\", \"monitor ha\" to check the node \"%s\" status, modify the mastername of %s slave or %s extra \"%s\" in node table"
-				, nodeNameData.data, nodeNameData.data, bgtmKind == true? "gtm":"datanode"
-				, bgtmKind == true? "gtm":"datanode")));
+			ereport(WARNING, (errmsg("you should use \"monitor all\", \"monitor ha\" to check the node \"%s\" status, modify the mastername of %s slave in node table"
+				, nodeNameData.data, nodeNameData.data)));
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_node"), errmsg("column cndnpath is null")));
 		}
@@ -1885,20 +2009,16 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 }
 
 
-static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg)
+static void mgr_get_hba_replication_info(Oid masterTupleOid, StringInfo infosendmsg)
 {
-	ScanKeyData key[3];
+	ScanKeyData key[2];
 	Relation nodeRel;
 	HeapScanDesc relScan;
 	HeapTuple tuple;
-	NameData nodeNameData;
 	Form_mgr_node mgr_node;
 	char *hostAddr;
 	char *userName;
-	
-	Assert(nodename);
 
-	namestrcpy(&nodeNameData, nodename);
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodeincluster
 		,BTEqualStrategyNumber
@@ -1909,20 +2029,16 @@ static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg)
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
-	ScanKeyInit(&key[2],
-		Anum_mgr_node_nodename
-		,BTEqualStrategyNumber
-		,F_NAMEEQ
-		,NameGetDatum(&nodeNameData));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
+		if ((masterTupleOid != mgr_node->nodemasternameoid) && (masterTupleOid != HeapTupleGetOid(tuple)))
+			continue;
 		hostAddr = get_hostaddress_from_hostoid(mgr_node->nodehost);
-		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype
-				|| GTM_TYPE_GTM_EXTRA == mgr_node->nodetype)
+		if (GTM_TYPE_GTM_MASTER == mgr_node->nodetype || GTM_TYPE_GTM_SLAVE == mgr_node->nodetype)
 		{
 			mgr_add_oneline_info_pghbaconf(CONNECT_HOST, "replication", AGTM_USER, hostAddr, 32, "trust", infosendmsg);
 		}
@@ -1942,7 +2058,6 @@ static void mgr_get_hba_replication_info(char *nodename, StringInfo infosendmsg)
 
 static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName, AppendNodeInfo *nodeInfoM, const int maxSecond)
 {
-	char *appName;
 	int iloop = 0;
 	int agentPortM;
 	StringInfoData infosendmsg;
@@ -1950,22 +2065,18 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 	Form_mgr_host mgr_host;
 	HeapTuple hostTupleM;
 	
-	Assert(CNDN_TYPE_DATANODE_SLAVE == nodeType || CNDN_TYPE_DATANODE_EXTRA == nodeType || GTM_TYPE_GTM_SLAVE == nodeType || GTM_TYPE_GTM_EXTRA == nodeType);
+	Assert(CNDN_TYPE_DATANODE_SLAVE == nodeType || GTM_TYPE_GTM_SLAVE == nodeType);
 	Assert(nodeName);
 	Assert(nodeInfoM);
 
-	if (CNDN_TYPE_DATANODE_SLAVE == nodeType || GTM_TYPE_GTM_SLAVE == nodeType)
-		appName = "slave";
-	else
-		appName = "extra";
 	initStringInfo(&infosendmsg);
 	initStringInfo(&restmsg);
-	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) = 0 from pg_stat_replication where application_name='%s';", appName);
+	appendStringInfo(&infosendmsg, "select pg_xlog_location_diff(pg_current_xlog_insert_location(),replay_location) = 0 from pg_stat_replication where application_name='%s';", nodeName);
 	
 	hostTupleM = SearchSysCache1(HOSTHOSTOID, nodeInfoM->nodehost);
 	if(!(HeapTupleIsValid(hostTupleM)))
 	{
-		ereport(ERROR, (errmsg("get the datanode master \"%s\" information in node table fail", nodeName)
+		ereport(ERROR, (errmsg("get the datanode master \"%s\" information in node table fail", nodeInfoM->nodename)
 			, err_generic_string(PG_DIAG_TABLE_NAME, "mgr_host")
 			, errcode(ERRCODE_UNDEFINED_OBJECT)));
 	}
@@ -2231,8 +2342,7 @@ bool mgr_update_agtm_port_host(PGconn **pg_conn, char *hostaddress, int cndnport
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 		Assert(mgr_node);
-		if (mgr_node->nodetype == CNDN_TYPE_DATANODE_MASTER || mgr_node->nodetype ==
-		CNDN_TYPE_DATANODE_SLAVE || mgr_node->nodetype == CNDN_TYPE_DATANODE_EXTRA)
+		if (mgr_node->nodetype == CNDN_TYPE_DATANODE_MASTER)
 		{
 			hostOid = mgr_node->nodehost;
 			datumPath = heap_getattr(tuple, Anum_mgr_node_nodepath, RelationGetDescr(nodeRel), &isNull);

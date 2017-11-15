@@ -4384,6 +4384,52 @@ _copyDropNodeStmt(const DropNodeStmt *from)
 }
 
 /* ****************************************************************
+ *					slot.h copy functions
+ * ****************************************************************
+ */
+static AlterSlotStmt *
+_copyAlterSlotStmt(const AlterSlotStmt *from)
+{
+	AlterSlotStmt *newnode = makeNode(AlterSlotStmt);
+
+#ifdef ADB
+	COPY_SCALAR_FIELD(endpos);
+#endif
+	COPY_SCALAR_FIELD(slotid);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
+static CreateSlotStmt *
+_copyCreateSlotStmt(const CreateSlotStmt *from)
+{
+	CreateSlotStmt *newnode = makeNode(CreateSlotStmt);
+
+#ifdef ADB
+	COPY_SCALAR_FIELD(endpos);
+#endif
+	COPY_SCALAR_FIELD(slotid);
+	COPY_NODE_FIELD(options);
+
+	return newnode;
+}
+
+static DropSlotStmt *
+_copyDropSlotStmt(const DropSlotStmt *from)
+{
+	DropSlotStmt *newnode = makeNode(DropSlotStmt);
+
+#ifdef ADB
+	COPY_SCALAR_FIELD(endpos);
+#endif
+	COPY_SCALAR_FIELD(slotid);
+
+	return newnode;
+}
+
+
+/* ****************************************************************
  *					groupmgr.h copy functions
  * ****************************************************************
  */
@@ -5126,6 +5172,17 @@ copyObject(const void *from)
 			break;
 		case T_CleanConnStmt:
 			retval = _copyCleanConnStmt(from);
+			break;
+#endif
+#ifdef ADB
+		case T_AlterSlotStmt:
+			retval = _copyAlterSlotStmt(from);
+			break;
+		case T_CreateSlotStmt:
+			retval = _copyCreateSlotStmt(from);
+			break;
+		case T_DropSlotStmt:
+			retval = _copyDropSlotStmt(from);
 			break;
 #endif
 		case T_CreateSchemaStmt:

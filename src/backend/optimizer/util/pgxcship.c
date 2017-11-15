@@ -233,7 +233,7 @@ pgxc_FQS_datanodes_for_rtr(Index varno, Shippability_context *sc_context)
 			 * result.
 			 */
 #ifdef ADB
-			if (exec_nodes && 
+			if (exec_nodes &&
 				(IsExecNodesDistributedByValue(exec_nodes) ||
 				IsExecNodesDistributedByUserDefined(exec_nodes)))
 #else
@@ -487,6 +487,11 @@ pgxc_FQS_get_relation_nodes(RangeTblEntry *rte, Index varno, Query *query)
 	/* If we don't know about the distribution of relation, bail out */
 	if (!rel_loc_info)
 		return NULL;
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if(rel_loc_info->locatorType == LOCATOR_TYPE_META)
+		return NULL;
+#endif
 
 	/*
 	 * Find out the datanodes to execute this query on.
@@ -1072,7 +1077,7 @@ pgxc_shippability_walker(Node *node, Shippability_context *sc_context)
 				pgxc_set_shippability_reason(sc_context, SS_NEED_SINGLENODE);
 
                          /* Grouping by non distribution column can not be FQS*/
-                         if (query->groupClause != NULL &&  
+                         if (query->groupClause != NULL &&
                                sc_context->sc_exec_nodes &&
                                !pgxc_query_has_distcolgrouping(query, sc_context->sc_exec_nodes))
                                pgxc_set_shippability_reason(sc_context, SS_NEED_SINGLENODE);
@@ -1599,7 +1604,7 @@ pgxc_find_user_defined_equijoin_quals(ExecNodes *nodes1,
 					IsA(((RelabelType *)linitial(op->args))->arg, Var))
 		{
 			lvar = (Var *)((RelabelType *)linitial(op->args))->arg;
-		} 
+		}
 		else
 			continue;
 
@@ -1728,7 +1733,7 @@ pgxc_find_dist_equijoin_qual(List *dist_vars1, List *dist_vars2, Node *quals)
 					IsA(((RelabelType *)linitial(op->args))->arg, Var))
 		{
 			lvar = (Var *)((RelabelType *)linitial(op->args))->arg;
-		} 
+		}
 		else
 			continue;
 

@@ -82,6 +82,24 @@ static void check_host_name_isvaild(List *host_name_list);
 static bool mgr_check_address_repeate(char *address);
 static bool mgr_check_can_deploy(char *hostname);
 
+
+void mgr_cluster_slot_init(ClusterSlotInitStmt *node, ParamListInfo params, DestReceiver *dest)
+{
+	if (mgr_has_priv_add())
+	{
+		DirectFunctionCall1(mgr_cluster_slot_init_func, PointerGetDatum(node->options));
+		return;
+	}
+	else
+	{
+		ereport(ERROR, (errmsg("permission denied")));
+		return ;
+	}
+}
+
+
+
+
 void mgr_add_host(MGRAddHost *node, ParamListInfo params, DestReceiver *dest)
 {
 	if (mgr_has_priv_add())
@@ -424,6 +442,8 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 	bool got[Natts_mgr_host];
 	Form_mgr_node mgr_node;
 	TupleDesc host_dsc;
+	HeapScanDesc relScan;
+	ScanKeyData key[1];
 	List *options = (List *)PG_GETARG_POINTER(2);
 	bool if_not_exists = PG_GETARG_BOOL(0);
 	char *name_str = PG_GETARG_CSTRING(1);
@@ -551,18 +571,23 @@ Datum mgr_alter_host_func(PG_FUNCTION_ARGS)
 			ereport(ERROR, (errcode(ERRCODE_OBJECT_IN_USE)
 					 ,errmsg("\"%s\" has been used, cannot be changed", NameStr(name))));
 		}
-		rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-		checktuple = mgr_get_tuple_node_from_name_type(rel_node, "gtm", GTM_TYPE_GTM_MASTER);
+		rel_node = heap_open(NodeRelationId, AccessShareLock);
+		ScanKeyInit(&key[0]
+			,Anum_mgr_node_nodeincluster
+			,BTEqualStrategyNumber
+			,F_BOOLEQ
+			,BoolGetDatum(true));
+		relScan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+		checktuple = heap_getnext(relScan, ForwardScanDirection);
 		if (HeapTupleIsValid(checktuple))
 		{
 			mgr_node = (Form_mgr_node)GETSTRUCT(checktuple);
 			Assert(mgr_node);
-			if (mgr_node->nodeincluster && got[Anum_mgr_host_hostaddr-1])
+			if (got[Anum_mgr_host_hostaddr-1])
 				ereport(WARNING, (errcode(ERRCODE_OBJECT_IN_USE)
 					 ,errmsg("the cluster has been initialized, after command \"alter host\" to modify address, need using the command \"flush host\" to flush address information of all nodes")));
-			heap_freetuple(checktuple);
 		}
-		heap_close(rel_node, RowExclusiveLock);
+		heap_close(rel_node, AccessShareLock);
 	}
 
 	new_tuple = heap_modify_tuple(tuple, host_dsc, datum,isnull, got);
@@ -1874,6 +1899,54 @@ bool mgr_check_cluster_stop(Name nodename, Name nodetypestr)
 	heap_close(rel, AccessShareLock);
 	return true;
 }
+/*check is there have node running in the host*/
+bool mgr_check_node_running_in_host(Name hostname, Name nodename, Name nodetypestr)
+{
+	ScanKeyData key[1];
+	Oid hostoid;
+	Relation rel;
+	HeapScanDesc rel_scan;
+	HeapTuple tuple, tuple_host;
+	Form_mgr_node mgr_node;
+	char *ip_addr;
+	int port;
+	Assert(hostname && nodename && nodetypestr);
+	/*get host oid by hostname*/
+	tuple_host = SearchSysCache1(HOSTHOSTNAME, NameGetDatum(hostname));
+	if(!HeapTupleIsValid(tuple_host))
+	{
+		ereport(NOTICE,  (errcode(ERRCODE_UNDEFINED_OBJECT),
+					errmsg("host \"%s\" dose not exist, skipping", NameStr(*hostname))));
+		return false;
+	}
+	hostoid = HeapTupleGetOid(tuple_host);
+	ReleaseSysCache(tuple_host);
+	/*check all node stop*/
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodehost
+		,BTEqualStrategyNumber
+		,F_OIDEQ
+		,ObjectIdGetDatum(hostoid));
+	rel = heap_open(NodeRelationId, AccessShareLock);
+	rel_scan = heap_beginscan(rel, SnapshotNow, 1, key);
+	while((tuple = heap_getnext(rel_scan, ForwardScanDirection))!= NULL)
+	{
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		ip_addr = get_hostaddress_from_hostoid(mgr_node->nodehost);
+		port = mgr_node->nodeport;
+		if(check_node_running_by_socket(ip_addr, port))
+		{
+			get_node_type_str(mgr_node->nodetype, nodetypestr);
+			strcpy(nodename->data, mgr_node->nodename.data);
+			return true;
+		}
+	}
+	heap_endscan(rel_scan);
+	heap_close(rel, AccessShareLock);
+	return false;
+}
+
 bool get_node_type_str(int node_type, Name node_type_str)
 {
 	bool ret = true;
@@ -1881,28 +1954,25 @@ bool get_node_type_str(int node_type, Name node_type_str)
 	switch(node_type)
     {
         case GTM_TYPE_GTM_MASTER:
-			strcpy(NameStr(*node_type_str), "gtm master");
+			namestrcpy(node_type_str, "gtm master");
 			break;
         case GTM_TYPE_GTM_SLAVE:
-			strcpy(NameStr(*node_type_str), "gtm slave");
-			break;
-        case GTM_TYPE_GTM_EXTRA:
-			strcpy(NameStr(*node_type_str), "gtm extra");
+			namestrcpy(node_type_str, "gtm slave");
 			break;
         case CNDN_TYPE_COORDINATOR_MASTER:
-			strcpy(NameStr(*node_type_str), "coordinator");
+			strcpy(NameStr(*node_type_str), "coordinator master");
+			break;
+        case CNDN_TYPE_COORDINATOR_SLAVE:
+			strcpy(NameStr(*node_type_str), "coordinator slave");
 			break;
         case CNDN_TYPE_DATANODE_MASTER:
-			strcpy(NameStr(*node_type_str), "datanode master");
+			namestrcpy(node_type_str, "datanode master");
 			break;
         case CNDN_TYPE_DATANODE_SLAVE:
-			strcpy(NameStr(*node_type_str), "datanode slave");
-			break;
-        case CNDN_TYPE_DATANODE_EXTRA:
-			strcpy(NameStr(*node_type_str), "datanode extra");
+			namestrcpy(node_type_str, "datanode slave");
 			break;
         default:
-			strcpy(NameStr(*node_type_str), "unknown type");
+			namestrcpy(node_type_str, "unknown type");
 			ret = false;
 			break;
     }

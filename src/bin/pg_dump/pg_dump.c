@@ -13292,7 +13292,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 		 * attislocal correctly, plus fix up any inherited CHECK constraints.
 		 * Analogously, we set up typed tables using ALTER TABLE / OF here.
 		 */
-		if (binary_upgrade && (tbinfo->relkind == RELKIND_RELATION || 
+		if (binary_upgrade && (tbinfo->relkind == RELKIND_RELATION ||
 							   tbinfo->relkind == RELKIND_FOREIGN_TABLE) )
 		{
 			for (j = 0; j < tbinfo->numatts; j++)
@@ -13317,7 +13317,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 					else
 						appendPQExpBuffer(q, "ALTER FOREIGN TABLE %s ",
 										  fmtId(tbinfo->dobj.name));
-						
+
 					appendPQExpBuffer(q, "DROP COLUMN %s;\n",
 									  fmtId(tbinfo->attnames[j]));
 				}
@@ -14278,13 +14278,13 @@ dumpSequenceData(Archive *fout, TableDataInfo *tdinfo)
 	last = PQgetvalue(res, 0, 0);
 	called = (strcmp(PQgetvalue(res, 0, 1), "t") == 0);
 #ifdef PGXC
-    /*                                                                                                                        
-     * In Postgres-XC it is possible that the current value of a                                                              
-     * sequence cached on each node is different as several sessions                                                          
-     * might use the sequence on different nodes. So what we do here                                                          
-     * to get a consistent dump is to get the next value of sequence.                                                         
-     * This insures that sequence value is unique as nextval is directly                                                      
-     * obtained from GTM.                                                                                                     
+    /*
+     * In Postgres-XC it is possible that the current value of a
+     * sequence cached on each node is different as several sessions
+     * might use the sequence on different nodes. So what we do here
+     * to get a consistent dump is to get the next value of sequence.
+     * This insures that sequence value is unique as nextval is directly
+     * obtained from GTM.
      */
     resetPQExpBuffer(query);
     appendPQExpBuffer(query, "SELECT pg_catalog.nextval(");
@@ -15362,6 +15362,7 @@ findDumpableDependencies(ArchiveHandle *AH, DumpableObject *dobj,
 	}
 }
 
+static char lastSchema[100] = "";
 
 /*
  * selectSourceSchema - make the specified schema the active search path
@@ -15382,6 +15383,10 @@ static void
 selectSourceSchema(Archive *fout, const char *schemaName)
 {
 	PQExpBuffer query;
+
+	if(0==strcmp(schemaName, lastSchema))
+		return;
+	strcpy(lastSchema, schemaName);
 
 	/* This is checked by the callers already */
 	Assert(schemaName != NULL && *schemaName != '\0');
@@ -15728,9 +15733,10 @@ dumpAdbmgrTable(Archive *fout)
 	{
 		resetPQExpBuffer(addstrdata);
 		if (strlen(PQgetvalue(res, i, 5)))
-			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" (host=\"%s\", port=%s, sync_state=\"%s\",path=\"%s\");",
+			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" FOR \"%s\" (host=\"%s\", port=%s, sync_state=\"%s\",path=\"%s\");",
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 0),
+				PQgetvalue(res, i, 3),
 				PQgetvalue(res, i, 1),
 				PQgetvalue(res, i, 4),
 				PQgetvalue(res, i, 5),
@@ -15752,10 +15758,10 @@ dumpAdbmgrTable(Archive *fout)
 			NULL, NULL);
 	}
 	PQclear(res);
-	
+
 	/* Get the mgr_updateparm table*/
 	resetPQExpBuffer(dbQry);
-	appendPQExpBuffer(dbQry, "LIST PARAM;");	
+	appendPQExpBuffer(dbQry, "LIST PARAM;");
 	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
 	Assert(PQnfields(res) == 4);
 	for (i = 0; i < PQntuples(res); i++)
@@ -15787,10 +15793,10 @@ dumpAdbmgrTable(Archive *fout)
 			NULL, NULL);
 	}
 	PQclear(res);
-	
+
 	/* Get the mgr_hba table*/
 	resetPQExpBuffer(dbQry);
-	appendPQExpBuffer(dbQry, "LIST HBA");	
+	appendPQExpBuffer(dbQry, "LIST HBA");
 	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
 	Assert(PQnfields(res) == 2);
 	for (i = 0; i < PQntuples(res); i++)
@@ -15809,10 +15815,10 @@ dumpAdbmgrTable(Archive *fout)
 			NULL, NULL);
 	}
 	PQclear(res);
-	
+
 	/* Get the job table*/
 	resetPQExpBuffer(dbQry);
-	appendPQExpBuffer(dbQry, "LIST JOB");	
+	appendPQExpBuffer(dbQry, "LIST JOB");
 	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
 	Assert(PQnfields(res) == 7);
 	for (i = 0; i < PQntuples(res); i++)
@@ -15840,7 +15846,7 @@ dumpAdbmgrTable(Archive *fout)
 
 	/* Get the item table*/
 	resetPQExpBuffer(dbQry);
-	appendPQExpBuffer(dbQry, "LIST ITEM");	
+	appendPQExpBuffer(dbQry, "LIST ITEM");
 	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
 	Assert(PQnfields(res) == 3);
 	for (i = 0; i < PQntuples(res); i++)
@@ -15871,7 +15877,7 @@ dumpAdbmgrTable(Archive *fout)
 * given the source string str, replace the character chr by string strr
 *
 */
-static char 
+static char
 *respacechr(char *str,char chr, char *strr)
 {
 	char *retstr;

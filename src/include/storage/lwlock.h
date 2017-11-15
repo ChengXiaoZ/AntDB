@@ -78,6 +78,9 @@ typedef enum LWLockId
 	BarrierLock,
 	NodeTableLock,
 #endif
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	SlotTableLock,
+#endif
 	RelationMappingLock,
 	AsyncCtlLock,
 	AsyncQueueLock,

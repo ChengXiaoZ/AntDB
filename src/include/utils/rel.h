@@ -49,7 +49,6 @@ typedef struct LockInfoData
 
 typedef LockInfoData *LockInfo;
 
-
 /*
  * Cached lookup information for the frequently used index access method
  * functions, defined by the pg_am row associated with an index relation.
@@ -184,6 +183,11 @@ typedef struct RelationData
 #ifdef PGXC
 	RelationLocInfo *rd_locator_info;
 #endif
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	char		dn_locatorType;	/* locator type, see above */
+	AttrNumber	dn_partAttrNum;	/* Distribution column attribute */
+#endif
+
 } RelationData;
 
 /*

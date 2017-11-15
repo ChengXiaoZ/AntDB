@@ -1,0 +1,49 @@
+<!--
+doc/src/sgml/ref/mgr_checkout_dn_status.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-CHECKOUTDNSTATUS">
+  <refmeta>
+    <refentrytitle>CHECKOUT DN SLAVE STATUS</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>CHECKOUT DN SLAVE STATUS</refname>
+    <refpurpose>show the datanode salve is in the recovery state</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-checkoutdnstatus">
+    <primary>CHECKOUT DN SLAVE STATUS</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+CHECKOUT DATANODE SLAVE STATUS
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>CHECKOUT DN SLAVE STATUS</command> monitor the current state for datanode slave,and check whether it is in recovery state.
+    </para>
+
+  </refsect1>
+
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+Show the datanode salve is in the recovery state:
+<programlisting>
+CHECKOUT DATANODE SLAVE STATUS;
+</programlisting>
+    </para>
+  </refsect1>
+
+
+</refentry>

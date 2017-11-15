@@ -1901,7 +1901,13 @@ transformIndexConstraint(Constraint *constraint, CreateStmtContext *cxt)
 		}
 
 #ifdef PGXC
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		if (IS_PGXC_COORDINATOR ||
+			(IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode))
+#else
 		if (IS_PGXC_COORDINATOR)
+#endif
 		{
 			/*
 			 * Set fallback distribution column.
@@ -1961,7 +1967,13 @@ transformFKConstraints(CreateStmtContext *cxt,
 			 * If not yet set, set it to first column in FK constraint
 			 * if it references a partitioned table
 			 */
+
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+			if ((IS_PGXC_COORDINATOR ||
+				(IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode)) &&
+#else
 			if (IS_PGXC_COORDINATOR &&
+#endif
 				!cxt->fallback_dist_col &&
 				list_length(constraint->pk_attrs) != 0)
 			{

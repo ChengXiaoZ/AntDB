@@ -702,6 +702,20 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId)
 	 *    DISTRIBUTE BY clause is missing in the statemnet the system
 	 *    should not try to find out the node list itself.
 	 */
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if ((IS_PGXC_COORDINATOR
+		|| (IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode)
+		|| (isRestoreMode && stmt->distributeby != NULL))
+		&& relkind == RELKIND_RELATION)
+	{
+		AddRelationDistribution(relationId,
+								stmt->distributeby,
+								stmt->subcluster, inheritOids, descriptor);
+		CommandCounterIncrement();
+		/* Make sure locator info gets rebuilt */
+		RelationCacheInvalidateEntry(relationId);
+	}
+#else
 	if ((IS_PGXC_COORDINATOR || (isRestoreMode && stmt->distributeby != NULL))
 		&& relkind == RELKIND_RELATION)
 	{
@@ -714,12 +728,18 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId)
 	}
 #endif
 
+#endif
+
 #ifdef ADB
 	/*
 	 * If datanode, only record the dependency of the relation on the
 	 * funtion which the relation distributed by.
 	 */
-	if ((IS_PGXC_DATANODE || (isRestoreMode && stmt->distributeby != NULL))
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if ((IS_PGXC_REAL_DATANODE || (isRestoreMode && stmt->distributeby != NULL))
+#else
+	if (((IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode) || (isRestoreMode && stmt->distributeby != NULL))
+#endif
 		&& relkind == RELKIND_RELATION)
 	{
 		AddPgxcRelationDependFunction(relationId,
@@ -6200,9 +6220,9 @@ check_valid_fkconstraint(const char *constraintName,
 		{
 			if (constraintKey[i] == rloc->partAttrNum &&
 				foreignKey[i] == pkrloc->partAttrNum)
-				same_dist_col = true; 
+				same_dist_col = true;
 		}
-		
+
 		if (!same_dist_col)
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FOREIGN_KEY),
