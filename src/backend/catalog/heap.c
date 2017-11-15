@@ -1509,9 +1509,11 @@ GetRelationDistributionItems(Oid relid,
 		/* If we did not find a usable type, fall back to round robin */
 		if (local_attnum == 0)
 		{
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
 			ereport(ERROR,
 			(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				errmsg("don't support implicit conversion to RROBIN")));
+#endif
 
 			local_locatortype = LOCATOR_TYPE_RROBIN;
 		}
