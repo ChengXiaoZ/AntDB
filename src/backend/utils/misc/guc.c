@@ -166,6 +166,7 @@ char	   *GUC_check_errhint_string;
 
 extern int copy_batch_rows;
 extern int copy_batch_size;
+extern char *mgr_zone;
 
 static void set_config_sourcefile(const char *name, char *sourcefile,
 					  int sourceline);
@@ -3823,7 +3824,18 @@ static struct config_string ConfigureNamesString[] =
 #endif
 
 #endif
-
+#ifdef ADBMGRD
+	{
+		{"mgr_zone", PGC_USERSET, CLIENT_CONN_LOCALE,
+			gettext_noop("Set zone"),
+			NULL,
+			GUC_IS_NAME | GUC_REPORT
+		},
+		&mgr_zone,
+		"local",
+		NULL, NULL, NULL
+	},
+#endif
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, NULL, NULL, NULL, NULL

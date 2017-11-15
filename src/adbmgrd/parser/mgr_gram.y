@@ -157,7 +157,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 				AddExtensionStmt DropExtensionStmt RemoveNodeStmt FailoverManualStmt
 				ExpandNodeStmt CheckNodeStmt ClusterMetaInitStmt ClusterSlotInitStmt
 				ClusterPgxcNodeInitStmt ClusterPgxcNodeCheckStmt
-				ImportHashMetaStmt ClusterHashMetaCheckStmt SwitchoverStmt
+				ImportHashMetaStmt ClusterHashMetaCheckStmt SwitchoverStmt ZoneStmt
 
 %type <list>	general_options opt_general_options general_option_list HbaParaList
 				AConstList targetList ObjList var_list NodeConstList set_parm_general_options
@@ -195,7 +195,7 @@ static void check_jobitem_name_isvaild(List *node_name_list);
 %token<keyword> GRANT REVOKE FROM ITEM JOB EXTENSION REMOVE DATA_CHECKSUMS
 
 %token<keyword> EXPAND ACTIVATE CHECKOUT STATUS RECOVER BASEBACKUP FAIL SUCCESS DOPROMOTE SLOT DOCHECK PGXCNODE END SLEEP META
-%token<keyword> IMPORT HASH
+%token<keyword> IMPORT HASH ZONE CLEAR
 %token<keyword> PROMOTE ADBMGR REWIND SWITCHOVER
 
 /* for ADB monitor*/
@@ -295,6 +295,7 @@ stmt :
 	| ClusterHashMetaCheckStmt
 	| FailoverManualStmt
 	| SwitchoverStmt
+	| ZoneStmt
 	| /* empty */
 		{ $$ = NULL; }
 	;
@@ -2065,6 +2066,15 @@ ListNodeStmt:
 			stmt->whereClause = make_column_in("type", args);
 			$$ = (Node*)stmt;
 		}
+	| LIST NODE ZONE Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($4, -1));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("node"), -1));
+			stmt->whereClause = make_column_in("zone", args);
+			$$ = (Node*)stmt;
+		}
 	;
 InitNodeStmt:
 INIT ALL
@@ -2110,6 +2120,7 @@ StartNodeMasterStmt:
 		}
 	|	START COORDINATOR MASTER NodeConstList
 		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_master", $4));
@@ -2117,6 +2128,7 @@ StartNodeMasterStmt:
 		}
 	|	START COORDINATOR SLAVE NodeConstList
 		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
 			SelectStmt *stmt = makeNode(SelectStmt);
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_slave", $4));
@@ -2124,6 +2136,7 @@ StartNodeMasterStmt:
 		}
 	|	START COORDINATOR MASTER ALL
 		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
@@ -2132,10 +2145,19 @@ StartNodeMasterStmt:
 		}
 	|	START COORDINATOR SLAVE ALL
 		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
 			SelectStmt *stmt = makeNode(SelectStmt);
 		 	List *args = list_make1(makeNullAConst(-1));
 			stmt->targetList = list_make1(make_star_target(-1));
 			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_start_cn_slave", args));
+			$$ = (Node*)stmt;
+		}
+	|	START COORDINATOR ALL
+		{
+			mgr_check_job_in_updateparam("monitor_handle_coordinator");
+			SelectStmt *stmt = makeNode(SelectStmt);
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("start_coordinator_all"), -1));
 			$$ = (Node*)stmt;
 		}
 	|	START DATANODE MASTER NodeConstList
@@ -2237,10 +2259,13 @@ StopNodeMasterStmt:
 	|	STOP COORDINATOR ALL opt_stop_mode
 		{
 			SelectStmt *stmt = makeNode(SelectStmt);
-			List *args = list_make1(makeStringConst($4, -1));
-			args = list_concat(args, list_make1(makeNullAConst(-1)));
 			stmt->targetList = list_make1(make_star_target(-1));
-			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_stop_cn_master", args));
+			if (strcmp($4, SHUTDOWN_S) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_coordinator_all"), -1));
+			else if (strcmp($4, SHUTDOWN_F) == 0)
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_coordinator_all_f"), -1));
+			else
+				stmt->fromClause = list_make1(makeRangeVar(pstrdup("adbmgr"), pstrdup("stop_coordinator_all_i"), -1));
 			$$ = (Node*)stmt;
 		}
 	|	STOP DATANODE MASTER NodeConstList opt_stop_mode
@@ -2712,11 +2737,11 @@ RemoveNodeStmt:
 			node->names = $4;
 			$$ = (Node*)node;
 		}
-	|	REMOVE COORDINATOR ObjList
+	|	REMOVE COORDINATOR opt_cn_inner_type ObjList
 		{
 			MgrRemoveNode *node = makeNode(MgrRemoveNode);
-			node->nodetype = CNDN_TYPE_COORDINATOR_MASTER;
-			node->names = $3;
+			node->nodetype = $3;
+			node->names = $4;
 			$$ = (Node*)node;
 		}
 	;
@@ -2812,6 +2837,33 @@ SwitchoverStmt:
 		}
 		;
 
+ZoneStmt:
+		ZONE PROMOTE Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, @3));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_zone_promote", args));
+			$$ = (Node*)stmt;
+		}
+	|	ZONE CONFIG Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, @3));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_zone_config_all", args));
+			$$ = (Node*)stmt;
+		}
+	|	ZONE CLEAR Ident
+		{
+			SelectStmt *stmt = makeNode(SelectStmt);
+			List *args = list_make1(makeStringConst($3, @3));
+			stmt->targetList = list_make1(make_star_target(-1));
+			stmt->fromClause = list_make1(makeNode_RangeFunction("mgr_zone_clear", args));
+			$$ = (Node*)stmt;
+		}
+	;
+
 unreserved_keyword:
 	  ACL
 	| ACTIVATE
@@ -2824,6 +2876,7 @@ unreserved_keyword:
 	| CHECK_USER
 	| CHECKOUT
 	| CLEAN
+	| CLEAR
 	| CONFIG
 	| CLUSTER
 	| DATA_CHECKSUMS
@@ -2896,6 +2949,7 @@ unreserved_keyword:
 	| UPDATE_THRESHOLD_VALUE
 	| UPDATE_USER
 	| USER
+	| ZONE
 	;
 
 reserved_keyword:

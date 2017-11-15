@@ -158,7 +158,7 @@ Datum mgr_add_updateparm_func(PG_FUNCTION_ARGS)
 	/* check node */
 	if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) != 0)
 	{
-		checktuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodename));
+		checktuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodename), nodetype);
 		if (!HeapTupleIsValid(checktuple))
 		{
 			heap_close(rel_node, RowExclusiveLock);
@@ -965,7 +965,7 @@ static void mgr_reload_parm(Relation noderel, char *nodename, char nodetype, Str
 	}
 	else	/*for given nodename*/
 	{
-		tuple = mgr_get_tuple_node_from_name_type(noderel, nodename);
+		tuple = mgr_get_tuple_node_from_name_type(noderel, nodename, nodetype);
 		if(!(HeapTupleIsValid(tuple)))
 		{
 			nodetypestr = mgr_nodetype_str(nodetype);
@@ -1159,7 +1159,7 @@ Datum mgr_reset_updateparm_func(PG_FUNCTION_ARGS)
 	/* check node */
 	if (strcmp(nodename.data, MACRO_STAND_FOR_ALL_NODENAME) != 0)
 	{
-		checktuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodename));
+		checktuple = mgr_get_tuple_node_from_name_type(rel_node, NameStr(nodename), nodetype);
 		if (!HeapTupleIsValid(checktuple))
 		{
 			heap_close(rel_node, RowExclusiveLock);
@@ -1776,7 +1776,7 @@ Datum mgr_show_var_param(PG_FUNCTION_ARGS)
 	namestrcpy(&param, PG_GETARG_CSTRING(1));
 
 	relNode = heap_open(NodeRelationId, AccessShareLock);
-	checkTuple = mgr_get_tuple_node_from_name_type(relNode, nodename.data);
+	checkTuple = mgr_get_nodetuple_by_name_zone(relNode, nodename.data, mgr_zone);
 	if (!HeapTupleIsValid(checkTuple))
 	{
 		heap_close(relNode, AccessShareLock);

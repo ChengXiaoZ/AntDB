@@ -5414,6 +5414,20 @@ DESCR("mgr switchover");
 DATA(insert OID = 4896 (  monitor_handle_coordinator       PGNSP PGUID 12 10 400 0 0 f f f f t t s 0 0 2249 "23 2275 23" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ monitor_handle_coordinator _null_ _null_ _null_ ));
 DESCR("monitor auto handle coordinator");
 
+DATA(insert OID = 4895 ( mgr_start_cn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_start_cn_slave _null_ _null_ _null_ ));
+DESCR("start coordinator slave");
+
+DATA(insert OID = 4894 ( mgr_stop_cn_slave      PGNSP PGUID 12 1 0 2276 0 f f f f f t s 1 0 2249 "2276" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_stop_cn_slave _null_ _null_ _null_ ));
+DESCR("stop coordinator slave");
+
+DATA(insert OID = 4893 (  mgr_zone_promote        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_zone_promote _null_ _null_ _null_ ));
+DESCR("zone promote");
+
+DATA(insert OID = 4892 (  mgr_zone_config_all        PGNSP PGUID 12 10 400 0 0 f f f f t t s 1 0 2249 "2275" "{19,16,25}" "{o,o,o}" "{nodename,status,description}" _null_ mgr_zone_config_all _null_ _null_ _null_ ));
+DESCR("zone config");
+
+DATA(insert OID = 4891 ( mgr_zone_clear       PGNSP PGUID 12 1 0 0 0 f f f f t f s 1 0 16 "2275" _null_ _null_ _null_ _null_ mgr_zone_clear _null_ _null_ _null_ ));
+DESCR("zone clear");
 
 #endif
 

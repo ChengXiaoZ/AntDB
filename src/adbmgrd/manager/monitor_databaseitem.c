@@ -41,6 +41,7 @@
 static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len);
 
 #define DEFAULT_DB "postgres"
+char *mgr_zone;
 
 typedef enum ResultChoice
 {
@@ -105,7 +106,7 @@ int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, c
 {
 	/*get datanode master user, port*/
 	HeapScanDesc rel_scan;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	HeapTuple tuple;
 	HeapTuple tup;
 	Form_mgr_node mgr_node;
@@ -123,7 +124,12 @@ int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, c
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(nodetype));
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -579,7 +585,7 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 {
 	/*get node user, port*/
 	HeapScanDesc rel_scan;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	HeapTuple tuple;
 	HeapTuple tup;
 	Form_mgr_node mgr_node;
@@ -598,7 +604,12 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(nodetype));
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
+	ScanKeyInit(&key[1]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);

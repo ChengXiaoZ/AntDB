@@ -20,6 +20,7 @@ CATALOG(mgr_node,4948)
 	bool		nodeinited;		/* is initialized */
 	Oid			nodemasternameoid;	/* 0 stands for the node is not slave*/
 	bool		nodeincluster;		/*check the node in cluster*/
+	NameData	nodezone;
 #ifdef CATALOG_VARLEN
 	text		nodepath;		/* node data path */
 #endif						/* CATALOG_VARLEN */
@@ -36,7 +37,7 @@ typedef FormData_mgr_node *Form_mgr_node;
  *		compiler constants for mgr_node
  * ----------------
  */
-#define Natts_mgr_node							9
+#define Natts_mgr_node						10
 #define Anum_mgr_node_nodename					1
 #define Anum_mgr_node_nodehost					2
 #define Anum_mgr_node_nodetype					3
@@ -45,7 +46,8 @@ typedef FormData_mgr_node *Form_mgr_node;
 #define Anum_mgr_node_nodeinited				6
 #define Anum_mgr_node_nodemasternameOid			7
 #define Anum_mgr_node_nodeincluster				8
-#define Anum_mgr_node_nodepath					9
+#define Anum_mgr_node_nodezone					9
+#define Anum_mgr_node_nodepath					10
 
 #define CNDN_TYPE_COORDINATOR_MASTER		'c'
 #define CNDN_TYPE_COORDINATOR_SLAVE			's'
