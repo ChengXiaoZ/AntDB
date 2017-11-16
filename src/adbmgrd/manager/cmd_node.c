@@ -2938,13 +2938,16 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	GetAgentCmdRst getAgentCmdRst;
 	char* database ;
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
 	if(0!=strcmp(MGRDatabaseName,""))
 		database = MGRDatabaseName;
 	else
 		database = DEFAULT_DB;
 
 	ereport(ERROR, (errmsg("this command doesn't support!")));
-
+#else
+	database = DEFAULT_DB;
+#endif
 	if (RecoveryInProgress())
 		ereport(ERROR, (errmsg("cannot assign TransactionIds during recovery")));
 
@@ -3067,7 +3070,10 @@ Datum mgr_append_dnmaster(PG_FUNCTION_ARGS)
 
 		/* step 6: start the datanode master with restoremode mode, and input all catalog message */
 		mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
-		//mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, temp_file);
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
+#else
+		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, temp_file, DEFAULT_DB);
+#endif
 		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost, temp_file);
 
 		/* step 7: stop the datanode master with restoremode, and then start it with "datanode" mode */
@@ -3358,7 +3364,11 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 	int max_locktry = 600;
 	const int max_pingtry = 60;
 	int ret = 0;
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
 	char* mgr_database = hexp_get_database();
+#else
+	char* mgr_database = DEFAULT_DB;
+#endif
 
 	if (RecoveryInProgress())
 		ereport(ERROR, (errmsg("cannot assign TransactionIds during recovery")));
@@ -3480,16 +3490,18 @@ Datum mgr_append_coordmaster(PG_FUNCTION_ARGS)
 		/* step 5: dumpall catalog message */
 		all_table_struct_tmpfile = get_temp_file_name();
 		mgr_pg_dumpall(coordhostoid, coordport, appendnodeinfo.nodehost, all_table_struct_tmpfile);
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
 		adb_slot_data_tmpfile = get_temp_file_name();
 		mgr_pg_dump_for_slot(coordhostoid, coordport, appendnodeinfo.nodehost, mgr_database, adb_slot_data_tmpfile);
-
+#endif
 		/* step 6: start the append coordiantor with restoremode mode, and input all catalog message */
 		mgr_start_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, all_table_struct_tmpfile, DEFAULT_DB);
-		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, adb_slot_data_tmpfile, mgr_database);
 		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost, all_table_struct_tmpfile);
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
+		mgr_pg_dumpall_input_node(appendnodeinfo.nodehost, appendnodeinfo.nodeport, adb_slot_data_tmpfile, mgr_database);
 		mgr_rm_dumpall_temp_file(appendnodeinfo.nodehost, adb_slot_data_tmpfile);
-
+#endif
 		/* step 7: stop the append coordiantor with restoremode, and then start it with "coordinator" mode */
 		mgr_stop_node_with_restoremode(appendnodeinfo.nodepath, appendnodeinfo.nodehost);
 		mgr_start_node(CNDN_TYPE_COORDINATOR_MASTER, appendnodeinfo.nodepath, appendnodeinfo.nodehost);
@@ -4005,7 +4017,11 @@ void mgr_pgbasebackup(char nodetype, AppendNodeInfo *appendnodeinfo, AppendNodeI
 									,appendnodeinfo->nodepath);
 
 	}
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
 	else if (nodetype == CNDN_TYPE_DATANODE_MASTER || nodetype == CNDN_TYPE_DATANODE_SLAVE)
+#else
+	else if (nodetype == CNDN_TYPE_DATANODE_SLAVE)
+#endif
 	{
 		appendStringInfo(&sendstrmsg, " -h %s -p %d -U %s -D %s -Xs -Fp -R",
 									get_hostaddress_from_hostoid(parentnodeinfo->nodehost)
@@ -9913,11 +9929,14 @@ bool mgr_lock_cluster(PGconn **pg_conn, Oid *cnoid)
 	bool isNull;
 	bool breload = false;
 	char* database ;
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
 	if(0!=strcmp(MGRDatabaseName,""))
 		database = MGRDatabaseName;
 	else
 		database = DEFAULT_DB;
-
+#else
+	database = DEFAULT_DB;
+#endif
 	bool bgetAddress = true;
 	bool ret = true;
 
@@ -11265,10 +11284,14 @@ static bool AddHbaIsValid(const AppendNodeInfo *nodeinfo, StringInfo infosendmsg
 	GetAgentCmdRst getAgentCmdRst;
 	PGconn *pg_conn = NULL;
 	char* database ;
+#if (defined ADBMGRD) && (defined ENABLE_EXPANSION)
 	if(0!=strcmp(MGRDatabaseName,""))
 		database = MGRDatabaseName;
 	else
 		database = DEFAULT_DB;
+#else
+	database = DEFAULT_DB;
+#endif
 
 	initStringInfo(&(getAgentCmdRst.description));
 
