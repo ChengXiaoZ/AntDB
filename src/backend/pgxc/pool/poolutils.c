@@ -110,6 +110,12 @@ pgxc_pool_reload(PG_FUNCTION_ARGS)
 #if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
 	if (IS_PGXC_DATANODE&&!useLocalXid&&!isRestoreMode)
 	{
+		/* Signal other sessions to reconnect to pooler */
+		ReloadConnInfoOnBackends();
+
+		/* Session is being reloaded, drop prepared and temporary objects */
+		DropAllPreparedStatements();
+
 		/* Now session information is reset in correct memory context */
 		old_context = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -421,9 +427,14 @@ HandlePoolerReload(void)
 	MemoryContext old_context;
 	ResourceOwner volatile reload_ro;
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+	if (!IsNormalProcessingMode() || MessageContext == NULL)
+		return;
+#else
 	/* A Datanode has no pooler active, so do not bother about that */
 	if (IS_PGXC_DATANODE || !IsNormalProcessingMode() || MessageContext == NULL)
 		return;
+#endif
 
 	/* Abort existing xact if any */
 	AbortCurrentTransaction();
@@ -446,8 +457,14 @@ HandlePoolerReload(void)
 		/* Reinitialize session, while old pooler connection is active */
 		InitMultinodeExecutor(true);
 
+#if (!defined ADBMGRD) && (!defined AGTM) && (defined ENABLE_EXPANSION)
+		/* And reconnect to pool manager */
+		if(IS_PGXC_COORDINATOR)
+			PoolManagerReconnect();
+#else
 		/* And reconnect to pool manager */
 		PoolManagerReconnect();
+#endif
 	}PG_CATCH();
 	{
 		CurrentResourceOwner = ResourceOwnerGetParent(reload_ro);

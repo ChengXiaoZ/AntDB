@@ -644,7 +644,7 @@ SlotUploadFromCurrentDB(void)
 		if(INVALID_SLOT_VALUE== slotnode[slotForm->slotid])
 		{
 			find_invalid_nodeindex = true;
-			sprintf(msg, "load adb_slot failed.node name %s in adb_slot table does not exist in pgxc_node", NameStr(slotForm->nodename));
+			sprintf(msg, "%s load adb_slot failed.node name %s in adb_slot table does not exist in pgxc_node", PGXCNodeName, NameStr(slotForm->nodename));
 			break;
 		}
 		slotstatus[slotForm->slotid] = slotForm->status;
