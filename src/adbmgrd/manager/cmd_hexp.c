@@ -3936,7 +3936,7 @@ static void hexp_get_coordinator_conn_output(PGconn **pg_conn, Oid *cnoid, char*
 	if (!mgr_get_active_node(&nodename, CNDN_TYPE_COORDINATOR_MASTER, 0))
 		ereport(ERROR, (errmsg("can not get active coordinator in cluster")));
 	rel_node = heap_open(NodeRelationId, AccessShareLock);
-	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodename.data);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodename.data, CNDN_TYPE_COORDINATOR_MASTER);
 	if(!(HeapTupleIsValid(tuple)))
 	{
 		ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", nodename.data)
@@ -4064,7 +4064,7 @@ static void hexp_get_coordinator_conn(PGconn **pg_conn, Oid *cnoid)
 	if (!mgr_get_active_node(&nodename, CNDN_TYPE_COORDINATOR_MASTER, 0))
 		ereport(ERROR, (errmsg("can not get active coordinator in cluster")));
 	rel_node = heap_open(NodeRelationId, AccessShareLock);
-	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodename.data);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, nodename.data, CNDN_TYPE_COORDINATOR_MASTER);
 	if(!(HeapTupleIsValid(tuple)))
 	{
 		ereport(ERROR, (errmsg("coordinator \"%s\" does not exist", nodename.data)

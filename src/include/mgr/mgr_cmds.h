@@ -156,8 +156,9 @@ extern Datum mgr_init_dn_slave_all(PG_FUNCTION_ARGS);
 extern void mgr_init_dn_slave_get_result(const char cmdtype, GetAgentCmdRst *getAgentCmdRst, Relation noderel, HeapTuple aimtuple, char *masterhostaddress, uint32 masterport, char *mastername);
 
 extern Datum mgr_start_cn_master(PG_FUNCTION_ARGS);
+extern Datum mgr_start_cn_slave(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_cn_master(PG_FUNCTION_ARGS);
-extern Datum mgr_stop_cn_master_all(PG_FUNCTION_ARGS);
+extern Datum mgr_stop_cn_slave(PG_FUNCTION_ARGS);
 extern Datum mgr_start_dn_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_dn_master_all(PG_FUNCTION_ARGS);
@@ -238,11 +239,11 @@ extern Datum mgr_start_one_dn_master(PG_FUNCTION_ARGS);
 extern Datum mgr_stop_one_dn_master(PG_FUNCTION_ARGS);
 extern char *mgr_get_slavename(Oid tupleOid, char nodetype);
 extern void mgr_rename_recovery_to_conf(char cmdtype, Oid hostOid, char* cndnpath, GetAgentCmdRst *getAgentCmdRst);
-extern HeapTuple mgr_get_tuple_node_from_name_type(Relation rel, char *nodename);
+extern HeapTuple mgr_get_tuple_node_from_name_type(Relation rel, char *nodename, char nodetype);
 extern char *mgr_nodetype_str(char nodetype);
 extern Datum mgr_clean_all(PG_FUNCTION_ARGS);
 extern Datum mgr_clean_node(PG_FUNCTION_ARGS);
-extern bool mgr_check_node_exist_incluster(Name nodename, bool bincluster);
+extern bool mgr_check_node_exist_incluster(Name nodename, char nodetype, bool bincluster);
 extern List* mgr_get_nodetype_namelist(char nodetype);
 extern Datum mgr_remove_node_func(PG_FUNCTION_ARGS);
 extern void mgr_remove_node(MgrRemoveNode *node, ParamListInfo params, DestReceiver *dest);
@@ -418,5 +419,13 @@ extern bool mgr_get_slave_node(Relation relNode, Oid masterTupleOid, int syncTyp
 extern char *mgr_get_mastername_by_nodename_type(char* nodename, char nodetype);
 extern void mgr_add_hbaconf_by_masteroid(Oid mastertupleoid, char *dbname, char *user, char *address);
 extern char *mgr_get_agtm_name(void);
+/* zone */
+extern bool mgr_check_nodename_repeate(Relation rel, char *nodename);
+extern bool mgr_checknode_in_currentzone(const char *zone, const Oid TupleOid);
+extern Datum mgr_zone_promote(PG_FUNCTION_ARGS);
+extern Datum mgr_zone_config_all(PG_FUNCTION_ARGS);
+extern HeapTuple mgr_get_nodetuple_by_name_zone(Relation rel, char *nodename, char *nodezone);
+extern Datum mgr_zone_clear(PG_FUNCTION_ARGS);
+extern bool mgr_node_has_slave_inzone(Relation rel, char *zone, Oid mastertupleoid);
 
 #endif /* MGR_CMDS_H */

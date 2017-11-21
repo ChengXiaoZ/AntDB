@@ -44,6 +44,8 @@
 #include "nodes/makefuncs.h"
 #include "access/xlog.h"
 
+char *mgr_zone;
+
 static struct enum_sync_state sync_state_tab[] =
 {
 	{SYNC_STATE_SYNC, "sync"},
@@ -94,7 +96,7 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	Form_mgr_node mgr_nodetmp;
 	Relation rel_node;
 	GetAgentCmdRst getAgentCmdRst;
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 	HeapScanDesc relScan;
 	Oid oldMasterTupleOid;
 
@@ -108,8 +110,8 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 	Assert(nodename);
 	namestrcpy(&nodenamedata, nodename);
 	
-	/* check slave node */
-	if (!mgr_check_node_exist_incluster(&nodenamedata, true))
+	/* check master node */
+	if (!mgr_check_node_exist_incluster(&nodenamedata, nodetype, true))
 	{
 		nodetypestr = mgr_nodetype_str(nodetype);
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
@@ -251,7 +253,12 @@ Datum mgr_failover_manual_adbmgr_func(PG_FUNCTION_ARGS)
 		,BTEqualStrategyNumber
 		,F_OIDEQ
 		,ObjectIdGetDatum(oldMasterTupleOid));
-	relScan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
+	relScan = heap_beginscan(rel_node, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		if (slave_nodeinfo.tupleoid == HeapTupleGetOid(tuple))
@@ -364,7 +371,7 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	NameData nodemasternamedata;
 	AppendNodeInfo master_nodeinfo;
 	AppendNodeInfo cn_nodeinfo;
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 	Relation rel_node;
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
@@ -376,7 +383,7 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 	nodetype = PG_GETARG_INT32(0);
 	namestrcpy(&nodenamedata, PG_GETARG_CSTRING(1));
 	
-	if (!mgr_check_node_exist_incluster(&nodenamedata, true))
+	if (!mgr_check_node_exist_incluster(&nodenamedata, nodetype, true))
 			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 					,errmsg("datanode slave \"%s\" does not exist in cluster", nodenamedata.data)));
 
@@ -406,8 +413,13 @@ Datum mgr_failover_manual_pgxcnode_func(PG_FUNCTION_ARGS)
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	rel_node = heap_open(NodeRelationId, AccessShareLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 2, key);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -495,7 +507,7 @@ Datum mgr_failover_manual_rewind_func(PG_FUNCTION_ARGS)
 
 	if (nodetype == GTM_TYPE_GTM_SLAVE)
 	{
-		ereport(ERROR, (errmsg("not support for gtm slave or extra rewind now")));
+		ereport(ERROR, (errmsg("not support for gtm slave rewind now")));
 	}
 	nodetypestr = mgr_nodetype_str(nodetype);
 	initStringInfo(&strinfo);
@@ -672,8 +684,9 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 	Relation rel_node;
 	Form_mgr_node mgr_node;
 	HeapScanDesc rel_scan;
-	ScanKeyData key[2];
+	ScanKeyData key[1];
 	Datum datumPath;
+	char s_nodetype;
 	char port_buf[10];
 	char *m_coordname;
 	char *s_coordname;
@@ -690,7 +703,12 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 	/* get the input variable */
 	m_coordname = PG_GETARG_CSTRING(0);
 	s_coordname = PG_GETARG_CSTRING(1);
+	Assert(m_coordname && s_coordname);
 
+	if (strcmp(m_coordname, s_coordname) == 0)
+		s_nodetype = CNDN_TYPE_COORDINATOR_SLAVE;
+	else
+		s_nodetype = CNDN_TYPE_COORDINATOR_MASTER;
 	namestrcpy(&nodename, s_coordname);
 	/* check the source coordinator status */
 	get_nodeinfo_byname(m_coordname, CNDN_TYPE_COORDINATOR_MASTER, &b_exist_src, &b_running_src, &src_nodeinfo);
@@ -712,14 +730,14 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 	}
 
 	/* check dest coordinator */
-	mgr_get_nodeinfo_byname_type(s_coordname, CNDN_TYPE_COORDINATOR_MASTER, false, &b_exist_dest, &b_running_dest, &dest_nodeinfo);
+	mgr_get_nodeinfo_byname_type(s_coordname, s_nodetype, false, &b_exist_dest, &b_running_dest, &dest_nodeinfo);
 	if (!b_exist_dest)
 	{
 		pfree_AppendNodeInfo(src_nodeinfo);
 		ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
 			, errmsg("coordinator \"%s\" does not exist", s_coordname)));
 	}
-	if (mgr_check_node_exist_incluster(&nodename, true))
+	if (mgr_check_node_exist_incluster(&nodename, dest_nodeinfo.nodetype, true))
 	{
 		pfree_AppendNodeInfo(src_nodeinfo);
 		pfree_AppendNodeInfo(dest_nodeinfo);
@@ -813,7 +831,8 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 		if (1 == iloop)
 			appendStringInfo(&infosendmsg, "%s/.s.PGPOOL.lock", dest_nodeinfo.nodepath);
 		else
-			appendStringInfo(&infosendmsg, "%s/.s.PGRXACT.lock", dest_nodeinfo.nodepath);
+			if (CNDN_TYPE_COORDINATOR_MASTER == src_nodeinfo.nodetype)
+				appendStringInfo(&infosendmsg, "%s/.s.PGRXACT.lock", dest_nodeinfo.nodepath);
 		res = mgr_ma_send_cmd(AGT_CMD_RM, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg);
 		if (!res)
 		{
@@ -836,8 +855,13 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 	
 	/* set all node's pg_hba.conf to allow the new coordiantor to connect */
 	ereport(NOTICE, (errmsg("add address of coordinator \"%s\" on all nodes pg_hba.conf in cluster", s_coordname)));
-	rel_node = heap_open(NodeRelationId, AccessShareLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 0, key);
+	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
+	ScanKeyInit(&key[0],
+		Anum_mgr_node_nodeincluster
+		,BTEqualStrategyNumber
+		,F_BOOLEQ
+		,BoolGetDatum(true));
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 1, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -879,7 +903,21 @@ Datum mgr_append_coord_to_coord(PG_FUNCTION_ARGS)
 	}
 
 	heap_endscan(rel_scan);
-	heap_close(rel_node, AccessShareLock);
+	/*set coordinator s_coordname in cluster*/
+	if (CNDN_TYPE_COORDINATOR_SLAVE == dest_nodeinfo.nodetype)
+	{
+		ereport(LOG, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
+		ereport(NOTICE, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
+		tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, dest_nodeinfo.nodetype);
+		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
+		Assert(mgr_node);
+		mgr_node->nodeinited = true;
+		mgr_node->nodeincluster = true;
+		heap_inplace_update(rel_node, tuple);
+		heap_freetuple(tuple);
+	}
+
+	heap_close(rel_node, RowExclusiveLock);
 
 	pfree(restmsg.data);
 	pfree(infosendmsg.data);
@@ -952,10 +990,10 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 			, errmsg("coordinator \"%s\" does not exist", s_coordname)));
 	}
 
-	if (mgr_check_node_exist_incluster(&s_nodename, true))
+	if (mgr_check_node_exist_incluster(&s_nodename, CNDN_TYPE_COORDINATOR_MASTER, true))
 	{
 		pfree_AppendNodeInfo(dest_nodeinfo);
-		ereport(ERROR, (errmsg("coordinator \"%s\" already exists in cluster", s_coordname)));
+		ereport(ERROR, (errmsg("coordinator master \"%s\" already exists in cluster", s_coordname)));
 	}
 
 	memset(port_buf, 0, sizeof(char)*10);
@@ -967,16 +1005,9 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	
 	PG_TRY();
 	{
-		if (PQPING_NO_RESPONSE == rest)
+		if (rest != 0)
 		{
-			ereport(WARNING, (errmsg("coordinator \"%s\" is not running, start it now", s_coordname)));
-			appendStringInfo(&infosendmsg, " start -Z coordinator -D %s -o -i -w -c -l %s/logfile -t 10"
-				, dest_nodeinfo.nodepath, dest_nodeinfo.nodepath);
-			rest = mgr_ma_send_cmd(AGT_CMD_CN_START, infosendmsg.data, dest_nodeinfo.nodehost, &restmsg);
-			if (!rest)
-			{
-				ereport(ERROR, (errmsg("pg_ctl %s fail, %s", infosendmsg.data, restmsg.data)));
-			}
+			ereport(ERROR, (errmsg("coordinator \"%s\" is not running normal", s_coordname)));
 		}
 		
 		/*check again*/
@@ -1161,13 +1192,12 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 		}
 
 		/*set the coordinator*/
-		ereport(LOG, (errmsg("on coordinator \"%s\", set hot_standby=off, pgxc_node_name='%s'", s_coordname, s_coordname)));
+		ereport(LOG, (errmsg("on coordinator \"%s\", set hot_standby=off", s_coordname)));
 		resetStringInfo(&infosendmsg);
-		ereport(NOTICE, (errmsg("on coordinator \"%s\", set hot_standby=off, pgxc_node_name='%s'", s_coordname, s_coordname)));
+		ereport(NOTICE, (errmsg("on coordinator \"%s\", set hot_standby=off", s_coordname)));
 		resetStringInfo(&infosendmsg);
 		resetStringInfo(&(getAgentCmdRst.description));
 		mgr_add_parm(s_coordname, CNDN_TYPE_COORDINATOR_MASTER, &infosendmsg);
-		mgr_append_pgconf_paras_str_str("pgxc_node_name", s_coordname, &infosendmsg);
 		mgr_append_pgconf_paras_str_str("hot_standby", "off", &infosendmsg);
 		mgr_send_conf_parameters(AGT_CMD_CNDN_REFRESH_PGSQLCONF, dest_nodeinfo.nodepath, &infosendmsg
 			, dest_nodeinfo.nodehost, &getAgentCmdRst);
@@ -1180,7 +1210,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 		/*restart the coordinator*/
 		resetStringInfo(&(getAgentCmdRst.description));
 		rel_node = heap_open(NodeRelationId, AccessShareLock);
-		tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname);
+		tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, CNDN_TYPE_COORDINATOR_MASTER);
 		mgr_runmode_cndn_get_result(AGT_CMD_CN_RESTART, &getAgentCmdRst, rel_node, tuple, SHUTDOWN_I);
 		heap_freetuple(tuple);
 		heap_close(rel_node, AccessShareLock);
@@ -1226,10 +1256,10 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 	}PG_END_TRY();
 
 	/*set coordinator s_coordname in cluster*/
-	ereport(LOG, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
-	ereport(NOTICE, (errmsg("set coordinator \"%s\" in cluster", s_coordname)));
+	ereport(LOG, (errmsg("set coordinator master \"%s\" in cluster", s_coordname)));
+	ereport(NOTICE, (errmsg("set coordinator master \"%s\" in cluster", s_coordname)));
 	rel_node = heap_open(NodeRelationId, RowExclusiveLock);
-	tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname);
+	tuple = mgr_get_tuple_node_from_name_type(rel_node, s_coordname, CNDN_TYPE_COORDINATOR_MASTER);
 	mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
 	Assert(mgr_node);
 	mgr_node->nodeinited = true;
@@ -1266,7 +1296,7 @@ Datum mgr_append_activate_coord(PG_FUNCTION_ARGS)
 static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, const int iloop, const int res_type, StringInfo strinfo)
 {
 	StringInfoData restmsg;
-	ScanKeyData key[3];
+	ScanKeyData key[4];
 	Relation rel_node;
 	HeapScanDesc rel_scan;
 	Form_mgr_node mgr_node;
@@ -1292,8 +1322,13 @@ static bool mgr_execute_direct_on_all_coord(PGconn **pg_conn, const char *sql, c
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(CNDN_TYPE_COORDINATOR_MASTER));
+	ScanKeyInit(&key[3]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	rel_node = heap_open(NodeRelationId, AccessShareLock);
-	rel_scan = heap_beginscan(rel_node, SnapshotNow, 3, key);
+	rel_scan = heap_beginscan(rel_node, SnapshotNow, 4, key);
 	while((tuple = heap_getnext(rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -1368,6 +1403,9 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	int nodePort;
 	int nodeSlaveSyncKind = SYNC_STATE_ASYNC;
 	const int iMax = 90;
+	Oid cnOid;
+	Oid oriSlaveTupleOid;
+	Oid oriMasterTupleOid;
 	HeapTuple tuple;
 	HeapTuple tupResult;
 	HeapTuple tupleS;
@@ -1384,7 +1422,6 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	StringInfoData infosendmsg;
 	StringInfoData strerr;
 	StringInfoData syncStateData;
-	Oid cnOid;
 	Relation nodeRel;
 	HeapScanDesc relScan;
 	ScanKeyData key[3];
@@ -1440,6 +1477,12 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errmsg("%s \"%s\" is not running normal", nodeTypeStrData.data, nodeNameData.data)));
 		}
+		oriSlaveTupleOid = nodeInfoS.tupleoid;
+		/* check the slave node exists in current zone */
+		if (!mgr_checknode_in_currentzone(mgr_zone, nodeInfoS.tupleoid))
+		{
+			ereport(ERROR, (errmsg("%s \"%s\" is not in current zone \"%s\"", nodeTypeStrData.data, nodeNameData.data, mgr_zone)));
+		}
 	}
 	PG_CATCH();
 	{
@@ -1475,6 +1518,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR, (errmsg("%s \"%s\" is not running normal", masterTypeStrData.data, nodeMasterNameData.data)));
 		}
+		oriMasterTupleOid = nodeInfoM.tupleoid;
 	}
 	PG_CATCH();
 	{
@@ -1674,9 +1718,9 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			resetStringInfo(&(getAgentCmdRst.description));
 			nodeRel = heap_open(NodeRelationId, AccessShareLock);
 			if (!bgtmKind)
-				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data);
+				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, CNDN_TYPE_DATANODE_SLAVE);
 			else
-				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data);
+				tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, GTM_TYPE_GTM_SLAVE);
 			mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
 			heap_freetuple(tuple);
 			heap_close(nodeRel, AccessShareLock);
@@ -1709,7 +1753,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 			/*restart the given slave node*/
 			resetStringInfo(&(getAgentCmdRst.description));
 			nodeRel = heap_open(NodeRelationId, AccessShareLock);
-			tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data);
+			tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeNameData.data, bgtmKind ? GTM_TYPE_GTM_SLAVE:CNDN_TYPE_DATANODE_SLAVE);
 			if (!bgtmKind)
 				mgr_runmode_cndn_get_result(AGT_CMD_DN_RESTART, &getAgentCmdRst, nodeRel, tuple, SHUTDOWN_F);
 			else
@@ -1900,13 +1944,22 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 	/* start the new slave node */
 	resetStringInfo(&(getAgentCmdRst.description));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	tuple = mgr_get_tuple_node_from_name_type(nodeRel, nodeMasterNameData.data);
+	tuple = SearchSysCache1(NODENODEOID, nodeInfoM.tupleoid);
+	if(!(HeapTupleIsValid(tuple)))
+	{
+		if (!bgtmKind)
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("new datanode slave \"%s\" does not exist", nodeMasterNameData.data)));
+		else
+			ereport(ERROR, (errcode(ERRCODE_UNDEFINED_OBJECT)
+				,errmsg("new gtm slave \"%s\" does not exist", nodeMasterNameData.data)));
+	}
 	if (!bgtmKind)
 		mgr_runmode_cndn_get_result(AGT_CMD_DN_START, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
 	else
 		mgr_runmode_cndn_get_result(AGT_CMD_GTM_START_SLAVE, &getAgentCmdRst, nodeRel, tuple, TAKEPLAPARM_N);
 
-	heap_freetuple(tuple);
+	ReleaseSysCache(tuple);
 	heap_close(nodeRel, AccessShareLock);
 
 	if(!getAgentCmdRst.ret)
@@ -2011,7 +2064,7 @@ Datum mgr_switchover_func(PG_FUNCTION_ARGS)
 
 static void mgr_get_hba_replication_info(Oid masterTupleOid, StringInfo infosendmsg)
 {
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 	Relation nodeRel;
 	HeapScanDesc relScan;
 	HeapTuple tuple;
@@ -2029,8 +2082,13 @@ static void mgr_get_hba_replication_info(Oid masterTupleOid, StringInfo infosend
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	relScan = heap_beginscan(nodeRel, SnapshotNow, 2, key);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -2123,7 +2181,7 @@ static int mgr_maxtime_check_xlog_diff(const char nodeType, const char *nodeName
 
 static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid)
 {
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 	Relation nodeRel;
 	HeapScanDesc relScan;
 	HeapTuple tuple;
@@ -2148,8 +2206,13 @@ static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid)
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	relScan = heap_beginscan(nodeRel, SnapshotNow, 2, key);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -2200,7 +2263,7 @@ static bool mgr_check_active_locks_in_cluster(PGconn *pgConn, const Oid cnOid)
 
 static bool mgr_check_active_connect_in_coordinator(PGconn *pgConn, const Oid cnOid)
 {
-	ScanKeyData key[2];
+	ScanKeyData key[3];
 	Relation nodeRel;
 	HeapScanDesc relScan;
 	HeapTuple tuple;
@@ -2225,8 +2288,13 @@ static bool mgr_check_active_connect_in_coordinator(PGconn *pgConn, const Oid cn
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
+	ScanKeyInit(&key[2]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	relScan = heap_beginscan(nodeRel, SnapshotNow, 2, key);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -2536,7 +2604,7 @@ static bool mgr_check_track_activities_on_coordinator(void)
 	HeapTuple tuple;
 	StringInfoData infosendmsg;
 	GetAgentCmdRst getAgentCmdRst;
-	ScanKeyData key[3];
+	ScanKeyData key[4];
 	HeapScanDesc relScan;
 	Form_mgr_node mgr_node;
 
@@ -2559,8 +2627,13 @@ static bool mgr_check_track_activities_on_coordinator(void)
 		,BTEqualStrategyNumber
 		,F_BOOLEQ
 		,BoolGetDatum(true));
+	ScanKeyInit(&key[3]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	relScan = heap_beginscan(nodeRel, SnapshotNow, 3, key);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 4, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -2587,7 +2660,7 @@ static Oid mgr_get_tupleoid_from_nodename_type(char *nodename, char nodetype)
 	Relation nodeRel;
 	HeapScanDesc relScan;
 	NameData nodenamedata;
-	ScanKeyData key[4];
+	ScanKeyData key[5];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	Oid tupleOid = 0;
@@ -2613,8 +2686,13 @@ static Oid mgr_get_tupleoid_from_nodename_type(char *nodename, char nodetype)
 		,BTEqualStrategyNumber
 		,F_CHAREQ
 		,CharGetDatum(nodetype));
+	ScanKeyInit(&key[4]
+		,Anum_mgr_node_nodezone
+		,BTEqualStrategyNumber
+		,F_NAMEEQ
+		,CStringGetDatum(mgr_zone));
 	nodeRel = heap_open(NodeRelationId, AccessShareLock);
-	relScan = heap_beginscan(nodeRel, SnapshotNow, 4, key);
+	relScan = heap_beginscan(nodeRel, SnapshotNow, 5, key);
 	while((tuple = heap_getnext(relScan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);

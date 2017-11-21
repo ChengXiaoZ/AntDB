@@ -15728,26 +15728,28 @@ dumpAdbmgrTable(Archive *fout)
 	resetPQExpBuffer(dbQry);
 	appendPQExpBuffer(dbQry, "LIST NODE;");
 	res = ExecuteSqlQuery(fout, dbQry->data, PGRES_TUPLES_OK);
-	Assert(PQnfields(res) == 9);
+	Assert(PQnfields(res) == 10);
 	for (i = 0; i < PQntuples(res); i++)
 	{
 		resetPQExpBuffer(addstrdata);
 		if (strlen(PQgetvalue(res, i, 5)))
-			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" FOR \"%s\" (host=\"%s\", port=%s, sync_state=\"%s\",path=\"%s\");",
+			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" FOR \"%s\" (host=\"%s\", port=%s, sync_state=\"%s\",path=\"%s\",zone=\"%s\");",
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 0),
 				PQgetvalue(res, i, 3),
 				PQgetvalue(res, i, 1),
 				PQgetvalue(res, i, 4),
 				PQgetvalue(res, i, 5),
-				PQgetvalue(res, i, 6));
+				PQgetvalue(res, i, 6),
+				PQgetvalue(res, i, 9));
 		else
-			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" (host=\"%s\", port=%s, path=\"%s\");",
+			appendPQExpBuffer(addstrdata, "ADD %s \"%s\" (host=\"%s\", port=%s, path=\"%s\",zone=\"%s\");",
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 0),
 				PQgetvalue(res, i, 1),
 				PQgetvalue(res, i, 4),
-				PQgetvalue(res, i, 6));
+				PQgetvalue(res, i, 6),
+				PQgetvalue(res, i, 9));
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 			"mgr_node",
 			"pg_catalog",
@@ -15769,17 +15771,19 @@ dumpAdbmgrTable(Archive *fout)
 		resetPQExpBuffer(addstrdata);
 		if (strcmp(PQgetvalue(res, i, 0), "*") == 0)
 			appendPQExpBuffer(addstrdata, "SET %s %s (\"%s\"=\"%s\");",
-				strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode"
-					:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm"
-					:PQgetvalue(res, i, 1)),
+				strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave") == 0 ? "datanode"
+					:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave") == 0 ? "gtm"
+					:(strcasecmp(PQgetvalue(res, i, 1), "coordinator master|slave") == 0 ? "coordinator"
+					:PQgetvalue(res, i, 1))),
 				"all",
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 3));
 		else
 			appendPQExpBuffer(addstrdata, "SET %s \"%s\" (\"%s\"=\"%s\");",
-				strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave|extra") == 0 ? "datanode"
-					:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave|extra") == 0 ? "gtm"
-					:PQgetvalue(res, i, 1)),
+				strcasecmp(PQgetvalue(res, i, 1), "datanode master|slave") == 0 ? "datanode"
+					:(strcasecmp(PQgetvalue(res, i, 1), "gtm master|slave") == 0 ? "gtm"
+					:(strcasecmp(PQgetvalue(res, i, 1), "coordinator master|slave") == 0 ? "coordinator"
+					:PQgetvalue(res, i, 1))),
 				PQgetvalue(res, i, 0),
 				PQgetvalue(res, i, 2),
 				PQgetvalue(res, i, 3));

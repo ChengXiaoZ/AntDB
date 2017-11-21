@@ -36,6 +36,7 @@
 
 #define DEFAULT_DB "postgres"
 #define MONITOR_CLUSTERSTR "cluster"
+char *mgr_zone;
 
 /*see the content : insert into mgr.dbthreshold in adbmgr_init.sql*/
 typedef enum DbthresholdObject
@@ -110,7 +111,7 @@ static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 	bool isNull = false;
 	Datum datumaddress;
 	Oid hostoid;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	int phynodeheaphit = 0;
 	int clusterheaphit = 0;
 	int phynodeheapread = 0;
@@ -158,7 +159,12 @@ static void  mthreshold_sqlvaluesfrom_dnmaster(void)
 			,Anum_mgr_node_nodehost
 			,BTEqualStrategyNumber, F_OIDEQ
 			,ObjectIdGetDatum(hostoid));
-		noderel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+		ScanKeyInit(&key[1]
+			,Anum_mgr_node_nodezone
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,CStringGetDatum(mgr_zone));
+		noderel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 		phynodeheaphit = 0;
 		phynodeheapread = 0;
 		phynodeunusedindex = 0;
@@ -238,7 +244,7 @@ static void  mthreshold_sqlvaluesfrom_coord(void)
 	bool isNull = false;
 	Datum datumaddress;
 	Oid hostoid;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	int phynodecommit = 0;
 	int clustercommit = 0;
 	int phynoderollback = 0;
@@ -288,7 +294,12 @@ static void  mthreshold_sqlvaluesfrom_coord(void)
 			,Anum_mgr_node_nodehost
 			,BTEqualStrategyNumber, F_OIDEQ
 			,ObjectIdGetDatum(hostoid));
-		noderel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+		ScanKeyInit(&key[1]
+			,Anum_mgr_node_nodezone
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,CStringGetDatum(mgr_zone));
+		noderel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 		phynodecommit = 0;
 		phynoderollback = 0;
 		phynodelocks = 0;
@@ -373,7 +384,7 @@ static void  mthreshold_standbydelay(void)
 	bool isNull = false;
 	Datum datumaddress;
 	Oid hostoid;
-	ScanKeyData key[1];
+	ScanKeyData key[2];
 	int phynodestandbydelay = 0;
 	int clusterstandbydelay = 0;
 	int port = 0;
@@ -408,7 +419,12 @@ static void  mthreshold_standbydelay(void)
 			,Anum_mgr_node_nodehost
 			,BTEqualStrategyNumber, F_OIDEQ
 			,ObjectIdGetDatum(hostoid));
-		noderel_scan = heap_beginscan(noderel, SnapshotNow, 1, key);
+		ScanKeyInit(&key[1]
+			,Anum_mgr_node_nodezone
+			,BTEqualStrategyNumber
+			,F_NAMEEQ
+			,CStringGetDatum(mgr_zone));
+		noderel_scan = heap_beginscan(noderel, SnapshotNow, 2, key);
 		phynodestandbydelay = 0;
 		while((nodetuple = heap_getnext(noderel_scan, ForwardScanDirection)) != NULL)
 		{

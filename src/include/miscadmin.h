@@ -488,4 +488,7 @@ extern void CancelBackup(void);
 void PGXC_init_lock_files(void);
 #endif
 
+#ifdef ADBMGRD
+extern char *mgr_zone;
+#endif
 #endif   /* MISCADMIN_H */

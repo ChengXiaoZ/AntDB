@@ -601,6 +601,10 @@
 #include_if_exists = 'exists.conf'	# include file only if it exists
 #include = 'special.conf'		# include file
 
+#------------------------------------------------------------------------------
+# ZONE PARAMETERS
+#------------------------------------------------------------------------------
+#mgr_zone = 'local'                    #set zone name
 
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
