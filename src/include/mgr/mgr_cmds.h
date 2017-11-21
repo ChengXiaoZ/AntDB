@@ -307,15 +307,15 @@ extern void insert_into_monitor_alarm(Monitor_Alarm *monitor_alarm);
 extern void get_threshold(int16 type, Monitor_Threshold *monitor_threshold);
 
 /*monitor_databaseitem.c*/
-extern int monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname);
-extern int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype);
-extern int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
+extern int64 monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname);
+extern int64 monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype);
+extern int64 monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype);
 extern Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS);
 extern HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
-			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum
-			, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum, int indexsize);
+			, int64 dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int64 dbage, int64 connectnum
+			, int64 standbydelay, int64 locksnum, int64 longquerynum, int64 idlequerynum, int64 preparenum, int64 unusedindexnum, int64 indexsize);
 extern Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS);
-extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime);
+extern HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int64 tps, const int64 qps, int64 pgdbruntime);
 extern void monitor_get_stringvalues(char cmdtype, int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname, StringInfo resultstrdata);
 extern void monitor_delete_data(MonitorDeleteData *node, ParamListInfo params, DestReceiver *dest);
 extern Datum monitor_delete_data_interval_days(PG_FUNCTION_ARGS);
@@ -333,7 +333,7 @@ extern void monitor_insert_record(Relation rel, int agentport, TimestampTz time,
 /*monitor_dbthreshold.c*/
 extern Datum get_dbthreshold(PG_FUNCTION_ARGS);
 extern char *monitor_get_timestamptz_onenode(int agentport, char *user, char *address, int port);
-extern bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len);
+extern bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname, int64 iarray[], int len);
 
 /*mgr_updateparm*/
 extern void mgr_add_updateparm(MGRUpdateparm *node, ParamListInfo params, DestReceiver *dest);

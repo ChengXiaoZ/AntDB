@@ -38,7 +38,7 @@
 #include "access/xact.h"
 #include "utils/date.h"
 
-static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len);
+static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int64 iarray[], int len);
 
 #define DEFAULT_DB "postgres"
 char *mgr_zone;
@@ -61,7 +61,7 @@ typedef enum ThresholdItem
 /*
 * get one value from the given sql
 */
-int monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname)
+int64 monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, char *address, int nodeport, char * dbname)
 {
 	int result = -1;
 	StringInfoData resultstrdata;
@@ -80,11 +80,11 @@ int monitor_get_onesqlvalue_one_node(int agentport, char *sqlstr, char *user, ch
 /*
 * get sql'result just need execute on one coordinator
 */
-int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype)
+int64 monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, char nodetype)
 {
 	int coordport;
 	int agentport;
-	int ret;
+	int64 ret;
 	char *hostaddress = NULL;
 	char *user = NULL;
 	
@@ -102,7 +102,7 @@ int monitor_get_result_one_node(Relation rel_node, char *sqlstr, char *dbname, c
 	return ret;	
 }
 
-int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype)
+int64 monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int gettype)
 {
 	/*get datanode master user, port*/
 	HeapScanDesc rel_scan;
@@ -114,8 +114,8 @@ int monitor_get_sqlres_all_typenode_usedbname(Relation rel_node, char *sqlstr, c
 	char *user;
 	char *address;
 	int port;
-	int result = 0;
-	int resulttmp = 0;
+	int64 result = 0;
+	int64 resulttmp = 0;
 	int agentport;
 	bool bfirst = true;
 	
@@ -181,27 +181,27 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 	char *hostaddress = NULL;
 	char *dbname;
 	int coordport = 0;
-	int dbsize = 0;
-	int heaphit = 0;
-	int heapread = 0;
-	int commit = 0;
-	int rollback = 0;
-	int preparenum = 0;
-	int unusedindexnum = 0;
-	int locksnum = 0;
-	int longquerynum = 0;
-	int idlequerynum = 0;
-	int connectnum = 0;
+	int64 dbsize = 0;
+	int64 heaphit = 0;
+	int64 heapread = 0;
+	int64 commit = 0;
+	int64 rollback = 0;
+	int64 preparenum = 0;
+	int64 unusedindexnum = 0;
+	int64 locksnum = 0;
+	int64 longquerynum = 0;
+	int64 idlequerynum = 0;
+	int64 connectnum = 0;
 	bool bautovacuum = false;
 	bool barchive = false;
 	bool bfrist = true;
-	int dbage = 0;
-	int standbydelay = 0;
-	int indexsize = 0;
+	int64 dbage = 0;
+	int64 standbydelay = 0;
+	int64 indexsize = 0;
 	int longtransmintime = 100;
 	int iloop = 0;
-	int iarray_heaphit_read_indexsize[3] = {0,0,0};
-	int iarray_commit_connect_longidle_prepare[6] = {0, 0, 0, 0, 0, 0};
+	int64 iarray_heaphit_read_indexsize[3] = {0,0,0};
+	int64 iarray_commit_connect_longidle_prepare[6] = {0, 0, 0, 0, 0, 0};
 	int agentport;
 	float heaphitrate = 0;
 	float commitrate = 0;
@@ -268,7 +268,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		* select round(sum(pg_catalog.pg_indexes_size(c.oid))::numeric(18,4)/1024/1024) from 
 		*pg_catalog.pg_class c  WHERE c.relkind = 'r' or c.relkind = 't';
 		*/
-		appendStringInfoString(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit) from pg_statio_user_tables union all select sum(heap_blks_read) from pg_statio_user_tables union all select 1.0");
+		appendStringInfoString(&sqlstr_heaphit_read_indexsize, "select sum(heap_blks_hit/100.0)::bigint from pg_statio_user_tables union all select sum(heap_blks_read/100.0)::bigint from pg_statio_user_tables union all select 1.0");
 		monitor_get_sum_all_onetypenode_onedb(rel_node, sqlstr_heaphit_read_indexsize.data, dbname, CNDN_TYPE_DATANODE_MASTER, iarray_heaphit_read_indexsize, 3);
 		
 		heaphit = iarray_heaphit_read_indexsize[0];
@@ -276,7 +276,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		if((heaphit + heapread) == 0)
 			heaphitrate = 100;
 		else
-			heaphitrate = heaphit*100.0/(heaphit + heapread);
+			heaphitrate = (heaphit*1.0/(heaphit + heapread))*100.0;
 		/*the database index size, unit: MB */
 		indexsize = iarray_heaphit_read_indexsize[2];
 		
@@ -284,11 +284,11 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		/*
 		* xact_commit, xact_rollback, numbackends, longquerynum, idlequerynum, preparednum
 		*/
-		for (iloop=0; iloop<3; iloop++)
+		for (iloop=0; iloop<6; iloop++)
 		{
 			iarray_commit_connect_longidle_prepare[iloop] = 0;
 		}
-		appendStringInfo(&sqlstr_commit_connect_longidle_prepare,"select xact_commit from pg_stat_database where datname = \'%s\' union all select xact_rollback from pg_stat_database where datname = \'%s\' union all select numbackends from pg_stat_database where datname = \'%s\' union all select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > %d and datname=\'%s\' union all select count(*) from pg_stat_activity where state='idle' and datname = \'%s\' union all select count(*) from pg_prepared_xacts where database= \'%s\';", dbname, dbname, dbname, longtransmintime, dbname, dbname, dbname);
+		appendStringInfo(&sqlstr_commit_connect_longidle_prepare,"select (xact_commit/100.0)::bigint from pg_stat_database where datname = \'%s\' union all select (xact_rollback/100.0)::bigint from pg_stat_database where datname = \'%s\' union all select numbackends from pg_stat_database where datname = \'%s\' union all select count(*) from  pg_stat_activity where extract(epoch from (query_start-now())) > %d and datname=\'%s\' union all select count(*) from pg_stat_activity where state='idle' and datname = \'%s\' union all select count(*) from pg_prepared_xacts where database= \'%s\';", dbname, dbname, dbname, longtransmintime, dbname, dbname, dbname);
 		monitor_get_sum_all_onetypenode_onedb(rel_node, sqlstr_commit_connect_longidle_prepare.data, dbname, CNDN_TYPE_COORDINATOR_MASTER, iarray_commit_connect_longidle_prepare, 6);
 		
 		/*xact_commit_rate on coordinator*/
@@ -297,7 +297,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		if((commit + rollback) == 0)
 			commitrate = 100;
 		else
-			commitrate = commit*100.0/(commit + rollback);
+			commitrate = (commit*1.0/(commit + rollback))*100.0;
 		/*connect num*/
 		connectnum = iarray_commit_connect_longidle_prepare[2];
 		/*get long query num on coordinator*/
@@ -322,7 +322,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 		{
 			/*these vars just need get one time, from coordinator*/
 			char *sqlstr_vacuum_archive_dbage = "select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'autovacuum\' union all select case when setting = \'on\' then 1 else 0 end from pg_settings where name=\'archive_mode\' union all select max(age(datfrozenxid)) from pg_database";
-			int iarray_vacuum_archive_dbage[3] = {0,0,0};
+			int64 iarray_vacuum_archive_dbage[3] = {0,0,0};
 			monitor_get_sqlvalues_one_node(agentport, sqlstr_vacuum_archive_dbage, user, hostaddress, coordport,DEFAULT_DB, iarray_vacuum_archive_dbage, 3);
 			
 			bautovacuum = (iarray_vacuum_archive_dbage[0] == 0 ? false:true);
@@ -361,7 +361,7 @@ Datum monitor_databaseitem_insert_data(PG_FUNCTION_ARGS)
 * build tuple for table: monitor_databasetps, see: monitor_databasetps.h
 */
 HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time, char *dbname
-			, int dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int dbage, int connectnum, int standbydelay, int locksnum, int longquerynum, int idlequerynum, int preparenum, int unusedindexnum, int indexsize)
+			, int64 dbsize, bool archive, bool autovacuum, float heaphitrate,  float commitrate, int64 dbage, int64 connectnum, int64 standbydelay, int64 locksnum, int64 longquerynum, int64 idlequerynum, int64 preparenum, int64 unusedindexnum, int64 indexsize)
 {
 	Datum datums[16];
 	bool nulls[16];
@@ -374,39 +374,39 @@ HeapTuple monitor_build_database_item_tuple(Relation rel, const TimestampTz time
 	AssertArg(desc && desc->natts == 16
 		&& desc->attrs[0]->atttypid == TIMESTAMPTZOID
 		&& desc->attrs[1]->atttypid == NAMEOID
-		&& desc->attrs[2]->atttypid == INT4OID
+		&& desc->attrs[2]->atttypid == INT8OID
 		&& desc->attrs[3]->atttypid == BOOLOID
 		&& desc->attrs[4]->atttypid == BOOLOID
 		&& desc->attrs[5]->atttypid == FLOAT4OID
 		&& desc->attrs[6]->atttypid == FLOAT4OID
-		&& desc->attrs[7]->atttypid == INT4OID
-		&& desc->attrs[8]->atttypid == INT4OID
-		&& desc->attrs[9]->atttypid == INT4OID
-		&& desc->attrs[10]->atttypid == INT4OID
-		&& desc->attrs[11]->atttypid == INT4OID
-		&& desc->attrs[12]->atttypid == INT4OID
-		&& desc->attrs[13]->atttypid == INT4OID
-		&& desc->attrs[14]->atttypid == INT4OID
-		&& desc->attrs[15]->atttypid == INT4OID
+		&& desc->attrs[7]->atttypid == INT8OID
+		&& desc->attrs[8]->atttypid == INT8OID
+		&& desc->attrs[9]->atttypid == INT8OID
+		&& desc->attrs[10]->atttypid == INT8OID
+		&& desc->attrs[11]->atttypid == INT8OID
+		&& desc->attrs[12]->atttypid == INT8OID
+		&& desc->attrs[13]->atttypid == INT8OID
+		&& desc->attrs[14]->atttypid == INT8OID
+		&& desc->attrs[15]->atttypid == INT8OID
 		);
 	memset(datums, 0, sizeof(datums));
 	memset(nulls, 0, sizeof(nulls));
 	datums[0] = TimestampTzGetDatum(time);
 	datums[1] = NameGetDatum(&name);
-	datums[2] = Int32GetDatum(dbsize);
+	datums[2] = Int64GetDatum(dbsize);
 	datums[3] = BoolGetDatum(archive);
 	datums[4] = BoolGetDatum(autovacuum);
 	datums[5] = Float4GetDatum(heaphitrate);
 	datums[6] = Float4GetDatum(commitrate);
-	datums[7] = Int32GetDatum(dbage);
-	datums[8] = Int32GetDatum(connectnum);
-	datums[9] = Int32GetDatum(standbydelay);
-	datums[10] = Int32GetDatum(locksnum);
-	datums[11] = Int32GetDatum(longquerynum);
-	datums[12] = Int32GetDatum(idlequerynum);
-	datums[13] = Int32GetDatum(preparenum);
-	datums[14] = Int32GetDatum(unusedindexnum);
-	datums[15] = Int32GetDatum(indexsize);
+	datums[7] = Int64GetDatum(dbage);
+	datums[8] = Int64GetDatum(connectnum);
+	datums[9] = Int64GetDatum(standbydelay);
+	datums[10] = Int64GetDatum(locksnum);
+	datums[11] = Int64GetDatum(longquerynum);
+	datums[12] = Int64GetDatum(idlequerynum);
+	datums[13] = Int64GetDatum(preparenum);
+	datums[14] = Int64GetDatum(unusedindexnum);
+	datums[15] = Int64GetDatum(indexsize);
 	
 	for (idex=0; idex<sizeof(nulls); idex++)
 		nulls[idex] = false;
@@ -426,15 +426,15 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	Relation rel;
 	Relation rel_node;
 	TimestampTz time;
-	int pgdbruntime;
+	int64 pgdbruntime;
 	HeapTuple tup_result;
 	List *dbnamelist = NIL;
 	ListCell *cell;
-	int **dbtps = NULL;
-	int **dbqps = NULL;
-	int tps = 0;
-	int qps = 0;
-	int dbnum = 0;
+	int64 **dbtps = NULL;
+	int64 **dbqps = NULL;
+	int64 tps = 0;
+	int64 qps = 0;
+	int64 dbnum = 0;
 	int coordport = 0;
 	int iloop = 0;
 	int idex = 0;
@@ -472,13 +472,13 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 	}
 	dbnum = list_length(dbnamelist);
 	Assert(dbnum > 0);
-	dbtps = (int **)palloc(sizeof(int *)*dbnum);
-	dbqps = (int **)palloc(sizeof(int *)*dbnum);
+	dbtps = (int64 **)palloc(sizeof(int64 *)*dbnum);
+	dbqps = (int64 **)palloc(sizeof(int64 *)*dbnum);
 	iloop = 0;
 	while(iloop < dbnum)
 	{
-		dbtps[iloop] = (int *)palloc(sizeof(int)*ncol);
-		dbqps[iloop] = (int *)palloc(sizeof(int)*ncol);
+		dbtps[iloop] = (int64 *)palloc(sizeof(int64)*ncol);
+		dbqps[iloop] = (int64 *)palloc(sizeof(int64)*ncol);
 		iloop++;
 	}
 
@@ -549,7 +549,7 @@ Datum monitor_databasetps_insert_data(PG_FUNCTION_ARGS)
 /*
 * build tuple for table: monitor_databasetps, see: monitor_databasetps.h
 */
-HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int tps, const int qps, int pgdbruntime)
+HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz time, const char *dbname, const int64 tps, const int64 qps, int64 pgdbruntime)
 {
 	Datum datums[5];
 	bool nulls[5];
@@ -561,17 +561,17 @@ HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz ti
 	AssertArg(desc && desc->natts == 5
 		&& desc->attrs[0]->atttypid == TIMESTAMPTZOID
 		&& desc->attrs[1]->atttypid == NAMEOID
-		&& desc->attrs[2]->atttypid == INT4OID
-		&& desc->attrs[3]->atttypid == INT4OID
-		&& desc->attrs[4]->atttypid == INT4OID
+		&& desc->attrs[2]->atttypid == INT8OID
+		&& desc->attrs[3]->atttypid == INT8OID
+		&& desc->attrs[4]->atttypid == INT8OID
 		);
 	memset(datums, 0, sizeof(datums));
 	memset(nulls, 0, sizeof(nulls));
 	datums[0] = TimestampTzGetDatum(time);
 	datums[1] = NameGetDatum(&name);
-	datums[2] = Int32GetDatum(tps);
-	datums[3] = Int32GetDatum(qps);
-	datums[4] = Int32GetDatum(pgdbruntime);
+	datums[2] = Int64GetDatum(tps);
+	datums[3] = Int64GetDatum(qps);
+	datums[4] = Int64GetDatum(pgdbruntime);
 	nulls[0] = nulls[1] = nulls[2] = nulls[3] = nulls[4] = false;
 	
 	return heap_form_tuple(desc, datums, nulls);
@@ -581,7 +581,7 @@ HeapTuple monitor_build_databasetps_qps_tuple(Relation rel, const TimestampTz ti
 * commit on all coordinators and sum rollback on all coordinators. the input parameters: len
 * is the num we want, iarray is the values restore.
 */
-static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int iarray[], int len)
+static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlstr, char *dbname, char nodetype, int64 iarray[], int len)
 {
 	/*get node user, port*/
 	HeapScanDesc rel_scan;
@@ -594,11 +594,11 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 	char *address = NULL;
 	int port;
 	int agentport = 0;
-	int *iarraytmp;
+	int64 *iarraytmp;
 	int iloop = 0;
 	bool bfirst = true;
 	
-	iarraytmp = (int *)palloc(sizeof(int)*len);
+	iarraytmp = (int64 *)palloc(sizeof(int64)*len);
 	ScanKeyInit(&key[0],
 		Anum_mgr_node_nodetype
 		,BTEqualStrategyNumber
@@ -621,7 +621,7 @@ static void monitor_get_sum_all_onetypenode_onedb(Relation rel_node, char *sqlst
 			user = get_hostuser_from_hostoid(mgr_node->nodehost);
 		}
 		bfirst = false;
-		memset(iarraytmp, 0, len*sizeof(int));
+		memset(iarraytmp, 0, len*sizeof(int64));
 		/*get agent port*/
 		tup = SearchSysCache1(HOSTHOSTOID, ObjectIdGetDatum(mgr_node->nodehost));
 		if(!(HeapTupleIsValid(tup)))

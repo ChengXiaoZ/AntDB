@@ -17,9 +17,9 @@ CATALOG(monitor_databasetps,4950) BKI_WITHOUT_OIDS
 {
 	timestamptz		monitor_databasetps_time;		/* monitor tps timestamp */
 	NameData		monitor_databasetps_dbname;
-	int32			monitor_databasetps_tps;
-	int32			monitor_databasetps_qps;
-	int32			monitor_databasetps_runtime;
+	int64			monitor_databasetps_tps;
+	int64			monitor_databasetps_qps;
+	int64			monitor_databasetps_runtime;
 	
 } FormData_monitor_databasetps;
 

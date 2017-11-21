@@ -17,20 +17,20 @@ CATALOG(monitor_databaseitem,4952) BKI_WITHOUT_OIDS
 {
 	timestamptz		monitor_databaseitem_time;		/* monitor timestamp */
 	NameData		monitor_databaseitem_dbname;
-	int32			monitor_databaseitem_dbsize;
+	int64			monitor_databaseitem_dbsize;
 	bool			monitor_databaseitem_archivemode;
 	bool			monitor_databaseitem_autovacuum;
 	float4			monitor_databaseitem_heaphitrate;
 	float4			monitor_databaseitem_commitrate;
-	int32			monitor_databaseitem_dbage;
-	int32			monitor_databaseitem_connectnum;
-	int32			monitor_databaseitem_standbydelay;
-	int32			monitor_databaseitem_locksnum;
-	int32			monitor_databaseitem_longtransnum;
-	int32			monitor_databaseitem_idletransnum;
-	int32			monitor_databaseitem_preparenum;	
-	int32			monitor_databaseitem_unusedindexnum;
-	int32			monitor_databaseitem_indexsize;
+	int64			monitor_databaseitem_dbage;
+	int64			monitor_databaseitem_connectnum;
+	int64			monitor_databaseitem_standbydelay;
+	int64			monitor_databaseitem_locksnum;
+	int64			monitor_databaseitem_longtransnum;
+	int64			monitor_databaseitem_idletransnum;
+	int64			monitor_databaseitem_preparenum;	
+	int64			monitor_databaseitem_unusedindexnum;
+	int64			monitor_databaseitem_indexsize;
 } FormData_monitor_databaseitem;
 
 /* ----------------
