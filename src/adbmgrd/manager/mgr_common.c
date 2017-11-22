@@ -765,7 +765,7 @@ void monitor_get_one_node_user_address_port(Relation rel_node, int *agentport, c
 /*
 * get len values to iarray, the values get from the given sqlstr's result
 */
-bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname, int iarray[], int len)
+bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, char *address, int port, char * dbname, int64 iarray[], int len)
 {
 	int iloop = 0;
 	char *pstr;
@@ -781,8 +781,9 @@ bool monitor_get_sqlvalues_one_node(int agentport, char *sqlstr, char *user, cha
 	pstr = resultstrdata.data;
 	while(pstr != NULL && iloop < len)
 	{
+		memset(strtmp, 0 , 64);
 		strcpy(strtmp, pstr);
-		iarray[iloop] = atoi(strtmp);
+		iarray[iloop] = atoll(strtmp);
 		pstr = pstr + strlen(strtmp) + 1;
 		iloop++;
 	}

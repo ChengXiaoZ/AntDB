@@ -550,8 +550,8 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func(in text, in times
 		RETURNS TABLE
 	(
 		recordtime timestamptz(0),
-		tps int,
-		qps int
+		tps bigint,
+		qps bigint
 	)
 	AS 
 		$$
@@ -575,8 +575,8 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasetps_func_by_time_period(db
 		RETURNS TABLE
 	(
 		recordtime timestamptz(0),
-		tps int,
-		qps int
+		tps bigint,
+		qps bigint
 	)
 	AS $$
 	SELECT monitor_databasetps_time::timestamptz(0) AS recordtime,
@@ -628,14 +628,14 @@ CREATE OR REPLACE FUNCTION pg_catalog.monitor_databasesummary_func(in name)
 		autovacuum		bool,
 		heaphitrate		numeric(18,2),
 		commitrate		numeric(18,2),
-		dbage			int,
-		connectnum		int,
-		standbydelay	int,
-		locksnum		int,
-		longtransnum	int,
-		idletransnum	int,
-		preparenum		int,
-		unusedindexnum	int
+		dbage			bigint,
+		connectnum		bigint,
+		standbydelay	bigint,
+		locksnum		bigint,
+		longtransnum	bigint,
+		idletransnum	bigint,
+		preparenum		bigint,
+		unusedindexnum	bigint
 	)
 	AS 
 		$$
