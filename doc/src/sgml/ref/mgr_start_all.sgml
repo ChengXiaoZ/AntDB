@@ -31,12 +31,11 @@ START ALL
       <para><command>START ALL</command> start all the nodes on the ADB cluster.</para>
       <para>Start order:</para>
       <para>    1, start gtm master</para>
-      <para>    2, start gtm slave (If you configure it)</para>
-      <para>    3, start gtm extra (If you configure it)</para>
-      <para>    4, start coordinator all</para>
+      <para>    2, start gtm slave all (If you configure it)</para>
+      <para>    3, start coordinator master all </para>
+      <para>    4, start coordinator slave all  (If you configure it)</para>
       <para>    5, start datanode master all</para>
       <para>    6, start datandoe slave all (If you configure it)</para>
-      <para>    7, start datanode extra all (If you configure it)</para>
   </refsect1>
 
   <refsect1>

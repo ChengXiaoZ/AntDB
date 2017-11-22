@@ -36,13 +36,12 @@ STOP ALL [ <replaceable class="parameter">stop_mode</replaceable> ]
 
       <para><command>STOP ALL</command> stop all the node on the ADB cluster.</para>
       <para>Stop order:</para>
-      <para>    1, stop coordinator all</para>
-      <para>    2, stop datanode extra all  (If you configure it)</para>
+      <para>    1, stop coordinator slave all   (If you configure it)</para>
+      <para>    2, stop coordinator master all  (If you configure it)</para>
       <para>    3, stop datandoe slave all (If you configure it)</para>
       <para>    4, stop datanode master all </para>
-      <para>    5, stop gtm extra (If you configure it)</para>
-      <para>    6, stop gtm slave (If you configure it)</para>
-      <para>    7, stop gtm master</para>
+      <para>    5, stop gtm slave (If you configure it)</para>
+      <para>    6, stop gtm master</para>
   </refsect1>
 
   <refsect1>

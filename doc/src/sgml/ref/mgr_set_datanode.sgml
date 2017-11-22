@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SET DATANODE [ MASTER | SLAVE | EXTRA ] ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
-SET DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET DATANODE [ MASTER | SLAVE ] ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET DATANODE { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 

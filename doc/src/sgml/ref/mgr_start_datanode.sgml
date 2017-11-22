@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 START DATANODE ALL
-START DATANODE { MASTER | SLAVE | EXTRA } { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
+START DATANODE { MASTER | SLAVE } { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
 </synopsis>
   </refsynopsisdiv>
 

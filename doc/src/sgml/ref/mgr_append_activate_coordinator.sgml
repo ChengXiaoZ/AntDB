@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>APPEND ACTIVATE COORDINATOR</refname>
-    <refpurpose>activate the slave coordinator to coordinator master, make it run, set it in the cluster</refpurpose>
+    <refpurpose>activate the coordinator to coordinator master, make it run, set it in the cluster</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-appendactivatecoordinator">
@@ -29,7 +29,7 @@ APPEND ACTIVATE COORDINATOR <replaceable class="parameter">node_name</replaceabl
     <title>Description</title>
 
     <para>
-<command>APPEND ACTIVATE COORDINATOR</command> activate the slave coordinator to coordinator master, make it run, set it in the cluster.
+<command>APPEND ACTIVATE COORDINATOR</command> activate the coordinator (its type in node table is coordinator master) to coordinator master, make it run, set it in the cluster.
     </para>
   </refsect1>
 
@@ -41,7 +41,7 @@ APPEND ACTIVATE COORDINATOR <replaceable class="parameter">node_name</replaceabl
     <term><replaceable class="parameter">node_name</replaceable></term>
     <listitem>
       <para>
-      The name of coordinator which is not in the cluster and as a coordinator slave, you want to activate it to coordinator master.
+      The name of coordinator which is not in the cluster and as a coordinator slave (its type in node table is coordinator master), you want to activate it to coordinator master.
       </para>
     </listitem>
    </varlistentry>
@@ -53,9 +53,9 @@ APPEND ACTIVATE COORDINATOR <replaceable class="parameter">node_name</replaceabl
     <title>Examples</title>
 
     <para>
-      Append a new coordinator dest_coord to the cluster:
+      Append a new coordinator master dest_coord to the cluster:
 <programlisting>
-append coordinator source_coord to dest_coord;
+append coordinator dest_coord for source_coord;
 append activate coordinator dest_coord;
 </programlisting>
     </para>

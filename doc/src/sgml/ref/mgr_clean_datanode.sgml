@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-CLEAN DATANODE { MASTER | SLAVE | EXTRA } { node_name [ , ... ] }
+CLEAN DATANODE { MASTER | SLAVE } { node_name [ , ... ] }
 </synopsis>
   </refsynopsisdiv>
   <refsect1>

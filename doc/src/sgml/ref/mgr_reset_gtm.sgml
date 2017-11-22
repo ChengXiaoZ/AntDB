@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 RESET GTM ALL ( parameter [, ...] ) [ FORCE ] 
-RESET GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( parameter [, ...] ) [ FORCE ]
+RESET GTM { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> ( parameter [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 

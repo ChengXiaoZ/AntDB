@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SWITCHOVER DATANODE { SLAVE | EXTRA } <replaceable class="parameter">datanode_name</replaceable>
+SWITCHOVER DATANODE SLAVE <replaceable class="parameter">datanode_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -41,7 +41,7 @@ SWITCHOVER DATANODE { SLAVE | EXTRA } <replaceable class="parameter">datanode_na
     <term><replaceable class="parameter">datanode_name</replaceable></term>
     <listitem>
       <para>
-      Datanode name.
+      Datanode slave name.
       </para>
     </listitem>
    </varlistentry>

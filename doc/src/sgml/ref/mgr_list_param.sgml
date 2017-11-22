@@ -29,11 +29,10 @@ LIST PARAM cluster_type ALL [ sub_like_string ]
 
     GTM MASTER
     GTM SLAVE
-    GTM EXTRA
-    COORDINATOR
+    COORDINATOR MASTER
+		COORDINATOR SLAVE
     DATANODE MASTER
     DATANODE SLAVE
-    DATANODE EXTRA
 
 <phrase>where <replaceable class="parameter">cluster_type</replaceable> can be one of:</phrase>
 
@@ -42,7 +41,6 @@ LIST PARAM cluster_type ALL [ sub_like_string ]
     DATANODE
     DATANODE MASTER
     DATANODE SLAVE
-    DATANODE EXTRA
 </synopsis>
 </refsynopsisdiv>
   <refsect1>

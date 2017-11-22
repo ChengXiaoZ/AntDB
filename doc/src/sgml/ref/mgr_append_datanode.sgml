@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+APPEND DATANODE { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -51,10 +51,6 @@ append datanode master datanode_name1;
       Append datanode slave to the cluster:
 <programlisting>
 append datanode slave datanode_name1;
-</programlisting>
-      Append datanode extra to the cluster:
-<programlisting>
-append datanode extra datanode_name1;
 </programlisting>
     </para>
   </refsect1>

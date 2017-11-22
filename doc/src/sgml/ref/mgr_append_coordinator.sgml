@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND COORDINATOR <replaceable class="parameter">node_name</replaceable>
+APPEND COORDINATOR MASTER <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -46,7 +46,7 @@ APPEND COORDINATOR <replaceable class="parameter">node_name</replaceable>
     <para>
       Append a new coordinator:
 <programlisting>
-append coordinator coord_name1;
+append coordinator master coord_name1;
 </programlisting>
     </para>
   </refsect1>

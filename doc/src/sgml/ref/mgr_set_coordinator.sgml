@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SET COORDINATOR ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
-SET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET COORDINATOR [ MASTER | SLAVE ] ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET COORDINATOR { MASTER | SLAVE} <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -55,9 +55,9 @@ SET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( { param
     <title>Examples</title>
 
     <para>
-      Change the the value of 'synchronous_commit' and 'max_wal_senders':
+      Change the the value of 'synchronous_commit' and 'max_wal_senders' for coordinator master coord_name1:
 <programlisting>
-set coordinator coord_name1(synchronous_commit = off, max_wal_senders = 10) force;
+set coordinator master coord_name1(synchronous_commit = off, max_wal_senders = 10) force;
 </programlisting>
     </para>
   </refsect1>

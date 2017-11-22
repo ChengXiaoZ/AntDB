@@ -1,0 +1,72 @@
+<!--
+doc/src/sgml/ref/mgr_zone_promote.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ZONEPROMOTE">
+  <refmeta>
+    <refentrytitle>ZONE PROMOTE</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ZONE PROMOTE</refname>
+    <refpurpose>promote the nodes whose zone is different from its master and change the type as master type</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-zonepromote">
+    <primary>ZONE PROMOTE</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ZONE PROMOTE <replaceable class="parameter">zone_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>ZONE PROMOTE</command> do the "PG_CTL PROMOTE -D path" command on the nodes whose zone is different from its master, then change the type of these nodes as master in the node table.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+    
+   <varlistentry>
+    <term><replaceable class="parameter">zone_name</replaceable></term>
+    <listitem>
+      <para>
+      Data center name.
+      </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      Pomote the nodes to master in zone "zone_second":
+<programlisting>
+zone promote zone_name;
+</programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-zoneconfig"></member>
+   <member><xref linkend="mgr-zoneclear"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>

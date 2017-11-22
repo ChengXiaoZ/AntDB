@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>MONITOR HA</refname>
-    <refpurpose>show all slave or extra nodes streaming replication with master</refpurpose>
+    <refpurpose>show all slave nodes streaming replication with master</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-monitorha">
@@ -43,7 +43,7 @@ MONITOR HA [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
   <refsect1>
     <title>Description</title>	
     <para>
-      Show all slave or extra nodes streaming replication with master.
+      Show all slave nodes streaming replication with master.
     </para>
   </refsect1>
 
@@ -144,7 +144,7 @@ MONITOR HA [ ( <replaceable class="parameter">option</replaceable> ) ] [ <replac
   <refsect1>
     <title>Examples</title>	
     <para>
-      Show all slave or extra nodes streaming replication with master:
+      Show all slave nodes streaming replication with master:
 <programlisting>
 MONITOR HA;
 </programlisting>

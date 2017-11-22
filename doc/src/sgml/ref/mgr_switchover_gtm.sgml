@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-SWITCHOVER GTM { SLAVE | EXTRA } <replaceable class="parameter">gtm_name</replaceable>
+SWITCHOVER GTM SLAVE <replaceable class="parameter">gtm_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -41,7 +41,7 @@ SWITCHOVER GTM { SLAVE | EXTRA } <replaceable class="parameter">gtm_name</replac
     <term><replaceable class="parameter">gtm_name</replaceable></term>
     <listitem>
       <para>
-      Gtm name.
+      Gtm slave name.
       </para>
     </listitem>
    </varlistentry>

@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 MONITOR DATANODE [ ALL ]
-MONITOR DATANODE { MASTER | SLAVE | EXTRA } [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
+MONITOR DATANODE { MASTER | SLAVE } [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
 </synopsis>
   </refsynopsisdiv>
 

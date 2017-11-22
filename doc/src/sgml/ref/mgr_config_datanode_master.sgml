@@ -1,27 +1,27 @@
 <!--
-doc/src/sgml/ref/mgr_start_coordinator.sgml
+doc/src/sgml/ref/mgr_config_datanode_slave.sgml
 ADB documentation
 -->
 
-<refentry id="MGR-STARTCOORDINATOR">
+<refentry id="MGR-CONFIGDATANODESLAVE">
   <refmeta>
-    <refentrytitle>START COORDINATOR</refentrytitle>
+    <refentrytitle>CONFIG DATANODE</refentrytitle>
     <manvolnum>7</manvolnum>
     <refmiscinfo>Manage - Language Statements</refmiscinfo>
   </refmeta>
 
   <refnamediv>
-    <refname>START COORDINATOR</refname>
-    <refpurpose>start the coordinator node type on the ADB cluster</refpurpose>
+    <refname>CONFIG DATANODE</refname>
+    <refpurpose>refresh the table of pgxc_node in all coordinators, use the datanode slave information replace its master information</refpurpose>
   </refnamediv>
 
-  <indexterm zone="mgr-startcoordinator">
-    <primary>START COORDINATOR</primary>
+  <indexterm zone="mgr-configdatanodeslave">
+    <primary>CONFIG DATANODE</primary>
   </indexterm>
 
   <refsynopsisdiv>
     <synopsis>
-START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
+CONFIG DATANODE SLAVE <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable>
     <title>Description</title>
 
     <para>
-<command>START COORDINATOR</command> start the coordinator node on the ADB cluster
+<command>CONFIG DATANODE</command> refresh the table of pgxc_node in all coordinators, use the datanode slave information replace its master information
     </para>
   </refsect1>
   <refsect1>
@@ -42,7 +42,7 @@ START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable>
         </term>
         <listitem>
           <para>
-    Node name, corresponds to the name column in the node table.
+    Node name, the datanode slave name in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -52,15 +52,15 @@ START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable>
     <title>Examples</title>
 
     <para>
-Start all coordinator:
-      <programlisting>START COORDINATOR ALL;</programlisting>
+Use datanode slave information replace the information of its master in pgxc_node on all coordinators:
+      <programlisting>CONFIG DATANODE SLAVE datanode1s;</programlisting>
     </para>
   </refsect1>
       <refsect1>
     <title>See Also</title>
 
     <simplelist type="inline">
-      <member><xref linkend="mgr-stopcoordinator"></member>
+      <member><xref linkend="mgr-adbmgrpromote"></member>
     </simplelist>
   </refsect1>
 

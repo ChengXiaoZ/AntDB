@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-REMOVE DATANODE { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+REMOVE DATANODE SLAVE <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
   <refsect1>

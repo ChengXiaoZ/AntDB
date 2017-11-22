@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 SET GTM ALL ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
-SET GTM { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
+SET GTM { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> ( { parameter = <replaceable class="parameter">value</replaceable> } [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 

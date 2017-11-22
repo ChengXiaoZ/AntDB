@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>REWIND GTM</refname>
-    <refpurpose>rewind gtm slave or extra</refpurpose>
+    <refpurpose>rewind gtm slave</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-rewindgtm">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-REWIND GTM { SLAVE | EXTRA } { <replaceable class="parameter">node_name</replaceable> }
+REWIND GTM SLAVE { <replaceable class="parameter">node_name</replaceable> }
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ REWIND GTM { SLAVE | EXTRA } { <replaceable class="parameter">node_name</replace
     <title>Description</title>
 
     <para>
-<command>REWIND GTM</command> rewind gtm slave or extra.
+<command>REWIND GTM</command> rewind gtm slave.
 </para>
   </refsect1>
   <refsect1>

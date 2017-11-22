@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+APPEND GTM SLAVE <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -47,10 +47,6 @@ APPEND GTM { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceab
       Append gtm slave gtm_name:
 <programlisting>
 append gtm slave gtm_name;
-</programlisting>
-	  Append gtm extra gtm_name:
-<programlisting>
-append gtm extra gtm_name;
 </programlisting>
     </para>
   </refsect1>

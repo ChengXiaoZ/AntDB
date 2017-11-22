@@ -22,7 +22,7 @@ ADB documentation
   <refsynopsisdiv>
     <synopsis>
 MONITOR GTM [ ALL ]
-MONITOR GTM { MASTER | SLAVE | EXTRA } [ ALL | <replaceable class="parameter">node_name</replaceable> ]
+MONITOR GTM { MASTER | SLAVE } [ ALL | <replaceable class="parameter">node_name</replaceable> ]
 </synopsis>
   </refsynopsisdiv>
 

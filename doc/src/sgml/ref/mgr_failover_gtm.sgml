@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>FAILOVER GTM</refname>
-    <refpurpose>promote gtm slave or extra to gtm master</refpurpose>
+    <refpurpose>promote gtm slave to gtm master</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-failovergtm">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replaceable> [ FORCE ]
+FAILOVER GTM <replaceable class="parameter">node_name</replaceable> [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -29,8 +29,7 @@ FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replace
 
     <para>
    <command>FAILOVER GTM</command> promote gtm slave to gtm master, which is synchronized;
-     If the gtm slave is not synchronized, and want to promote it to gtm master, use "force" at command end;
-     For the command "failover gtm", it checks the type of gtm slave first, if it is not synchronized then checks the type of gtm extra.
+     If the gtm slave is not synchronized, and want to promote it to gtm master, use "force" at command end; For the command "failover gtm", it choose the synchronized and running normal slave as the target slave node, which will be promote to gtm master.
     </para>
   </refsect1>
   <refsect1>
@@ -41,7 +40,7 @@ FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replace
     <term><replaceable class="parameter">node_name</replaceable></term>
     <listitem>
      <para>
-      The gtm slave or extra name.
+      The gtm master name.
      </para>
     </listitem>
    </varlistentry>
@@ -52,21 +51,15 @@ FAILOVER GTM [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replace
     <title>Examples</title>
 
 <para>
-Promote gtm slave or extra  gtm_name1 to master, which must be synchronized:
+Promote one gtm slave to master, which must be synchronized:
 <programlisting>
-FAILOVER GTM gtm_name1;
+FAILOVER GTM gtm_mastername;
 </programlisting>
  </para>
 <para>
-promote gtm slave or extra gtm_name1 to master, no matter it is synchronized or not:
+promote one gtm slave to master, no matter it is synchronized or not:
 <programlisting>
-FAILOVER GTM gtm_name1 FORCE;
-</programlisting>
-  </para>
-<para>
-Promote gtm slave gtm_name1 to master, which is  synchronized node:
-<programlisting>
-FAILOVER GTM SLAVE gtm_name1;
+FAILOVER GTM gtm_mastername FORCE;
 </programlisting>
   </para>
   </refsect1>

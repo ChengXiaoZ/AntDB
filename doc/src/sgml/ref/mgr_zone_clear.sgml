@@ -1,0 +1,72 @@
+<!--
+doc/src/sgml/ref/mgr_zone_clear.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ZONECLEAR">
+  <refmeta>
+    <refentrytitle>ZONE CLEAR</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ZONE CLEAR</refname>
+    <refpurpose>keep the nodes whose zone is given zone_name and make the node clear</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-zoneconfig">
+    <primary>ZONE CLEAR</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ZONE CLEAR <replaceable class="parameter">zone_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>ZONE PROMOTE</command> in the given node, the nodes whose zone is different from its master, change the type of these nodes as master in the node table; then change the master type of nodes' mastername and sync_state to null.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+    
+   <varlistentry>
+    <term><replaceable class="parameter">zone_name</replaceable></term>
+    <listitem>
+      <para>
+      Data center name.
+      </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      make the node table clear and keep back the node whose zone is given zone:
+<programlisting>
+zone clear zone_name;
+</programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-zonepromote"></member>
+   <member><xref linkend="mgr-zoneconfig"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>FAILOVER DATANODE</refname>
-    <refpurpose>promote datanode slave or extra to datanode master</refpurpose>
+    <refpurpose>promote datanode slave to datanode master</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-failoverdatanode">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-FAILOVER DATANODE [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</replaceable> [ FORCE ]
+FAILOVER DATANODE <replaceable class="parameter">node_name</replaceable> [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -30,9 +30,7 @@ FAILOVER DATANODE [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</re
 
     <para>
    <command>FAILOVER DATANODE</command> promote datanode slave to datanode master, which is synchronized;
-     If the datanode slave is not synchronized, and want to promote it to datanode master, use "force" at 
-		 command end; For the command "failover datanode node_name", it checks the type of datanode slave 
-		 first, if it is not synchronized then checks the type of datanode extra.
+     If the datanode slave is not synchronized, and want to promote it to datanode master, use "force" at command end; For the command "failover datanode", it choose the synchronized and running normal slave as the target slave node, which will be promote to datanode master.
     </para>
   </refsect1>
   <refsect1>
@@ -43,7 +41,7 @@ FAILOVER DATANODE [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</re
     <term><replaceable class="parameter">node_name</replaceable></term>
     <listitem>
       <para>
-      The datanode slave or extra name.
+      The datanode master name.
       </para>
     </listitem>
    </varlistentry>
@@ -54,21 +52,15 @@ FAILOVER DATANODE [ SLAVE | EXTRA ] <replaceable class="parameter">node_name</re
     <title>Examples</title>
 
   <para>
-   Promote datanode slave or extra datanode_name1 to master, which must be synchronized:
+   Promote one datanode slave to master, which must be synchronized:
 <programlisting>
-FAILOVER DATANODE datanode_name1;
+FAILOVER DATANODE datanode_master_name;
 </programlisting>
   </para>
   <para>
-   Promote datanode slave or extra datanode_name1 to master, no matter it is synchronized or not:
+   Promote one datanode slave datanode_master_name to master, no matter it is synchronized or not:
 <programlisting>
-FAILOVER DATANODE datanode_name1 FORCE;
-</programlisting>
-  </para>
-  <para>
-   Promote datanode slave datanode_name1 to master, which type is datanode slave:
-<programlisting>
-FAILOVER DATANODE SLAVE datanode_name1;
+FAILOVER DATANODE datanode_master_name FORCE;
 </programlisting>
   </para>
   </refsect1>

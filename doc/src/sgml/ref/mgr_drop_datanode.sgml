@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-DROP DATANODE { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">node_name</replaceable> [, ...]
+DROP DATANODE { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> [, ...]
 </synopsis>
   </refsynopsisdiv>
 

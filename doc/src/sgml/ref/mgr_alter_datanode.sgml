@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ALTER DATANODE { MASTER | SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable> ( option )  
+ALTER DATANODE { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> ( option )  
  
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
