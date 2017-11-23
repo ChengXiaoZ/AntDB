@@ -1,0 +1,72 @@
+<!--
+doc/src/sgml/ref/mgr_zone_config.sgml
+ADB documentation
+-->
+
+<refentry id="MGR-ZONECONFIG">
+  <refmeta>
+    <refentrytitle>ZONE CONFIG</refentrytitle>
+    <manvolnum>7</manvolnum>
+    <refmiscinfo>Manage - Language Statements</refmiscinfo>
+  </refmeta>
+
+  <refnamediv>
+    <refname>ZONE CONFIG</refname>
+    <refpurpose>refresh the table pgxc_node on all coordinators and set the master type of node mastername and sync_state to null</refpurpose>
+  </refnamediv>
+
+  <indexterm zone="mgr-zoneconfig">
+    <primary>ZONE CONFIG</primary>
+  </indexterm>
+
+  <refsynopsisdiv>
+    <synopsis>
+ZONE CONFIG <replaceable class="parameter">zone_name</replaceable>
+</synopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>Description</title>
+
+    <para>
+<command>ZONE PROMOTE</command> according to node table, use the nodes information whose type are coordinator master, datanode master replace its master information in table pgxc_node on all coordinators; change the master type of nodes' mastername and sync_state to null.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>Parameters</title>
+  <variablelist>
+    
+   <varlistentry>
+    <term><replaceable class="parameter">zone_name</replaceable></term>
+    <listitem>
+      <para>
+      Data center name.
+      </para>
+    </listitem>
+   </varlistentry>
+
+  </variablelist>
+  </refsect1>
+  
+  <refsect1>
+    <title>Examples</title>
+
+    <para>
+      refresh table pgxc_node on all coordinators:
+<programlisting>
+zone config zone_name;
+</programlisting>
+    </para>
+  </refsect1>
+  
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="mgr-zonepromote"></member>
+   <member><xref linkend="mgr-zoneclear"></member>
+  </simplelist>
+ </refsect1>
+ 
+</refentry>

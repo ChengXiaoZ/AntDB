@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-REMOVE COORDINATOR <replaceable class="parameter">node_name</replaceable>
+REMOVE COORDINATOR { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -50,9 +50,9 @@ REMOVE COORDINATOR <replaceable class="parameter">node_name</replaceable>
   <refsect1>
   <title>Examples</title>
  <para>
-Remove the coordinator coord_name1 out of the cluster:
+Remove the coordinator master coord_name1 out of the cluster:
 <programlisting>
-REMOVE COORDINATOR coord_name1;
+REMOVE COORDINATOR MASTER coord_name1;
 </programlisting>
 </para>
   </refsect1>

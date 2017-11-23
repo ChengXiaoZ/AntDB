@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-CLEAN COORDINATOR { node_name [ , ... ] }
+CLEAN COORDINATOR { MASTER | SLAVE } { node_name [ , ... ] }
 </synopsis>
   </refsynopsisdiv>
   <refsect1>
@@ -34,9 +34,9 @@ CLEAN COORDINATOR { node_name [ , ... ] }
   <refsect1>
   <title>Examples</title>
  <para>
-Clean the data of coord_name1:
+Clean the data of coordinator master coord_name1:
 <programlisting>
-CLEAN COORDINATOR coord_name1;
+CLEAN COORDINATOR MASTER coord_name1;
 </programlisting>
 </para>
   </refsect1>

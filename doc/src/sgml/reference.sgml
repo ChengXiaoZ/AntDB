@@ -290,6 +290,7 @@
    &mgrCleanCoordinator;
    &mgrCleanDatanode;
    &mgrCleanGtm;
+   &mgrConfigDatanode
    &mgrCreateUser;
    &mgrDeploy;
    &mgrDropCoordinator;
@@ -342,6 +343,9 @@
    &mgrStopGtm;
    &mgrSwitchoverDatanode
    &mgrSwitchoverGtm
+	 &mgrZonePromote
+	 &mgrZoneConfig
+	 &mgrZoneClear
 </reference>
 
 <reference id="reference-monitor">

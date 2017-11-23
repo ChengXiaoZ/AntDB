@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
 <synopsis>
-DROP GTM { MASTER | SLAVE | EXTRA } [ IF EXISTS ] <replaceable class="parameter">node_name</replaceable>
+DROP GTM { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 

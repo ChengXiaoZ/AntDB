@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-STOP COORDINATOR ALL [ <replaceable class="parameter">stop_mode</replaceable> ]
-STOP COORDINATOR { <replaceable class="parameter">node_name</replaceable> [, ...] } [ <replaceable class="parameter">stop_mode</replaceable> ]
+STOP COORDINATOR [ MASTER | SLAVE ] ALL [ <replaceable class="parameter">stop_mode</replaceable> ]
+STOP COORDINATOR { MASTER | SLAVE } { <replaceable class="parameter">node_name</replaceable> [, ...] } [ <replaceable class="parameter">stop_mode</replaceable> ]
 
 <phrase>where <replaceable class="parameter">stop_mode</replaceable> can be one of:</phrase>
 

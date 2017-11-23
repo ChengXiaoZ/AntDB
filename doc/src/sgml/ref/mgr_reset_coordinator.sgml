@@ -21,8 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-RESET COORDINATOR ALL ( parameter [, ...] ) [ FORCE ]
-RESET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( parameter [, ...] ) [ FORCE ]
+RESET COORDINATOR [ MASTER | SLAVE ] ALL ( parameter [, ...] ) [ FORCE ]
+RESET COORDINATOR { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> ( parameter [, ...] ) [ FORCE ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -55,9 +55,9 @@ RESET COORDINATOR <replaceable class="parameter">node_name</replaceable> ( param
     <title>Examples</title>
 
     <para>
-      Reset the value of 'synchronous_commit' and 'max_wal_senders' to the default:
+      Reset the value of 'synchronous_commit' and 'max_wal_senders' to the default for coordinator master coord_name1:
 <programlisting>
-reset coordinator coord_name1(synchronous_commit, max_wal_senders);
+reset coordinator master coord_name1(synchronous_commit, max_wal_senders);
 </programlisting>
     </para>
   </refsect1>

@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>PROMOTE GTM</refname>
-    <refpurpose>promote gtm slave or extra to master</refpurpose>
+    <refpurpose>promote gtm slave to master</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-promotegtm">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-PROMOTE GTM { MASTER | SLAVE | EXTRA } { <replaceable class="parameter">node_name</replaceable> }
+PROMOTE GTM { MASTER | SLAVE } { <replaceable class="parameter">node_name</replaceable> }
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ PROMOTE GTM { MASTER | SLAVE | EXTRA } { <replaceable class="parameter">node_nam
     <title>Description</title>
 
     <para>
-<command>PROMOTE GTM</command> promote gtm slave or extra to master.
+<command>PROMOTE GTM</command> promote gtm slave to master.
 </para>
   </refsect1>
   <refsect1>

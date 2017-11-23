@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ALTER COORDINATOR <replaceable class="parameter">node_name</replaceable> ( option )
+ALTER COORDINATOR { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> ( option )
 
 <phrase>where <replaceable class="parameter">option</replaceable> can be one of:</phrase>
 
@@ -36,7 +36,7 @@ ALTER COORDINATOR <replaceable class="parameter">node_name</replaceable> ( optio
     <title>Description</title>
 
     <para>
-<command>ALTER COORDINATOR</command> alter the parameters of coordinator's node table.
+<command>ALTER COORDINATOR</command> alter the parameters of coordinator's node table. The coordinator slave just used in different data center.
     </para>
   </refsect1>
 
@@ -96,7 +96,7 @@ ALTER COORDINATOR <replaceable class="parameter">node_name</replaceable> ( optio
     <para>
       Alter port of coordinator coord_name1:
 <programlisting>
-alter coordinator coord_name1(port = 5445);
+alter coordinator master coord_name1(port = 5445);
 </programlisting>
     </para>
   </refsect1>

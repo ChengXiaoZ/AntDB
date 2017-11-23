@@ -21,14 +21,16 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+ADD COORDINATOR MASTER <replaceable class="parameter">master_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+ADD COORDINATOR SLAVE <replaceable class="parameter">slave_name</replaceable> FOR <replaceable class="parameter">master_name </replaceable> ( <replaceable class="parameter">option</replaceable> )
 
 <phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
 
     HOST = <replaceable class="parameter">IP_address</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
     SYNC_STATE = <replaceable class="parameter">sync_mode</replaceable>,
-    PATH = <replaceable class="parameter">pg_data</replaceable>
+    PATH = <replaceable class="parameter">pg_data</replaceable>,
+    ZONE = <replaceable class="parameter">zone_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -36,7 +38,7 @@ ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</repl
     <title>Description</title>
 
     <para>
-<command>ADD COORDINATOR</command> add one row coordinator information in the node table.
+<command>ADD COORDINATOR</command> add one row coordinator information in the node table. The coordinator slave just used in different data center. If add coordinator slave in different zone, the slave name must be the same with master's; Not support add coordinator slave which in the same zone with its master.
     </para>
   </refsect1>
 
@@ -46,11 +48,22 @@ ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</repl
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">node_name</replaceable>
+          <replaceable class="parameter">master_name</replaceable>
         </term>
         <listitem>
           <para>
-    Node name, corresponds to the name column in the node table.
+    Node name, the coordinator master name in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">slave_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name, the coordinator slave name in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -95,7 +108,17 @@ ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</repl
     Your data directory.
           </para>
         </listitem>
-      </varlistentry>  
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">ZONE</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Data center name, the default value is guc parameter mgr_zone "local".
+          </para>
+        </listitem>
+      </varlistentry> 
     </variablelist>
   </refsect1>
 
@@ -103,9 +126,9 @@ ADD COORDINATOR [ IF NOT EXISTS ] <replaceable class="parameter">node_name</repl
   <refsect1>
     <title>Examples</title>
     <para>
-     Add one coordinator (name is "coord_name1") in the node table:
+     Add one coordinator master coord_name1 in the node table:
       <programlisting>
-ADD COORDINATOR coord_name1(HOST=host_name1, PORT=15534, PATH='/opt/ADB/coord1');
+ADD COORDINATOR MASTER coord_name1(HOST=host_name1, PORT=15534, PATH='/opt/ADB/coord1');
 </programlisting>
     </para>
   </refsect1>

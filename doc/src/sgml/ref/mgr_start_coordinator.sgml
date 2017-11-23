@@ -21,7 +21,8 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable> [, ...] }
+START COORDINATOR [ MASTER | SLAVE ] ALL
+START COORDINATOR { MASTER | SLAVE } <replaceable class="parameter">node_name</replaceable> [, ...]
 </synopsis>
   </refsynopsisdiv>
 
@@ -52,8 +53,8 @@ START COORDINATOR { ALL | <replaceable class="parameter">node_name</replaceable>
     <title>Examples</title>
 
     <para>
-Start all coordinator:
-      <programlisting>START COORDINATOR ALL;</programlisting>
+Start all coordinator master:
+      <programlisting>START COORDINATOR MASTER ALL;</programlisting>
     </para>
   </refsect1>
       <refsect1>

@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-MONITOR COORDINATOR [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
+MONITOR COORDINATOR { MASTER | SLAVE } [ ALL | <replaceable class="parameter">node_name</replaceable> [, ...] ]
 </synopsis>
   </refsynopsisdiv>
 
@@ -67,9 +67,9 @@ Node has three operating conditions: running, not running and reject connection.
     <title>Examples</title>
 
     <para>
-monitor the state for all coordinator:
+monitor the state for all coordinator master:
 <programlisting>
-MONITOR COORDINATOR ALL;
+MONITOR COORDINATOR MASTER ALL;
 </programlisting>
     </para>
   </refsect1>

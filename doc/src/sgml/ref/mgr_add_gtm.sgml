@@ -21,14 +21,16 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="parameter">node_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+ADD GTM MASTER <replaceable class="parameter">master_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
+ADD GTM SLAVE <replaceable class="parameter">slave_name</replaceable> FOR <replaceable class="parameter">master_name</replaceable> ( <replaceable class="parameter">option</replaceable> )
 
 <phrase>where <replaceable class="parameter">option</replaceable> must be the following:</phrase>
 
     HOST = <replaceable class="parameter">IP_address</replaceable>,
     PORT = <replaceable class="parameter">port_number</replaceable>,
     SYNC_STATE = <replaceable class="parameter">sync_mode</replaceable>,
-    PATH = <replaceable class="parameter">pg_data</replaceable>
+    PATH = <replaceable class="parameter">pg_data</replaceable>,
+    ZONE = <replaceable class="parameter">zone_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -36,7 +38,7 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
     <title>Description</title>
 
     <para>
-<command>ADD GTM</command> add one row gtm information in the node table.
+<command>ADD GTM</command> add one row gtm information in the node table. The slave's name must be different from master's.
     </para>
   </refsect1>
 
@@ -46,11 +48,22 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
     <variablelist>
       <varlistentry>
         <term>
-          <replaceable class="parameter">node_name</replaceable>
+          <replaceable class="parameter">master_name</replaceable>
         </term>
         <listitem>
           <para>
-    Node name, corresponds to the name column in the node table.
+    Node name, the gtm master name in the node table.
+          </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">slave_name</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Node name, the gtm slave name in the node table.
           </para>
         </listitem>
       </varlistentry>
@@ -95,7 +108,17 @@ ADD GTM { MASTER | SLAVE | EXTRA } [ IF NOT EXISTS ] <replaceable class="paramet
     Your data directory.
           </para>
         </listitem>
-      </varlistentry>  
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <replaceable class="parameter">ZONE</replaceable>
+        </term>
+        <listitem>
+          <para>
+    Data center name, the default value is guc parameter mgr_zone "local".
+          </para>
+        </listitem>
+      </varlistentry>
     </variablelist>
   </refsect1>
 

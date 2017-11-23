@@ -5,23 +5,23 @@ ADB documentation
 
 <refentry id="MGR-APPENDCOORDINATORTO">
   <refmeta>
-    <refentrytitle>APPEND COORDINATOR TO</refentrytitle>
+    <refentrytitle>APPEND COORDINATOR FOR</refentrytitle>
     <manvolnum>7</manvolnum>
     <refmiscinfo>Manage - Language Statements</refmiscinfo>
   </refmeta>
 
   <refnamediv>
-    <refname>APPEND COORDINATOR TO</refname>
-    <refpurpose>append a new coordinator as slave and make it run</refpurpose>
+    <refname>APPEND COORDINATOR FOR</refname>
+    <refpurpose>append a new coordinator master as the slave for source coordinator and make it run</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-appendcoordinatorto">
-    <primary>APPEND COORDINATOR TO</primary>
+    <primary>APPEND COORDINATOR FOR</primary>
   </indexterm>
 
   <refsynopsisdiv>
     <synopsis>
-APPEND COORDINATOR <replaceable class="parameter">source_coordinator_name</replaceable> TO <replaceable class="parameter">dest_coordinator_name</replaceable>
+APPEND COORDINATOR <replaceable class="parameter">dest_coordinator_name</replaceable> FOR <replaceable class="parameter">source_coordinator_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ APPEND COORDINATOR <replaceable class="parameter">source_coordinator_name</repla
     <title>Description</title>
 
     <para>
-<command>APPEND COORDINATOR TO</command> append a new coordinator as the slave make it run.
+<command>APPEND COORDINATOR FOR</command> append a new coordinator master (its type in node table is coordinator master) as the slave for source coordinator and make it run.
     </para>
   </refsect1>
 
@@ -50,7 +50,7 @@ APPEND COORDINATOR <replaceable class="parameter">source_coordinator_name</repla
     <term><replaceable class="parameter">dest_coordinator_name</replaceable></term>
     <listitem>
       <para>
-      Dest coordinator, which is the slave we add.
+      Dest coordinator, which is the master we want add.
       </para>
     </listitem>
    </varlistentry>
@@ -62,9 +62,9 @@ APPEND COORDINATOR <replaceable class="parameter">source_coordinator_name</repla
     <title>Examples</title>
 
     <para>
-      Append a new coordinator slave des_coord1 for coordinator src_coord1:
+      Append a new coordinator master des_coord1 as slave for coordinator master src_coord1:
 <programlisting>
-append coordinator src_coord1 to des_coord1;
+append coordinator des_coord1 for src_coord1;
 </programlisting>
     </para>
   </refsect1>

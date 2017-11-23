@@ -12,7 +12,7 @@ ADB documentation
 
   <refnamediv>
     <refname>ADBMGR PROMOTE</refname>
-    <refpurpose>make slave or extra as master type and delete the old master in node table and param table</refpurpose>
+    <refpurpose>make slave as master type and delete the old master information in node table and param table</refpurpose>
   </refnamediv>
 
   <indexterm zone="mgr-adbmgrpromote">
@@ -21,7 +21,7 @@ ADB documentation
 
   <refsynopsisdiv>
     <synopsis>
-ADBMGR PROMOTE { GTM | DATANODE } { SLAVE | EXTRA } <replaceable class="parameter">node_name</replaceable>
+ADBMGR PROMOTE { GTM | DATANODE } SLAVE <replaceable class="parameter">node_name</replaceable>
 </synopsis>
   </refsynopsisdiv>
 
@@ -29,7 +29,7 @@ ADBMGR PROMOTE { GTM | DATANODE } { SLAVE | EXTRA } <replaceable class="paramete
     <title>Description</title>
 
     <para>
-<command>ADBMGR PROMOTE</command> make slave or extra as master type and delete the old master in node table and param table.
+<command>ADBMGR PROMOTE</command> make slave as master type and delete the old master information in node table and param table.
 </para>
   </refsect1>
   <refsect1>
