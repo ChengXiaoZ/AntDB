@@ -234,7 +234,7 @@ static void hexp_update_conf_pgxc_node_name(AppendNodeInfo node, char* newname);
 static void hexp_update_conf_enable_mvcc(AppendNodeInfo node, bool value);
 static void hexp_restart_node(AppendNodeInfo node);
 
-static void hexp_flush_node_slot_on_all_node(PGconn *pg_conn, char *dnname, Oid dnhostoid, int32 dnport);
+static void hexp_pgxc_pool_reload_on_all_node(PGconn *pg_conn);
 static void hexp_flush_node_slot_on_itself(PGconn *pg_conn, char *dnname, Oid dnhostoid, int32 dnport);
 
 static Datum hexp_expand_check_show_status(bool check);
@@ -493,14 +493,8 @@ Datum mgr_expand_activate_dnmaster(PG_FUNCTION_ARGS)
 
 		hexp_pqexec_direct_execute_utility(co_pg_conn,SQL_COMMIT_TRANSACTION , MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
 
-		/*
-		todo
-		hexp_pqexec_direct_execute_utility(co_pg_conn,SQL_XC_MAINTENANCE_MODE_ON , MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
-		hexp_flush_node_slot_on_all_node(co_pg_conn, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-		hexp_flush_node_slot_on_itself(co_pg_conn, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-		hexp_pqexec_direct_execute_utility(co_pg_conn,SQL_XC_MAINTENANCE_MODE_OFF , MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
-		*/
-
+		//flush slot info in all nodes(includes new node)
+		hexp_pqexec_direct_execute_utility(co_pg_conn, "flush slot;", MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
 		mgr_unlock_cluster(&co_pg_conn);
 
 		//5.update dst node init and in cluster, and parent node is empty.
@@ -640,12 +634,10 @@ Datum mgr_expand_activate_recover_promote_suc(PG_FUNCTION_ARGS)
 		hexp_slot_2_move_to_clean(co_pg_conn,srcnodeinfo.nodename, appendnodeinfo.nodename);
 		hexp_pqexec_direct_execute_utility(co_pg_conn,SQL_COMMIT_TRANSACTION , MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
 
-		hexp_pqexec_direct_execute_utility(co_pg_conn,SQL_XC_MAINTENANCE_MODE_ON , MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
-		hexp_flush_node_slot_on_all_node(co_pg_conn, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-		hexp_flush_node_slot_on_itself(co_pg_conn, appendnodeinfo.nodename, appendnodeinfo.nodehost, appendnodeinfo.nodeport);
-		hexp_pqexec_direct_execute_utility(co_pg_conn,SQL_XC_MAINTENANCE_MODE_OFF , MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
-
+		//flush slot info in all nodes(includes new node)
+		hexp_pqexec_direct_execute_utility(co_pg_conn, "flush slot;", MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
 		mgr_unlock_cluster(&co_pg_conn);
+
 
 		//5.update dst node init and in cluster, and parent node is empty.
 		ereport(INFO, (errmsg("update dst node init and in cluster, and parent node is empty.")));
@@ -1625,14 +1617,31 @@ Datum mgr_cluster_pgxcnode_init(PG_FUNCTION_ARGS)
 	HeapTuple tup_result;
 	char ret_msg[100];
 	NameData nodename;
+	PGconn * co_pg_conn = NULL;
+	Oid cnoid;
 
 	strcpy(nodename.data, "---");
 	strcpy(ret_msg, "init all datanode's pgxc_node.");
 	if (RecoveryInProgress())
 		ereport(ERROR, (errmsg("cannot execute this command during recovery")));
 
-	hexp_init_cluster_pgxcnode();
-	hexp_check_cluster_pgxcnode();
+
+	PG_TRY();
+	{
+		hexp_get_coordinator_conn(&co_pg_conn, &cnoid);
+		hexp_init_cluster_pgxcnode();
+		hexp_check_cluster_pgxcnode();
+		//flush node info
+		hexp_pgxc_pool_reload_on_all_node(co_pg_conn);
+	}PG_CATCH();
+	{
+		if(co_pg_conn)
+		{
+			PQfinish(co_pg_conn);
+			co_pg_conn = NULL;
+		}
+		PG_RE_THROW();
+	}PG_END_TRY();
 
 	tup_result = build_common_command_tuple(&nodename, true, ret_msg);
 	return HeapTupleGetDatum(tup_result);
@@ -3844,6 +3853,10 @@ bool hexp_check_cluster_status_internal(DN_STATUS* dn_status, int* pdn_status_in
 
 		hexp_get_coordinator_conn(&pg_conn, &cnoid);
 
+		//call pgxc_pool_reload on all nodes in expand show status cmd
+		if(!check)
+			hexp_pgxc_pool_reload_on_all_node(pg_conn);
+
 		//check adb.slot exists.
 		if(!hexp_check_select_result_count(pg_conn, IS_ADB_SLOT_TABLE_EXISTS))
 			ereport(ERROR, (errmsg("cluster slot is not initialized.")));
@@ -4351,14 +4364,13 @@ static void hexp_create_dm_on_all_node(PGconn *pg_conn, char *dnname, Oid dnhost
 }
 
 
-static void hexp_flush_node_slot_on_all_node(PGconn *pg_conn, char *dnname, Oid dnhostoid, int32 dnport)
+static void hexp_pgxc_pool_reload_on_all_node(PGconn *pg_conn)
 {
 	InitNodeInfo *info;
 	ScanKeyData key[2];
 	HeapTuple tuple;
 	Form_mgr_node mgr_node;
 	StringInfoData psql_cmd;
-	char *addressnode = NULL;
 
 	//select all inicialized and incluster node
 	ScanKeyInit(&key[0]
@@ -4378,9 +4390,6 @@ static void hexp_flush_node_slot_on_all_node(PGconn *pg_conn, char *dnname, Oid 
 	info->rel_scan = heap_beginscan(info->rel_node, SnapshotNow, 2, key);
 	info->lcp = NULL;
 
-	addressnode = get_hostaddress_from_hostoid(dnhostoid);
-
-	//todo rollback
 	while ((tuple = heap_getnext(info->rel_scan, ForwardScanDirection)) != NULL)
 	{
 		mgr_node = (Form_mgr_node)GETSTRUCT(tuple);
@@ -4394,18 +4403,11 @@ static void hexp_flush_node_slot_on_all_node(PGconn *pg_conn, char *dnname, Oid 
 		appendStringInfo(&psql_cmd, " EXECUTE DIRECT ON (%s) ", NameStr(mgr_node->nodename));
 		appendStringInfo(&psql_cmd, " 'select pgxc_pool_reload();'");
 		hexp_pqexec_direct_execute_utility(pg_conn, psql_cmd.data, MGR_PGEXEC_DIRECT_EXE_UTI_RET_TUPLES_TRUE);
-
-		initStringInfo(&psql_cmd);
-		appendStringInfo(&psql_cmd, " EXECUTE DIRECT ON (%s) ", NameStr(mgr_node->nodename));
-		appendStringInfo(&psql_cmd, " 'flush slot;'");
-		hexp_pqexec_direct_execute_utility(pg_conn, psql_cmd.data, MGR_PGEXEC_DIRECT_EXE_UTI_RET_COMMAND_OK);
-
 	}
 
 	heap_endscan(info->rel_scan);
 	heap_close(info->rel_node, AccessShareLock);
 	pfree(info);
-	pfree(addressnode);
 }
 
 static bool hexp_get_nodeinfo_from_table(char *node_name, char node_type, AppendNodeInfo *nodeinfo)
